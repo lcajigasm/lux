@@ -27,7 +27,6 @@ fn verify() -> ExitCode {
         ("cargo", &["deny", "check"]),
         ("bash", &["./scripts/check-limits.sh"]),
         ("bash", &["./scripts/check-core-isolation.sh"]),
-        ("bash", &["./scripts/check-bench-regression.sh", "main"]),
     ];
 
     for (program, args) in steps {

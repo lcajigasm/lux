@@ -22,7 +22,7 @@ frequently used skill in the project — nearly every phase touches a budget.
    `cargo bench -p lux-benches --bench <name> -- --baseline main`
 4. **Check the gate:** `./scripts/check-bench-regression.sh main` — fails if
    any benchmark's mean regressed more than 10% (`BENCH_REGRESSION_THRESHOLD`
-   env var to override). This is what CI runs.
+   env var to override). Run it only on repeatable hardware.
 5. **Telling signal from noise:** criterion's own report already flags
    outliers and gives confidence intervals — read those before trusting a
    single percentage. Re-run once if a regression is borderline (a few
@@ -35,7 +35,6 @@ frequently used skill in the project — nearly every phase touches a budget.
    number, the date, and what changed, once a real capability (not the
    `smoke` placeholder) has a working budget benchmark.
 
-CI (`.github/workflows/ci.yml`, job `bench`) stores the baseline as a GitHub
-Actions cache under the fixed key `criterion-baseline-main`, which is
-immutable once created — see `docs/PERFORMANCE.md` for how to deliberately
-reset it.
+Do not gate benchmarks on GitHub-hosted runners: their VM and cache placement
+vary too much. Add a gate when a repeatable runner and a real budget benchmark
+exist.

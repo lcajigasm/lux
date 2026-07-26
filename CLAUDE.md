@@ -13,8 +13,8 @@ of huge files. Read `docs/adr/` before proposing architectural changes.
    returns plausible data is worse than a compile error.
 2. **The core knows nothing about the UI.** `lux-core` and all domain crates
    must compile with no graphics dependency. CI enforces this.
-3. **Performance budgets are tests.** See `docs/PERFORMANCE.md`. A >10%
-   regression fails the build. "Feels fast" is not a measurement.
+3. **Performance budgets are tests.** See `docs/PERFORMANCE.md`. Gate them
+   only on repeatable hardware; "feels fast" is not a measurement.
 4. **No god objects.** No state struct over 25 fields. No file over 600 lines.
    Enforced by `scripts/check-limits.sh`.
 5. **Event-driven, never polling.** No `if now - last_check > interval` to
@@ -50,9 +50,9 @@ above maps to one of those failures. See `docs/adr/0001-lessons-from-v0.md`.
     cargo test --workspace
     cargo clippy --workspace -- -D warnings
     cargo fmt --check
-    cargo bench                        # compares against stored baselines
+    cargo bench -p lux-benches          # runs the Criterion harness
     ./scripts/check-limits.sh
-    cargo xtask verify                 # everything CI runs
+    cargo run -p xtask                 # everything CI runs
 
 ## Conventions
 

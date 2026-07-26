@@ -1,7 +1,6 @@
 # Performance budgets
 
-Measured, not aspirational (golden rule #3). A regression greater than 10%
-against the stored `criterion` baseline fails CI. "Feels fast" is not a
+Measured, not aspirational (golden rule #3). "Feels fast" is not a
 measurement. Reference hardware: MacBook Pro, M-series, `--release` build.
 Windows/Linux thresholds get calibrated and recorded here once Phase 2 has a
 shell to measure on those platforms.
@@ -34,16 +33,9 @@ Save a baseline: `cargo bench -p lux-benches --bench <name> -- --save-baseline m
 Compare against it: `cargo bench -p lux-benches --bench <name> -- --baseline main`
 Check the gate: `./scripts/check-bench-regression.sh main` (fails if any
 benchmark's mean regressed more than 10% against the `main` baseline; see
-`BENCH_REGRESSION_THRESHOLD` env var to override the percentage).
-
-CI (`.github/workflows/ci.yml`, job `bench`) stores the baseline as a GitHub
-Actions cache under the fixed key `criterion-baseline-main`. Cache entries
-are immutable once created, so the baseline does **not** silently drift with
-every green `main` build — it only gets established once and then every run
-compares against that same fixed point. To deliberately accept a new normal
-(after a reviewed, intentional performance-affecting change), delete the
-cache entry (`gh cache delete criterion-baseline-main` or via the repo's
-Actions → Caches UI) so the next run on `main` re-bootstraps it.
+`BENCH_REGRESSION_THRESHOLD` env var to override the percentage). It is kept
+for controlled, repeatable measurements; CI does not run it while the only
+benchmark is the synthetic smoke test, because hosted runners are too noisy.
 
 ## Measurement history
 
