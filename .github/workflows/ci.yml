@@ -77,13 +77,18 @@ jobs:
           path: target/criterion
           key: criterion-baseline-main
 
+      # Scoped to lux-benches, never --workspace: every other crate's lib/bin
+      # target also gets an implicit bench harness by default, and that
+      # harness is plain libtest — it doesn't understand criterion flags like
+      # --save-baseline and aborts the job. Only lux-benches has real
+      # criterion [[bench]] targets.
       - name: Bootstrap baseline (no stored baseline yet — nothing to compare)
         if: steps.restore.outputs.cache-hit != 'true'
-        run: cargo bench --workspace -- --save-baseline main
+        run: cargo bench -p lux-benches -- --save-baseline main
 
       - name: Compare against the stored baseline
         if: steps.restore.outputs.cache-hit == 'true'
-        run: cargo bench --workspace -- --baseline main
+        run: cargo bench -p lux-benches -- --baseline main
 
       - name: Fail on >10% regression
         if: steps.restore.outputs.cache-hit == 'true'
