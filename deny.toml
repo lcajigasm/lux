@@ -1,0 +1,54 @@
+# cargo-deny config. Generated from `cargo deny init` (cargo-deny 0.20.2) and
+# trimmed to what Lux actually sets; see https://embarkstudios.github.io/cargo-deny/
+# for the full schema of anything omitted here (defaults apply).
+
+[graph]
+all-features = false
+no-default-features = false
+
+[output]
+feature-depth = 1
+
+[advisories]
+ignore = []
+
+[licenses]
+# Lux is MIT OR Apache-2.0. Every dependency license here must be compatible
+# with redistributing Lux under either of those. Add to this list only with
+# a reason — an unexpected license on a new dependency should fail the build,
+# not sail through silently.
+# Start minimal (only what the workspace itself uses); extend this list in
+# the same PR that adds a dependency needing a new entry, not preemptively.
+allow = [
+    "MIT",
+    "Apache-2.0",
+]
+confidence-threshold = 0.8
+exceptions = []
+
+[licenses.private]
+ignore = false
+registries = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+allow = []
+allow-workspace = false
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+github = []
+gitlab = []
+bitbucket = []
