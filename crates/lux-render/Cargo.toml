@@ -1,0 +1,8 @@
+[package]
+name = "lux-render"
+description = "GPU rendering: wgpu context, glyph atlas, drawing primitives."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true

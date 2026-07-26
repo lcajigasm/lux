@@ -1,0 +1,8 @@
+[package]
+name = "lux-search"
+description = "Find-in-files (ripgrep engine) and fuzzy matching."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true

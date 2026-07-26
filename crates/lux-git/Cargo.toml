@@ -1,0 +1,8 @@
+[package]
+name = "lux-git"
+description = "In-process Git integration via gix. No shell-out to the git binary."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true

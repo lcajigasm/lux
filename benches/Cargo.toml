@@ -1,0 +1,17 @@
+[package]
+name = "lux-benches"
+description = "Criterion benchmark harness. Real per-phase budgets land here as capabilities exist."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+criterion = "0.8.2"
+
+[[bench]]
+name = "smoke"
+harness = false

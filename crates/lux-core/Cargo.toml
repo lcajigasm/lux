@@ -1,0 +1,8 @@
+[package]
+name = "lux-core"
+description = "Headless text editing engine. No UI dependencies, ever."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
