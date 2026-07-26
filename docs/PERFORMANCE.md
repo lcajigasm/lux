@@ -30,8 +30,20 @@ implementation yet. Real budget benchmarks land in the phase that implements
 the capability they measure (see the phase-by-phase acceptance criteria in
 `LUX_PROMPT_MAESTRO.md`).
 
-Save a baseline: `cargo bench -p lux-benches -- --save-baseline main`
-Compare against it: `cargo bench -p lux-benches -- --baseline main`
+Save a baseline: `cargo bench -p lux-benches --bench <name> -- --save-baseline main`
+Compare against it: `cargo bench -p lux-benches --bench <name> -- --baseline main`
+Check the gate: `./scripts/check-bench-regression.sh main` (fails if any
+benchmark's mean regressed more than 10% against the `main` baseline; see
+`BENCH_REGRESSION_THRESHOLD` env var to override the percentage).
+
+CI (`.github/workflows/ci.yml`, job `bench`) stores the baseline as a GitHub
+Actions cache under the fixed key `criterion-baseline-main`. Cache entries
+are immutable once created, so the baseline does **not** silently drift with
+every green `main` build — it only gets established once and then every run
+compares against that same fixed point. To deliberately accept a new normal
+(after a reviewed, intentional performance-affecting change), delete the
+cache entry (`gh cache delete criterion-baseline-main` or via the repo's
+Actions → Caches UI) so the next run on `main` re-bootstraps it.
 
 ## Measurement history
 
