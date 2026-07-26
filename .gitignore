@@ -1,3 +1,10 @@
 /target
 **/*.rs.bk
 .DS_Store
+
+# Human/AI working documents, not repo artifacts (see their own preambles).
+# Spanish-language planning aids that generated CLAUDE.md, the ADRs, and this
+# loop-engineering setup; golden rule 0.8 (English-only artifacts) doesn't
+# apply to them because they were never meant to be committed.
+/LUX_PROMPT_MAESTRO.md
+/LUX_LOOP_ENGINEERING.md
