@@ -203,7 +203,13 @@ pub fn apply_to_each(
         .collect();
     selections_after.reverse();
 
-    all_edits.reverse();
+    // No reverse on `all_edits`: it was built via `.extend()` in the same
+    // order `op` actually applied each cursor's edits to `buffer`
+    // (highest-offset cursor first) — that's already the exact
+    // chronological order `Transaction::apply`/`undo` need. Reversing it
+    // here was a real bug (found and fixed while building the find/replace
+    // deliverable, which hit the identical mistake): it silently broke
+    // undo for every multi-cursor edit built through this function.
     let transaction = Transaction::new(all_edits, selections_before, selections_after.clone());
     let new_multicursor = MultiCursor::from_cursors(selections_after);
     (transaction, new_multicursor)
@@ -290,6 +296,54 @@ mod tests {
         });
         assert_eq!(transaction.selections_before, vec![cursor_at(&buffer, 1)]);
         assert_eq!(transaction.selections_after[0].head.char, 2);
+    }
+
+    /// Regression test: an earlier version of `apply_to_each` reversed
+    /// `all_edits` one time too many, which happened to leave `buffer.text()`
+    /// and the returned cursor positions correct (this function's other two
+    /// tests didn't catch it) while silently putting `Transaction.edits` in
+    /// the wrong order for `undo`/`redo` to replay. Multi-edit transactions
+    /// only prove themselves correct by actually being undone and redone.
+    #[test]
+    fn apply_to_each_transaction_is_undoable_and_redoable() {
+        let mut buffer = Buffer::from_bytes(b"ab").unwrap();
+        let original = buffer.text();
+        let mc = MultiCursor::from_cursors(vec![cursor_at(&buffer, 0), cursor_at(&buffer, 2)]);
+        let (transaction, _) = apply_to_each(&mut buffer, &mc, |buffer, sel| {
+            insert_text(buffer, sel, "X")
+        });
+        let after_apply = buffer.text();
+        assert_eq!(after_apply, "XabX");
+
+        transaction.undo(&mut buffer);
+        assert_eq!(buffer.text(), original);
+
+        transaction.apply(&mut buffer);
+        assert_eq!(buffer.text(), after_apply);
+    }
+
+    /// Same regression, exercised through a real multi-edit `History` flow
+    /// (not just calling `Transaction::undo` directly) — `History::undo`
+    /// returning the correct `selections_before` depends on the edits list
+    /// being in the right order too, since `undo` replays it in reverse.
+    #[test]
+    fn apply_to_each_transaction_undoes_correctly_through_history() {
+        let mut buffer = Buffer::from_bytes(b"ab").unwrap();
+        let original = buffer.text();
+        let mc = MultiCursor::from_cursors(vec![cursor_at(&buffer, 0), cursor_at(&buffer, 2)]);
+        let (transaction, _) = apply_to_each(&mut buffer, &mc, |buffer, sel| {
+            insert_text(buffer, sel, "X")
+        });
+        assert_eq!(buffer.text(), "XabX");
+
+        let mut history = crate::history::History::new();
+        history.record(transaction);
+        let restored = history.undo(&mut buffer);
+        assert_eq!(buffer.text(), original);
+        assert_eq!(
+            restored,
+            Some(vec![cursor_at(&buffer, 0), cursor_at(&buffer, 2)])
+        );
     }
 
     #[test]
