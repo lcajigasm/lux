@@ -8,23 +8,43 @@ Legend: `not-started` · `partial` (behind an `experimental.*` flag, listed
 under Experimental below) · `implemented` · `excluded` (permanently out of
 scope for that platform by design, not a gap to fill — see the linked ADR).
 
-As of Phase 0, nothing is implemented. No UI exists yet by design (the master
-prompt is explicit: "if there's a window at the end of Phase 0, you moved too
-fast").
+Phase 0 shipped no UI by design (the master prompt is explicit: "if there's a
+window at the end of Phase 0, you moved too fast"). Phase 1 shipped a
+complete, headless `lux-core` — see below.
 
 ## Core editing (Phase 1)
 
+`lux-core` has no platform-specific code (that's the whole point of golden
+rule #2); the "implemented" mark below reflects where it's actually been
+*run* — the full test suite (235 tests + a proptest + 30 minutes of
+`cargo-fuzz`), all on macOS (aarch64-apple-darwin). It's confirmed to
+**cross-compile cleanly for `aarch64-apple-ios` and `aarch64-linux-android`**
+(`cargo build -p lux-core --target ...`, no linker needed — it's an `rlib`,
+no final binary) — Phase 1's specific portability check — but that's a build
+check, not a behavioral one, so those columns stay `not-started` until the
+suite actually runs there. Windows/Linux are untested for the same reason
+(no non-macOS dev environment available yet); the code itself uses only
+`std::fs`/`std::path`, nothing OS-specific.
+
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| Buffer load/save (atomic + backup) | not-started | not-started | not-started | not-started | not-started |
-| EOL / indent / encoding detection | not-started | not-started | not-started | not-started | not-started |
-| Multicursor + multiselection | not-started | not-started | not-started | not-started | not-started |
-| Transactional undo/redo | not-started | not-started | not-started | not-started | not-started |
-| Edit operations (indent, comment, duplicate, sort, case) | not-started | not-started | not-started | not-started | not-started |
-| Movement (word/line/paragraph/bracket-match) | not-started | not-started | not-started | not-started | not-started |
-| Sublime-style selections (expand, next occurrence, box) | not-started | not-started | not-started | not-started | not-started |
-| Find/replace in buffer | not-started | not-started | not-started | not-started | not-started |
-| Snippets with navigable placeholders | not-started | not-started | not-started | not-started | not-started |
+| Buffer load/save (atomic + backup) | implemented | not-started | not-started | not-started | not-started |
+| EOL / indent / encoding detection | implemented | not-started | not-started | not-started | not-started |
+| Positions/selections (byte/char/column, grapheme-aware) | implemented | not-started | not-started | not-started | not-started |
+| Multicursor + multiselection | implemented | not-started | not-started | not-started | not-started |
+| Transactional undo/redo | implemented | not-started | not-started | not-started | not-started |
+| Edit operations (indent, comment, duplicate, sort, case) | implemented | not-started | not-started | not-started | not-started |
+| Movement (word/line/paragraph/bracket-match) | implemented | not-started | not-started | not-started | not-started |
+| Sublime-style selections (expand, next occurrence, box) | implemented | not-started | not-started | not-started | not-started |
+| Find/replace in buffer | implemented | not-started | not-started | not-started | not-started |
+| Snippets with navigable placeholders | implemented | not-started | not-started | not-started | not-started |
+| `lux-core-cli` headless test harness | implemented | not-started | not-started | not-started | not-started |
+
+**Known gap**: the "open a 100 MB file" performance budget's RSS half (< 3×
+file size) measures 3.16×, over budget — see `docs/PERFORMANCE.md`'s
+measurement history for the root cause (three simultaneous copies of the
+file's bytes during `Buffer::open`) and why it wasn't fixed in the same pass
+that found it.
 
 ## Rendering & desktop shell (Phase 2, `v0.1.0`)
 

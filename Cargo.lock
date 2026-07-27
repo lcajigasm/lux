@@ -344,6 +344,7 @@ name = "lux-benches"
 version = "0.0.0"
 dependencies = [
  "criterion",
+ "lux-core",
 ]
 
 [[package]]
@@ -358,6 +359,13 @@ dependencies = [
  "regex",
  "ropey",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "lux-core-cli"
+version = "0.0.0"
+dependencies = [
+ "lux-core",
 ]
 
 [[package]]
