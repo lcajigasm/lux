@@ -1,0 +1,20 @@
+# Basic smoke script for lux-core-cli: open a file, edit it, undo/redo,
+# and assert the buffer text at each step. Exercises Buffer, Edit,
+# Transaction, and History together end-to-end, with no UI involved.
+
+open basic.txt
+assert_eq hello world
+
+insert 5 ,
+assert_eq hello, world
+
+delete 5 1
+assert_eq hello world
+
+undo
+assert_eq hello, world
+
+redo
+assert_eq hello world
+
+dump

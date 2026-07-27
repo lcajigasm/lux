@@ -1,0 +1,15 @@
+[package]
+name = "lux-core-cli"
+description = "Headless test harness for lux-core: opens a file, runs a script of operations, dumps the result. No UI dependencies — living proof lux-core doesn't need one."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "lux-core-cli"
+path = "src/main.rs"
+
+[dependencies]
+lux-core = { path = "../lux-core", version = "0.0.0" }
