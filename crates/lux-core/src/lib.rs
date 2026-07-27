@@ -10,3 +10,4 @@ pub mod multicursor;
 pub mod position;
 pub mod selection;
 pub mod selection_ops;
+pub mod snippets;
