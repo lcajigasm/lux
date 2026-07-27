@@ -6,3 +6,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[dependencies]
+ropey = "1.6.1"
+unicode-segmentation = "1.13.3"
+
+[dev-dependencies]
+proptest = "1.11.0"
