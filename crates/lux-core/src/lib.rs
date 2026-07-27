@@ -6,6 +6,7 @@ pub mod edit;
 pub mod edit_ops;
 pub mod find_replace;
 pub mod history;
+pub mod movement;
 pub mod multicursor;
 pub mod position;
 pub mod selection;
