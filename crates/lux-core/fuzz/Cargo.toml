@@ -1,0 +1,28 @@
+[package]
+name = "lux-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Standalone from the main workspace on purpose: this crate needs nightly
+# (libfuzzer-sys), while the rest of the project is pinned to stable via
+# rust-toolchain.toml. An empty [workspace] table here stops Cargo from
+# treating it as implicitly nested inside the root workspace.
+[workspace]
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+libfuzzer-sys = "0.4"
+
+[dependencies.lux-core]
+path = ".."
+
+[[bin]]
+name = "buffer_fuzz"
+path = "fuzz_targets/buffer_fuzz.rs"
+test = false
+doc = false
+bench = false
