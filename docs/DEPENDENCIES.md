@@ -15,8 +15,15 @@ pulls in when it needs it.
 
 | Area | Crate(s) | Version (verified 2026-07-26) | Note |
 |---|---|---|---|
-| GPU | `wgpu` | 30.0.0 | Breaking major every ~12 weeks by policy. Confirmed live by temporarily adding it to `lux-core` during the core-isolation test (see receipt) — resolves clean at 30.0.0. |
-| Desktop windowing | `winit` | 0.30.13 | 0.31 still beta (0.31.0-beta.2, 2025-11-16), no stable release since. Design the `lux-platform` trait against 0.31's shape anyway. |
+| GPU | `wgpu` | 30.0.0 | Breaking major every ~12 weeks by policy. Confirmed live by temporarily adding it to `lux-core` during the core-isolation test (see receipt) — resolves clean at 30.0.0. Wired for real into `lux-render` in Phase 2 (context/surface/resize); pulls in one new license (`Zlib`, via `foldhash`/`slotmap` under `wgpu-hal`) — permissive, added to `deny.toml`. |
+| Window/display handles (in `lux-render`) | `raw-window-handle` | 0.6.2 | Same crate `lux-platform` uses; `lux-render` takes it directly too, deliberately not depending on `lux-platform` (see `docs/ARCHITECTURE.md` — a future mobile backend can hand `lux-render` a surface without pulling in windowing/IME/clipboard code). |
+| DPI geometry (in `lux-render`) | `dpi` | 0.1.2 | Same reasoning as `lux-platform`'s use of it: shared, `wgpu`/`winit`-independent size vocabulary. |
+| Async-to-sync bridge for tests | `pollster` | 1.0.1 | `wgpu`'s adapter/device requests are `async`; this blocks on them from plain `#[test]` functions. Dev-dependency only. |
+| Desktop windowing | `winit` | 0.30.13 | 0.31 still beta (0.31.0-beta.2, 2025-11-16), no stable release since. Design the `lux-platform` trait against 0.31's shape anyway. Built with `default-features = false` plus everything default *except* `wayland-csd-adwaita`, replaced by `wayland-csd-adwaita-crossfont`: the `ab_glyph`-based default pulls in `ttf-parser`, unmaintained per RUSTSEC-2026-0192 (found wiring up `lux-platform`, Phase 2). `crossfont` gives the same Wayland CSD support without it. |
+| Window/display handles | `raw-window-handle` | 0.6.2 | Arrives via `winit`'s `rwh_06` feature; `lux-platform`'s `PlatformWindow` trait requires it directly too, as the shared vocabulary a future `wgpu` surface target needs regardless of backend. |
+| DPI geometry | `dpi` | 0.1.2 | The standalone crate `winit` itself re-exports as `winit::dpi` (`pub use dpi;` in `winit`'s `lib.rs`) — depending on it directly keeps `lux-platform`'s size/position types identical to `winit`'s without requiring `winit` itself on non-desktop backends later. |
+| Clipboard | `arboard` | 3.6.1 | Not cited in the master prompt (an omission — `winit` has no clipboard of its own). `default-features = false`: only text clipboard is used, not the `image`/`image-data` features. |
+| Native file dialogs | `rfd` | 0.17.2 | Not cited in the master prompt either. `default-features = false`: the synchronous `FileDialog` API needs none of the `gtk3`/`xdg-portal`/`pollster` opt-in features. |
 | Text layout | `parley` + `fontique` | 0.11.0 | |
 | Shaping | `harfrust` | 0.12.0 | Arrives transitively via `parley`. |
 | Rasterizing | `swash` | 0.2.10 | Only crate offering `Format::subpixel_bgra()`. |

@@ -6,3 +6,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[dependencies]
+dpi = "0.1.2"
+raw-window-handle = "0.6.2"
+wgpu = "30.0.0"
+
+[dev-dependencies]
+pollster = "1.0.1"

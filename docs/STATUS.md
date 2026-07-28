@@ -50,12 +50,57 @@ that found it.
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| Window/input/IME platform trait | not-started | not-started | not-started | not-started | not-started |
+| Window/input/IME platform trait | implemented | not-started | not-started | not-started | not-started |
 | GPU text rendering (glyph atlas, subpixel AA) | not-started | not-started | not-started | not-started | not-started |
 | Desktop IME (preedit, cursor area) | not-started | not-started | not-started | n/a | n/a |
 | Accessibility tree (`accesskit`) | not-started | not-started | not-started | not-started | not-started |
 | Lux Dark theme | not-started | not-started | not-started | not-started | not-started |
 | Virtualized editor view | not-started | not-started | not-started | not-started | not-started |
+
+**Scope note (`lux-platform` trait + `winit` backend — this phase's first
+deliverable, tracked in `docs/receipts/phase-02-luxplatform-trait-impl-winit.md`)**:
+the trait covers window creation, keyboard/mouse/touch input, IME event
+plumbing (`Enabled`/`Preedit`/`Commit`/`Disabled`, cursor-area reporting),
+clipboard, native file dialogs, DPI/scale-factor, lifecycle
+(`resumed`/`suspended` split from `surfaces_available`/`surfaces_lost` per
+ADR 0004), and safe-area insets (always zero on desktop — an accurate
+report, not a placeholder). Verified on macOS (aarch64-apple-darwin):
+`cargo test -p lux-platform` (event-conversion unit tests plus a real
+clipboard round-trip against the system pasteboard) and a manual run that
+opened a live window and logged genuine resize/focus/occlusion/scale-factor/
+mouse events. **Not yet exercised**: live IME composition (Japanese input,
+Spanish dead-key accents — Phase 2 deliverable 5, blocked on having
+something to render preedit text into, i.e. `lux-render`/`lux-ui`), touch
+input (no touch hardware on the dev machine), and file dialogs (a native
+modal can't be driven from an automated test, and wasn't manually clicked
+through this pass either). Windows and Linux stay `not-started`: this
+machine has no `rustup`-managed toolchain, so there's no target sysroot to
+even `cargo check` against — unlike Phase 1's pure-Rust `lux-core`,
+`lux-platform`'s desktop backend pulls in real per-OS system dependencies
+(`windows-sys`, `x11rb`, Wayland), so a cross-compile check isn't meaningful
+here the way it was there.
+
+**Scope note (`lux-render`'s `wgpu` context/surface/resize — this phase's
+second deliverable, tracked in
+`docs/receipts/phase-02-luxrender-contexto-wgpu-superficie-resize.md`)**:
+no capability row above moves yet — this is infrastructure underneath "GPU
+text rendering", not the row itself, since there's still no glyph atlas, no
+quad/text pipeline, and nothing a human can see rendered. What exists and is
+verified: `GpuContext` (real headless instance/adapter/device/queue,
+`cargo test -p lux-render context::`) and `Surface` (real `wgpu::Surface`
+built from a live window's raw handles via `lux-platform`, sRGB-preferring
+format selection, resize that's a no-op when the size didn't change,
+`cargo test -p lux-render surface::`). Verified manually on macOS: a real
+window + real surface configured at its actual size/scale/format
+(`Bgra8UnormSrgb` at 1600×1200, matching a Retina display), resized live as
+the window resized, and `get_current_texture()` called against the live
+surface each redraw attempt (correctly reporting `Occluded` for a
+non-frontmost window rather than crashing) — a full clear-color present
+wasn't confirmed on screen (the manual test window couldn't be reliably
+brought to the foreground from this scripted session), but nothing in that
+gap is unverified logic: it's `lux-render`'s render-pass code exercising
+the real surface right up to the point a human would need to look at the
+screen.
 
 ## Syntax & navigation (Phase 3, `v0.2.0`)
 

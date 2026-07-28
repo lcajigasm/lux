@@ -6,3 +6,20 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[dependencies]
+arboard = { version = "3.6.1", default-features = false }
+dpi = "0.1.2"
+raw-window-handle = "0.6.2"
+rfd = { version = "0.17.2", default-features = false }
+# Default features minus `wayland-csd-adwaita`: that feature pulls in
+# `ttf-parser` via `sctk-adwaita`'s `ab_glyph` backend, and `ttf-parser` is
+# unmaintained (RUSTSEC-2026-0192). `wayland-csd-adwaita-crossfont` gives the
+# same Wayland client-side-decoration support through `crossfont` instead.
+winit = { version = "0.30.13", default-features = false, features = [
+    "rwh_06",
+    "x11",
+    "wayland",
+    "wayland-dlopen",
+    "wayland-csd-adwaita-crossfont",
+] }
