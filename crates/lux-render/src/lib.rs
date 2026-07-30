@@ -10,8 +10,10 @@ pub mod context;
 pub mod error;
 pub mod glyph_atlas;
 pub mod surface;
+pub mod text_layout;
 
 pub use context::GpuContext;
 pub use error::RenderError;
 pub use glyph_atlas::{GlyphAtlas, GlyphEntry, GlyphKey, GlyphKind};
 pub use surface::Surface;
+pub use text_layout::{ClusterGeometry, LineLayout, LineStyle, TextLayoutContext};

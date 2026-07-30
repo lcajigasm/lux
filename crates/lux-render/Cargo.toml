@@ -10,6 +10,8 @@ publish.workspace = true
 [dependencies]
 dpi = "0.1.2"
 etagere = "0.3.0"
+fontique = { version = "0.11.0", default-features = false, features = ["std"] }
+parley = { version = "0.11.0", default-features = false, features = ["std"] }
 raw-window-handle = "0.6.2"
 swash = "0.2.10"
 wgpu = "30.0.0"
