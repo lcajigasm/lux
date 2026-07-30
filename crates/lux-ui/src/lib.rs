@@ -4,9 +4,11 @@
 
 pub mod accessibility;
 pub mod editor_view;
+pub mod theme;
 
 pub use accessibility::build_tree as build_accessibility_tree;
 pub use editor_view::{
     CursorGlyph, EditorView, EditorViewFrame, EditorViewMetrics, SelectionRect, Viewport,
     VisibleLine,
 };
+pub use theme::{Color, Theme};
