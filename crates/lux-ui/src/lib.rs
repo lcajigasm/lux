@@ -2,8 +2,10 @@
 //! know about both the domain crates (`lux-core` et al.) and `lux-render`/
 //! `lux-platform` (see `docs/ARCHITECTURE.md`).
 
+pub mod accessibility;
 pub mod editor_view;
 
+pub use accessibility::build_tree as build_accessibility_tree;
 pub use editor_view::{
     CursorGlyph, EditorView, EditorViewFrame, EditorViewMetrics, SelectionRect, Viewport,
     VisibleLine,

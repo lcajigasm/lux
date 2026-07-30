@@ -12,7 +12,11 @@
 //! will consume — the same reasoning the glyph-atlas and text-layout
 //! receipts already used for their own "not on screen yet" scope notes.
 
-mod line_index;
+// `pub(crate)`, not private: `crate::accessibility` (Phase 2 deliverable 6)
+// reuses this same line-splitting helper rather than duplicating it — see
+// that module's doc comment for why it needs the same byte-range-per-line
+// index this view already builds every frame.
+pub(crate) mod line_index;
 
 use std::ops::Range;
 use std::time::Duration;
