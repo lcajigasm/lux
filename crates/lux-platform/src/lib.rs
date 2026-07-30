@@ -11,6 +11,7 @@ pub mod desktop;
 pub mod dialog;
 pub mod error;
 pub mod event;
+pub mod ime;
 pub mod window;
 
 pub use clipboard::Clipboard;
@@ -20,6 +21,7 @@ pub use event::{
     ElementState, Ime, Key, Modifiers, MouseButton, NamedKey, PlatformEvent, ScrollDelta, Touch,
     TouchPhase,
 };
+pub use ime::{ImeComposition, ImeUpdate};
 pub use window::{PlatformWindow, SafeAreaInsets, WindowAttributes, WindowId};
 
 /// The callbacks a platform backend drives. Implemented by whatever owns the
