@@ -5,18 +5,22 @@
 //! sub-pixel vertically, only horizontally, which is what LCD subpixel AA
 //! actually needs), with one packed plane per glyph kind — `Monochrome`,
 //! `Polychrome`, `Subpixel` — the same split `gpui` validated in production.
-//! This module owns rasterization and packing only. Uploading a plane's
-//! bytes to a `wgpu::Texture`, evicting cold entries, and `TextRenderingMode`
-//! are the rest of Phase 2's entregable 2 and are deliberately not here yet.
+//! Real LRU eviction (below) means a plane running out of room is not the
+//! end of the story: the coldest entry in that same plane is deallocated
+//! and the request retried, in a loop, until it fits or the plane's own
+//! cache is empty (in which case the glyph is simply too large for an empty
+//! plane — a genuine case, not a bug).
 
 use std::collections::HashMap;
 
-use etagere::{BucketedAtlasAllocator, size2};
+use etagere::{AllocId, BucketedAtlasAllocator, size2};
 use swash::{
     FontRef, GlyphId,
     scale::{Render, ScaleContext, Source, StrikeWith, image::Content},
-    zeno::{Format, Vector},
+    zeno::Vector,
 };
+
+use crate::text_rendering_mode::{TextRenderingMode, format_for};
 
 /// Horizontal subpixel positions an atlas entry can be rasterized at. LCD
 /// subpixel AA looks visibly wrong if a glyph's hinted shape doesn't account
@@ -53,7 +57,11 @@ pub enum GlyphKind {
 }
 
 impl GlyphKind {
-    const ALL: [GlyphKind; 3] = [GlyphKind::Monochrome, GlyphKind::Polychrome, GlyphKind::Subpixel];
+    const ALL: [GlyphKind; 3] = [
+        GlyphKind::Monochrome,
+        GlyphKind::Polychrome,
+        GlyphKind::Subpixel,
+    ];
 
     fn from_content(content: Content) -> Self {
         match content {
@@ -79,27 +87,38 @@ impl GlyphKind {
     }
 }
 
-/// Identifies one rasterized glyph: a font, a glyph within it, a size, and a
-/// horizontal subpixel phase. Two requests with the same key are guaranteed
-/// to produce the same bitmap, which is what makes caching sound.
+/// Identifies one rasterized glyph: a font, a glyph within it, a size, a
+/// horizontal subpixel phase, and whether it was rasterized grayscale.
+/// Two requests with the same key are guaranteed to produce the same
+/// bitmap, which is what makes caching sound. The grayscale bit must be
+/// part of the key — otherwise flipping `TextRenderingMode` at runtime
+/// could return a stale bitmap rasterized under the previous mode.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub struct GlyphKey {
     font_key: u64,
     glyph_id: GlyphId,
     size_bits: u32,
     phase: u8,
+    grayscale: bool,
 }
 
 impl GlyphKey {
     /// `font_key` should be the requesting `FontRef`'s `key.value()` — unique
     /// per loaded font, so two different fonts never collide even if they
     /// happen to share a glyph id and size.
-    pub fn new(font_key: u64, glyph_id: GlyphId, size_ppem: f32, x_fract: f32) -> Self {
+    pub fn new(
+        font_key: u64,
+        glyph_id: GlyphId,
+        size_ppem: f32,
+        x_fract: f32,
+        mode: TextRenderingMode,
+    ) -> Self {
         Self {
             font_key,
             glyph_id,
             size_bits: size_ppem.to_bits(),
             phase: quantize_phase(x_fract),
+            grayscale: mode.is_grayscale(),
         }
     }
 }
@@ -115,6 +134,15 @@ pub struct GlyphEntry {
     pub height: u32,
     pub left: i32,
     pub top: i32,
+}
+
+/// A cached entry plus what eviction needs: the `etagere` allocation it
+/// occupies (to free on eviction) and a "last used" tick (to pick which
+/// entry is coldest).
+struct CacheEntry {
+    entry: GlyphEntry,
+    alloc_id: AllocId,
+    last_used: u64,
 }
 
 /// One packed texture backing: `etagere` tracks free space, `buffer` is the
@@ -152,10 +180,15 @@ impl Plane {
 
 /// A glyph atlas: three `etagere`-packed planes fed by `swash` rasterization,
 /// with a lookup cache keyed by [`GlyphKey`] so the same glyph/size/phase is
-/// never rasterized or packed twice.
+/// never rasterized or packed twice, and real LRU eviction so a long-running
+/// editor session never runs a plane out of room permanently.
 pub struct GlyphAtlas {
     planes: [Plane; 3],
-    cache: HashMap<GlyphKey, GlyphEntry>,
+    cache: HashMap<GlyphKey, CacheEntry>,
+    /// Monotonic tick, bumped on every access. Not wall-clock time — this
+    /// only needs to order accesses relative to each other, and a counter
+    /// can never go backwards or stall the way a clock could.
+    clock: u64,
 }
 
 impl GlyphAtlas {
@@ -164,21 +197,28 @@ impl GlyphAtlas {
         Self {
             planes: GlyphKind::ALL.map(|kind| Plane::new(side, kind.bytes_per_pixel())),
             cache: HashMap::new(),
+            clock: 0,
         }
     }
 
     /// Returns the cached entry for `key`, rasterizing and packing it first
-    /// if this is the first time it's been requested. Returns `None` for a
-    /// glyph with no visible ink (e.g. space) or once a plane has run out of
-    /// room — eviction to reclaim that room is a later loop, not this one.
+    /// if this is the first time it's been requested. Returns `None` only
+    /// when the glyph has no visible ink (e.g. space) or is too large to
+    /// ever fit even an empty plane — a full plane on its own is never a
+    /// reason to fail, since [`Self::allocate_with_eviction`] evicts the
+    /// coldest entry and retries.
     pub fn rasterize(
         &mut self,
         scale_context: &mut ScaleContext,
         font: FontRef,
         key: GlyphKey,
     ) -> Option<GlyphEntry> {
-        if let Some(entry) = self.cache.get(&key) {
-            return Some(*entry);
+        self.clock += 1;
+        let now = self.clock;
+
+        if let Some(cached) = self.cache.get_mut(&key) {
+            cached.last_used = now;
+            return Some(cached.entry);
         }
 
         let size = f32::from_bits(key.size_bits);
@@ -189,7 +229,7 @@ impl GlyphAtlas {
             Source::ColorBitmap(StrikeWith::BestFit),
             Source::Outline,
         ])
-        .format(Format::subpixel_bgra())
+        .format(format_for(key.grayscale))
         .offset(offset)
         .render(&mut scaler, key.glyph_id)?;
 
@@ -198,13 +238,15 @@ impl GlyphAtlas {
         }
 
         let kind = GlyphKind::from_content(image.content);
-        let plane = &mut self.planes[kind.index()];
-        let allocation = plane
-            .allocator
-            .allocate(size2(image.placement.width as i32, image.placement.height as i32))?;
-        let atlas_x = allocation.rectangle.min.x as u32;
-        let atlas_y = allocation.rectangle.min.y as u32;
-        plane.blit(atlas_x, atlas_y, image.placement.width, image.placement.height, &image.data);
+        let (alloc_id, atlas_x, atlas_y) =
+            self.allocate_with_eviction(kind, image.placement.width, image.placement.height)?;
+        self.planes[kind.index()].blit(
+            atlas_x,
+            atlas_y,
+            image.placement.width,
+            image.placement.height,
+            &image.data,
+        );
 
         let entry = GlyphEntry {
             kind,
@@ -215,8 +257,51 @@ impl GlyphAtlas {
             left: image.placement.left,
             top: image.placement.top,
         };
-        self.cache.insert(key, entry);
+        self.cache.insert(
+            key,
+            CacheEntry {
+                entry,
+                alloc_id,
+                last_used: now,
+            },
+        );
         Some(entry)
+    }
+
+    /// Allocates `width × height` in the plane for `kind`, evicting the
+    /// coldest cached entry belonging to that same plane and retrying when
+    /// it's full — in a loop, until the allocation succeeds or that plane's
+    /// cache runs out of entries to evict (the glyph is simply too big for
+    /// an empty plane).
+    fn allocate_with_eviction(
+        &mut self,
+        kind: GlyphKind,
+        width: u32,
+        height: u32,
+    ) -> Option<(AllocId, u32, u32)> {
+        let idx = kind.index();
+        let requested = size2(width as i32, height as i32);
+        loop {
+            if let Some(alloc) = self.planes[idx].allocator.allocate(requested) {
+                return Some((
+                    alloc.id,
+                    alloc.rectangle.min.x as u32,
+                    alloc.rectangle.min.y as u32,
+                ));
+            }
+
+            let coldest = self
+                .cache
+                .iter()
+                .filter(|(_, cached)| cached.entry.kind == kind)
+                .min_by_key(|(_, cached)| cached.last_used)
+                .map(|(key, _)| *key)?;
+            let evicted = self
+                .cache
+                .remove(&coldest)
+                .expect("coldest key was just found in this same cache");
+            self.planes[idx].allocator.deallocate(evicted.alloc_id);
+        }
     }
 
     /// The packed CPU-side bitmap for one plane, in row-major
@@ -253,6 +338,16 @@ mod tests {
         swash::Charmap::from_font(font).map(ch)
     }
 
+    fn key(font: &FontRef, glyph_id: GlyphId, size: f32, x_fract: f32) -> GlyphKey {
+        GlyphKey::new(
+            font.key.value(),
+            glyph_id,
+            size,
+            x_fract,
+            TextRenderingMode::Subpixel,
+        )
+    }
+
     #[test]
     fn quantize_phase_covers_all_four_buckets_across_the_unit_range() {
         assert_eq!(quantize_phase(0.0), 0);
@@ -275,15 +370,22 @@ mod tests {
     fn rasterizing_the_same_key_twice_hits_the_cache_instead_of_repacking() {
         let font = ahem();
         let glyph_id = glyph_for(&font, 'A');
-        let key = GlyphKey::new(font.key.value(), glyph_id, 32.0, 0.0);
+        let k = key(&font, glyph_id, 32.0, 0.0);
         let mut atlas = GlyphAtlas::new(256);
         let mut ctx = ScaleContext::new();
 
-        assert!(!atlas.is_cached(&key));
-        let first = atlas.rasterize(&mut ctx, font, key).expect("Ahem glyphs are solid ink");
-        assert!(atlas.is_cached(&key));
-        let second = atlas.rasterize(&mut ctx, font, key).expect("cache hit must still return the entry");
-        assert_eq!(first, second, "same key must yield the exact same packed location");
+        assert!(!atlas.is_cached(&k));
+        let first = atlas
+            .rasterize(&mut ctx, font, k)
+            .expect("Ahem glyphs are solid ink");
+        assert!(atlas.is_cached(&k));
+        let second = atlas
+            .rasterize(&mut ctx, font, k)
+            .expect("cache hit must still return the entry");
+        assert_eq!(
+            first, second,
+            "same key must yield the exact same packed location"
+        );
     }
 
     #[test]
@@ -296,8 +398,10 @@ mod tests {
         let mut positions = Vec::new();
         for phase in 0..SUBPIXEL_PHASES {
             let x_fract = phase as f32 / SUBPIXEL_PHASES as f32;
-            let key = GlyphKey::new(font.key.value(), glyph_id, 32.0, x_fract);
-            let entry = atlas.rasterize(&mut ctx, font, key).expect("Ahem glyphs are solid ink");
+            let k = key(&font, glyph_id, 32.0, x_fract);
+            let entry = atlas
+                .rasterize(&mut ctx, font, k)
+                .expect("Ahem glyphs are solid ink");
             positions.push((entry.atlas_x, entry.atlas_y));
         }
         let mut unique = positions.clone();
@@ -314,11 +418,11 @@ mod tests {
     fn rasterized_glyph_is_packed_into_the_subpixel_plane_by_default() {
         let font = ahem();
         let glyph_id = glyph_for(&font, 'A');
-        let key = GlyphKey::new(font.key.value(), glyph_id, 32.0, 0.0);
+        let k = key(&font, glyph_id, 32.0, 0.0);
         let mut atlas = GlyphAtlas::new(256);
         let mut ctx = ScaleContext::new();
 
-        let entry = atlas.rasterize(&mut ctx, font, key).unwrap();
+        let entry = atlas.rasterize(&mut ctx, font, k).unwrap();
         assert_eq!(entry.kind, GlyphKind::Subpixel);
         assert!(entry.width > 0 && entry.height > 0);
 
@@ -330,33 +434,67 @@ mod tests {
         };
         // Ahem's glyphs are solid ink; the packed rectangle's interior must
         // not be all zero, or rasterization silently produced nothing.
-        let center = px(entry.atlas_x + entry.width / 2, entry.atlas_y + entry.height / 2);
-        assert!(center.iter().any(|&b| b != 0), "expected solid ink at the glyph's center, got {center:?}");
+        let center = px(
+            entry.atlas_x + entry.width / 2,
+            entry.atlas_y + entry.height / 2,
+        );
+        assert!(
+            center.iter().any(|&b| b != 0),
+            "expected solid ink at the glyph's center, got {center:?}"
+        );
     }
 
     #[test]
-    fn requesting_alpha_format_directly_packs_into_the_monochrome_plane() {
-        // `rasterize()` always asks for subpixel format; this test exercises
-        // the Monochrome plane's packing/blit path directly, the same way
-        // `rasterize()` would if `TextRenderingMode::Grayscale` requested
-        // `Format::Alpha` instead (that mode selection is a later loop).
+    fn grayscale_mode_packs_into_the_monochrome_plane_via_rasterize() {
         let font = ahem();
         let glyph_id = glyph_for(&font, 'A');
+        let k = GlyphKey::new(
+            font.key.value(),
+            glyph_id,
+            32.0,
+            0.0,
+            TextRenderingMode::Grayscale,
+        );
+        let mut atlas = GlyphAtlas::new(256);
         let mut ctx = ScaleContext::new();
-        let mut scaler = ctx.builder(font).size(32.0).hint(true).build();
-        let image = Render::new(&[Source::Outline])
-            .format(Format::Alpha)
-            .render(&mut scaler, glyph_id)
-            .expect("Ahem glyphs are solid ink");
-        assert_eq!(image.content, Content::Mask);
-        assert_eq!(GlyphKind::from_content(image.content), GlyphKind::Monochrome);
 
-        let mut plane = Plane::new(256, GlyphKind::Monochrome.bytes_per_pixel());
-        plane.blit(0, 0, image.placement.width, image.placement.height, &image.data);
+        let entry = atlas
+            .rasterize(&mut ctx, font, k)
+            .expect("Ahem glyphs are solid ink");
+        assert_eq!(entry.kind, GlyphKind::Monochrome);
+
+        let bytes = atlas.plane_bytes(GlyphKind::Monochrome);
         assert!(
-            plane.buffer.iter().any(|&b| b != 0),
+            bytes.iter().any(|&b| b != 0),
             "monochrome plane must contain packed ink"
         );
+    }
+
+    #[test]
+    fn grayscale_and_subpixel_requests_for_the_same_glyph_are_cached_separately() {
+        let font = ahem();
+        let glyph_id = glyph_for(&font, 'A');
+        let subpixel_key = key(&font, glyph_id, 32.0, 0.0);
+        let grayscale_key = GlyphKey::new(
+            font.key.value(),
+            glyph_id,
+            32.0,
+            0.0,
+            TextRenderingMode::Grayscale,
+        );
+        assert_ne!(
+            subpixel_key, grayscale_key,
+            "the rendering mode must be part of the cache key"
+        );
+
+        let mut atlas = GlyphAtlas::new(256);
+        let mut ctx = ScaleContext::new();
+        let subpixel_entry = atlas.rasterize(&mut ctx, font, subpixel_key).unwrap();
+        let grayscale_entry = atlas.rasterize(&mut ctx, font, grayscale_key).unwrap();
+        assert_eq!(subpixel_entry.kind, GlyphKind::Subpixel);
+        assert_eq!(grayscale_entry.kind, GlyphKind::Monochrome);
+        assert!(atlas.is_cached(&subpixel_key));
+        assert!(atlas.is_cached(&grayscale_key));
     }
 
     #[test]
@@ -376,16 +514,20 @@ mod tests {
         };
         assert_eq!(at(3, 5), &pixel);
         assert_eq!(at(4, 6), &pixel);
-        assert_eq!(at(0, 0), &[0, 0, 0, 0], "outside the blit target must stay untouched");
+        assert_eq!(
+            at(0, 0),
+            &[0, 0, 0, 0],
+            "outside the blit target must stay untouched"
+        );
     }
 
     #[test]
-    fn plane_runs_out_of_room_and_reports_it_instead_of_overwriting() {
+    fn requesting_a_second_glyph_evicts_the_coldest_entry_when_the_plane_is_full() {
         let font = ahem();
         let a = glyph_for(&font, 'A');
         let b = glyph_for(&font, 'B');
-        let key_a = GlyphKey::new(font.key.value(), a, 32.0, 0.0);
-        let key_b = GlyphKey::new(font.key.value(), b, 32.0, 0.0);
+        let key_a = key(&font, a, 32.0, 0.0);
+        let key_b = key(&font, b, 32.0, 0.0);
         let mut ctx = ScaleContext::new();
 
         // Ahem's glyphs are uniform solid squares, so probing one glyph's
@@ -393,13 +535,39 @@ mod tests {
         // needs to be to fit exactly one glyph and no more, regardless of
         // this machine's hinting/rounding — no dimension is hardcoded.
         let mut probe = GlyphAtlas::new(256);
-        let probe_entry = probe.rasterize(&mut ctx, font, key_a).expect("Ahem glyphs are solid ink");
+        let probe_entry = probe
+            .rasterize(&mut ctx, font, key_a)
+            .expect("Ahem glyphs are solid ink");
         let side = probe_entry.width.max(probe_entry.height);
 
         let mut atlas = GlyphAtlas::new(side);
         let first = atlas.rasterize(&mut ctx, font, key_a);
-        let second = atlas.rasterize(&mut ctx, font, key_b);
         assert!(first.is_some());
-        assert!(second.is_none(), "a full plane must return None, never silently corrupt packing");
+        assert!(atlas.is_cached(&key_a));
+
+        let second = atlas.rasterize(&mut ctx, font, key_b);
+        assert!(
+            second.is_some(),
+            "a full plane must evict its coldest entry and retry, not fail"
+        );
+        assert!(
+            !atlas.is_cached(&key_a),
+            "the evicted glyph must no longer report as cached"
+        );
+        assert!(atlas.is_cached(&key_b));
+    }
+
+    #[test]
+    fn a_glyph_larger_than_an_empty_plane_returns_none_instead_of_looping_forever() {
+        let font = ahem();
+        let glyph_id = glyph_for(&font, 'A');
+        let k = key(&font, glyph_id, 32.0, 0.0);
+        let mut ctx = ScaleContext::new();
+
+        // A 1x1 plane can never fit any real Ahem glyph at this size, and
+        // there is nothing cached yet to evict — this must terminate with
+        // `None`, not loop forever.
+        let mut atlas = GlyphAtlas::new(1);
+        assert!(atlas.rasterize(&mut ctx, font, k).is_none());
     }
 }

@@ -9,11 +9,17 @@
 pub mod context;
 pub mod error;
 pub mod glyph_atlas;
+pub mod pipeline;
+pub mod schedule;
 pub mod surface;
 pub mod text_layout;
+pub mod text_rendering_mode;
 
 pub use context::GpuContext;
 pub use error::RenderError;
 pub use glyph_atlas::{GlyphAtlas, GlyphEntry, GlyphKey, GlyphKind};
+pub use pipeline::{GlyphInstance, QuadInstance, QuadPipeline, TextPipeline};
+pub use schedule::{DirtyRect, RepaintScheduler};
 pub use surface::Surface;
 pub use text_layout::{ClusterGeometry, LineLayout, LineStyle, TextLayoutContext};
+pub use text_rendering_mode::TextRenderingMode;

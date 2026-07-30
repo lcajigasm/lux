@@ -24,7 +24,9 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use lux_render::{GlyphAtlas, GlyphKey, GpuContext, LineStyle, TextLayoutContext};
+use lux_render::{
+    GlyphAtlas, GlyphKey, GpuContext, LineStyle, TextLayoutContext, TextRenderingMode,
+};
 use swash::{Charmap, FontRef, scale::ScaleContext};
 
 /// Same public-domain Ahem test font used throughout this crate's own
@@ -95,7 +97,13 @@ fn bench_keypress_reshape_and_rasterize(c: &mut Criterion) {
                 // would already have this (unedited) line on screen.
                 for ch in EXISTING_LINE.chars() {
                     let glyph_id = charmap.map(ch);
-                    let key = GlyphKey::new(font.key.value(), glyph_id, FONT_SIZE, 0.0);
+                    let key = GlyphKey::new(
+                        font.key.value(),
+                        glyph_id,
+                        FONT_SIZE,
+                        0.0,
+                        TextRenderingMode::Subpixel,
+                    );
                     atlas.rasterize(&mut scale_cx, font, key);
                 }
                 (text_layout, family, atlas, scale_cx)
@@ -110,7 +118,13 @@ fn bench_keypress_reshape_and_rasterize(c: &mut Criterion) {
                 };
                 let layout = text_layout.layout_line(&style, EDITED_LINE, &[]);
                 let glyph_id = charmap.map(NEW_CHAR);
-                let key = GlyphKey::new(font.key.value(), glyph_id, FONT_SIZE, 0.0);
+                let key = GlyphKey::new(
+                    font.key.value(),
+                    glyph_id,
+                    FONT_SIZE,
+                    0.0,
+                    TextRenderingMode::Subpixel,
+                );
                 let entry = atlas.rasterize(&mut scale_cx, font, key);
                 black_box((layout, entry));
             },
