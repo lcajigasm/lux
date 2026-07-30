@@ -30,6 +30,17 @@ measurable. Real budget benchmarks land in the phase that implements the
 capability they measure (see the phase-by-phase acceptance criteria in
 `LUX_PROMPT_MAESTRO.md`).
 
+`crates/lux-render/benches/phase2_budgets.rs` holds Phase 2's three named
+budgets (cold start, keypress → pixel, scroll), added as *component*
+benchmarks — see the measurement history below for exactly what each one
+measures and excludes, and why: no `wgpu` quad/text pipeline or unified
+`lux` app exists yet to measure the full, literal metrics against. This
+lives in `lux-render`'s own `benches/`, not `lux-benches`, because its gate
+is `cargo bench -p lux-render`. Its `Cargo.toml` sets `[lib] bench = false`
+so `cargo bench` doesn't also try (and fail) to run this crate's own
+`#[cfg(test)]` unit tests through the incompatible built-in libtest bench
+harness — `cargo test -p lux-render` is unaffected.
+
 `criterion` measures wall-clock time only. The RSS half of the "open a
 100 MB file" budget is measured separately with `/usr/bin/time -l` (macOS)
 around `lux-core-cli` opening a real 100 MB file — see the entry below.
@@ -67,3 +78,28 @@ wide-blast-radius change to already-closed, heavily-tested modules — not
 something to do under close-phase time pressure without its own
 iteration. Left as an open item; see the Phase 1 closing report for
 tracking.
+
+**2026-07-30, Phase 2 deliverable "Presupuestos de rendimiento", MacBook
+Pro M-series, `--release` (`cargo bench -p lux-render`):**
+
+| Metric (component measured) | Budget (full metric) | Measured | Result |
+|---|---|---|---|
+| `cold_start/gpu_context_new` — adapter+device negotiation only | < 150 ms (full cold start) | **0.61 ms** (mean, 20 samples) | component passes; full metric **not measurable yet** |
+| `keypress_reshape_and_rasterize_new_glyph` — reshape edited line + rasterize one new glyph | < 8 ms p99 (full keypress→pixel) | **6.4 µs** (mean, 100 samples) | component passes; full metric **not measurable yet** |
+| `scroll/shape_one_visible_window_of_50_never_before_seen_lines` — shape 50 fresh lines | no frame > 16 ms (full scroll frame) | **0.21 ms** (mean, 100 samples) | component passes; full metric **not measurable yet** |
+
+None of these three rows is the literal budget from `LUX_PROMPT_MAESTRO.md`
+— each measures only the CPU-bound piece of it that exists in `lux-render`
+today (see `phase2_budgets.rs`'s own doc comments for exactly what's
+excluded from each one: window creation and first paint for cold start;
+input-event dispatch and GPU submit/present for keypress latency;
+`lux-ui`'s per-frame geometry work and the actual draw for scroll). All
+three components measure comfortably within their share of the full
+budget, which is a good sign, not a substitute for measuring the real
+thing once the `wgpu` quad/text pipeline and a unified `lux` binary exist.
+This is not a regression-gated baseline: `cargo bench -p lux-render --
+--baseline none` (the gate this deliverable specifies) compares against a
+saved baseline literally named `none`, created once with `--save-baseline
+none` before this table's numbers were captured — re-run `--save-baseline
+none` to refresh it if these benchmarks change in a way where you want a
+new zero-point.

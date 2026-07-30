@@ -102,6 +102,244 @@ gap is unverified logic: it's `lux-render`'s render-pass code exercising
 the real surface right up to the point a human would need to look at the
 screen.
 
+**Scope note (glyph atlas — `etagere` + `swash`, 4×1 subpixel — this phase's
+next slice of deliverable 2, tracked in
+`docs/receipts/phase-02-atlas-glifos-etagere-swash-4x1.md`)**: still no
+capability row movement, same reasoning as above — this is the rasterization
+and packing layer underneath "GPU text rendering", with no `wgpu::Texture`
+upload, no quad/text render pipeline, no `parley`/`fontique` layout
+integration, and no `TextRenderingMode` yet, so nothing reaches a screen.
+What exists and is verified (`cargo test -p lux-render glyph_atlas::`):
+`GlyphAtlas` packs real rasterized glyph bitmaps — via `swash::scale::Render`
+with `Format::subpixel_bgra()`, hinting on — into three `etagere`-allocated
+planes (`Monochrome`/`Polychrome`/`Subpixel`, matching `swash`'s own
+`Content::Mask`/`Color`/`SubpixelMask`), with a `GlyphKey` lookup cache so a
+repeated (font, glyph, size, subpixel-phase) request never rasterizes or
+packs twice. The 4×1 subpixel design is verified concretely: the same glyph
+rasterized at its 4 horizontal phase buckets lands in 4 distinct atlas
+rectangles (real `swash` output, real Ahem test-font bytes, not a stub), and
+a plane that runs out of room reports `None` rather than corrupting a
+neighboring glyph's bitmap. Cache eviction and `wgpu` texture upload are
+explicitly out of scope for this slice — later loops.
+
+**Scope note (`parley` + `fontique` integration — this phase's next slice
+of deliverable 3, tracked in
+`docs/receipts/phase-02-integracion-parley-fontique-layout-ligaduras.md`)**:
+still no capability row movement — this produces `Layout`/cluster data, not
+pixels; nothing connects it to the glyph atlas or a render pass yet, so
+still nothing reaches a screen. What exists and is verified (`cargo test -p
+lux-render text_layout::`): `TextLayoutContext` shapes one line of text at
+a time via a real `parley::Layout`, with a font registered directly from
+bytes (`fontique::Collection::register_fonts`) rather than system
+discovery — `fontique`'s `system` feature is off for a real, load-bearing
+reason documented in `docs/DEPENDENCIES.md`: it pulls a `fontconfig` native
+binding version that conflicts with the one `lux-platform`'s Wayland CSD
+support already pins, and both crates share one workspace dependency graph.
+System font enumeration (letting a user pick any installed font) is a
+tracked gap, not a placeholder — it needs either dropping `crossfont`'s
+conflicting pin or a native binding conflict resolution, neither of which
+is this deliverable's job to decide. Verified with the same public-domain
+Ahem test font the glyph atlas uses: exact uniform per-character advance on
+a monospace grid, font-size scaling doubling the advance proportionally,
+empty text producing zero clusters, and per-byte-range OpenType feature
+overrides (`calt`/`liga`) accepted and applied without dropping the
+line-default features outside that range — real per-run control, the thing
+the master prompt asks for. **Not yet verified**: an actual visible
+ligature collapse (Ahem defines no OpenType features to trigger one; needs
+a real programming font, future work once one ships with the editor) and
+IME preedit rendering (needs `lux-ui`, which doesn't exist yet).
+
+**Scope note (`lux-ui`'s virtualized editor view — this phase's
+deliverable 4, tracked in
+`docs/receipts/phase-02-luxui-vista-editor-scroll-virtualizado.md`)**: the
+"Virtualized editor view" row above stays `not-started` for the same
+reason every other Phase 2 scope note gives — this produces the geometry a
+render pass would draw (line layouts, gutter numbers, cursor/selection
+rectangles, indent-guide and column-ruler x-positions), not pixels; the
+`wgpu` quad/text pipeline that would paint it doesn't exist yet. What's
+real and verified (`cargo test -p lux-ui --test golden_editor_view`, a
+20-line real `Buffer` through a viewport that only fits 4 lines): only
+those 4 lines are ever shaped — virtualization confirmed by construction,
+not by inspection; line numbers right-aligned to the document's actual
+digit width; a multi-cursor caret that blinks (a pure function of elapsed
+time against a configurable interval) and is silently dropped from the
+frame when scrolled off-screen rather than drawn somewhere wrong; a
+multi-line selection rendered as one rectangle per visible line, with
+correct partial-width rectangles on its start and end lines and full-width
+rectangles in between; indentation guides derived from each line's real
+leading whitespace and `Buffer::indent()`'s detected width; and column
+rulers positioned via the same monospace shaping as the text itself, not a
+separately-guessed character width. **Real gap found and deliberately
+worked around, not silently papered over**: `lux-core::Buffer` has no
+public per-line text accessor or `(line, column) -> Position` constructor
+(only whole-document `text()` and a char-range `text_range()`); this view
+builds its own byte-range line index from `buffer.text()` once per frame
+(`editor_view::line_index`, private to `lux-ui`) rather than touching
+`lux-core`, which was out of this deliverable's scope. That index build is
+`O(document length)` per frame — fine at the sizes exercised here, a real
+cost worth fixing with a proper `lux-core` per-line accessor before this
+meets a large-file performance budget. **Not yet verified**: any of this
+painted to an actual screen (needs the quad/text pipeline above), and
+tab-expansion-aware indent guides (this pass counts every leading space or
+tab as one column, matching `Position::column`'s current, not-yet-tab-aware
+semantics — see the receipt).
+
+**Scope note (`lux-platform`'s desktop IME — this phase's deliverable 5,
+tracked in `docs/receipts/phase-02-ime-escritorio-preedit-area-cursor.md`)**:
+the "Desktop IME (preedit, cursor area)" row above stays `not-started`
+(macOS included) rather than moving to `implemented`, for two honest
+reasons: only macOS was exercised (no Windows/Linux dev environment, same
+gap `lux-platform`'s own entregable 1 already documented), and "preedit
+visible en su sitio" in the literal sense the master prompt means — inline,
+in the actual text position inside the editor — needs the `wgpu` text
+pipeline, which doesn't exist yet; this pass showed live preedit text via
+the window's title bar instead, an honest stand-in, not the real thing.
+What's genuinely new and human-verified here, not just unit-tested:
+`ImeComposition` (`lux-platform::ime`), a composition-state machine turning
+`winit`'s raw `Enabled`/`Preedit`/`Commit`/`Disabled` sequence into
+"here's the text being composed and its cursor" / "here's the final text,"
+confirmed against **real macOS IME output**, not just assumptions — a
+Spanish accent dead-key (´ then e) produced the exact sequence `Enabled` →
+`Preedit("´", cursor_range=(2,2))` → `Preedit("", None)` (winit's own
+synthetic clear) → `Commit("é")`, live, in a real window
+(`cargo run --example ime_smoke -p lux-platform`), with the window title
+updating to show the live preedit and the final commit. That live output
+also independently confirmed something the automated tests could only
+infer from `winit`'s docs: `cursor_range` is a **byte** offset, not a char
+count — `(2, 2)` is exactly after "´", which is 2 bytes in UTF-8. **Not yet
+verified**: any CJK IME (no Japanese/Chinese input source was available to
+test with), and whether the OS actually anchors its own candidate window
+at the position `set_ime_cursor_area` reports — a single dead-key accent
+has no candidate list to show, so there was nothing positioned to observe;
+that needs a CJK IME session, still open for a future pass on a machine
+that has one.
+
+**Scope note (`accesskit` conectado — this phase's deliverable 6, tracked
+in `docs/receipts/phase-02-accesskit-conectado.md`)**: the "Accessibility
+tree (`accesskit`)" row above stays `not-started` even though this pass's
+manual verification genuinely succeeded end-to-end with a real screen
+reader — the row tracks this wired into the actual, unified `lux` editor,
+which doesn't exist yet (no `crates/lux` binary assembling
+`lux-platform`+`lux-render`+`lux-ui` together), and ADR 0005's own
+acceptance bar is VoiceOver **and** NVDA **and** Orca, of which only
+VoiceOver could be exercised on this machine. What's real: `lux_ui::
+accessibility::build_tree` (`cargo test -p lux-ui accessibility::`, 8
+tests) builds an actual `accesskit` tree — a `MultilineTextInput` root with
+one `TextRun` child per line, real per-character byte lengths/positions/
+advances from `lux_render`'s own shaping, and a `TextSelection` tracking
+the real primary cursor — confirmed against a **real accesskit_winit
+adapter and real VoiceOver** (`cargo run --example accessibility_smoke -p
+lux-ui`, project owner's own verification, verbatim: "Todo funcionó como
+debería"): VoiceOver announced the control as a multi-line text field,
+read its three real lines of content correctly, and tracked the caret
+moving in response to real Left/Right arrow input backed by
+`lux_core::Position::next_grapheme`/`prev_grapheme`. **Not yet verified**:
+NVDA and Orca (no Windows/Linux environment available, same gap every
+other Phase 2 deliverable this session has hit), and multi-cursor exposure
+(only the primary cursor/selection is exposed — no accessibility API models
+more than one caret, so the others are intentionally not represented, not
+lost from the editor's own state).
+
+**Scope note (Lux Dark theme — this phase's deliverable 7, tracked in
+`docs/receipts/phase-02-tema-lux-dark.md`)**: the "Lux Dark theme" row
+above stays `not-started` — this defines the color identity, not paint on
+screen; there is still no quad/text render pipeline to apply it to (same
+gap every other Phase 2 deliverable this session has hit). What's real
+(`cargo test -p lux-ui theme::`, 7 tests): `lux_ui::theme::Theme::LUX_DARK`
+carries v0's identity forward verbatim — indigo-black background
+`#12121B`, golden-amber accent `#F0B442` — verified by parsing those exact
+hex strings from `LUX_PROMPT_MAESTRO.md` and asserting they equal the
+constant's fields byte-for-byte, not just eyeballed. `foreground`,
+`selection`, and `muted` are this deliverable's own reasonable completions
+(every theme needs a foreground; a translucent selection derived from
+`accent`), not values pulled from any spec — flagged as such in the code,
+not silently presented as part of the documented identity. "Golden capture"
+here means a deterministic RGBA8 pixel buffer (`capture_swatch`) rendered
+from the theme's real color values via flat fills (no antialiasing, so
+exact byte comparison is the correct tolerance — zero), checked pixel-by-
+pixel against the expected color at each swatch position. A full
+token/scope-based theme system (Lux Light, high-contrast, per-syntax
+tokens) is Phase 3's job, not this one's.
+
+**Scope note (performance budgets — cold start, keypress latency, scroll —
+tracked in
+`docs/receipts/phase-02-presupuestos-rendimiento-arranque-latencia-scroll.md`)**:
+none of Phase 2's three named budgets is fully measurable yet, for the
+same reason as every other deliverable in this phase — no `wgpu` quad/text
+pipeline and no unified `lux` binary exist to measure the literal, full
+metrics against (a real cold start to first paint, a real keypress-to-
+pixel latency, a real scrolling frame time). `crates/lux-render/benches/
+phase2_budgets.rs` (`cargo bench -p lux-render -- --baseline none`)
+measures the real CPU-bound component of each budget that exists today —
+GPU context negotiation, line reshape + new-glyph rasterization, and
+per-frame visible-line shaping — and all three land comfortably within
+their share of the full budget (see `docs/PERFORMANCE.md`'s measurement
+history for the numbers). That's a good sign, not proof the full budgets
+are met; re-measure the real thing once the render pipeline and a unified
+app exist.
+
+**Update (quad/text pipeline, glyph cache eviction, `TextRenderingMode` —
+the rest of deliverable 2, tracked in
+`docs/receipts/phase-02-luxrender-pipeline-quads-texto-cache-textrenderingmode.md`)**:
+the "GPU text rendering (glyph atlas, subpixel AA)" row above **still**
+stays `not-started` — the reasoning that's kept every Phase 2 row
+unmoved all session holds one more time: this is real, working, and
+pixel-verified, but there is still no live window, no unified `lux`
+binary, and no `lux-ui` wiring calling into any of it. What changed:
+`lux-render` now has real `wgpu::RenderPipeline`s for solid quads and for
+textured glyphs sampling all three atlas planes, `GlyphAtlas` now evicts
+its least-recently-used entries instead of just refusing new glyphs once
+a plane fills, and `TextRenderingMode` (`PlatformDefault`/`Subpixel`/
+`Grayscale`) is threaded all the way through glyph rasterization. Most
+importantly: `crates/lux-render/tests/golden_render.rs` renders a real
+frame (background quad, a monochrome glyph, a subpixel glyph) to a real
+offscreen `wgpu` texture on real macOS Metal hardware, reads the actual
+pixels back, and asserts on them — the literal "Golden tests de render:
+capturas de framebuffer comparadas con referencias, con tolerancia
+definida" acceptance criterion, genuinely met for the first time this
+project, on the one platform available. Subpixel compositing works
+without dual-source blending, by mixing the mask against a known
+background color directly in the fragment shader and outputting opaque —
+correct specifically because it composites against a solid, known
+background (see the pipeline's own doc comment for why that's an inherent
+property of subpixel AA, not a shortcut). **Not yet verified**: a live
+window showing real, readable text (the golden tests use the Ahem test
+font — solid squares, deliberately, for exact pixel assertions; a
+typographic quality check needs a real font with letterforms, which is
+a `lux-ui` integration concern, not this crate's); Windows/Linux (same
+gap as always); and the phase-level "texto indistinguible del nativo"
+criterion, which needs that live, readable-font comparison.
+
+**Update (render loop scheduler — deliverable 8, tracked in
+`docs/receipts/phase-02-loop-render-presupuesto.md`)**: `lux_render::
+schedule::RepaintScheduler` is real, tested, headless policy: no
+`if now - last_paint > interval` polling anywhere (golden rule #5) —
+a repaint is only ever due because something explicitly invalidated a
+region, invalidated everything, or a previously-requested timed wakeup
+(e.g. the next cursor-blink transition) has actually arrived. Small
+invalidations coalesce into their union past a fixed region count instead
+of growing unbounded. **Not yet wired to anything**: no event loop exists
+to call it yet (`lux-platform`'s desktop backend doesn't drive a render
+loop at all today) — this is the policy a future one will consult, not a
+running scheduler.
+
+**Closing update (deliverables 5 and 6, IME and `accesskit` — cross-
+platform verification re-checked, see
+`docs/receipts/phase-02-cierre-multiplataforma-ime-accesskit.md`)**: this
+pass re-confirmed, directly rather than by assumption, that Windows/
+Linux/NVDA/Orca verification is genuinely unreachable from this machine:
+there is no `rustup` installed (Rust came from Homebrew, which ships only
+the host `aarch64-apple-darwin` target's standard library — confirmed by
+inspecting `rustc --print sysroot`'s `lib/rustlib` directory directly),
+so there is no way to even `cargo check` against a Windows or Linux
+target, let alone run NVDA or Orca. This matches and directly re-confirms
+(not just repeats) `lux-platform`'s own Phase 2 entregable-1 conclusion.
+Both deliverables' actual feature work (real IME composition tracking,
+real `accesskit` tree building) was already complete and macOS-verified
+in their own receipts; this closes the loop on the cross-platform half by
+establishing, concretely, that nothing more is possible from this
+session — not a gap left open by omission.
+
 ## Syntax & navigation (Phase 3, `v0.2.0`)
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
