@@ -23,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
@@ -35,6 +36,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
       - run: cargo test --workspace
 
   deny:
