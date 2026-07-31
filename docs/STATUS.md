@@ -51,11 +51,11 @@ that found it.
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
 | Window/input/IME platform trait | implemented | not-started | not-started | not-started | not-started |
-| GPU text rendering (glyph atlas, subpixel AA) | not-started | not-started | not-started | not-started | not-started |
-| Desktop IME (preedit, cursor area) | not-started | not-started | not-started | n/a | n/a |
-| Accessibility tree (`accesskit`) | not-started | not-started | not-started | not-started | not-started |
-| Lux Dark theme | not-started | not-started | not-started | not-started | not-started |
-| Virtualized editor view | not-started | not-started | not-started | not-started | not-started |
+| GPU text rendering (glyph atlas, subpixel AA) | implemented | not-started | not-started | not-started | not-started |
+| Desktop IME (preedit, cursor area) | implemented | not-started | not-started | n/a | n/a |
+| Accessibility tree (`accesskit`) | implemented | not-started | not-started | not-started | not-started |
+| Lux Dark theme | implemented | not-started | not-started | not-started | not-started |
+| Virtualized editor view | implemented | not-started | not-started | not-started | not-started |
 
 **Scope note (`lux-platform` trait + `winit` backend — this phase's first
 deliverable, tracked in `docs/receipts/phase-02-luxplatform-trait-impl-winit.md`)**:
@@ -339,6 +339,42 @@ real `accesskit` tree building) was already complete and macOS-verified
 in their own receipts; this closes the loop on the cross-platform half by
 establishing, concretely, that nothing more is possible from this
 session — not a gap left open by omission.
+
+**Closing update (`crates/lux`, the first unified desktop binary, tracked
+in `docs/receipts/phase-02-lux-app-binario-unificado.md`)**: every row
+above now moves from `not-started` to `implemented` on macOS — the gap
+every single prior Phase 2 note in this file cited ("no unified `lux`
+binary exists yet") is closed. A real window opens, shows real live text
+in a real system font (San Francisco Mono, read directly from
+`/System/Library/Fonts/SFNSMono.ttf` — no bundled font ships yet, tracked
+as a real gap), through the actual `wgpu` quad/text pipeline, `GlyphAtlas`,
+and `EditorView` built across this phase's earlier deliverables. Real
+keyboard-driven editing (typing, Backspace/Delete, Enter, Tab, arrow-key
+and Home/End cursor movement, mouse-wheel scroll) mutates a real
+`lux-core::Buffer`. Real inline IME composition renders at the actual
+cursor screen position (not the window title bar, the earlier deliverable's
+own honest stand-in) — confirmed with a live accented dead-key sequence.
+Real `accesskit` tree updates are pushed through a new `lux-platform`
+mechanism (`docs/adr/0013-platform-accessibility-adapter-wiring.md`) and
+confirmed end-to-end with VoiceOver. Lux Dark's background/accent colors
+paint the real window. All of this was confirmed directly by the project
+owner on real hardware, not inferred: "todo funciona" across theme, cursor
+movement, scroll, inline IME preedit, and VoiceOver, after one real bug
+(`swash::FontRef`'s cache key regenerating every frame, defeating the
+glyph atlas cache) was found and fixed mid-verification.
+
+**Still not-started or out of scope, honestly**: Windows/Linux (same
+`rustup`-less environment gap as every other Phase 2 deliverable) and
+NVDA/Orca (no environment to run them); gutter line numbers are reserved
+space but not yet painted as glyphs (a second shaping pass, deferred);
+accessibility actions (`AccessibilityActionRequested`) are received but not
+yet wired to real buffer mutation (screen readers can read content/
+cursor/selection, not drive them); a lost `wgpu` surface isn't recovered
+(would need rebuilding the surface from scratch, not implemented); and the
+background color fed to the subpixel-compositing shader is sRGB-byte-
+normalized rather than rigorously gamma-correct — internally consistent
+(the clear quad and the uniform always agree), a real but minor polish
+item, not a correctness bug hit today.
 
 ## Syntax & navigation (Phase 3, `v0.2.0`)
 
