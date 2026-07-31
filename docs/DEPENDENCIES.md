@@ -36,7 +36,9 @@ pulls in when it needs it.
 | — | `accesskit_android` | 0.7.5 | |
 | — | `accesskit_ios` | 0.1.2 | Experimental, ~2 months old as of Phase 0. Budget debugging time in Phase 12. |
 | Text buffer | `ropey` | 1.6.1 | `2.0.0-beta.1` still stalled since 2025-08-02. Stay on 1.6.1. |
-| Syntax | `tree-sitter` | 0.26.11 | No 1.0. Compile grammars into the binary (issue #3095 workaround) — ADR 0009. |
+| Syntax | `tree-sitter` | 0.26.11 | No 1.0. Wired for real in Phase 3 (`lux-syntax`, incremental highlighting for the fixed 18-grammar set — ADR 0008 has the exact list; note it reads "17" in prose but TypeScript/TSX are two separate grammars, so the compiled-in set is 18). Grammars compiled into the binary (issue #3095 workaround), not depended on as Cargo crates — see ADR 0008 (corrects this row's earlier "ADR 0009" typo). |
+| Syntax (grammar C sources) | `cc` | 1.4.0 | Build-dependency only. Compiles each vendored grammar's generated `parser.c`/`scanner.c` in `lux-syntax/build.rs`. |
+| Syntax (grammar entry points) | `tree-sitter-language` | 0.1.7 | Tiny `no_std` crate providing `LanguageFn`, the safe wrapper `tree-sitter` itself uses around a grammar's raw `extern "C" fn tree_sitter_<lang>() -> *const ()`. Independently versioned from `tree-sitter` core (0.1.x, not 0.26.x) — that's expected, it's a stable ABI-only shim, not a grammar. |
 | Search | `ignore` | 0.4.31 | ripgrep family. |
 | Search | `grep-searcher` | 0.1.17 | ripgrep family. |
 | Search | `grep-regex` | 0.1.14 | **Correction**: the master prompt cited "~0.4.25", which is not a version that exists for this crate (likely confused with the `grep` facade crate or `globset`). 0.1.14 is this crate's actual latest. Does not change the choice. |

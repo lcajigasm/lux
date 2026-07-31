@@ -1,0 +1,9 @@
+# Fixture exercising common YAML constructs.
+name: lux
+version: 0.2.0
+features:
+  - syntax
+  - highlighting
+experimental: false
+budget:
+  reparse_ms: 2

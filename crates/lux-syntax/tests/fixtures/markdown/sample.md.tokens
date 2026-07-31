@@ -1,0 +1,12 @@
+0..1 punctuation.special
+2..8 text.title
+128..130 punctuation.special
+141..143 punctuation.special
+155..155 punctuation.special
+156..159 punctuation.delimiter
+156..181 text.literal
+164..164 punctuation.special
+164..177 none
+177..177 punctuation.special
+177..180 punctuation.delimiter
+182..184 punctuation.special

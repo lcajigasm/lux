@@ -1,0 +1,12 @@
+# Fixture exercising common TOML constructs.
+[package]
+name = "lux-syntax"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+tree-sitter = "0.26.11"
+
+[features]
+default = []
+experimental = ["background-parse"]

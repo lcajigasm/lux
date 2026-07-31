@@ -1,0 +1,20 @@
+/* Fixture exercising common CSS constructs. */
+:root {
+  --gap: 8px;
+}
+
+.title {
+  color: #333;
+  font-size: 1.5rem;
+  margin-bottom: var(--gap);
+}
+
+.title:hover {
+  color: rgb(0, 102, 204);
+}
+
+@media (max-width: 600px) {
+  .title {
+    font-size: 1.1rem;
+  }
+}

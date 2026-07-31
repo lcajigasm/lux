@@ -380,7 +380,7 @@ item, not a correctness bug hit today.
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| Tree-sitter incremental highlighting | not-started | not-started | not-started | not-started | not-started |
+| Tree-sitter incremental highlighting | implemented | not-started | not-started | not-started | not-started |
 | Token-based themes | not-started | not-started | not-started | not-started | not-started |
 | Bracket pair colorization | not-started | not-started | not-started | not-started | not-started |
 | Syntax-based code folding | not-started | not-started | not-started | not-started | not-started |
@@ -390,6 +390,27 @@ item, not a correctness bug hit today.
 | Search/replace bar | not-started | not-started | not-started | not-started | not-started |
 | Tabs + status bar | not-started | not-started | not-started | not-started | not-started |
 | Minimap | not-started | not-started | not-started | not-started | not-started |
+
+**Tree-sitter incremental highlighting** is `lux-syntax`: incremental
+parsing (`Document::edit` applies a `tree_sitter::InputEdit` to the previous
+tree, then reparses so only the changed range's subtrees are rebuilt), a
+background worker (`BackgroundHighlighter`, a dedicated thread driven by a
+blocking channel receive, never polled), and highlight-query-based token
+extraction (`Document::highlight`). All 18 grammars from
+`docs/adr/0008-tree-sitter-grammars-compiled-in.md`'s fixed set are vendored,
+compiled in, and pass a per-language golden token test: `cargo test
+-p lux-syntax highlight:: --test golden_tokens`. **Note on the count**: ADR
+0008's prose lists "17" comma-separated items, but TypeScript/TSX are two
+distinct grammars (`tree_sitter_typescript`/`tree_sitter_tsx`), so the actual
+compiled-in set is 18, not 17 — and not the "15" this deliverable's own
+tracking name used either. See
+`docs/receipts/phase-03-luxsyntax-treesitter-incremental-15-lenguajes.md`.
+Verified on macOS only (no other dev environment available yet, same
+constraint noted throughout this document). "Implemented" here is the
+library capability, checked by golden tests — wiring the computed tokens
+into `lux-ui`'s editor view (actual on-screen coloring) is separate work,
+tracked under this phase's "Token-based themes" row above, still
+not-started.
 
 ## Projects, files & search (Phase 4, `v0.3.0`)
 
