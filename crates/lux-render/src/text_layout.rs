@@ -54,6 +54,14 @@ pub struct ClusterGeometry {
     pub advance: f32,
     pub is_ligature_start: bool,
     pub is_ligature_continuation: bool,
+    /// This cluster's first rasterizable glyph id, for feeding
+    /// `GlyphAtlas::rasterize` — `None` for a cluster with no glyph at all
+    /// (e.g. a hard line break). A cluster can carry more than one glyph
+    /// (a base character plus a combining mark); only the first is exposed
+    /// today, a real, flagged gap for combining-mark rendering, not a
+    /// silent one — the overwhelming common case (one glyph per cluster,
+    /// true of plain Latin/programming text) is unaffected.
+    pub glyph_id: Option<u32>,
 }
 
 /// A shaped, line-broken, left-aligned single-paragraph layout (an editor
@@ -93,12 +101,14 @@ impl LineLayout {
                 let mut x = glyph_run.offset();
                 for cluster in glyph_run.run().clusters() {
                     let advance = cluster.advance();
+                    let glyph_id = cluster.glyphs().next().map(|glyph| glyph.id);
                     out.push(ClusterGeometry {
                         byte_range: cluster.text_range(),
                         x,
                         advance,
                         is_ligature_start: cluster.is_ligature_start(),
                         is_ligature_continuation: cluster.is_ligature_continuation(),
+                        glyph_id,
                     });
                     x += advance;
                 }
@@ -314,5 +324,34 @@ mod tests {
     fn registering_garbage_bytes_returns_none_instead_of_panicking() {
         let mut cx = TextLayoutContext::new();
         assert!(cx.register_font(b"not a font").is_none());
+    }
+
+    #[test]
+    fn every_visible_character_cluster_carries_a_rasterizable_glyph_id() {
+        let (mut cx, family) = context_with_ahem();
+        let style = LineStyle {
+            family: &family,
+            font_size: 20.0,
+            ligatures: false,
+        };
+        let layout = cx.layout_line(&style, "abcd", &[]);
+        let clusters = layout.clusters();
+        for cluster in &clusters {
+            assert!(
+                cluster.glyph_id.is_some(),
+                "every Ahem character must resolve to a real glyph: {cluster:?}"
+            );
+        }
+        // Distinct characters in a font with no shared glyphs (Ahem maps
+        // every codepoint to its own square) must resolve to distinct ids.
+        let ids: Vec<u32> = clusters.iter().filter_map(|c| c.glyph_id).collect();
+        let mut unique = ids.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(
+            unique.len(),
+            ids.len(),
+            "expected 4 distinct glyph ids, got {ids:?}"
+        );
     }
 }

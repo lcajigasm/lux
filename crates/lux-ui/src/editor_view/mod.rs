@@ -109,6 +109,23 @@ impl EditorView {
         })
     }
 
+    /// The shaping context this view already owns — exposed so a caller
+    /// that also needs to shape text outside `build_frame` (e.g.
+    /// `crate::accessibility::build_tree`, which needs the same real
+    /// per-character geometry this view uses to paint) can reuse it
+    /// instead of registering the font a second time in a duplicate
+    /// context.
+    pub fn text_layout_mut(&mut self) -> &mut TextLayoutContext {
+        &mut self.text_layout
+    }
+
+    /// The family name this view's font resolved to — see
+    /// [`Self::text_layout_mut`]'s doc comment for why a caller needs both
+    /// together.
+    pub fn family(&self) -> &str {
+        &self.family
+    }
+
     /// A free function, not a `&self` method: it only needs `family` and
     /// `font_size`, and taking them by value (instead of `&self`) leaves
     /// `self.text_layout` free to be borrowed mutably right after, since
