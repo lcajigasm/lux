@@ -66,6 +66,13 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// Tells the platform where to anchor the IME composition window, in
     /// physical pixels relative to this window's origin.
     fn set_ime_cursor_area(&self, position: PhysicalPosition<i32>, size: PhysicalSize<u32>);
+    /// Pushes an accessibility tree update to this window's real OS
+    /// accessibility adapter (see
+    /// `docs/adr/0013-platform-accessibility-adapter-wiring.md`). Call this
+    /// in response to
+    /// [`crate::PlatformEvent::AccessibilityInitialTreeRequested`] and again
+    /// on every subsequent content/cursor/selection change.
+    fn update_accessibility_tree(&self, update: accesskit::TreeUpdate);
 }
 
 #[cfg(test)]

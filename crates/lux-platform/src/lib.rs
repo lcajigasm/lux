@@ -88,4 +88,17 @@ pub trait PlatformContext {
 
     /// Requests that the run loop exit after the current callback returns.
     fn exit(&self);
+
+    /// Asks the platform to wake this application up at (or after) `at`
+    /// even if no real input event arrives before then — what a scheduled
+    /// repaint (e.g. `lux_render::schedule::RepaintScheduler::request_repaint_at`,
+    /// whose own doc comment calls this out as "a later loop") needs to
+    /// actually run: without it, an app that only repaints in response to
+    /// dispatched events would never see a timer-only wakeup like the next
+    /// cursor-blink transition. A lower bound on timing, not a guarantee of
+    /// exact delivery, matching the platform's own event loop's contract.
+    /// Callers must not treat this as a recurring poll — request the next
+    /// wakeup once per actual timer need, never on a fixed period
+    /// independent of real state (golden rule #5).
+    fn request_wakeup(&self, at: std::time::Instant);
 }

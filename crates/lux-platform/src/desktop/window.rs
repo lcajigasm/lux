@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use dpi::{PhysicalPosition, PhysicalSize};
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
@@ -6,8 +9,13 @@ use raw_window_handle::{
 use crate::window::{PlatformWindow, SafeAreaInsets, WindowId};
 
 pub(super) struct DesktopWindow {
-    pub(super) window: winit::window::Window,
+    pub(super) window: Rc<winit::window::Window>,
     pub(super) id: WindowId,
+    /// Shared with `DesktopApp`'s own window registry, which calls
+    /// `process_event` on it before this window's owner ever sees a
+    /// converted `PlatformEvent` — see
+    /// `docs/adr/0013-platform-accessibility-adapter-wiring.md`.
+    pub(super) accessibility: Rc<RefCell<accesskit_winit::Adapter>>,
 }
 
 impl PlatformWindow for DesktopWindow {
@@ -47,6 +55,10 @@ impl PlatformWindow for DesktopWindow {
 
     fn set_ime_cursor_area(&self, position: PhysicalPosition<i32>, size: PhysicalSize<u32>) {
         self.window.set_ime_cursor_area(position, size);
+    }
+
+    fn update_accessibility_tree(&self, update: accesskit::TreeUpdate) {
+        self.accessibility.borrow_mut().update_if_active(|| update);
     }
 }
 

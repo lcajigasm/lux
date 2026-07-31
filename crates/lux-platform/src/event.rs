@@ -156,4 +156,17 @@ pub enum PlatformEvent {
     MouseEntered,
     MouseLeft,
     Touch(Touch),
+    /// The OS accessibility adapter queried this window for the first time
+    /// and needs a real tree — respond with
+    /// [`crate::PlatformWindow::update_accessibility_tree`] as soon as
+    /// possible; until then, the platform's own adapter shows a temporary
+    /// placeholder (see `docs/adr/0013-platform-accessibility-adapter-wiring.md`).
+    AccessibilityInitialTreeRequested,
+    /// A screen reader or other assistive technology invoked an action
+    /// (e.g. move the caret, set a selection) against this window's
+    /// accessibility tree.
+    AccessibilityActionRequested(accesskit::ActionRequest),
+    /// The OS accessibility adapter is no longer active for this window
+    /// (e.g. the screen reader was turned off).
+    AccessibilityDeactivated,
 }
