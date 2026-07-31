@@ -381,7 +381,7 @@ item, not a correctness bug hit today.
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
 | Tree-sitter incremental highlighting | implemented | not-started | not-started | not-started | not-started |
-| Token-based themes | not-started | not-started | not-started | not-started | not-started |
+| Token-based themes | implemented | not-started | not-started | not-started | not-started |
 | Bracket pair colorization | not-started | not-started | not-started | not-started | not-started |
 | Syntax-based code folding | not-started | not-started | not-started | not-started | not-started |
 | Auto-indent by language | not-started | not-started | not-started | not-started | not-started |
@@ -409,8 +409,26 @@ Verified on macOS only (no other dev environment available yet, same
 constraint noted throughout this document). "Implemented" here is the
 library capability, checked by golden tests — wiring the computed tokens
 into `lux-ui`'s editor view (actual on-screen coloring) is separate work,
-tracked under this phase's "Token-based themes" row above, still
-not-started.
+tracked under this phase's "Token-based themes" row above.
+
+**Token-based themes** is `lux-syntax::theme`: a self-contained theme format
+(background/foreground pair plus a scope-to-color table, the same shape as
+a TextMate/VS Code theme) resolved with TextMate-style dotted-prefix
+fallback — `"keyword.conditional.ternary"` colors as `"keyword"` if the
+theme has no more specific entry, walking one `.segment` at a time down to
+the theme's flat `default`. Three themes ship: `LUX_DARK` and `LUX_LIGHT`
+(background/foreground pass WCAG AA, >= 4.5:1) and `LUX_HIGH_CONTRAST`
+(passes AAA, >= 7:1 — measured by a real relative-luminance/contrast-ratio
+calculation in the test, not eyeballed). `LUX_DARK`'s background/foreground
+match `lux-ui::Theme::LUX_DARK` (Phase 2) verbatim for brand consistency,
+duplicated by value rather than by a cross-crate dependency (`lux-syntax`
+has no UI dependency, golden rule #2). Gate: `cargo test -p lux-syntax
+theme::`. Verified on macOS only, same constraint as above. "Implemented"
+here is again the library capability (three real, distinct color tables
+covering every scope name the vendored grammars emit) — wiring a
+`SyntaxTheme`'s colors into `lux-ui`'s actual rendering, and a theme picker,
+are separate, not-started work. See
+`docs/receipts/phase-03-temas-basados-tokens-scopes.md`.
 
 ## Projects, files & search (Phase 4, `v0.3.0`)
 

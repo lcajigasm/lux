@@ -8,6 +8,8 @@
 
 use tree_sitter::{InputEdit, Language, Parser, Query, QueryCursor, StreamingIterator, Tree};
 
+pub mod theme;
+
 /// One highlighted span: a byte range plus the highlight query capture name
 /// that matched it (e.g. `"keyword"`, `"function"`, `"string"`).
 #[derive(Debug, Clone, PartialEq, Eq)]
