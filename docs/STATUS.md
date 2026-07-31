@@ -382,8 +382,8 @@ item, not a correctness bug hit today.
 |---|---|---|---|---|---|
 | Tree-sitter incremental highlighting | implemented | not-started | not-started | not-started | not-started |
 | Token-based themes | implemented | not-started | not-started | not-started | not-started |
-| Bracket pair colorization | not-started | not-started | not-started | not-started | not-started |
-| Syntax-based code folding | not-started | not-started | not-started | not-started | not-started |
+| Bracket pair colorization | implemented | not-started | not-started | not-started | not-started |
+| Syntax-based code folding | implemented | not-started | not-started | not-started | not-started |
 | Auto-indent by language | not-started | not-started | not-started | not-started | not-started |
 | Goto Anything | not-started | not-started | not-started | not-started | not-started |
 | Command palette | not-started | not-started | not-started | not-started | not-started |
@@ -429,6 +429,39 @@ covering every scope name the vendored grammars emit) — wiring a
 `SyntaxTheme`'s colors into `lux-ui`'s actual rendering, and a theme picker,
 are separate, not-started work. See
 `docs/receipts/phase-03-temas-basados-tokens-scopes.md`.
+
+**Bracket pair colorization** is `lux-syntax::brackets`: `bracket_pairs`
+walks the real parse tree's leaf tokens (not a text scan, so a `(` inside a
+string or comment is never mistaken for a real bracket) with a per-kind
+stack, matching `(`/`)`, `[`/`]`, `{`/`}` and recording each pair's nesting
+depth; `pair_at` finds "the pair under the cursor" for highlighting both
+delimiters. Depth-to-color cycling lives on `theme::SyntaxTheme` (a new
+`bracket_colors` cycling palette, one per shipped theme) rather than a
+separate color system — reusing the theme infrastructure from the previous
+deliverable instead of duplicating it. A real bug surfaced and got fixed
+during this work: tree-sitter's error-recovery synthesizes zero-width
+`MISSING` bracket nodes for unbalanced input, which the first version
+wrongly treated as real closers, fabricating pairs that were never typed;
+fixed by skipping `node.is_missing()` nodes.
+
+**Syntax-based code folding** is `lux-syntax::folding`: `folding_ranges`
+walks the same tree and treats every node spanning more than one source
+line as foldable (deduplicated to the widest range per starting row, since
+e.g. a function item and its block both start on the same line) — derived
+entirely from real node spans, never from counting `{`/`[`/indentation
+(the v0 mistake `LUX_PROMPT_MAESTRO.md` calls out by name for this exact
+deliverable).
+
+Gate for both: `cargo test -p lux-syntax -- folding:: brackets::` (note the
+`--` before the two filters — `cargo test` only accepts one bare filter
+argument directly; passing two space-separated filters needs the `--`
+separator so they reach the test harness, which does support multiple
+OR'd filters. The goal's literal command omitted it; see
+`docs/receipts/phase-03-bracket-pair-colorization-folding-real.md` for the
+full explanation). Verified on macOS only, same constraint as above.
+"Implemented" is again the library capability — wiring bracket colors and
+foldable gutter markers into `lux-ui`'s rendering is separate, not-started
+work.
 
 ## Projects, files & search (Phase 4, `v0.3.0`)
 

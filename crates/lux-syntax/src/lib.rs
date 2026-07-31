@@ -8,6 +8,8 @@
 
 use tree_sitter::{InputEdit, Language, Parser, Query, QueryCursor, StreamingIterator, Tree};
 
+pub mod brackets;
+pub mod folding;
 pub mod theme;
 
 /// One highlighted span: a byte range plus the highlight query capture name
@@ -210,6 +212,13 @@ impl Document {
         }
         tokens.sort_by_key(|t| (t.start_byte, t.end_byte));
         tokens
+    }
+
+    /// The current parse tree, for modules (`brackets`, `folding`) that
+    /// walk its structure directly instead of going through a highlight
+    /// query. `None` before the first [`Self::set_text`].
+    pub(crate) fn tree(&self) -> Option<&Tree> {
+        self.tree.as_ref()
     }
 }
 

@@ -84,6 +84,12 @@ pub struct SyntaxTheme {
     pub background: Color,
     pub default: Color,
     scopes: &'static [(&'static str, Color)],
+    /// Cycling palette for bracket pair colorization (deliverable 3): the
+    /// color for nesting depth `d` is `bracket_colors[d % len]`, the same
+    /// modulo-cycle scheme editors converged on (VS Code ships 6 colors
+    /// for the same reason) — an unbounded distinct-color-per-depth
+    /// palette isn't meaningfully more readable past a handful of steps.
+    bracket_colors: &'static [Color],
 }
 
 impl SyntaxTheme {
@@ -113,6 +119,13 @@ impl SyntaxTheme {
     #[must_use]
     pub fn color_for_token(&self, token: &crate::Token) -> Color {
         self.color_for_scope(&token.kind)
+    }
+
+    /// The bracket-pair-colorization color for nesting depth `depth`
+    /// (0 = outermost pair), cycling through [`Self::bracket_colors`].
+    #[must_use]
+    pub fn color_for_bracket_depth(&self, depth: usize) -> Color {
+        self.bracket_colors[depth % self.bracket_colors.len()]
     }
 }
 
@@ -173,6 +186,14 @@ pub const LUX_DARK: SyntaxTheme = SyntaxTheme {
         "spell" => Color::rgb(0xE6, 0xE6, 0xEB),
         "text" => Color::rgb(0xE6, 0xE6, 0xEB),
     },
+    bracket_colors: &[
+        Color::rgb(0xF0, 0xB4, 0x42),
+        Color::rgb(0x9D, 0x7C, 0xD8),
+        Color::rgb(0x4F, 0xD6, 0xBE),
+        Color::rgb(0xF7, 0x76, 0x8E),
+        Color::rgb(0x7A, 0xA2, 0xF7),
+        Color::rgb(0x9E, 0xCE, 0x6A),
+    ],
 };
 
 /// A light complement to Lux Dark: same hue families (each scope keeps its
@@ -220,6 +241,14 @@ pub const LUX_LIGHT: SyntaxTheme = SyntaxTheme {
         "spell" => Color::rgb(0x1B, 0x1B, 0x23),
         "text" => Color::rgb(0x1B, 0x1B, 0x23),
     },
+    bracket_colors: &[
+        Color::rgb(0xB4, 0x65, 0x0A),
+        Color::rgb(0x7C, 0x3F, 0xC4),
+        Color::rgb(0x0F, 0x76, 0x6E),
+        Color::rgb(0xB3, 0x26, 0x4D),
+        Color::rgb(0x1E, 0x56, 0xC8),
+        Color::rgb(0x2E, 0x7D, 0x32),
+    ],
 };
 
 /// Maximum-legibility theme: pure black/white base (background/foreground
@@ -266,6 +295,14 @@ pub const LUX_HIGH_CONTRAST: SyntaxTheme = SyntaxTheme {
         "spell" => Color::rgb(0xFF, 0xFF, 0xFF),
         "text" => Color::rgb(0xFF, 0xFF, 0xFF),
     },
+    bracket_colors: &[
+        Color::rgb(0xFF, 0xD4, 0x00),
+        Color::rgb(0xFF, 0x6E, 0xC7),
+        Color::rgb(0x00, 0xE5, 0xFF),
+        Color::rgb(0xFF, 0x5C, 0x7A),
+        Color::rgb(0x5E, 0xA1, 0xFF),
+        Color::rgb(0x4F, 0xFF, 0xB0),
+    ],
 };
 
 /// Every theme this module ships, for tests (and eventually a theme
