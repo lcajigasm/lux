@@ -1,0 +1,28 @@
+// Lux — a fast, free, cross-platform text and code editor.
+//
+// This is the first real window this project has ever painted: a live
+// wgpu surface, real glyph rasterization through a real system font, a
+// blinking multi-cursor, and a real accessibility tree — no stubs.
+//
+// Try it:
+//   - Arrow keys, Home/End move the cursor.
+// - Type to insert text; Backspace/Delete remove it.
+//   - An accented character (e.g. an acute accent dead-key) exercises real
+//     IME composition, shown inline at the cursor.
+//
+// Croissants, jalapeños, and déjà vu all round-trip through real Unicode
+// grapheme-aware cursor movement, not naive byte counting.
+
+fn fibonacci(n: u64) -> u64 {
+    match n {
+        0 => 0,
+        1 => 1,
+        _ => fibonacci(n - 1) + fibonacci(n - 2),
+    }
+}
+
+fn main() {
+    for i in 0..10 {
+        println!("fib({i}) = {}", fibonacci(i));
+    }
+}

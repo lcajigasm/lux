@@ -1316,6 +1316,17 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 [[package]]
 name = "lux"
 version = "0.0.0"
+dependencies = [
+ "accesskit",
+ "dpi",
+ "lux-core",
+ "lux-platform",
+ "lux-render",
+ "lux-ui",
+ "pollster",
+ "swash",
+ "wgpu",
+]
 
 [[package]]
 name = "lux-benches"
@@ -1358,6 +1369,8 @@ version = "0.0.0"
 name = "lux-platform"
 version = "0.0.0"
 dependencies = [
+ "accesskit",
+ "accesskit_winit",
  "arboard",
  "dpi",
  "raw-window-handle",
