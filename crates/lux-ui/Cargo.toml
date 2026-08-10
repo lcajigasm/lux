@@ -12,6 +12,7 @@ accesskit = "0.24.1"
 lux-core = { path = "../lux-core", version = "0.0.0" }
 lux-render = { path = "../lux-render", version = "0.0.0" }
 lux-search = { path = "../lux-search", version = "0.0.0" }
+trash = "5.2.6"
 
 [dev-dependencies]
 accesskit_winit = { version = "0.33.2", default-features = false, features = ["rwh_06"] }

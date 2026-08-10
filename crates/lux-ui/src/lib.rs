@@ -5,6 +5,7 @@
 pub mod accessibility;
 pub mod command_palette;
 pub mod editor_view;
+pub mod file_tree;
 pub mod goto_anything;
 pub mod minimap;
 pub mod search_bar;
