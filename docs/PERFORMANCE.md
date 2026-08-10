@@ -24,11 +24,14 @@ shell to measure on those platforms.
 
 `benches/` (crate `lux-benches`) holds the `criterion` benchmarks: the
 Phase 0 smoke benchmark (`smoke_fibonacci_20`, still just pipeline-proving),
-and `phase1_budgets` (`insert_1_char_at_1000_cursors_100k_line_file`,
+`phase1_budgets` (`insert_1_char_at_1000_cursors_100k_line_file`,
 `buffer_load/load_100mb`) added when Phase 1's two named budgets became
-measurable. Real budget benchmarks land in the phase that implements the
-capability they measure (see the phase-by-phase acceptance criteria in
-`LUX_PROMPT_MAESTRO.md`).
+measurable, and `phase3_budgets` (tree-sitter reparse after a keystroke,
+Goto Anything's 100k-file ranking, and the reparse+highlight component for
+the 16 ms frame budget — see the measurement history below) added at
+Phase 3's close-out. Real budget benchmarks land in the phase that
+implements the capability they measure (see the phase-by-phase acceptance
+criteria in `LUX_PROMPT_MAESTRO.md`).
 
 `crates/lux-render/benches/phase2_budgets.rs` holds Phase 2's three named
 budgets (cold start, keypress → pixel, scroll), added as *component*
@@ -103,3 +106,54 @@ saved baseline literally named `none`, created once with `--save-baseline
 none` before this table's numbers were captured — re-run `--save-baseline
 none` to refresh it if these benchmarks change in a way where you want a
 new zero-point.
+
+**2026-08-10, Phase 3 close-out, MacBook Pro M-series, `--release`
+(`cargo bench -p lux-benches --bench phase3_budgets`):**
+
+| Metric | Budget | Measured | Result |
+|---|---|---|---|
+| Tree-sitter reparse after a keystroke (10k lines) | < 2 ms | **1.05 ms** (mean, 100 samples) | pass |
+| Goto Anything fuzzy ranking over 100,000 files | first results < 30 ms; full ranking < 150 ms | **1.34 ms** (mean, 10 samples) | pass — see note below on "first results" |
+| Reparse + highlight after a keystroke, **whole 20k-line document** | no frame > 16 ms | **16.77 ms** (mean, 100 samples) | **fails** — kept intentionally, see note |
+| Reparse + highlight after a keystroke, **visible 50-line range** | no frame > 16 ms | **2.30 ms** (mean, 100 samples) | pass |
+
+Three real findings came out of writing these, not just numbers to fill
+in a table:
+
+1. **`Document::highlight` scanned the whole tree on every call**, not
+   just the edited or visible range — fine for one-shot uses (golden
+   token tests, opening a file) but the wrong thing to call after every
+   keystroke on a large file, which is exactly what this budget measures.
+   Added `Document::highlight_range(source, byte_range)`
+   (`tree_sitter::QueryCursor::set_byte_range`, not a post-hoc filter) so
+   a UI can re-highlight only what's on screen — the row above simulates
+   scoping the query to a 50-line window around the edit, the way
+   `EditorView` already scopes glyph shaping to `visible_line_range`. The
+   whole-document row is kept in the benchmark suite on purpose, as a
+   standing demonstration of why scoping is required, not an alternative
+   path to the budget.
+2. **`Query::new` — compiling the highlight pattern set — was itself the
+   dominant cost**, not the tree traversal: it was being called fresh on
+   every `highlight`/`highlight_range` call, and a language's
+   `highlights.scm` is hundreds of lines. Caching the compiled `Query` as
+   a `Document` field (built once in `Document::new`) cut the
+   whole-document number from ~26 ms to ~16.8 ms *and* the visible-range
+   number from ~11.6 ms to ~2.3 ms — the range-scoping fix and the
+   query-caching fix compound, and neither alone would have hit budget
+   with real margin.
+3. **Goto Anything's "first results < 30 ms" isn't a separately
+   measurable quantity for this implementation.** `lux-search::fuzzy::
+   rank_paths` is `nucleo`'s synchronous `Pattern::match_list` (see ADR
+   0009 and the Goto Anything receipt) — one call produces the complete,
+   sorted result set, so there's no partial/incremental "first results"
+   phase to time separately the way there would be for the async
+   `Nucleo<T>` picker. The 1.34 ms measured here is compared against the
+   stricter 150 ms full-ranking budget and clears it with over 100×
+   margin; migrating to `Nucleo<T>` for a genuine incremental result
+   stream is future work, only worth doing once a real 100k-file
+   workspace index exists (Phase 4) to make it matter.
+
+See `benches/benches/phase3_budgets.rs` for the exact scenarios (source
+generation, edit-site selection, visible-range simulation) and
+`crates/lux-syntax/src/lib.rs`'s `highlight`/`highlight_range` doc
+comments for the API-level explanation.
