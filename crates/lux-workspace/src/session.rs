@@ -116,7 +116,7 @@ impl Session {
         session.clean_shutdown = clean_shutdown;
         let text = serde_json::to_string_pretty(&session)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        fs::write(path, text)
+        atomic_write(path.as_ref(), text.as_bytes())
     }
 
     /// Rebuilds a [`Workspace`] from `folders` — the "restore folders on
@@ -169,7 +169,7 @@ impl RecoveryStore {
         };
         let text = serde_json::to_string(&snapshot)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        fs::write(self.snapshot_path(path), text)
+        atomic_write(&self.snapshot_path(path), text.as_bytes())
     }
 
     /// Deletes `path`'s recovery snapshot — call after a real save to disk
@@ -210,6 +210,37 @@ impl RecoveryStore {
         path.hash(&mut hasher);
         self.dir.join(format!("{:016x}.json", hasher.finish()))
     }
+}
+
+/// Writes `bytes` to `path` atomically: content goes to a temp file in the
+/// same directory, fsync'd, then renamed over the target — the same
+/// pattern `lux_core::buffer::Buffer::save` uses, applied here because
+/// both `Session` and `RecoveryStore` exist specifically to survive a
+/// crash. A plain `fs::write` can be interrupted mid-write by the exact
+/// kind of event (power loss, `kill -9`) this module is meant to recover
+/// from, leaving a half-written, unparseable file behind — defeating the
+/// recovery story `Session::needs_recovery`/`RecoveryStore::recoverable`
+/// exist to serve.
+fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let tmp_path = dir.join(format!(
+        ".{}.lux-tmp",
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("session")
+    ));
+
+    {
+        use std::io::Write;
+        let mut tmp = fs::File::create(&tmp_path)?;
+        tmp.write_all(bytes)?;
+        tmp.sync_all()?;
+    }
+
+    fs::rename(&tmp_path, path)
 }
 
 #[cfg(test)]

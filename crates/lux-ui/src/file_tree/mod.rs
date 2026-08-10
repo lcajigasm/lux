@@ -278,7 +278,13 @@ impl FileTree {
         match kind {
             NodeKind::Directory => fs::create_dir(&path)?,
             NodeKind::File => {
-                fs::File::create(&path)?;
+                // `create_new`, not `File::create`: the latter truncates a
+                // pre-existing file silently, which in a file explorer
+                // means data loss. This fails with `AlreadyExists` instead.
+                fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)?;
             }
         }
 
@@ -323,6 +329,7 @@ impl FileTree {
         let parent = node.parent;
         let new_path = old_path.with_file_name(new_name);
 
+        reject_if_exists(&new_path)?;
         fs::rename(&old_path, &new_path)?;
 
         self.reparent_path(id, &old_path, &new_path);
@@ -368,6 +375,7 @@ impl FileTree {
         // just-moved entry isn't double-scanned when we insert it below.
         self.expand(new_parent)?;
         let new_path = self.nodes.get(&new_parent).unwrap().path.join(&name);
+        reject_if_exists(&new_path)?;
         fs::rename(&old_path, &new_path)?;
 
         if let Some(old_parent) = old_parent {
@@ -481,6 +489,24 @@ fn is_ancestor_or_self(ancestor: &Path, candidate: &Path) -> bool {
 
 fn not_found() -> io::Error {
     io::Error::new(io::ErrorKind::NotFound, "unknown tree node")
+}
+
+/// Guards `rename`/`move_node` against `fs::rename`'s own POSIX semantics:
+/// unlike `File::create`'s `create_new` option, `fs::rename` silently
+/// replaces an existing destination rather than erroring — real data loss
+/// for a rename/move landing on top of something already there. Checked
+/// explicitly rather than relying on `fs::rename` itself, which has no
+/// "fail if destination exists" mode. `try_exists` (not `exists`) so a
+/// stat error (e.g. permission denied) surfaces as a real `io::Error`
+/// instead of silently reading as "doesn't exist".
+fn reject_if_exists(path: &Path) -> io::Result<()> {
+    if path.try_exists()? {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!("{} already exists", path.display()),
+        ));
+    }
+    Ok(())
 }
 
 fn display_name(path: &Path) -> String {

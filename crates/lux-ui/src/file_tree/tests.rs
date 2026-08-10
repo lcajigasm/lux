@@ -139,6 +139,26 @@ fn create_file_writes_to_disk_and_appears_in_rows() {
 }
 
 #[test]
+fn create_file_refuses_to_overwrite_an_existing_file() {
+    let dir = temp_dir();
+    let mut tree = FileTree::open(&dir).unwrap();
+    let root = tree.root();
+    tree.create(root, "existing.rs", NodeKind::File).unwrap();
+    fs::write(dir.join("existing.rs"), "original content").unwrap();
+
+    let err = tree
+        .create(root, "existing.rs", NodeKind::File)
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+    assert_eq!(
+        fs::read_to_string(dir.join("existing.rs")).unwrap(),
+        "original content"
+    );
+
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn create_directory_writes_to_disk_and_appears_in_rows() {
     let dir = temp_dir();
     let mut tree = FileTree::open(&dir).unwrap();
@@ -180,6 +200,25 @@ fn rename_moves_the_file_on_disk_and_updates_the_path() {
     assert!(!dir.join("old.txt").exists());
     assert!(dir.join("new.txt").is_file());
     assert_eq!(tree.node_path(id), Some(dir.join("new.txt").as_path()));
+
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn rename_refuses_to_overwrite_an_existing_file() {
+    let dir = temp_dir();
+    let mut tree = FileTree::open(&dir).unwrap();
+    let root = tree.root();
+    let id = tree.create(root, "source.txt", NodeKind::File).unwrap();
+    fs::write(dir.join("target.txt"), "must survive").unwrap();
+
+    let err = tree.rename(id, "target.txt").unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+    assert!(dir.join("source.txt").is_file());
+    assert_eq!(
+        fs::read_to_string(dir.join("target.txt")).unwrap(),
+        "must survive"
+    );
 
     fs::remove_dir_all(&dir).ok();
 }
@@ -235,6 +274,26 @@ fn move_node_moves_the_file_on_disk_to_the_new_parent() {
     assert_eq!(
         names(tree.rows()),
         vec![display_name(&dir).as_str(), "dest", "loose.txt"]
+    );
+
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn move_node_refuses_to_overwrite_an_existing_file_at_the_destination() {
+    let dir = temp_dir();
+    let mut tree = FileTree::open(&dir).unwrap();
+    let root = tree.root();
+    let file_id = tree.create(root, "loose.txt", NodeKind::File).unwrap();
+    let dest_id = tree.create(root, "dest", NodeKind::Directory).unwrap();
+    fs::write(dir.join("dest/loose.txt"), "must survive").unwrap();
+
+    let err = tree.move_node(file_id, dest_id).unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+    assert!(dir.join("loose.txt").is_file());
+    assert_eq!(
+        fs::read_to_string(dir.join("dest/loose.txt")).unwrap(),
+        "must survive"
     );
 
     fs::remove_dir_all(&dir).ok();

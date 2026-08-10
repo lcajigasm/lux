@@ -278,8 +278,15 @@ fn scan_known(dir: &Path, known: &mut HashSet<PathBuf>) {
         return;
     };
     for entry in entries.filter_map(|e| e.ok()) {
+        // `entry.file_type()` (unlike `Path::is_dir()`) doesn't follow
+        // symlinks, so a symlink is always treated as a leaf here and
+        // never recursed into — a symlink cycle inside the watched root
+        // would otherwise send this into unbounded recursion.
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
         let path = entry.path();
-        if path.is_dir() {
+        if file_type.is_dir() {
             scan_known(&path, known);
         } else {
             known.insert(path);
@@ -295,12 +302,9 @@ mod tests {
 
     const DEBOUNCE: Duration = Duration::from_millis(150);
     const RECV_TIMEOUT: Duration = Duration::from_secs(5);
-    // FSEvents (macOS) and other native backends need a moment to arm
-    // after `watch()` returns before they reliably see the very next
-    // write — a documented `notify` caveat, not a polling loop: this is a
-    // one-time settle before the test *starts* generating changes, not a
-    // recheck of the filesystem afterward.
-    const WATCH_SETTLE: Duration = Duration::from_millis(300);
+    // How long a settle wait blocks for before deciding nothing more is
+    // coming — see `drain_until_quiet`/`settle`.
+    const SETTLE_TIMEOUT: Duration = Duration::from_millis(2000);
 
     fn temp_dir() -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -315,11 +319,49 @@ mod tests {
         fs::canonicalize(&dir).unwrap()
     }
 
+    /// Drains whatever batches keep arriving until a full `recv` call times
+    /// out with nothing new — i.e. the channel has gone quiet. `watch()`'s
+    /// historical-replay burst (FSEvents (macOS) and other native backends
+    /// report at least "this directory exists" right after `watch()`
+    /// returns) and `unwatch()`'s OS-level teardown both have latency that
+    /// varies a lot by machine (a loaded CI runner is not a quiet laptop);
+    /// waiting for actual quiescence instead of guessing a fixed sleep
+    /// duration is what makes these tests reliable across both. Bounded by
+    /// `SETTLE_TIMEOUT` per `recv` call, not a polling loop — each call
+    /// blocks on the same real, event-driven channel every other test uses.
+    fn settle(watcher: &mut FileWatcher) {
+        loop {
+            let batch = watcher.recv(SETTLE_TIMEOUT);
+            if batch.changes.is_empty() && batch.errors.is_empty() {
+                break;
+            }
+        }
+    }
+
     fn watch_dir(dir: &Path) -> FileWatcher {
         let mut watcher = FileWatcher::new(DEBOUNCE).unwrap();
         watcher.watch(dir).unwrap();
-        thread::sleep(WATCH_SETTLE);
+        settle(&mut watcher);
         watcher
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn scan_known_does_not_recurse_into_a_symlink_cycle() {
+        let dir = temp_dir();
+        let sub = dir.join("sub");
+        fs::create_dir(&sub).unwrap();
+        // A symlink inside `sub` pointing back at `dir` — a real cycle a
+        // naive `Path::is_dir()`-following recursion would loop on forever.
+        std::os::unix::fs::symlink(&dir, sub.join("back_to_root")).unwrap();
+
+        let mut known = HashSet::new();
+        scan_known(&dir, &mut known);
+        // Terminates at all is the actual assertion; the symlink itself is
+        // recorded as a leaf, not descended into.
+        assert!(known.contains(&sub.join("back_to_root")));
+
+        fs::remove_dir_all(&dir).ok();
     }
 
     fn wait_for(
@@ -451,6 +493,11 @@ mod tests {
         let dir = temp_dir();
         let mut watcher = watch_dir(&dir);
         watcher.unwatch(&dir).unwrap();
+        // `unwatch` returning doesn't guarantee the OS has actually torn
+        // down the underlying watch stream yet — settle the same way
+        // `watch_dir` does, so a write made right after this doesn't race
+        // a not-yet-finished teardown on a slower machine.
+        settle(&mut watcher);
 
         fs::write(dir.join("after_unwatch.txt"), "hi").unwrap();
 
