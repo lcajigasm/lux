@@ -1,13 +1,11 @@
 use std::error::Error;
 use std::fmt;
 
+use crate::binary_detect;
+
 const UTF8_BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
 const UTF16LE_BOM: [u8; 2] = [0xFF, 0xFE];
 const UTF16BE_BOM: [u8; 2] = [0xFE, 0xFF];
-
-/// How many leading bytes to scan when guessing whether a file is binary.
-/// Mirrors the heuristic git and ripgrep use.
-const BINARY_SCAN_LEN: usize = 8000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Encoding {
@@ -38,10 +36,6 @@ impl fmt::Display for DecodeError {
 
 impl Error for DecodeError {}
 
-pub fn looks_binary(bytes: &[u8]) -> bool {
-    bytes[..bytes.len().min(BINARY_SCAN_LEN)].contains(&0)
-}
-
 /// Detects the encoding of `bytes` and decodes it to a `String`. UTF-16 BOMs
 /// are checked before the binary heuristic, since UTF-16 text legitimately
 /// contains NUL bytes (the high byte of every ASCII-range code unit) that
@@ -55,7 +49,7 @@ pub fn decode(bytes: &[u8]) -> Result<(String, Encoding), DecodeError> {
     if let Some(rest) = bytes.strip_prefix(&UTF16BE_BOM) {
         return Ok((decode_utf16(rest, u16::from_be_bytes), Encoding::Utf16Be));
     }
-    if looks_binary(bytes) {
+    if binary_detect::looks_binary(bytes) {
         return Err(DecodeError::Binary);
     }
     if let Some(rest) = bytes.strip_prefix(&UTF8_BOM) {
