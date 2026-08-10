@@ -937,6 +937,232 @@ rather than leaving implicit:
 | `.editorconfig` / `.gitattributes` | not-started | not-started | not-started | not-started | not-started |
 | Settings importers | not-started | not-started | not-started | not-started | not-started |
 | Font settings + overrides | not-started | not-started | not-started | not-started | not-started |
+| Schema-aware settings-file completion | not-started | not-started | not-started | not-started | not-started |
+
+**Scope note (`lux-config::layering` — JSONC, layered precedence, hot
+reload; the narrower first slice of this phase's `lux-config` deliverable,
+tracked in
+`docs/receipts/phase-05-luxconfig-jsonc-precedencia-capas-recarga.md`)**:
+the "JSONC config with layered precedence" row above doesn't move — this is
+a headless settings-resolution library with no schema, no keymaps, no
+`.editorconfig`, no importers, and no preferences surface built on it yet,
+and nothing reads or writes real settings through it from the `lux` binary.
+What exists and is verified: `LayeredConfig` (JSONC parsing via
+`jsonc-parser`, five layers — `Default`/`User`/`Project`/`Folder`/`Language`
+— merged in that precedence order via a recursive JSON-object merge, a
+malformed layer keeping its last good value instead of dropping settings or
+the whole config) and `ConfigWatcher` (background `notify`-based hot reload
+of every file-backed layer, no polling). Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-config layering::` (19 tests,
+headless — no UI dependency per golden rule #2). Schema publication and
+validation with line/column errors (the rest of this phase's first
+deliverable bullet) landed in a later loop, once `crate::schema` existed
+for a validator to check against — see the closing scope note below.
+
+**Scope note (`lux-config::keymap` — keymaps as data, tracked in
+`docs/receipts/phase-05-keymaps-sublime-vscode-jetbrains-como.md`)**: the
+"Keymap presets (Sublime/VS Code/JetBrains)" row above doesn't move either
+— same reasoning as the row above it: no key-event dispatch layer exists
+yet for any of this to actually drive, and nothing is wired into the `lux`
+binary. What exists and is verified: `Chord`/`ChordSequence` (parsed from
+the same `"ctrl+shift+p"`/`"ctrl+k ctrl+s"` string convention VS Code's own
+`keybindings.json` uses), `KeyBinding`/`Keymap` with per-platform
+(`mac`/`win`/`linux`) resolution mirroring that same real schema, conflict
+detection with a human-readable diagnostic, and three preset keymaps
+(`crates/lux-config/keymaps/*.jsonc`) loaded through the same JSONC parser
+`layering` uses. Verified on macOS (aarch64-apple-darwin): `cargo test -p
+lux-config keymap::` (36 unit tests) and `cargo test -p lux-config
+keymap:: --test keymap_presets` (7 tests checking each preset's documented
+shortcuts, platform resolution, chord chaining via two of VS Code's real
+`ctrl+k`-prefixed bindings, and conflict detection). Not yet built:
+conflict resolution *policy* (this deliverable detects and reports
+conflicts; deciding which binding wins, or prompting a user, is
+unaddressed), and the two remaining phase-acceptance criteria this
+deliverable doesn't cover on its own — key-chaining is supported by the
+data model but real dispatch of a multi-chord sequence needs an input
+layer that doesn't exist yet.
+
+**Scope note (`lux-config::editorconfig` + `lux-config::gitattributes`,
+tracked in `docs/receipts/phase-05-editorconfig-gitattributes.md`)**: the
+"`.editorconfig` / `.gitattributes`" row above doesn't move either — same
+reasoning as the two rows above it: nothing in `lux-core`'s buffer/save
+path actually consults either of these yet (no auto-indent-detection
+override, no EOL-normalization-on-save), and nothing is wired into the
+`lux` binary. What exists and is verified: `editorconfig::resolve` (a
+typed wrapper around `ec4rs`, a dedicated spec-compliant EditorConfig
+implementation — real glob matching including brace alternation, real
+`[section]` parsing, real directory-tree inheritance with `root = true`
+stopping the upward walk, a malformed file surfacing a real, actionable
+error rather than silently producing wrong data) and
+`gitattributes::GitAttributes` (built on `gix-attributes`, the same
+gitoxide-family crate `lux-git` will use for real Git integration in Phase
+6 — narrowed to line-ending normalization per this deliverable's own
+wording, resolving `text`/`eol`/the built-in `binary` macro into
+`Normalize(Lf|CrLf)`/`Auto`/`Disabled`/`Unspecified`, with a later-added
+file's rules correctly overriding an earlier one's for the same pattern).
+Verified on macOS (aarch64-apple-darwin): `cargo test -p lux-config
+editorconfig::` (9 tests) and `cargo test -p lux-config gitattributes::` (9
+tests). Not built: full `.gitattributes` semantics beyond line endings
+(diff/merge drivers, filters, `export-ignore`, `linguist-*` — out of scope
+per the deliverable's own "para normalización de finales de línea"
+wording); anything consuming either module to actually change editor
+behavior (indent detection, EOL conversion on save).
+
+**Scope note (`lux-config::import` — schema-aware settings importers,
+tracked in `docs/receipts/phase-05-importadores-ajustes-externos.md`)**:
+the "Settings importers" row above doesn't move either — same reasoning as
+every row above it: nothing consumes an `ImportReport` yet (no "Import
+from..." command, no UI, no write path into `layering::LayeredConfig`),
+and nothing is wired into the `lux` binary. What exists and is verified:
+three importers (`import::sublime`, `import::vscode`, `import::jetbrains`)
+each mapping a modest, real subset of their source's setting keys onto
+Lux's own dotted-key settings namespace, sharing one `ImportReport` shape
+(`imported`/`ignored`, the latter split into `UnknownKey` vs a recognized
+key with an `UnsupportedValue` — two different, separately-reported
+outcomes, not one catch-all "ignored" bucket) — the "informen
+honestamente" half of this deliverable's wording. Sublime's and VS Code's
+importers reuse `layering::jsonc::parse` (both formats are JSON with
+comments); JetBrains' reads XML via `quick-xml`. Every mapped source key
+was either confirmed against the vendor's own documentation or source
+(VS Code: `code.visualstudio.com`'s docs directly; JetBrains: read
+straight from `CommonCodeStyleSettings.java` in the `intellij-community`
+GitHub repo, the actual source that produces the XML) or, where that
+wasn't reachable (most of Sublime's keys — its docs don't publish a plain
+settings reference, same gap the keymap-preset loop hit for its
+shortcuts), explicitly flagged as coming from well-established prior
+knowledge instead of presented as uniformly verified. Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-config import::` (20 tests).
+Not built: a preferences surface or any UI to trigger an import (Phase 5
+deliverable 6, still not-started); writing an `ImportReport`'s imported
+settings into a real `LayeredConfig` layer (this deliverable produces the
+report; consuming it is a future integration's job, same design language
+`layering`/`keymap`/`editorconfig`/`gitattributes` already established
+this phase); import of anything beyond the handful of indent/whitespace/
+font settings each importer currently recognizes.
+
+**Scope note (`lux-config::font_settings` — typography with project/folder
+overrides, tracked in
+`docs/receipts/phase-05-ajustes-tipografia-overrides-proyecto-carpeta.md`)**:
+the "Font settings + overrides" row above doesn't move either — same
+reasoning as every row above it: nothing renders text through a resolved
+`FontSettings` yet (no `lux-render`/`lux-ui` wiring), and nothing is wired
+into the `lux` binary. What exists and is verified: `FontSettings`
+(family, size, line height, ligatures — the four properties this phase's
+deliverable text names), resolved by reading four dotted keys
+(`editor.fontFamily`, `editor.fontSize`, `editor.lineHeight`,
+`editor.fontLigatures` — the same keys `import::sublime`/`import::vscode`
+already produce, so an importer's output needs no translation to be read
+back here) straight off a `layering::LayeredConfig`'s already-merged
+settings. "Overrides por proyecto y por carpeta" specifically is not a
+second override mechanism built for fonts — it's the `Layer::Project`/
+`Layer::Folder` precedence the `layering` loop already implemented and
+tested, demonstrated here for typography specifically (a folder override
+winning over a project override for the same property while leaving
+sibling properties still inherited, and reverting to the project value
+once the folder override is cleared). Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-config font_settings::` (7
+tests). Not built: font settings actually reaching the renderer or being
+editable through any UI; `editor.fontLigatures`-driven ligature rendering
+itself (`lux-render`'s glyph pipeline, a Phase 2 concern, is unaffected by
+this deliverable).
+
+**Scope note (`lux-config::schema` + `lux-config::completion` — Phase 5's
+sixth and final deliverable, "Panel de preferencias, o edición de fichero
+con autocompletado del esquema (elige uno; documenta la elección)",
+tracked in
+`docs/receipts/phase-05-panel-preferencias-o-autocompletado-esquema.md`)**:
+the "Schema-aware settings-file completion" row above doesn't move — same
+reasoning as every row above it: nothing surfaces a completion popup in
+any editor UI yet, and nothing is wired into the `lux` binary. **The
+choice, documented in `completion`'s own module docs**: file-editing
+completion over a preferences UI panel, because every other Phase 5
+deliverable in this crate is headless UI-free logic, and a real panel
+would need `lux-ui`/`lux` widget/rendering infrastructure that doesn't
+exist yet for this purpose — building it inside `lux-config` would pull a
+domain crate toward a graphics dependency it has never needed, against
+golden rule #2's spirit even though the rule's literal CI gate only checks
+`lux-core`. What exists and is verified: `schema::PROPERTIES` (the ten
+settings keys `font_settings` and the three `import` modules already use,
+written down as one list for the first time, with a value shape —
+`String`/`Integer`/`Number`/`Boolean`/`Enum`) and `completion::complete`
+(a small hand-written, JSONC-comment-aware state machine — not the full
+`jsonc-parser` AST, deliberately: completion has to work on a document
+that's mid-edit and very often syntactically incomplete exactly at the
+cursor, which a real parser built for complete documents can't do at all;
+scoped to the flat, single-level objects every settings document in this
+crate actually is). Verified on macOS (aarch64-apple-darwin): `cargo test
+-p lux-config` (100 unit tests, including 16 in `completion::tests` and 3
+in `schema::tests`). Not built at the time: any UI rendering a completion
+popup; hover/documentation-on-demand for a property; validation of a
+complete document against the schema — closed in the loop below.
+
+**Scope note (`lux-config::layering::validate` + `schema::to_json_schema`
+— closing Phase 5 deliverable 1's last piece, "esquema publicado y
+validación con errores útiles señalando línea y columna," tracked in
+`docs/receipts/phase-05-esquema-publicado-validacion-linea-columna.md`)**:
+the "JSONC config with layered precedence" row (deliverable 1) is now
+fully covered by receipts, and "Schema-aware settings-file completion"
+(deliverable 6) gained a second, independent consumer of `schema::PROPERTIES`.
+Neither row's `not-started` mark moves — same reasoning as every row in
+this section: nothing calls `layering::validate` from a real editing
+surface yet, and nothing is wired into the `lux` binary. What exists and
+is verified: `schema::to_json_schema` (the ten properties exported as a
+real draft-07 JSON Schema document — the standard format external tooling
+already knows how to consume, not a Lux-only shape) and
+`layering::validate` (parses a document with `jsonc_parser::parse_to_ast`
+— not `completion`'s own tolerant scanner, since validation is only
+meaningful once a document is syntactically complete — and reports every
+unknown key and type/enum mismatch with a 1-based line and `char`-counted
+column, the same convention `jsonc_parser`'s own parse errors already use;
+a syntactically invalid document produces exactly one diagnostic, that
+parse error itself, rather than every schema rule silently not running).
+Verified on macOS (aarch64-apple-darwin): `cargo test -p lux-config
+layering::validate::` (12 tests) plus 3 more in `schema::tests` covering
+the JSON Schema export. With this loop, all six of Phase 5's deliverables
+have a `Result: passed` receipt.
+
+**Phase 5 close-out.** All six deliverables above have individual receipts
+under `docs/receipts/phase-05-*.md` (deliverable 1 across two receipts —
+`layering`'s JSONC/precedence/hot-reload half, then `layering::validate`'s
+schema/validation half once `schema` existed to validate against — the
+other five each a single receipt), each `Result: passed` against its own
+gate, and the full workspace gate (`cargo test --workspace`, `cargo
+clippy --workspace -- -D warnings`, `cargo deny check`,
+`scripts/check-limits.sh`, `scripts/check-core-isolation.sh`) passes clean
+at 718 tests, 0 failures. Two things worth stating plainly rather than
+leaving implicit:
+
+1. **No capability row above moved to `implemented`, same as Phase 4.**
+   Every one of Phase 5's pieces is real, tested, and correct at the
+   `lux-config` crate level — but none of it is wired into `crates/lux`
+   (the running desktop binary), which today still has no settings file,
+   no keymap dispatch, and no preferences surface at all. This is the
+   identical, deliberate choice made consistently across all seven loops
+   this phase (see each deliverable's own scope note above): Phase 5
+   built the complete configuration/personalization *engine*; none of it
+   is yet a capability an actual user of the running app has.
+2. **All three acceptance criteria are backed by real, automated tests —
+   a stronger position than Phase 4's one-of-four.** "Los tres presets de
+   keymap pasan un test que verifica los atajos documentados" is
+   measured literally: `cargo test -p lux-config keymap:: --test
+   keymap_presets`, 7 tests checking real, vendor-sourced shortcuts for
+   all three presets. "Una configuración mal formada nunca deja el
+   editor inutilizable ni pierde ajustes" and "cambiar la configuración
+   se refleja sin reiniciar" are both genuinely exercised by real tests
+   against real files — `layering::tests::malformed_layer_keeps_the_previous_good_value_and_reports_the_error`
+   and `layering::watch::tests::editing_a_watched_file_hot_reloads_without_restart`,
+   among others — not merely argued from the design. The honest caveat:
+   "el editor" in both criteria' wording presumes a running editor
+   session consuming live config, which doesn't exist yet (point 1
+   above) — so what's actually measured is that `LayeredConfig` and
+   `ConfigWatcher` themselves have this property at the library level,
+   the furthest either criterion can be verified without an editor to
+   plug them into. That's a real difference from Phase 4's "not
+   measurable with the code as it stands today" gaps: here, the
+   mechanism the criteria describe is built, tested, and verified — only
+   the last mile (a real window, a real open document, a real keystroke)
+   is missing, and that last mile is explicitly out of every Phase 5
+   deliverable's scope, not an oversight.
 
 ## Git integration (Phase 6, `v0.5.0`)
 
