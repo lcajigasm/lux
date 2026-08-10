@@ -638,6 +638,296 @@ macOS only, same constraint as above. See
 | Sessions & crash recovery | not-started | not-started | not-started | not-started | not-started |
 | Huge/binary file handling | not-started | not-started | not-started | not-started | not-started |
 
+**Scope note (`lux-workspace`'s multi-root data model + `.lux-project` file —
+this phase's first deliverable, tracked in
+`docs/receipts/phase-04-luxworkspace-multiroot-luxproject.md`)**: no
+capability row above moves yet — this is the foundational data model other
+Phase 4 deliverables (file tree, watchers, find in files, the incremental
+index) will key their own per-root state off, not a user-visible capability
+by itself; there's still no explorer, no watcher, no search wired to any of
+it, and nothing wired into the `lux` binary. What exists and is verified:
+`Workspace` (ordered, independently-addressable roots via `RootId`,
+add/remove, longest-prefix `root_for_path` resolution for scoping later
+search/commands to one root) and `ProjectFile` (the `.lux-project` on-disk
+schema — `folders` with optional per-folder display names, `excludes`
+glob-pattern strings stored opaquely, and an untyped `settings` bag deferred
+to `lux-config` in Phase 5 — load/save as plain JSON via `serde`/
+`serde_json`, see ADR 0015), plus `Workspace::discover` tying the two
+together (loads `.lux-project` when a folder has one, single-root fallback
+otherwise). Verified on macOS (aarch64-apple-darwin):
+`cargo test -p lux-workspace project::` (21 tests, all headless — no UI
+dependency per golden rule #2).
+
+**Scope note (`lux-ui`'s virtualized file tree — this phase's second
+deliverable, tracked in
+`docs/receipts/phase-04-explorador-arbol-virtualizado.md`)**: the "File tree
+explorer" row above stays `not-started` — this is the state/data layer a
+tree view widget would render and drive (same pattern as every other
+`lux-ui` deliverable so far: `tabs`, `command_palette`, `minimap`, ...), not
+pixels or mouse/keyboard/drag event handling, none of which exist yet. What
+exists and is verified: `FileTree`, with lazy per-directory loading (a
+directory's entries are read from disk only when expanded, never eagerly —
+the real fix for v0's flat, 400-item-capped explorer list) feeding a
+flattened `rows()`/`visible_rows(first, count)` pair a virtualized list
+slices by scroll position instead of ever materializing the whole tree; and
+real (not simulated) filesystem operations — `create`, `rename` (updating
+every already-loaded descendant's path), `move_node` (the operation a drag
+& drop gesture reports its drop through, backed by a real cross-directory
+`fs::rename`, unlike `tabs::TabBar::move_tab`'s in-memory-only reorder,
+since here the files are real), `delete_to_trash` (a real move to the
+system trash via the `trash` crate, never a permanent delete), and `reveal`
+(expands a path's ancestors so it lands in `rows()`). Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-ui file_tree::` (19 tests,
+including one that performs a real system-trash deletion). **Not yet
+exercised**: Windows'/Linux's trash backends (`trash` 5.2.6 supports both,
+per its own docs, but only macOS has been run here); any real mouse/drag
+event, since no interactive UI exists in `lux-ui` yet. Whichever layer
+eventually wires this into the running app must dispatch these operations
+off the UI thread (golden rule #6) — that wiring is separate, not-started
+work.
+
+**Scope note (`lux-workspace`'s native watchers — this phase's third
+deliverable, tracked in
+`docs/receipts/phase-04-watchers-nativos-notify-debouncer.md`)**: the
+"Native FS watchers" row above stays `not-started` — `FileWatcher` is
+verified directly against the real OS backend (not mocked), but nothing
+consumes its output yet: no file tree auto-refresh, no editor reload
+prompt, nothing wired into the `lux` binary. What exists and is verified:
+`notify` 8.2.0 + `notify-debouncer-full` 0.7.0 (the version that actually
+pairs with `notify` 8.2.0, not the crate registry's default "latest," which
+tracks `notify` 9's still-unstable RC — see `docs/DEPENDENCIES.md`), fully
+event-driven (the debouncer thread blocks on FSEvents/inotify/
+`ReadDirectoryChangesW`, no timer anywhere per golden rule #5), classifying
+each change as `Created`/`Removed`/`Reload` (no local unsaved edits, safe
+to silently reload)/`Conflict` (the watched path is in the caller-driven
+`mark_dirty` set — no buffer/document manager exists yet to ask
+automatically, so this is deliberately caller-driven); Linux's inotify
+watch-limit error (`notify::ErrorKind::MaxFilesWatch`) surfaced distinctly
+via `is_watch_limit_reached` rather than swallowed into a generic error.
+**Two real macOS FSEvents particularities were found and handled by testing
+against the live backend, not by assuming the docs**: (1) editing a file
+that already existed before `watch()` was called is reported as another
+`Create`, not a `Modify`, confirmed to persist well past the debounce
+window — `watch()` now seeds a `known`-paths set from a one-time recursive
+scan of the root so `classify` can tell the two cases apart; (2) deleting a
+file shortly after creating it (even across separate, real syscalls) makes
+FSEvents coalesce the whole lifecycle into one raw batch, which trips
+`notify-debouncer-full`'s own create-then-remove cancellation heuristic and
+silently swallows the real `Remove`, leaving only stray `Modify` events —
+`classify` now treats any event whose path no longer exists on disk as
+`Removed` regardless of the kind the debouncer attached. Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-workspace watcher::` (10 tests,
+6 of them driving the real FSEvents backend against real temp
+directories — re-run 3× clean to rule out flakiness from the timing
+involved). **Not yet exercised**: Linux's inotify backend and Windows'
+`ReadDirectoryChangesW` backend (no non-macOS dev environment available —
+same documented limitation as the rest of this file); the `MaxFilesWatch`
+limit itself (tested only via a synthetically constructed `notify::Error`,
+not a real 8-million-watch exhaustion, which isn't practical in a unit
+test). Whichever layer eventually wires this into the running app must call
+`watch()`/drain the channel off the UI thread (golden rule #6) — that
+wiring is separate, not-started work.
+
+**Scope note (`lux-search`'s Find in Files — this phase's fourth
+deliverable, tracked in
+`docs/receipts/phase-04-find-in-files-motor-ripgrep.md`)**: the "Find in
+files (ripgrep engine)" row above stays `not-started` — no dedicated,
+navigable results panel exists in `lux-ui` yet, and nothing is wired into
+the `lux` binary. What exists and is verified: `find_in_files`, the real
+embedded ripgrep engine (`ignore` for `.gitignore`-aware, glob-filterable
+traversal via a real `WalkParallel` fanning the search out across threads;
+`grep-searcher` + `grep-regex` for the actual line-oriented regex search —
+not a hand-rolled walker with `String::find`), streaming matches back
+through a channel as they're found (`SearchStream::poll`/`wait_until_done`)
+and staying navigable (`next_match`/`previous_match`/`current`) the same
+way `lux_ui::search_bar::SearchBar` already is for in-buffer search.
+`.gitignore` is honored even outside an actual git repository
+(`require_git(false)`, a deliberate choice — see the receipt for why the
+`ignore` crate's own default would otherwise silently skip it for a
+project folder that isn't `git init`-ed yet); include/exclude globs and
+case-insensitive matching are real options, not stubs; a binary or
+non-UTF-8 file is skipped, not fatal to the whole search. Verified on
+macOS (aarch64-apple-darwin): `cargo test -p lux-search find_in_files::`
+(11 tests) plus the named performance budget, measured for real —
+`cargo bench -p lux-benches --bench phase4_budgets`: **43.6 ms** (mean, 10
+samples) against a real ~1.07 GB on-disk corpus (2,000 files, 30,000 real
+matches), against the < 2 s budget — see `docs/PERFORMANCE.md`'s
+measurement history for the full corpus description and the caveats
+(parallelism across cores, page-cache warmth on repeated samples) that
+number carries. **Not yet exercised**: the dedicated results panel itself
+(no interactive UI exists in `lux-ui` yet); Windows/Linux (no non-macOS
+dev environment available — same documented limitation as the rest of
+this file).
+
+**Scope note (`lux-search`'s replace-in-project preview — this phase's
+fifth deliverable, tracked in
+`docs/receipts/phase-04-replace-proyecto-preview-diff.md`)**: the "Replace
+in project with diff preview" row above stays `not-started` — no diff UI
+or confirmation dialog exists in `lux-ui`, nothing is wired into the `lux`
+binary. What exists and is verified: `build_preview`, a pure function over
+an already-run `find_in_files` search's matches that computes, per match,
+a before/after line pair (regex capture-group expansion, same `$1`/
+`${name}` syntax `lux_core::find_replace` already uses for in-buffer
+replace) — no disk I/O of its own. Every computed hunk starts unaccepted;
+`ReplacementPreview::accept`/`accept_all_in_file` are the only way to opt
+one in (per-hunk or per-file confirmation, as the deliverable names), and
+`apply` only ever writes hunks that were explicitly accepted — never a
+blind mass replace, per the master prompt's own words. `apply` also
+re-checks each accepted hunk's original line against the file's *current*
+content immediately before writing it, reporting a per-hunk `conflicted`
+result instead of silently overwriting a file that changed on disk since
+the preview was built. Verified on macOS (aarch64-apple-darwin):
+`cargo test -p lux-search replace_preview::` (13 tests, including a real
+on-disk conflict-detection case and CRLF-preservation). **Not yet
+exercised**: the diff/confirmation UI itself (no interactive UI exists in
+`lux-ui` yet); Windows/Linux (no non-macOS dev environment available).
+
+**Scope note (`lux-workspace`'s incremental workspace index — this
+phase's sixth deliverable, tracked in
+`docs/receipts/phase-04-indice-incremental-alimentado-watchers.md`)**: no
+capability row above moves for this one either — like the multi-root data
+model from deliverable 1, `WorkspaceIndex` is infrastructure a future
+Goto Anything/Find in Files integration would key off (a live file list
+instead of a fresh `ignore::WalkParallel` walk per search), not a
+user-visible capability by itself, and nothing consumes it yet. What
+exists and is verified: `WorkspaceIndex::build` does exactly one real,
+`.gitignore`-aware recursive scan to establish the baseline file set;
+every update after that goes through `apply_changes`, a plain function
+over a batch of `lux_workspace::watcher::FileChange`s — no second scan,
+ever, satisfying "fed by watchers, not periodic rescans" literally, not
+just in spirit (golden rule #5). `Created`/`Reload` add a path only if
+it's currently a real file (a directory create isn't indexed);
+`Removed` drops it unconditionally (a harmless no-op if it was never
+indexed); `Conflict` never changes membership. Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-workspace index::` (10 tests,
+9 pure logic against a real on-disk baseline plus one genuine end-to-end
+case — a real `FileWatcher` observes a real file creation and the index
+is fed its actual output, not a synthetic `FileChange` — re-run 3× clean
+to rule out timing flakiness). **Not yet exercised**: any real consumer
+(Goto Anything, Find in Files) actually querying the index instead of
+walking fresh each time — that rewiring is separate, not-started work;
+Windows/Linux (no non-macOS dev environment available).
+
+**Scope note (`lux-workspace`'s sessions and recovery — this phase's
+seventh deliverable, tracked in
+`docs/receipts/phase-04-sesiones-recuperacion.md`)**: the "Sessions &
+crash recovery" row above stays `not-started` — no tab strip, cursor, or
+scroll state exists anywhere real to persist yet (`lux-ui::tabs`'s
+`TabBar` doesn't track cursors/scroll itself, and no unified `lux` binary
+wires a real editor session to any of this), so this is the
+persistence/recovery mechanism such a session manager would call into.
+What exists and is verified: `Session` (folders, tabs with pinned/
+cursors/scroll-line, active tab — `serde_json`, same convention
+`project::ProjectFile` already established) round-trips through
+`save`/`load`, and `Session::to_workspace()` rebuilds a real multi-root
+`project::Workspace` from the saved folders — composing with deliverable
+1's model instead of duplicating it, the concrete form "restore folders on
+open" takes here. Crash detection is a real, testable protocol, not just a
+flag: a session is written with `clean_shutdown = false` while running and
+`= true` only as the last step of a normal quit (`end_cleanly`); a
+`Session` loaded with `clean_shutdown` still `false` means the previous
+run never got there — `needs_recovery()` — the same "explicit signal
+survives past whatever crashed" idea a `.lock`/PID file gives, without
+needing a separate lock file. `RecoveryStore` persists actual unsaved
+buffer *content* per path (hashed to a filename so arbitrary paths never
+need escaping logic) — `save` on every real edit event, `clear` after a
+real save-to-disk succeeds, `recoverable()` listing what a "recover
+unsaved changes?" prompt would show. Both types are caller-driven, the
+same shape `watcher::FileWatcher::mark_dirty` already uses: nothing here
+runs on a timer (golden rule #5). Verified on macOS (aarch64-apple-darwin):
+`cargo test -p lux-workspace session::` (12 tests, all headless — no UI
+dependency, no real watcher/OS backend needed for this deliverable's own
+logic). **Not yet exercised**: any real editor session actually calling
+`Session::save`/`RecoveryStore::save` on real tab/cursor/edit events (no
+such session exists yet); a real crash scenario end-to-end (the protocol
+is tested via the same `save`-without-`end_cleanly` sequence a crash would
+leave behind, not an actual process kill); Windows/Linux (no non-macOS dev
+environment available).
+
+**Scope note (`lux-core`'s huge-file and binary-file handling — this
+phase's eighth and last deliverable, tracked in
+`docs/receipts/phase-04-ficheros-enormes-binarios.md`)**: the "Huge/binary
+file handling" row above stays `not-started`, because the deliverable's
+two halves are at genuinely different levels of completeness and rule 1
+doesn't let a partial one round up. **Binary detection is fully real and
+complete**: `binary_detect::looks_binary_path` reads only a small prefix
+(not the whole file) to decide, and `Buffer::open_with_policy` refuses a
+binary file with that same cheap check before ever attempting to decode
+it as text — "detected and not opened as text," literally. **Huge-file
+handling is a real, correct classification with deferred enforcement, not
+a full read-only mode yet**: `huge_file::classify_path` cheaply checks a
+file's size (`fs::metadata` only) against a configurable
+`HugeFilePolicy`, and `Buffer::open_with_policy` sets a real, queryable
+`is_huge_file_mode()` flag — but nothing in `lux-core` currently *enforces*
+read-only (a deliberate choice: making `Buffer::insert`/`delete` silently
+no-op would desync `Edit`/`Transaction`/`History`'s invertibility
+invariants, a real correctness hazard in code this deliverable has no
+reason to touch), and "no syntax highlighting" is entirely `lux-syntax`/
+`lux-ui`'s domain, untouched here. The flag is real; a future editor-
+session layer enforcing it against real edit commands and real
+highlighting calls is what would actually move this row. Verified on
+macOS (aarch64-apple-darwin): `cargo test -p lux-core huge_file::
+binary_detect::` (15 tests) plus 6 new integration tests in
+`buffer::tests` exercising `Buffer::open_with_policy` against real files
+(a real huge file, a real small file, a real binary file larger than the
+huge-file threshold — proving the binary check isn't skipped on the
+huge-file path — and a configurable threshold changing classification for
+the same file). **Not yet exercised**: any real enforcement of read-only
+against edit commands or highlighting (no such consuming layer exists);
+the "open a 1 GB file without exhausting memory" acceptance criterion as
+its own measurement — `Buffer::open_with_policy` still loads a huge
+file's full content through the same `fs::read`+decode path `Buffer::open`
+already uses (there's no partial/virtualized load in this rope-backed
+`Buffer`), so this deliverable doesn't change memory behavior for actually
+opening a huge file — the ~3.16× RSS overhead documented in Phase 1's
+measurement history for a 100 MB file is unchanged and still open, not
+newly introduced or newly fixed here; Windows/Linux (no non-macOS dev
+environment available).
+
+**Phase 4 close-out.** All eight deliverables above have individual
+receipts under `docs/receipts/phase-04-*.md`, each `Result: passed`
+against its own gate, and the full workspace gate (`cargo test
+--workspace`, `cargo clippy --workspace -- -D warnings`, `cargo deny
+check`, `scripts/check-limits.sh`, `scripts/check-core-isolation.sh`)
+passes clean at 592 tests, 0 failures. Two things worth stating plainly
+rather than leaving implicit:
+
+1. **No capability row above moved to `implemented`.** Every one of
+   Phase 4's eight pieces is real, tested, and correct at the crate
+   level — but none of it is wired into `crates/lux` (the real, running
+   desktop binary confirmed working end-to-end at Phase 2's close), which
+   today still only opens one fixed file with no project/folder concept
+   at all. This is a deliberate, consistent choice made identically
+   across all eight loops this phase (see each deliverable's own "Scope"
+   note above), not an oversight discovered at close time. Phase 4 built
+   the complete backend/engine layer for projects, files, and search;
+   none of it is yet a capability an actual user of the running app has.
+2. **Only one of the phase's four acceptance criteria is backed by a real
+   measurement.** "Find in files over 1 GB of code, < 2 s" — measured,
+   **43.6 ms**, see `docs/PERFORMANCE.md`. The other three were never
+   literally measured, only architecturally argued from the design (the
+   same distinction rule 3 in `CLAUDE.md` exists to prevent):
+   - *"Opening a 100k-file project never blocks the UI"* — no test opened
+     a real 100k-file tree; the claim rests on `lux_ui::file_tree`'s lazy
+     per-directory loading never doing a recursive walk on open, and
+     `lux_workspace::index`'s one-time baseline scan. Plausible, not
+     measured.
+   - *"10,000 file changes in 10 seconds doesn't degrade frame time"* —
+     no stress test exists, and frame time has no real measurement
+     surface yet: `crates/lux`'s render loop isn't wired to any watcher
+     or index from this phase. Not measurable with the code as it stands
+     today, not just unmeasured.
+   - *"Opening a 1 GB file doesn't exhaust memory"* — never measured at
+     1 GB; Phase 1 measured 100 MB and found (and left open, tracked)
+     a ~3.16× RSS overhead. `Buffer::open_with_policy` (this phase's
+     huge-file work) doesn't change that memory path at all — it adds
+     cheap pre-checks before opening, not a different way of loading
+     content once opening is decided.
+
+   This is the same category of gap Phase 1 shipped with (the 100 MB RSS
+   overrun) — documented and tracked rather than hidden, not blocking the
+   phase, per the project owner's explicit decision when closing Phase 4.
+
 ## Configuration & personalization (Phase 5, `v0.4.0`)
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |

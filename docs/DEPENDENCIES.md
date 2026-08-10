@@ -39,11 +39,12 @@ pulls in when it needs it.
 | Syntax | `tree-sitter` | 0.26.11 | No 1.0. Wired for real in Phase 3 (`lux-syntax`, incremental highlighting for the fixed 18-grammar set — ADR 0008 has the exact list; note it reads "17" in prose but TypeScript/TSX are two separate grammars, so the compiled-in set is 18). Grammars compiled into the binary (issue #3095 workaround), not depended on as Cargo crates — see ADR 0008 (corrects this row's earlier "ADR 0009" typo). |
 | Syntax (grammar C sources) | `cc` | 1.4.0 | Build-dependency only. Compiles each vendored grammar's generated `parser.c`/`scanner.c` in `lux-syntax/build.rs`. |
 | Syntax (grammar entry points) | `tree-sitter-language` | 0.1.7 | Tiny `no_std` crate providing `LanguageFn`, the safe wrapper `tree-sitter` itself uses around a grammar's raw `extern "C" fn tree_sitter_<lang>() -> *const ()`. Independently versioned from `tree-sitter` core (0.1.x, not 0.26.x) — that's expected, it's a stable ABI-only shim, not a grammar. |
-| Search | `ignore` | 0.4.31 | ripgrep family. |
-| Search | `grep-searcher` | 0.1.17 | ripgrep family. |
-| Search | `grep-regex` | 0.1.14 | **Correction**: the master prompt cited "~0.4.25", which is not a version that exists for this crate (likely confused with the `grep` facade crate or `globset`). 0.1.14 is this crate's actual latest. Does not change the choice. |
+| Search | `ignore` | 0.4.33 | ripgrep family. Wired for real in Phase 4 (`lux-search::find_in_files`, and `lux-workspace::index`'s one-time indexing scan — same crate, second consumer, no new entry needed). **Correction**: `docs/DEPENDENCIES.md` previously cited 0.4.31 (Phase 0's research date); re-verified while wiring this deliverable — `0.4.33` is what `ignore = "0.4.31"` actually resolves to today (semver-compatible patch releases), confirmed via `cargo tree`. Dual-licensed `Unlicense OR MIT`; no `deny.toml` change needed, MIT alone already satisfies it. |
+| Search | `grep-searcher` | 0.1.17 | ripgrep family. Wired for real in Phase 4. Same `Unlicense OR MIT` dual license as `ignore`. |
+| Search | `grep-regex` | 0.1.14 | **Correction**: the master prompt cited "~0.4.25", which is not a version that exists for this crate (likely confused with the `grep` facade crate or `globset`). 0.1.14 is this crate's actual latest, confirmed still current. Wired for real in Phase 4. Same `Unlicense OR MIT` dual license. |
 | Fuzzy matching | `nucleo` | 0.5.0 | Stalled since April 2024, confirmed still stalled. Works, used by Helix. Write characterization tests so a fork/replacement is cheap if it ever blocks us. |
-| FS watchers | `notify` | 8.2.0 | 9.0.0-rc.4 still an RC. Use 8.2.0 + debouncer. |
+| FS watchers | `notify` | 8.2.0 | 9.0.0-rc.4 still an RC. Use 8.2.0 + debouncer. Wired for real in Phase 4 (native watchers, `lux-workspace::watcher`). License is CC0-1.0, not previously in `deny.toml`'s allow list — added there, public-domain-equivalent, no copyleft. |
+| FS watchers (debounce) | `notify-debouncer-full` | 0.7.0 | The version that pairs with `notify` 8.2.0 — `0.8.0-rc.*` (crates.io's "latest") tracks `notify` 9's still-unstable RC instead; confirmed by resolving both against `notify = "8.2.0"` in a scratch project (`cargo add` picked 0.7.0 on its own, single resolved `notify` version, no duplicates). Pulls in `file-id` (MIT/Apache-2.0), already-allowed. |
 | Git | `gix` | 0.86.0 | Bumped from the cited 0.84.0 (minor, non-breaking). In-process only, no shell-out. |
 | LSP | `async-lsp` | 0.2.4 | Option A. |
 | LSP | `lsp-server` | 0.10.0 | Option B. |
@@ -54,6 +55,8 @@ pulls in when it needs it.
 | Terminal | `alacritty_terminal` | 0.26.0 | |
 | Plugins | `wasmtime` | 47.0.2 | Newer than the cited 45.0.1; no unpatched RUSTSEC advisory either way. Pin the exact version used in Phase 9's ADR. |
 | Config | `serde` + JSONC | — | No fixed version yet; picked when Phase 5 lands. |
+| Project files (`lux-workspace`) | `serde` + `serde_json` | 1.0.229 / 1.0.151 | Wired for real in Phase 4 (`.lux-project` multi-root file — ADR 0015). Plain JSON, not JSONC; that decision is independent of Phase 5's `lux-config` choice, which may still land a different JSONC crate. Both MIT/Apache-2.0, no new `deny.toml` entry needed. |
+| File tree delete (`lux-ui`) | `trash` | 5.2.6 | Wired for real in Phase 4 (virtualized file tree explorer's delete-to-system-trash operation). Not cited in the master prompt. The only actively-maintained cross-platform (Windows/macOS/Linux, freedesktop trash spec) "move to trash" crate with real adoption — no live alternative to weigh it against, so no dedicated ADR, just this entry. Pulls in `objc2`/`objc2-foundation` (Cocoa's `NSWorkspace` trash API) on macOS, already permissive-licensed; `cargo deny check` needed no new `deny.toml` entries. |
 
 ## Discarded, re-checked for a change of mind
 
