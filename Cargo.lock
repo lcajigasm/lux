@@ -1334,6 +1334,9 @@ version = "0.0.0"
 dependencies = [
  "criterion",
  "lux-core",
+ "lux-search",
+ "lux-syntax",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -1401,6 +1404,9 @@ dependencies = [
 [[package]]
 name = "lux-search"
 version = "0.0.0"
+dependencies = [
+ "nucleo",
+]
 
 [[package]]
 name = "lux-syntax"
@@ -1423,6 +1429,7 @@ dependencies = [
  "accesskit_winit",
  "lux-core",
  "lux-render",
+ "lux-search",
  "winit",
 ]
 
@@ -1511,6 +1518,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys 0.3.1",
+]
+
+[[package]]
+name = "nucleo"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5262af4c94921c2646c5ac6ff7900c2af9cbb08dc26a797e18130a7019c039d4"
+dependencies = [
+ "nucleo-matcher",
+ "parking_lot",
+ "rayon",
+]
+
+[[package]]
+name = "nucleo-matcher"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf33f538733d1a5a3494b836ba913207f14d9d4a1d3cd67030c5061bdd2cac85"
+dependencies = [
+ "memchr",
+ "unicode-segmentation",
 ]
 
 [[package]]

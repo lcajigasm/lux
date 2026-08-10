@@ -10,6 +10,9 @@ publish.workspace = true
 [dev-dependencies]
 criterion = "0.8.2"
 lux-core = { path = "../crates/lux-core", version = "0.0.0" }
+lux-search = { path = "../crates/lux-search", version = "0.0.0" }
+lux-syntax = { path = "../crates/lux-syntax", version = "0.0.0" }
+tree-sitter = "0.26.11"
 
 [[bench]]
 name = "smoke"
@@ -17,4 +20,8 @@ harness = false
 
 [[bench]]
 name = "phase1_budgets"
+harness = false
+
+[[bench]]
+name = "phase3_budgets"
 harness = false
