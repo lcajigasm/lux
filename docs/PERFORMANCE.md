@@ -29,9 +29,11 @@ Phase 0 smoke benchmark (`smoke_fibonacci_20`, still just pipeline-proving),
 measurable, and `phase3_budgets` (tree-sitter reparse after a keystroke,
 Goto Anything's 100k-file ranking, and the reparse+highlight component for
 the 16 ms frame budget — see the measurement history below) added at
-Phase 3's close-out. Real budget benchmarks land in the phase that
-implements the capability they measure (see the phase-by-phase acceptance
-criteria in `LUX_PROMPT_MAESTRO.md`).
+Phase 3's close-out, and `phase4_budgets` (`find_in_files/search_1gb_corpus`,
+a real on-disk 1 GB corpus) added with Phase 4's "Find in Files" deliverable.
+Real budget benchmarks land in the phase that implements the capability
+they measure (see the phase-by-phase acceptance criteria in
+`LUX_PROMPT_MAESTRO.md`).
 
 `crates/lux-render/benches/phase2_budgets.rs` holds Phase 2's three named
 budgets (cold start, keypress → pixel, scroll), added as *component*
@@ -157,3 +159,31 @@ See `benches/benches/phase3_budgets.rs` for the exact scenarios (source
 generation, edit-site selection, visible-range simulation) and
 `crates/lux-syntax/src/lib.rs`'s `highlight`/`highlight_range` doc
 comments for the API-level explanation.
+
+**2026-08-10, Phase 4 "Find in Files" deliverable, MacBook Pro M-series,
+`--release` (`cargo bench -p lux-benches --bench phase4_budgets --
+--save-baseline none`):**
+
+| Metric | Budget | Measured | Result |
+|---|---|---|---|
+| Find in files over 1 GB of code | < 2 s | **43.6 ms** (mean, 10 samples) | pass, ~46× margin |
+
+Real, on-disk corpus, not a synthetic timing estimate: 2,000 files across
+20 subdirectories, ~1.0722 GB total (`benches/benches/phase4_budgets.rs`'s
+`make_1gb_corpus`, generated fresh before the benchmark and removed after —
+see that file's own doc comment), searched end-to-end with
+`lux_search::find_in_files` for a literal needle placed on every 500th
+line (30,000 real matches collected via `SearchStream::wait_until_done`,
+not a dry run that stops at the first hit). The wide margin comes from two
+real properties of the implementation, not benchmark looseness: `ignore`'s
+`WalkParallel` fans the 2,000 files out across all available CPU cores
+(this reference hardware has far more than the single-threaded case would
+imply), and criterion's repeated sampling means every sample after the
+first benefits from the OS page cache already holding the corpus in
+memory — representative of a warm repeated search during a real working
+session, less so of a genuinely cold first search after a reboot. Neither
+caveat is unique to this benchmark (the 100 MB buffer-load benchmark above
+has the same page-cache dynamic); noted here because 46× margin is large
+enough that it's worth being explicit about what "43.6 ms" does and
+doesn't represent, rather than letting the number imply more precision
+than it has.

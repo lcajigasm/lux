@@ -13,6 +13,8 @@ pub use encoding::{DecodeError, Encoding};
 pub use eol::Eol;
 pub use indent::{Indent, IndentStyle};
 
+use crate::binary_detect;
+use crate::huge_file::{self, HugeFilePolicy};
 use ropey::Rope;
 use std::fs;
 use std::io;
@@ -25,6 +27,7 @@ pub struct Buffer {
     eol: Eol,
     indent: Indent,
     encoding: Encoding,
+    huge_file_mode: bool,
 }
 
 impl Buffer {
@@ -39,12 +42,56 @@ impl Buffer {
             eol,
             indent,
             encoding,
+            huge_file_mode: false,
         })
     }
 
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let bytes = fs::read(path)?;
         Self::from_bytes(&bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    }
+
+    /// Opens `path` the same way `open` does, but first checks — without
+    /// reading the file's full content — whether it should be refused as
+    /// binary or opened in huge-file mode (Phase 4 deliverable 8):
+    ///
+    /// 1. [`crate::binary_detect::looks_binary_path`] reads only a small
+    ///    prefix; a binary file is rejected right there, the same
+    ///    `DecodeError::Binary`/`InvalidData` error `open` would
+    ///    eventually produce, but without first reading the rest of a
+    ///    possibly huge binary file just to find out.
+    /// 2. [`crate::huge_file::classify_path`] reads only the file's
+    ///    metadata. A file at or above `policy.threshold_bytes` is still
+    ///    opened (there's no partial/virtualized load in this rope-backed
+    ///    `Buffer`), but [`Buffer::is_huge_file_mode`] comes back `true` —
+    ///    the real, queryable signal a caller uses to open it read-only
+    ///    and skip syntax highlighting. Enforcing "read-only" against
+    ///    `insert`/`delete` themselves is deliberately not done here: both
+    ///    are `Edit`/`Transaction`/`History`'s invertibility primitives,
+    ///    and a silent no-op would desync a captured `Edit::Delete`'s text
+    ///    from what actually happened to the rope — a real correctness
+    ///    hazard in code this deliverable has no reason to touch. The flag
+    ///    is real and correctly tracked; refusing edit commands against it
+    ///    is the future editor-session layer's job, once one exists.
+    pub fn open_with_policy(path: impl AsRef<Path>, policy: HugeFilePolicy) -> io::Result<Self> {
+        let path = path.as_ref();
+        if binary_detect::looks_binary_path(path)? {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                DecodeError::Binary,
+            ));
+        }
+        let huge = huge_file::classify_path(path, policy)?.is_huge();
+        let mut buffer = Self::open(path)?;
+        buffer.huge_file_mode = huge;
+        Ok(buffer)
+    }
+
+    /// `true` if this buffer was opened via `open_with_policy` against a
+    /// file at or above the policy's threshold. See `open_with_policy`'s
+    /// doc comment for exactly what this does and doesn't enforce today.
+    pub fn is_huge_file_mode(&self) -> bool {
+        self.huge_file_mode
     }
 
     pub fn text(&self) -> String {
@@ -220,6 +267,70 @@ mod tests {
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 
         fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn open_with_policy_marks_a_file_at_or_above_the_threshold_as_huge() {
+        let dir = temp_dir();
+        let path = dir.join("huge.txt");
+        fs::write(&path, vec![b'a'; 2000]).unwrap();
+
+        let buffer = Buffer::open_with_policy(&path, HugeFilePolicy::new(1000)).unwrap();
+        assert!(buffer.is_huge_file_mode());
+        assert_eq!(buffer.len_chars(), 2000);
+
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn open_with_policy_leaves_a_small_file_out_of_huge_file_mode() {
+        let dir = temp_dir();
+        let path = dir.join("small.txt");
+        fs::write(&path, "hello").unwrap();
+
+        let buffer = Buffer::open_with_policy(&path, HugeFilePolicy::default()).unwrap();
+        assert!(!buffer.is_huge_file_mode());
+
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn open_with_policy_rejects_a_binary_file_without_reading_it_fully() {
+        let dir = temp_dir();
+        let path = dir.join("binary.bin");
+        // Larger than the huge-file threshold used here, so a correct
+        // implementation must catch the binary content via the cheap
+        // prefix check rather than accidentally succeeding because the
+        // huge-file path skips the binary check.
+        let mut content = vec![b'a'; 2000];
+        content[10] = 0x00;
+        fs::write(&path, &content).unwrap();
+
+        let err = Buffer::open_with_policy(&path, HugeFilePolicy::new(1000)).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn open_with_policy_threshold_is_configurable() {
+        let dir = temp_dir();
+        let path = dir.join("medium.txt");
+        fs::write(&path, vec![b'a'; 500]).unwrap();
+
+        let lenient = Buffer::open_with_policy(&path, HugeFilePolicy::new(1_000_000)).unwrap();
+        assert!(!lenient.is_huge_file_mode());
+
+        let strict = Buffer::open_with_policy(&path, HugeFilePolicy::new(10)).unwrap();
+        assert!(strict.is_huge_file_mode());
+
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn a_freshly_opened_buffer_is_not_in_huge_file_mode() {
+        let buffer = Buffer::from_bytes(b"hello").unwrap();
+        assert!(!buffer.is_huge_file_mode());
     }
 
     #[test]
