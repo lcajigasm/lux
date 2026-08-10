@@ -3,7 +3,13 @@
 //! `lux-platform` (see `docs/ARCHITECTURE.md`).
 
 pub mod accessibility;
+pub mod command_palette;
 pub mod editor_view;
+pub mod goto_anything;
+pub mod minimap;
+pub mod search_bar;
+pub mod status_bar;
+pub mod tabs;
 pub mod theme;
 
 pub use accessibility::build_tree as build_accessibility_tree;
