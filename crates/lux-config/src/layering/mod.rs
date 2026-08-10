@@ -1,8 +1,8 @@
-//! Layered settings resolution (Phase 5 deliverable, narrowed scope: JSONC
-//! parsing, layered precedence, hot reload — schema publication and
-//! line/column *validation* against that schema are separate, later work;
-//! `jsonc`'s errors already carry line/column for the parse-failure case
-//! this scope does cover).
+//! Layered settings resolution: JSONC parsing, layered precedence, hot
+//! reload (`jsonc`/`watch`), and schema-backed validation with line/column
+//! diagnostics (`validate`, added once `crate::schema` existed for it to
+//! validate against — see that module's own doc comment for why it landed
+//! in a later loop than the rest of this module).
 //!
 //! Five layers, lowest precedence first: [`Layer::Default`] (built into the
 //! binary, no file), [`Layer::User`], [`Layer::Project`], [`Layer::Folder`],
@@ -29,6 +29,7 @@
 //! precedence order.
 
 pub mod jsonc;
+pub mod validate;
 pub mod watch;
 
 use std::collections::BTreeMap;
@@ -39,6 +40,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 pub use jsonc::JsoncError;
+pub use validate::{Diagnostic, validate};
 pub use watch::{ConfigWatcher, ReloadEvent};
 
 /// Precedence order is declaration order — `derive(Ord)` on a

@@ -96,6 +96,52 @@ pub fn find(key: &str) -> Option<&'static PropertySchema> {
     PROPERTIES.iter().find(|p| p.key == key)
 }
 
+/// The "esquema publicado" half of Phase 5 deliverable 1: `PROPERTIES`
+/// exported as a real [JSON Schema](https://json-schema.org/) document
+/// (draft-07), the standard format external tooling — a `$schema`
+/// reference in a real editor, a future language server, `jsonc-parser`-
+/// unrelated JSON Schema validators — already knows how to consume,
+/// instead of a Lux-specific format only this crate could read.
+/// `layering::validate` is this crate's *own* validator and doesn't
+/// depend on this function; the two independently agree because both
+/// read from the same [`PROPERTIES`] list.
+pub fn to_json_schema() -> serde_json::Value {
+    let mut properties = serde_json::Map::new();
+    for property in PROPERTIES {
+        let mut entry = serde_json::Map::new();
+        entry.insert(
+            "description".to_string(),
+            serde_json::Value::String(property.description.to_string()),
+        );
+        match property.kind {
+            PropertyKind::String => {
+                entry.insert("type".to_string(), serde_json::json!("string"));
+            }
+            PropertyKind::Integer => {
+                entry.insert("type".to_string(), serde_json::json!("integer"));
+            }
+            PropertyKind::Number => {
+                entry.insert("type".to_string(), serde_json::json!("number"));
+            }
+            PropertyKind::Boolean => {
+                entry.insert("type".to_string(), serde_json::json!("boolean"));
+            }
+            PropertyKind::Enum(values) => {
+                entry.insert("type".to_string(), serde_json::json!("string"));
+                entry.insert("enum".to_string(), serde_json::json!(values));
+            }
+        }
+        properties.insert(property.key.to_string(), serde_json::Value::Object(entry));
+    }
+    serde_json::json!({
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Lux settings",
+        "type": "object",
+        "properties": serde_json::Value::Object(properties),
+        "additionalProperties": false,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,5 +164,33 @@ mod tests {
     #[test]
     fn find_returns_none_for_an_unknown_key() {
         assert!(find("editor.doesNotExist").is_none());
+    }
+
+    #[test]
+    fn json_schema_has_an_entry_for_every_property() {
+        let schema = to_json_schema();
+        let properties = schema["properties"].as_object().unwrap();
+        assert_eq!(properties.len(), PROPERTIES.len());
+        for property in PROPERTIES {
+            assert!(
+                properties.contains_key(property.key),
+                "missing {} in generated JSON Schema",
+                property.key
+            );
+        }
+    }
+
+    #[test]
+    fn json_schema_represents_an_enum_property_with_type_and_enum() {
+        let schema = to_json_schema();
+        let indent_style = &schema["properties"]["editor.indentStyle"];
+        assert_eq!(indent_style["type"], "string");
+        assert_eq!(indent_style["enum"], serde_json::json!(["tab", "space"]));
+    }
+
+    #[test]
+    fn json_schema_rejects_additional_properties() {
+        let schema = to_json_schema();
+        assert_eq!(schema["additionalProperties"], false);
     }
 }
