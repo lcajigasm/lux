@@ -1,10 +1,10 @@
-# Receipt: Goto Anything (núcleo + sufijos fichero:línea)
+# Receipt: Goto Anything (core + file:line suffix)
 
 - Phase: 03
 - Crate(s): lux-search, lux-ui
-- Goal: El entregable "Goto Anything (nucleo + sufijos fichero:linea)" de
-  la Fase 3 ("Sintaxis, navegación y paleta") de `LUX_PROMPT_MAESTRO.md`
-  está completo y su gate pasa sin ningún fallo ni test ignorado.
+- Goal: The "Goto Anything (nucleo + sufijos fichero:linea)" deliverable of
+  Phase 3 ("Syntax, navigation, and palette") from `LUX_PROMPT_MAESTRO.md`
+  is complete and its gate passes with no failures and no ignored tests.
 - Verify: `cargo test -p lux-ui goto_anything::`
 - Iterations: 1 / 10
 - Result: passed
@@ -12,92 +12,91 @@
 - Closed: 2026-08-10
 - Notes:
 
-  **Alcance.** El entregable 6 completo de la Fase 3 en
-  `LUX_PROMPT_MAESTRO.md` agrupa en una sola frase varias capacidades:
-  fuzzy con `nucleo`, sufijos `fichero:línea`/`@símbolo`/`#texto`,
-  historial de recientes y previsualización. El objetivo de este loop lo
-  acota explícitamente a "núcleo + sufijos fichero:línea": el motor de
-  ranking fuzzy respaldado por `nucleo`, más el parseo del sufijo
-  `:línea` estilo Sublime. `@símbolo`, `#texto`, historial y
-  previsualización quedan fuera, igual que la UI real (`Cmd+P`, diálogo,
-  keybinding) y el índice real de ficheros del proyecto (eso es
-  `lux-workspace`, Fase 4, todavía no construido). Por eso
-  `docs/STATUS.md` mantiene la fila "Goto Anything" en `not-started`
-  (regla 1: una función existe entera o no existe) y documenta el avance
-  interno en prosa en vez de marcar la fila como completa.
+  **Scope.** Deliverable 6 of Phase 3 in `LUX_PROMPT_MAESTRO.md` bundles
+  several capabilities into a single sentence: fuzzy matching with
+  `nucleo`, `file:line`/`@symbol`/`#text` suffixes, recent-files
+  history, and preview. This loop's goal explicitly scopes it down to
+  "core + file:line suffix": the fuzzy ranking engine backed by
+  `nucleo`, plus parsing of the Sublime-style `:line` suffix.
+  `@symbol`, `#text`, history, and preview are out of scope, as is the
+  real UI (`Cmd+P`, dialog, keybinding) and the real project file index
+  (that's `lux-workspace`, Phase 4, not yet built). That's why
+  `docs/STATUS.md` keeps the "Goto Anything" row as `not-started`
+  (rule 1: a feature exists whole or it does not exist) and documents
+  the internal progress in prose instead of marking the row as complete.
 
-  **Dónde vive el motor de matching.**
-  `docs/adr/0009-search-and-fuzzy-matching.md` ya decidía, antes de este
-  loop, que `nucleo` vive en `lux-search` ("`lux-search` embeds ... `nucleo`
-  for fuzzy matching in Goto Anything and the command palette") — no en
-  `lux-ui`. Se siguió esa decisión: `lux-search::fuzzy::rank_paths` es la
-  única función nueva ahí, un envoltorio fino sobre
-  `nucleo::pattern::Pattern::match_list` con
-  `Config::DEFAULT.match_paths()` (el preset de `nucleo` pensado para
-  rutas: `/` puntúa como límite de segmento). `lux-ui::goto_anything` sólo
-  conoce el parseo del sufijo y compone el resultado; no reimplementa
-  nada del matching. `lux-ui` ya podía depender de `lux-search` según
-  `docs/ARCHITECTURE.md` (crate de dominio, no UI/render).
+  **Where the matching engine lives.**
+  `docs/adr/0009-search-and-fuzzy-matching.md` already decided, before
+  this loop, that `nucleo` lives in `lux-search` ("`lux-search` embeds ... `nucleo`
+  for fuzzy matching in Goto Anything and the command palette") — not in
+  `lux-ui`. That decision was followed: `lux-search::fuzzy::rank_paths` is
+  the only new function there, a thin wrapper over
+  `nucleo::pattern::Pattern::match_list` with
+  `Config::DEFAULT.match_paths()` (the `nucleo` preset designed for
+  paths: `/` scores as a segment boundary). `lux-ui::goto_anything` only
+  knows about suffix parsing and composes the result; it does not
+  reimplement any of the matching. `lux-ui` was already allowed to depend
+  on `lux-search` per `docs/ARCHITECTURE.md` (a domain crate, not
+  UI/render).
 
-  **Por qué `Pattern::match_list` y no el `Nucleo` de alto nivel.** El
-  crate `nucleo` expone dos capas: `Nucleo<T>`, pensado para *pickers*
-  interactivos (hilos de fondo, `tick()`, snapshots) — necesario cuando
-  hay que rankear cientos de miles de ficheros sin bloquear un hilo de
-  UI, pero no algo que este loop deba montar (no hay UI ni índice real
-  de proyecto todavía); y `Pattern::match_list`, la función síncrona de
-  una sola hebra que la propia documentación de `nucleo` describe como
-  la vía recomendada para listas pequeñas y que da resultados
-  deterministas, sin hilos ni temporizadores, ideal para tests. El
-  reparto entre los dos vive documentado en el propio ADR 0009 y en el
-  encabezado de `fuzzy.rs`: cuando el índice real de Fase 4 exista y el
-  volumen lo justifique, migrar a `Nucleo<T>` es un cambio local a
-  `lux-search`, no a la sintaxis del sufijo en `lux-ui`.
+  **Why `Pattern::match_list` and not the high-level `Nucleo`.** The
+  `nucleo` crate exposes two layers: `Nucleo<T>`, designed for
+  interactive *pickers* (background threads, `tick()`, snapshots) —
+  necessary when you need to rank hundreds of thousands of files without
+  blocking a UI thread, but not something this loop should set up (there
+  is no UI or real project index yet); and `Pattern::match_list`, the
+  synchronous, single-threaded function that `nucleo`'s own
+  documentation describes as the recommended path for small lists and
+  which gives deterministic results, with no threads or timers, ideal
+  for tests. The split between the two is documented in ADR 0009 itself
+  and in the header of `fuzzy.rs`: when the real Phase 4 index exists
+  and volume justifies it, migrating to `Nucleo<T>` is a local change
+  to `lux-search`, not to the suffix syntax in `lux-ui`.
 
-  **Parseo del sufijo `fichero:línea`.** `Query::parse` busca el último
-  `:` con `rsplit_once`; sólo lo trata como sufijo de línea si lo que
-  sigue analiza como un entero positivo (`line @ 1..`, 1-based como
-  Sublime). Cualquier otra cosa — sin dos puntos, `:0`, `:abc`, o un `:`
-  final sin dígitos todavía (el estado transitorio mientras el usuario
-  sigue escribiendo) — se deja como texto literal de búsqueda en vez de
-  perderse o fallar, para que teclear progresivamente nunca descarte lo
-  ya escrito.
+  **Parsing the `file:line` suffix.** `Query::parse` looks for the
+  last `:` with `rsplit_once`; it only treats it as a line suffix if
+  what follows parses as a positive integer (`line @ 1..`, 1-based like
+  Sublime). Anything else — no colon, `:0`, `:abc`, or a trailing `:`
+  with no digits yet (the transient state while the user keeps typing)
+  — is left as literal search text instead of being discarded or
+  failing, so that progressive typing never drops what's already been
+  typed.
 
-  **Tests, no sólo cobertura.** El ADR 0009 pide explícitamente "tests
-  de caracterización" del comportamiento de ranking de `nucleo`, para
-  que un fork o un reemplazo propio sea barato si hace falta — por eso
-  `lux-search::fuzzy` tiene sus propios tests (bonus de límite de ruta,
-  sensibilidad a mayúsculas `Smart`, hueco entre caracteres, query
-  vacío) además de los que exige el gate de `lux-ui`. `goto_anything::`
-  en `lux-ui` cubre el parseo del sufijo (texto plano, sufijo válido,
-  `:0` rechazado, sufijo no numérico, `:` final sin dígitos, sufijo sin
-  parte de fichero) y la composición completa (`search`): línea
-  adjuntada a cada resultado, candidatos no coincidentes excluidos,
-  query vacío tras el sufijo devuelve todos los candidatos sin
-  puntuar (caso "saltar a la línea N del fichero actual").
+  **Tests, not just coverage.** ADR 0009 explicitly asks for
+  "characterization tests" of `nucleo`'s ranking behavior, so that a
+  fork or an in-house replacement is cheap if needed — that's why
+  `lux-search::fuzzy` has its own tests (path-boundary bonus, `Smart`
+  case sensitivity, gap between characters, empty query) in addition to
+  the ones required by the `lux-ui` gate. `goto_anything::` in `lux-ui`
+  covers suffix parsing (plain text, valid suffix, `:0` rejected,
+  non-numeric suffix, trailing `:` with no digits, suffix with no file
+  part) and full composition (`search`): line attached to each result,
+  non-matching candidates excluded, empty query after the suffix returns
+  all candidates unscored (the "jump to line N of the current file"
+  case).
 
-  **Verificación real.** `cargo test -p lux-ui goto_anything::`: 10/10
-  passed, 0 ignorados. `cargo test -p lux-search fuzzy::`: 6/6 passed.
-  Gate completo del repo en verde: `cargo run -p xtask` (fmt, clippy
-  `-D warnings` en el workspace entero — se corrigió un
-  `collapsible_if` real detectado por clippy en `Query::parse`,
-  `cargo test --workspace`: 235 tests en `lux-core` + el resto del
-  workspace sin regresiones, `cargo deny check` — la licencia MPL-2.0 de
-  `nucleo`/`nucleo-matcher` pasa el check de licencias, sin duplicados
-  nuevos —, límites de fichero, aislamiento de `lux-core`).
-  `crates/lux-search/src/fuzzy.rs` (75 líneas) y
-  `crates/lux-ui/src/goto_anything.rs` (195 líneas) muy lejos del límite
-  de 600; ningún struct nuevo pasa de 3 campos. Verificado sólo en
-  macOS, misma limitación documentada en el resto de `docs/STATUS.md`.
+  **Real verification.** `cargo test -p lux-ui goto_anything::`: 10/10
+  passed, 0 ignored. `cargo test -p lux-search fuzzy::`: 6/6 passed.
+  Full repo gate green: `cargo run -p xtask` (fmt, clippy `-D warnings`
+  across the whole workspace — fixed a real `collapsible_if` flagged by
+  clippy in `Query::parse`, `cargo test --workspace`: 235 tests in
+  `lux-core` plus the rest of the workspace with no regressions,
+  `cargo deny check` — the MPL-2.0 license of `nucleo`/`nucleo-matcher`
+  passes the license check, no new duplicates —, file limits, `lux-core`
+  isolation). `crates/lux-search/src/fuzzy.rs` (75 lines) and
+  `crates/lux-ui/src/goto_anything.rs` (195 lines) well below the
+  600-line limit; no new struct exceeds 3 fields. Verified on macOS
+  only, the same limitation documented throughout the rest of
+  `docs/STATUS.md`.
 
-  **Qué queda fuera de este entregable** (resto de la Fase 3, sin
-  tocar): sufijos `@símbolo` y `#texto`, historial de recientes,
-  previsualización, la UI real de `Cmd+P` (no existe ninguna UI de
-  interacción en `lux-ui` todavía, sólo widgets pasivos), el índice real
-  de ficheros del proyecto (`lux-workspace`, Fase 4), paleta de
-  comandos, barra de búsqueda/reemplazo, pestañas/barra de estado,
-  minimapa. Se dejó intacto, sin tocar ni comitear, el trabajo no
-  relacionado que ya estaba pendiente en el árbol de trabajo al empezar
-  este loop (`crates/lux-syntax/src/lib.rs` modificado,
-  `crates/lux-syntax/src/indent_rules.rs` y el receipt de auto-indent sin
-  seguimiento) — es el entregable anterior, ya resuelto y con su propio
-  receipt, sólo pendiente de commit por quien lo cierre.
+  **What's out of scope for this deliverable** (the rest of Phase 3,
+  untouched): `@symbol` and `#text` suffixes, recent-files history,
+  preview, the real `Cmd+P` UI (no interactive UI exists in `lux-ui`
+  yet, only passive widgets), the real project file index
+  (`lux-workspace`, Phase 4), command palette, search/replace bar,
+  tabs/status bar, minimap. Left untouched, neither modified nor
+  committed, was the unrelated work already pending in the working tree
+  when this loop started (`crates/lux-syntax/src/lib.rs` modified,
+  `crates/lux-syntax/src/indent_rules.rs` and the auto-indent receipt
+  untracked) — that is the previous deliverable, already resolved and
+  with its own receipt, only pending a commit from whoever closes it.

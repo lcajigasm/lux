@@ -1,4 +1,4 @@
-# Phase 3 release notes — Sintaxis, navegación y paleta
+# Phase 3 release notes — Syntax, navigation, and palette
 
 Commits from `2b9c8f2` (end of Phase 2) to `HEAD` (9 commits).
 
@@ -14,7 +14,7 @@ Commits from `2b9c8f2` (end of Phase 2) to `HEAD` (9 commits).
   (`docs/adr/0009-search-and-fuzzy-matching.md`), generic over both plain
   file paths and arbitrary structs via a key function — reused by both
   Goto Anything and the command palette instead of two separate matchers.
-- **`lux-ui`**: five new modules, each the tested core/state layer for a
+- **`lux-ui`**: six new modules, each the tested core/state layer for a
   Phase 3 UI deliverable — `goto_anything` (fuzzy file search, `:line`
   suffix, recent-file history, preview), `command_palette` (a single
   command registry with `when`-clause context keys, structurally

@@ -1,11 +1,10 @@
-# Receipt: Barra de búsqueda/reemplazo + resaltado de coincidencias (entregable 8)
+# Receipt: Search/replace bar + match highlighting (deliverable 8)
 
 - Phase: 03
 - Crate(s): lux-ui
-- Goal: El entregable "Barra de busqueda/reemplazo + resaltado de
-  coincidencias" de la Fase 3 ("Sintaxis, navegación y paleta") de
-  `LUX_PROMPT_MAESTRO.md` está completo y su gate pasa sin ningún fallo ni
-  test ignorado.
+- Goal: The "Search/replace bar + match highlighting" deliverable of Phase 3
+  ("Syntax, navigation and palette") from `LUX_PROMPT_MAESTRO.md` is complete
+  and its gate passes with no failure and no ignored test.
 - Verify: `cargo test -p lux-ui search_bar::`
 - Iterations: 1 / 8
 - Result: passed
@@ -13,88 +12,88 @@
 - Closed: 2026-08-10
 - Notes:
 
-  **Alcance real de este entregable.** El texto completo es "Barra de
-  búsqueda y reemplazo en el buffer, con regex, y navegación entre
-  resultados con resaltado de todas las coincidencias". Antes de escribir
-  nada se revisó `crates/lux-core/src/find_replace.rs` — y resulta que el
-  motor entero ya existe y está completo desde la Fase 1: `Query`
-  (literal/case-insensitive/whole-word/regex, las cuatro vía un único
-  `regex::Regex` compilado), `find_all`, `find_next`, `replace_one`,
-  `replace_all`, todo transaccional/deshacible. `docs/STATUS.md` ya
-  marcaba "Find/replace in buffer" como `implemented` en la sección de
-  Fase 1. Lo que no existía era la parte de UI: qué resultado está
-  "activo" ahora mismo, y mantener eso sincronizado según cambia el
-  buffer. Ese es el trabajo real de este loop —
-  `crates/lux-ui/src/search_bar.rs`, un módulo nuevo, cero lógica de
-  matching nueva.
+  **Actual scope of this deliverable.** The full text is "Search and
+  replace bar in the buffer, with regex, and navigation between results
+  with highlighting of all matches". Before writing anything,
+  `crates/lux-core/src/find_replace.rs` was reviewed — and it turns out
+  the entire engine already exists and is complete since Phase 1: `Query`
+  (literal/case-insensitive/whole-word/regex, all four via a single
+  compiled `regex::Regex`), `find_all`, `find_next`, `replace_one`,
+  `replace_all`, all transactional/undoable. `docs/STATUS.md` already
+  marked "Find/replace in buffer" as `implemented` in the Phase 1
+  section. What didn't exist was the UI part: which result is "active"
+  right now, and keeping that in sync as the buffer changes. That is
+  the actual work of this loop — `crates/lux-ui/src/search_bar.rs`, a
+  new module, zero new matching logic.
 
-  **Por qué navegar por índice y no reusar `find_next`.** `lux-core`
-  también expone `find_next(buffer, query, after: Position)`, que busca el
-  siguiente match a partir de una posición, con wraparound — pero está
-  pensado para "saltar al resultado más cercano al cursor", no para una
-  barra que ya necesita la lista completa de coincidencias en memoria para
-  resaltarlas todas. Ya que esa lista existe siempre (`SearchBar::matches`),
-  navegar es sólo incrementar/decrementar un índice con módulo — sin
-  volver a ejecutar la regex en cada `next_match()`/`previous_match()`, y
-  sin necesitar convertir posiciones. `find_next` queda intacto y sigue
-  siendo la función correcta para otros casos (p. ej. un futuro "buscar
-  desde el cursor" en la Fase de wiring de UI real).
+  **Why navigate by index instead of reusing `find_next`.** `lux-core`
+  also exposes `find_next(buffer, query, after: Position)`, which finds
+  the next match starting from a position, with wraparound — but it is
+  designed for "jump to the result closest to the cursor", not for a bar
+  that already needs the full list of matches in memory in order to
+  highlight all of them. Since that list always exists
+  (`SearchBar::matches`), navigating is just incrementing/decrementing an
+  index modulo the count — without re-running the regex on every
+  `next_match()`/`previous_match()`, and without needing to convert
+  positions. `find_next` is left untouched and remains the correct
+  function for other cases (e.g. a future "search from cursor" in the
+  real UI wiring phase).
 
-  **`next`/`previous` se llaman `next_match`/`previous_match`.** Primer
-  intento con los nombres cortos; clippy (`should_implement_trait`) los
-  rechazó porque `fn next(&mut self) -> Option<T>` se confunde con
-  `Iterator::next` — nombre más específico, sin implementar `Iterator`
-  (no tendría sentido: la "iteración" aquí tiene estado de navegación
-  bidireccional con wraparound, no es un consumo lineal de una sola
-  pasada).
+  **`next`/`previous` are named `next_match`/`previous_match`.** First
+  attempt used the short names; clippy (`should_implement_trait`)
+  rejected them because `fn next(&mut self) -> Option<T>` gets confused
+  with `Iterator::next` — a more specific name, without implementing
+  `Iterator` (which wouldn't make sense: the "iteration" here has
+  bidirectional navigation state with wraparound, not a linear
+  single-pass consumption).
 
-  **Regex inválido a medio escribir no borra los resultados.** `set_query`
-  llama a `find_all` con la query nueva *antes* de mutar `self`; si falla
-  (regex incompleto, p. ej. escribiendo `"foo("` letra a letra), el error
-  se propaga y el estado anterior (última query válida + sus matches) se
-  queda tal cual, en vez de vaciarse. Mismo criterio que ya se usó para el
-  sufijo `:línea` de Goto Anything: un estado transitorio inválido
-  mientras el usuario teclea no debe tirar el último resultado bueno.
+  **An invalid, half-typed regex does not clear the results.**
+  `set_query` calls `find_all` with the new query *before* mutating
+  `self`; if it fails (incomplete regex, e.g. typing `"foo("` letter by
+  letter), the error propagates and the previous state (last valid
+  query + its matches) stays as is, instead of being cleared. Same
+  criterion already used for the `:line` suffix in Goto Anything: an
+  invalid transitional state while the user is typing should not
+  discard the last good result.
 
-  **`replace_current` avanza "gratis".** Al reemplazar la coincidencia en
-  el índice `i` y recalcular `matches` contra el buffer ya mutado, esa
-  ocurrencia desaparece de la lista y todo lo posterior se desplaza un
-  índice hacia atrás — dejar `current` sin tocar tras el refresh hace que
-  apunte, sin ningún caso especial, a lo que antes era la *siguiente*
-  coincidencia. Verificado explícitamente en
+  **`replace_current` advances "for free".** By replacing the match at
+  index `i` and recalculating `matches` against the already-mutated
+  buffer, that occurrence disappears from the list and everything after
+  it shifts one index back — leaving `current` untouched after the
+  refresh means it points, with no special case at all, to what used to
+  be the *next* match. Explicitly verified in
   `replace_current_replaces_and_advances_to_what_was_the_next_match`.
 
-  **Verificación real.** `cargo test -p lux-ui search_bar::`: 11/11
-  passed, 0 ignorados (cálculo de matches + arranque en el primero, sin
-  matches, opciones regex/case-insensitive combinadas, regex inválido
-  preserva estado previo, wraparound en ambas direcciones, sin matches
-  devuelve `None`, `refresh` recoge ediciones hechas fuera de la barra,
-  reemplazo único con avance automático, reemplazo único sin coincidencia
-  activa es no-op, reemplazo único deshacible vía la `Transaction`
-  devuelta, reemplazo global deja la lista vacía). Un fallo real durante
-  el desarrollo: dos aserciones de test con un rango mal calculado a mano
-  (`17..20` en vez de `16..19` para la tercera "cat" de
-  `"cat bat cat hat cat"`) — error de aritmética en el test, no del
-  código; corregido tras contar los índices con cuidado. Gate completo del
-  repo en verde: `cargo run -p xtask` (fmt — aplicado tras escribir el
-  fichero; clippy `-D warnings` en el workspace entero — el único hallazgo
-  real fue el de `next`/`previous` de arriba; `cargo test --workspace`:
-  235 tests en `lux-core` + el resto del workspace sin regresiones —
-  incluye los 26 tests de `find_replace::` reverificados intactos; `cargo
-  deny check`; límites de fichero — `search_bar.rs` en 283 líneas, lejos
-  del límite de 600; aislamiento de `lux-core`). `SearchBar` tiene 3
-  campos. No se añadió ninguna dependencia nueva: todo sobre lo que ya
-  exponía `lux-core` (`buffer`, `find_replace`, `history`, `selection`).
-  Verificado sólo en macOS, misma limitación documentada en el resto de
-  `docs/STATUS.md`.
+  **Actual verification.** `cargo test -p lux-ui search_bar::`: 11/11
+  passed, 0 ignored (match calculation + starting on the first one, no
+  matches, combined regex/case-insensitive options, invalid regex
+  preserves previous state, wraparound in both directions, no matches
+  returns `None`, `refresh` picks up edits made outside the bar, single
+  replace with automatic advance, single replace with no active match is
+  a no-op, single replace is undoable via the returned `Transaction`,
+  global replace leaves the list empty). One real failure during
+  development: two test assertions with a manually miscalculated range
+  (`17..20` instead of `16..19` for the third "cat" in
+  `"cat bat cat hat cat"`) — an arithmetic error in the test, not in the
+  code; fixed after carefully counting the indices. Full repo gate
+  green: `cargo run -p xtask` (fmt — applied after writing the file;
+  clippy `-D warnings` across the whole workspace — the only real
+  finding was the `next`/`previous` one above; `cargo test --workspace`:
+  235 tests in `lux-core` + the rest of the workspace with no
+  regressions — including the 26 `find_replace::` tests reverified
+  intact; `cargo deny check`; file limits — `search_bar.rs` at 283
+  lines, well under the 600 limit; `lux-core` isolation). `SearchBar`
+  has 3 fields. No new dependency was added: everything is built on top
+  of what `lux-core` already exposed (`buffer`, `find_replace`,
+  `history`, `selection`). Verified only on macOS, same documented
+  limitation as the rest of `docs/STATUS.md`.
 
-  **Qué queda fuera de este entregable** (resto de la Fase 3, sin tocar):
-  la UI real de la barra (`Cmd+F`/`Cmd+H`, diálogo, keybindings — Fase 5),
-  el paso de resaltado real en `EditorView` (no existe ninguna UI de
-  interacción en `lux-ui` todavía, mismo estado que dejaron los dos
-  receipts anteriores de esta fase), pestañas/barra de estado, minimapa.
-  Se dejó intacto, sin tocar ni comitear, el trabajo pendiente de
-  entregables previos que ya estaba en el árbol al empezar este loop
-  (auto-indent en `lux-syntax`, y Goto Anything / paleta de comandos de
-  los dos loops anteriores, cada uno con su propio receipt, aún sin
-  commitear).
+  **What is out of scope for this deliverable** (rest of Phase 3,
+  untouched): the actual bar UI (`Cmd+F`/`Cmd+H`, dialog, keybindings —
+  Phase 5), the actual highlighting pass in `EditorView` (no interaction
+  UI exists yet in `lux-ui`, same state left by the two previous
+  receipts of this phase), tabs/status bar, minimap. Left untouched, not
+  touched or committed, the pending work from previous deliverables that
+  was already in the tree when this loop started (auto-indent in
+  `lux-syntax`, and Goto Anything / command palette from the two
+  previous loops, each with its own receipt, still uncommitted).

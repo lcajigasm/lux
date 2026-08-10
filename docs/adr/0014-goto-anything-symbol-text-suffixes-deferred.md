@@ -6,19 +6,20 @@ Accepted.
 
 ## Context
 
-Phase 3 deliverable 6 (`LUX_PROMPT_MAESTRO.md`) names four things in one
-sentence: "fuzzy sobre ficheros del proyecto con `nucleo`, con sintaxis de
-sufijo estilo Sublime (`fichero:línea`, `@símbolo`, `#texto`), historial de
-recientes y previsualización." The Phase 3 work that landed
+Phase 3 deliverable 6 (`LUX_PROMPT_MAESTRO.md`, originally written in
+Spanish) names four things in one sentence: "fuzzy matching over project
+files with `nucleo`, with Sublime-style suffix syntax (`file:line`,
+`@symbol`, `#text`), recent-file history, and preview." The Phase 3 work
+that landed
 (`docs/receipts/phase-03-goto-anything-nucleo-sufijos-ficherolinea.md`)
-built the fuzzy core and the `:línea` suffix only, and left the rest for
+built the fuzzy core and the `:line` suffix only, and left the rest for
 this note to resolve as part of closing the phase.
 
-Of the remaining three, two — `@símbolo` and `#texto` — aren't just
+Of the remaining three, two — `@symbol` and `#text` — aren't just
 unbuilt UI, they need capabilities this project's own phase plan assigns
 to *later* phases:
 
-- **`@símbolo`** (jump to a symbol by name) needs a real symbol index —
+- **`@symbol`** (jump to a symbol by name) needs a real symbol index —
   function/type/variable names extracted from source. The two credible
   sources for that are LSP `workspace/symbol` (Phase 7 — `lux-lsp`,
   `docs/adr/0011-lsp-client-libraries.md`) or a tree-sitter-based outline
@@ -26,10 +27,11 @@ to *later* phases:
   (Phase 3 built highlighting, not symbol extraction) and would be a new
   per-grammar query set to design, name, and vendor for all 18 languages —
   real new scope, not a two-line addition.
-- **`#texto`** (jump to a line containing arbitrary text, across the whole
+- **`#text`** (jump to a line containing arbitrary text, across the whole
   project) needs full-text search across every project file. That's
-  Phase 4 deliverable 4, named explicitly: "Find in Files con el motor de
-  ripgrep embebido (`ignore` + `grep-searcher` + `grep-regex`)." Building
+  Phase 4 deliverable 4, named explicitly: "Find in Files with the
+  embedded ripgrep engine (`ignore` + `grep-searcher` + `grep-regex`)."
+  Building
   a second, parallel full-text search path inside `lux-ui::goto_anything`
   now would mean either a throwaway implementation that gets replaced when
   Phase 4 lands, or accidentally building Phase 4 early.
@@ -44,9 +46,9 @@ compile error").
 
 ## Decision
 
-`@símbolo` and `#texto` are deferred: `@símbolo` to Phase 7 (once `lux-lsp`
+`@symbol` and `#text` are deferred: `@symbol` to Phase 7 (once `lux-lsp`
 exists and can serve `workspace/symbol`, or once a tree-sitter outline
-query set is deliberately scoped as its own piece of work), `#texto` to
+query set is deliberately scoped as its own piece of work), `#text` to
 Phase 4 deliverable 4 (once the ripgrep-backed Find in Files engine
 exists, `lux-ui::goto_anything` can call the same engine for the `#`
 prefix instead of building a second one).
@@ -61,11 +63,13 @@ two dependencies above actually lands.
 Recent-file history and preview, the other two items named in the same
 deliverable sentence, have no such cross-phase dependency — history is
 pure state (same "logical clock" recency tracking already built for
-`command_palette::CommandRegistry`), and preview only needs
-`lux-core::buffer::Buffer::open` to read the target file's content, both
-achievable inside Phase 3's own scope. They're implemented as part of
-closing this phase, not deferred; see `docs/STATUS.md`'s Goto Anything
-entry for what shipped.
+`command_palette::CommandRegistry`), and preview only needs a snippet of
+an already-loaded `lux-core::buffer::Buffer` (reading the file itself is
+the caller's job, off the UI thread — golden rule #6, `lux-ui::
+goto_anything::preview` does no I/O of its own), both achievable inside
+Phase 3's own scope. They're implemented as part of closing this phase,
+not deferred; see `docs/STATUS.md`'s Goto Anything entry for what
+shipped.
 
 ## Alternatives considered
 
@@ -77,7 +81,7 @@ Phase 7/a dedicated outline-query deliverable's job, not something to
 half-do inside a Phase 3 closing pass.
 
 Shelling out to `ripgrep`/reusing `grep` crates directly inside
-`goto_anything` for `#texto` instead of waiting for `lux-search`'s Find in
+`goto_anything` for `#text` instead of waiting for `lux-search`'s Find in
 Files — rejected: `lux-search` is explicitly where `ignore` +
 `grep-searcher` + `grep-regex` are meant to live (`docs/ARCHITECTURE.md`),
 and building the same integration twice (once ad hoc here, once for real

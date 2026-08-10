@@ -1,10 +1,10 @@
-# Receipt: Paleta de comandos unificada con menús (entregable 7)
+# Receipt: Command palette unified with menus (deliverable 7)
 
 - Phase: 03
 - Crate(s): lux-search, lux-ui
-- Goal: El entregable "Paleta de comandos unificada con menus" de la Fase 3
-  ("Sintaxis, navegación y paleta") de `LUX_PROMPT_MAESTRO.md` está
-  completo y su gate pasa sin ningún fallo ni test ignorado.
+- Goal: The deliverable "Command palette unified with menus" of Phase 3
+  ("Syntax, navigation and palette") of `LUX_PROMPT_MAESTRO.md` is
+  complete and its gate passes with no failure and no ignored test.
 - Verify: `cargo test -p lux-ui command_palette::`
 - Iterations: 1 / 10
 - Result: passed
@@ -12,114 +12,114 @@
 - Closed: 2026-08-10
 - Notes:
 
-  **Alcance.** El entregable 7 completo dice: "registro único de comandos
-  con categorías, ranking por uso reciente y *context keys* (`when`
-  clauses) para habilitación contextual. Todo comando de menú debe estar
-  en la paleta". No hay todavía ninguna UI interactiva en `lux-ui` (sólo
-  widgets pasivos, mismo estado que dejó el receipt de Goto Anything), así
-  que no existe ningún menú real que "unificar". Por eso, igual que con
-  Goto Anything, `docs/STATUS.md` mantiene la fila "Command palette" en
-  `not-started` (regla 1) y documenta en prosa lo que sí existe: el
-  registro único, el ranking fuzzy + recencia, y el parser de `when`
-  clauses — la parte de "unificación con menús" se resuelve por
-  construcción (ver más abajo), no con una UI que todavía no toca
-  construirse.
+  **Scope.** The full deliverable 7 reads: "single command registry
+  with categories, ranking by recent use and *context keys* (`when`
+  clauses) for contextual enablement. Every menu command must be
+  in the palette". There is still no interactive UI in `lux-ui` (only
+  passive widgets, the same state left by the Goto Anything receipt), so
+  no actual menu exists to "unify". For that reason, just as with
+  Goto Anything, `docs/STATUS.md` keeps the "Command palette" row at
+  `not-started` (rule 1) and documents in prose what does exist: the
+  single registry, the fuzzy + recency ranking, and the `when` clause
+  parser — the "unification with menus" part is resolved by
+  construction (see below), not with a UI that isn't due to be
+  built yet.
 
-  **Cómo se resuelve "todo comando de menú debe estar en la paleta" sin
-  que exista ningún menú.** La lectura literal de "unificado con menús"
-  cuando no hay menús sería imposible de verificar. La lectura que sí es
-  verificable ahora: hacer estructuralmente imposible que exista una lista
-  de comandos de menú separada del registro. `CommandRegistry` es el único
-  sitio de todo `lux-ui` donde se puede definir un comando — no hay ningún
-  tipo "ítem de menú" en el crate. Cuando exista un menú real, no tendrá
-  otra fuente de la que sacar sus ítems más que
-  `CommandRegistry::commands()`, el mismo registro que la paleta busca.
-  Eso es justamente lo que v0 hizo mal (dos listas mantenidas a mano que
-  divergieron) y lo que esto hace imposible por diseño, no por disciplina.
-  El test `no_separate_menu_list_every_registered_command_is_in_the_palette`
-  documenta esta propiedad: todo lo registrado aparece en una búsqueda sin
-  filtrar, porque no hay ninguna otra vía de registro.
+  **How "every menu command must be in the palette" is resolved
+  without any menu existing.** A literal reading of "unified with menus"
+  when there are no menus would be impossible to verify. The reading that
+  *is* verifiable now: make it structurally impossible for a list
+  of menu commands to exist separately from the registry. `CommandRegistry` is the
+  only place in all of `lux-ui` where a command can be defined — there is no
+  "menu item" type anywhere in the crate. When a real menu exists, it will have
+  no other source to pull its items from than
+  `CommandRegistry::commands()`, the same registry the palette searches.
+  That is exactly what v0 got wrong (two hand-maintained lists that
+  diverged) and what this makes impossible by design, not by discipline.
+  The test `no_separate_menu_list_every_registered_command_is_in_the_palette`
+  documents this property: everything registered shows up in an unfiltered
+  search, because there is no other registration path.
 
-  **Motor de ranking: se reutiliza `nucleo`, no se reimplementa.**
-  `docs/adr/0009-search-and-fuzzy-matching.md` ya asigna `nucleo` a
-  `lux-search` para "Goto Anything and the command palette" — literalmente
-  este entregable. `lux-search::fuzzy::rank_paths` (del loop anterior) no
-  servía tal cual: usa `Config::match_paths()` (bonus por `/`) y opera
-  sobre `&str` puros, pero los comandos son structs y dos comandos pueden
-  compartir título (p. ej. "Format Document" en dos categorías). Se añadió
-  `rank_by`, genérica sobre cualquier `T` vía una función `key: Fn(&T) ->
-  &str`, con `Config` por defecto (sin el sesgo de rutas, que no tiene
-  sentido para títulos de comando) — sin duplicar la lógica de scoring de
-  `nucleo`, sólo el punto de entrada. `rank_paths` queda intacta.
+  **Ranking engine: `nucleo` is reused, not reimplemented.**
+  `docs/adr/0009-search-and-fuzzy-matching.md` already assigns `nucleo` to
+  `lux-search` for "Goto Anything and the command palette" — literally
+  this deliverable. `lux-search::fuzzy::rank_paths` (from the previous loop)
+  did not fit as-is: it uses `Config::match_paths()` (bonus for `/`) and operates
+  on plain `&str`, but commands are structs and two commands can
+  share a title (e.g. "Format Document" in two categories). `rank_by` was added,
+  generic over any `T` via a `key: Fn(&T) ->
+  &str` function, with the default `Config` (without the path bias, which makes
+  no sense for command titles) — without duplicating `nucleo`'s
+  scoring logic, only the entry point. `rank_paths` is left untouched.
 
-  **Ranking por uso reciente: reloj lógico, no reloj de pared.** En vez de
-  `SystemTime`/`Instant`, `CommandRegistry` lleva un contador `u64` que se
-  incrementa en cada `record_use`; sólo importa el orden relativo entre
-  comandos, nunca el tiempo real transcurrido, así que un contador
-  monótono es estrictamente suficiente y hace los tests deterministas sin
-  ningún `sleep` ni mock de reloj. Con query vacío, el orden es
-  puramente por recencia (usados primero, nunca-usados al final en orden
-  de registro). Con query no vacío, el criterio primario es la puntuación
-  fuzzy y la recencia sólo desempata puntuaciones iguales — para que un
-  comando viejo con mejor coincidencia nunca quede enterrado bajo uno
-  reciente con peor coincidencia.
+  **Ranking by recent use: logical clock, not wall clock.** Instead of
+  `SystemTime`/`Instant`, `CommandRegistry` carries a `u64` counter that
+  increments on every `record_use`; only the relative order between
+  commands matters, never real elapsed time, so a monotonic
+  counter is strictly sufficient and makes the tests deterministic without
+  any `sleep` or clock mock. With an empty query, the order is
+  purely by recency (used ones first, never-used ones last in registration
+  order). With a non-empty query, the primary criterion is the fuzzy
+  score and recency only breaks ties on equal scores — so that an
+  old command with a better match never ends up buried under a
+  recent one with a worse match.
 
-  **`when` clauses: parser real, no un `if` con un único caso.** Se
-  implementó un mini-lenguaje booleano de verdad —`&&`/`||`/`!`/`(...)`
-  con la precedencia estándar (`!` > `&&` > `||`)— con tokenizador y
-  parser recursivo-descendente propios (~90 líneas), sobre un `Context` de
-  claves booleanas (ausente = `false`, igual que el `when` de VS Code). Se
-  consideró limitar el alcance a "una sola clave, sin operadores" (más
-  ponytail), pero eso no es lo que dice el entregable ("*context keys*
-  (`when` clauses)") ni lo que hace falta de verdad: una regla de
-  habilitación contextual real casi siempre necesita negar o combinar más
-  de una condición (p. ej. `editorFocus && !hasSelection`), así que el
-  paréntesis/precedencia no es alcance especulativo, es el caso de uso
-  mínimo. Una cláusula vacía (`""`) es siempre verdadera (comando sin
-  restricción); una cláusula malformada (paréntesis sin cerrar, operador
-  colgante, carácter desconocido) es un `Err(WhenParseError)`, nunca se
-  trata en silencio como "siempre verdadera" ni como "siempre falsa" —
-  ambas opciones esconderían un error de configuración real.
+  **`when` clauses: a real parser, not an `if` with a single case.** A
+  genuine boolean mini-language was implemented — `&&`/`||`/`!`/`(...)`
+  with standard precedence (`!` > `&&` > `||`) — with its own tokenizer and
+  recursive-descent parser (~90 lines), over a `Context` of
+  boolean keys (absent = `false`, same as VS Code's `when`). Limiting the
+  scope to "a single key, no operators" was considered (more
+  ponytail), but that is not what the deliverable says ("*context keys*
+  (`when` clauses)") nor what is really needed: a real contextual
+  enablement rule almost always needs to negate or combine more
+  than one condition (e.g. `editorFocus && !hasSelection`), so
+  parentheses/precedence is not speculative scope, it is the minimum
+  use case. An empty clause (`""`) is always true (command with no
+  restriction); a malformed clause (unclosed parenthesis, dangling
+  operator, unknown character) is an `Err(WhenParseError)`, never
+  silently treated as "always true" or "always false" —
+  both options would hide a real configuration error.
 
-  **`register` puede fallar.** Un id de comando duplicado devuelve
-  `Err(DuplicateCommandId)` en vez de sobreescribir en silencio o entrar
-  en pánico — es un error de programación plausible (dos features
-  registrando el mismo id) sobre la única invariante estructural del
-  registro (ids únicos), así que merece manejo explícito, a diferencia de
-  casos que de verdad no pueden ocurrir.
+  **`register` can fail.** A duplicate command id returns
+  `Err(DuplicateCommandId)` instead of silently overwriting or
+  panicking — it is a plausible programming error (two features
+  registering the same id) over the registry's only structural invariant
+  (unique ids), so it deserves explicit handling, unlike
+  cases that truly cannot occur.
 
-  **Verificación real.** `cargo test -p lux-ui command_palette::`: 12/12
-  passed, 0 ignorados (registro duplicado, `when` con clave suelta,
-  negación/`&&`/`||`, precedencia `&&` sobre `||`, paréntesis
-  sobreescribiendo precedencia, cláusula vacía siempre verdadera,
-  cláusulas malformadas rechazadas, `search` filtrando por `when`, ranking
-  fuzzy por título, orden por recencia con query vacío, desempate por
-  recencia con query igual, y la invariante de "un único registro").
-  `cargo test -p lux-search fuzzy::`: 8/8 passed (los 6 tests previos de
-  `rank_paths` intactos más 2 nuevos de `rank_by`). Gate completo del
-  repo en verde: `cargo run -p xtask` (fmt — hubo que reformatear tras
-  escribir el fichero, aplicado con `cargo fmt`; clippy `-D warnings` en
-  el workspace entero — se corrigió un `useless_conversion` real
-  (`.into_iter()` innecesario al pasar un `Vec` a un parámetro
-  `impl IntoIterator`); `cargo test --workspace`: 235 tests en `lux-core` +
-  el resto del workspace sin regresiones; `cargo deny check`; límites de
-  fichero — `command_palette.rs` queda en 547 líneas, dentro del límite de
-  600 pero el más cercano al límite del proyecto hasta ahora, anotado aquí
-  para quien añada `@symbol`/`#text`/historial a Goto Anything o extienda
-  esta paleta, por si hace falta partir el fichero entonces; aislamiento
-  de `lux-core`). Ningún struct nuevo pasa de 4 campos
-  (`CommandRegistry`). Verificado sólo en macOS, misma limitación
-  documentada en el resto de `docs/STATUS.md`.
+  **Actual verification.** `cargo test -p lux-ui command_palette::`: 12/12
+  passed, 0 ignored (duplicate registration, `when` with a loose key,
+  negation/`&&`/`||`, `&&` precedence over `||`, parentheses
+  overriding precedence, empty clause always true, malformed
+  clauses rejected, `search` filtering by `when`, fuzzy ranking by
+  title, recency order with empty query, recency tie-break with equal
+  query, and the "single registry" invariant).
+  `cargo test -p lux-search fuzzy::`: 8/8 passed (the 6 previous `rank_paths`
+  tests untouched plus 2 new ones for `rank_by`). Full repo gate
+  green: `cargo run -p xtask` (fmt — reformatting was needed after
+  writing the file, applied with `cargo fmt`; clippy `-D warnings` across
+  the whole workspace — a real `useless_conversion` was fixed
+  (an unnecessary `.into_iter()` when passing a `Vec` to an
+  `impl IntoIterator` parameter); `cargo test --workspace`: 235 tests in `lux-core` +
+  the rest of the workspace with no regressions; `cargo deny check`; file
+  limits — `command_palette.rs` comes in at 547 lines, within the
+  600 limit but the closest to the project limit so far, noted here
+  for whoever adds `@symbol`/`#text`/history to Goto Anything or extends
+  this palette, in case the file needs splitting then;
+  `lux-core` isolation). No new struct exceeds 4 fields
+  (`CommandRegistry`). Verified on macOS only, the same limitation
+  documented elsewhere in `docs/STATUS.md`.
 
-  **Qué queda fuera de este entregable** (resto de la Fase 3, sin tocar):
-  la UI real de `Cmd+Shift+P` (no existe ninguna UI de interacción en
-  `lux-ui` todavía), el menú real cuyos ítems consumirían el registro,
-  keybindings (Fase 5, `lux-config`), Goto Anything `@símbolo`/`#texto`/
-  historial/previsualización (entregable anterior, ya cerrado con su
-  propio receipt), barra de búsqueda/reemplazo, pestañas/barra de estado,
-  minimapa. Se dejó intacto, sin tocar ni comitear, el trabajo pendiente
-  de entregables previos que ya estaba en el árbol al empezar este loop
-  (`crates/lux-syntax/src/lib.rs` modificado y
-  `crates/lux-syntax/src/indent_rules.rs` sin seguimiento, de auto-indent;
-  y los cambios de Goto Anything del loop anterior, ya con su propio
-  receipt, tampoco comiteados).
+  **What is out of scope for this deliverable** (the rest of Phase 3, untouched):
+  the actual `Cmd+Shift+P` UI (there is still no interaction UI in
+  `lux-ui`), the actual menu whose items would consume the registry,
+  keybindings (Phase 5, `lux-config`), Goto Anything `@symbol`/`#text`/
+  history/preview (previous deliverable, already closed with its
+  own receipt), search/replace bar, tabs/status bar,
+  minimap. Left untouched, neither edited nor committed, is the pending
+  work from previous deliverables that was already in the tree when this loop
+  started (`crates/lux-syntax/src/lib.rs` modified and
+  `crates/lux-syntax/src/indent_rules.rs` untracked, from auto-indent;
+  and the Goto Anything changes from the previous loop, already with their own
+  receipt, also uncommitted).

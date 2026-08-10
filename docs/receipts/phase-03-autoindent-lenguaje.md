@@ -1,10 +1,10 @@
-# Receipt: Auto-indent por lenguaje (entregable 5)
+# Receipt: Language-aware auto-indent (deliverable 5)
 
 - Phase: 03
 - Crate(s): lux-syntax
-- Goal: El entregable "Auto-indent por lenguaje" de la Fase 3 ("Sintaxis,
-  navegación y paleta") de `LUX_PROMPT_MAESTRO.md` está completo y su gate
-  pasa sin ningún fallo ni test ignorado.
+- Goal: The "Language-aware auto-indent" deliverable of Phase 3 ("Syntax,
+  navigation, and palette") of `LUX_PROMPT_MAESTRO.md` is complete and its gate
+  passes with no failures and no ignored tests.
 - Verify: `cargo test -p lux-syntax indent_rules::`
 - Iterations: 1 / 8
 - Result: passed
@@ -12,101 +12,101 @@
 - Closed: 2026-08-08
 - Notes:
 
-  **Diseño.** `crates/lux-syntax/src/indent_rules.rs`, nuevo módulo,
-  siguiendo el mismo patrón que `brackets.rs`/`folding.rs`: opera
-  directamente sobre `tree.root_node()`, sin dependencia de `lux-core` ni
-  de ninguna UI. `indent_level(&Document, source, row) -> usize` devuelve
-  el nivel de indentación (no espacios/tabs — esa conversión sigue siendo
-  responsabilidad de `lux-core::buffer::Indent`, que ya existe y no se
-  tocó) contando cuántos de los "nodos de cuerpo" del lenguaje (un
-  `block`, un `compound_statement`, un `object`, ...) encierran la fila
-  objetivo.
+  **Design.** `crates/lux-syntax/src/indent_rules.rs`, a new module,
+  following the same pattern as `brackets.rs`/`folding.rs`: it operates
+  directly on `tree.root_node()`, with no dependency on `lux-core` or
+  on any UI. `indent_level(&Document, source, row) -> usize` returns
+  the indentation level (not spaces/tabs — that conversion remains the
+  responsibility of `lux-core::buffer::Indent`, which already exists and was
+  not touched) by counting how many of the language's "body nodes" (a
+  `block`, a `compound_statement`, an `object`, ...) enclose the target
+  row.
 
-  **Por qué no es "contar todos los ancestros".** La primera idea —contar
-  filas de inicio distintas entre los ancestros del punto— funciona en
-  Rust/C (el header y su `{` comparten fila, así que se deduplican solos)
-  pero da resultados incorrectos en Python (`if_statement` empieza en la
-  fila del `if`, su `block` hijo empieza una fila después: son el mismo
-  nivel de indentación pero cuentan como dos) y en Swift (`function_body`
-  y su `statements` interno tampoco coinciden de fila). La solución que sí
-  generaliza: cada gramática tiene un conjunto fijo y pequeño de *kinds*
-  que representan "un cuerpo indentado" — establecido inspeccionando el
-  árbol real de cada gramática vendorizada (igual que
-  `queries/<lang>/highlights.scm` establece los nombres de captura de cada
-  una), no adivinado. Los nodos contenedores/cabecera (`if_expression`,
-  `else_clause`, `elif_clause`...) nunca están en la lista, así que nunca
-  suman nivel por sí solos — lo cual además hace que un `else`/`elif` en
-  Python dedente correctamente sin ningún caso especial por palabra clave.
+  **Why it isn't "count all ancestors".** The first idea — counting
+  distinct start rows among the ancestors of the point — works for Rust/C
+  (the header and its `{` share a row, so they deduplicate on their own)
+  but gives incorrect results in Python (`if_statement` starts on the
+  `if`'s row, its child `block` starts one row later: they're the same
+  indentation level but count as two) and in Swift (`function_body`
+  and its inner `statements` also don't share a row). The solution that
+  does generalize: each grammar has a fixed, small set of *kinds*
+  that represent "an indented body" — established by inspecting the
+  actual tree of each vendored grammar (the same way
+  `queries/<lang>/highlights.scm` establishes the capture names for each
+  one), not guessed. Container/header nodes (`if_expression`,
+  `else_clause`, `elif_clause`...) are never in the list, so they never
+  add a level on their own — which also makes an `else`/`elif` in
+  Python dedent correctly with no keyword-specific special case.
 
-  **Cierre de cuerpo (`}`, `fi`, `done`).** Una línea cuyo primer token no
-  en blanco es literalmente el último token del cuerpo que la encierra
-  dedenta al nivel de la línea que abrió ese cuerpo, no al nivel de
-  dentro. Detectado de forma genérica (sin lista de caracteres de cierre
-  hardcodeada): el nodo hoja encontrado es hijo de un nodo cuyo *kind*
-  está en la lista de "cuerpo" del lenguaje y termina exactamente donde
-  termina ese padre (`parent.end_byte() == leaf.end_byte()`). Esto cubre
-  tanto llaves (`}`/`)`/`]`) como palabras clave de cierre (`fi` en Bash,
-  `done` en Bash) con la misma regla.
+  **Body closing (`}`, `fi`, `done`).** A line whose first non-blank token
+  is literally the last token of the body enclosing it dedents to the
+  level of the line that opened that body, not to the level inside it.
+  Detected generically (with no hardcoded list of closing characters):
+  the leaf node found is the child of a node whose *kind* is in the
+  language's "body" list and ends exactly where that parent ends
+  (`parent.end_byte() == leaf.end_byte()`). This covers both braces
+  (`}`/`)`/`]`) and closing keywords (`fi` in Bash, `done` in Bash) with
+  the same rule.
 
-  **Corrección YAML/Markdown.** Ambas gramáticas envuelven el contenido de
-  nivel superior del fichero en el mismo *kind* que usan para anidamiento
-  real (`block_mapping`/`block_sequence` en YAML, `list` en Markdown) —
-  aunque ese nivel superior no tiene delimitador de apertura y sus hijos
-  directos están en columna 0, igual que el propio fichero. Se descubrió
-  al escribir el test de YAML: una clave de primer nivel salía con nivel 1
-  en vez de 0. JSON/HTML no tienen este problema (su nodo más externo
-  tiene un `{`/`<div>` real y su contenido sí está indentado un nivel).
-  Corregido restando 1 solo para esos dos lenguajes (`root_offset`),
-  documentado en el propio código con la razón, no como un `#[allow]`
-  silencioso.
+  **YAML/Markdown fix.** Both grammars wrap the file's top-level content
+  in the same *kind* they use for real nesting (`block_mapping`/
+  `block_sequence` in YAML, `list` in Markdown) — even though that top
+  level has no opening delimiter and its direct children sit at column
+  0, just like the file itself. This was discovered while writing the
+  YAML test: a first-level key came out with level 1 instead of 0.
+  JSON/HTML don't have this problem (their outermost node has a real
+  `{`/`<div>` and its content genuinely is indented one level).
+  Fixed by subtracting 1 only for those two languages (`root_offset`),
+  documented in the code itself with the reason, not as a silent
+  `#[allow]`.
 
-  **Verificación empírica antes de codificar.** En vez de adivinar nombres
-  de *kind* por lenguaje, se añadió temporalmente un test de sondeo
-  (`probe_tmp`, eliminado antes de terminar) que volcaba el árbol real de
-  cada gramática vendorizada para muestras representativas (Rust, Python,
+  **Empirical verification before coding.** Instead of guessing *kind*
+  names per language, a probe test was temporarily added
+  (`probe_tmp`, removed before finishing) that dumped the actual tree
+  of each vendored grammar for representative samples (Rust, Python,
   C/C++, Java, JS/TS, Go, Kotlin, Swift, HTML, CSS, JSON, YAML, Markdown,
-  Bash, TOML), incluyendo casos de clase+método y bash con
-  if/elif/else/fi + for/do/done. Los 18 conjuntos de `block_kinds` en el
-  código final vienen de esa inspección real, no de la documentación de
-  cada gramática.
+  Bash, TOML), including class+method cases and bash with
+  if/elif/else/fi + for/do/done. The 18 `block_kinds` sets in the
+  final code come from that real inspection, not from each grammar's
+  documentation.
 
-  **Límite conocido y documentado (no oculto).** El gramático de
-  tree-sitter-bash no envuelve el cuerpo principal de un `if`/`then` en un
-  nodo propio — `if_statement` hace doble papel de cabecera y cuerpo, y
-  sus cláusulas `elif`/`else` son hermanas suyas, no anidadas dentro de
-  otro *kind* contable. Esto significa que el cuerpo de `if`/`for` y el
-  cierre `fi`/`done` calculan bien (verificado por tests), pero
-  redentar la propia línea `elif`/`else` al nivel del `if` no está
-  derivado especialmente — se deja documentado con un comentario
-  `ponytail:` en el código en vez de construir un mecanismo de
-  clave-de-rama solo para esta gramática. Ningún otro de los 18 lenguajes
-  tiene esta limitación.
+  **Known limitation, documented (not hidden).** The tree-sitter-bash
+  grammar does not wrap an `if`/`then`'s main body in its own node —
+  `if_statement` does double duty as header and body, and its
+  `elif`/`else` clauses are its siblings, not nested inside another
+  countable *kind*. This means the body of `if`/`for` and the closing
+  `fi`/`done` are computed correctly (verified by tests), but
+  dedenting the `elif`/`else` line itself to the `if`'s level isn't
+  specially derived — it's left documented with a `ponytail:` comment
+  in the code instead of building a branch-keyword mechanism just for
+  this one grammar. None of the other 17 languages has this
+  limitation.
 
-  **Verificación real.** `cargo test -p lux-syntax indent_rules::`: 18/18
-  passed, 0 ignorados. Los tests no son triviales: cubren anidamiento
-  real de profundidad en Rust/C con cabecera y llave en la misma fila,
-  bloque Python sin ninguna llave, `else` de Python dedentando sin caso
-  especial, un `{` dentro de un string literal (nunca contado como
-  bracket real), líneas en blanco dentro de un cuerpo, cierre de llave
-  dedentando a la línea que abrió, Bash `if/then/fi` y `for/do/done`
-  completos, JSON/YAML anidados, y la corrección de YAML/Markdown descrita
-  arriba. Gate completo del repo en verde: `cargo run -p xtask` (fmt,
-  clippy `-D warnings` en el workspace entero, `cargo test --workspace`:
-  235 tests en `lux-core` + el resto del workspace sin regresiones,
-  `cargo deny check`, límites de fichero, aislamiento de `lux-core`). Los
-  cuatro entregables anteriores de esta fase (`highlight::`, `theme::`,
-  `folding::`, `brackets::`) se re-verificaron intactos en la misma
-  pasada. `crates/lux-syntax/src/indent_rules.rs` tiene 276 líneas, bien
-  lejos del límite de 600; no se añadió ningún campo a ningún struct ni
-  ninguna dependencia nueva — solo un método `pub(crate) fn language()`
-  en `Document`, análogo al `tree()` que ya existía para `brackets`/
-  `folding`.
+  **Real verification.** `cargo test -p lux-syntax indent_rules::`: 18/18
+  passed, 0 ignored. The tests are non-trivial: they cover real deep
+  nesting in Rust/C with header and brace on the same row, a Python
+  block with no braces at all, Python `else` dedenting with no special
+  case, a `{` inside a string literal (never counted as a real
+  bracket), blank lines inside a body, a closing brace dedenting to the
+  line that opened it, full Bash `if/then/fi` and `for/do/done`,
+  nested JSON/YAML, and the YAML/Markdown fix described above. Full
+  repo gate green: `cargo run -p xtask` (fmt, clippy `-D warnings` across
+  the whole workspace, `cargo test --workspace`: 235 tests in
+  `lux-core` plus the rest of the workspace with no regressions,
+  `cargo deny check`, file limits, `lux-core` isolation). The four
+  previous deliverables of this phase (`highlight::`, `theme::`,
+  `folding::`, `brackets::`) were re-verified intact in the same pass.
+  `crates/lux-syntax/src/indent_rules.rs` is 276 lines, well under the
+  600-line limit; no field was added to any struct and no new
+  dependency was added — only a `pub(crate) fn language()` method
+  on `Document`, analogous to the `tree()` that already existed for
+  `brackets`/`folding`.
 
-  **Qué queda fuera de este entregable** (resto de la Fase 3, sin tocar):
-  Goto Anything, paleta de comandos, barra de búsqueda/reemplazo,
-  pestañas/barra de estado, minimapa — y, dentro del propio alcance de
-  auto-indent, el wiring hacia un comando real de editor (tecla Enter,
-  reindentar selección) en `lux-ui`, que no existe todavía en esta fase
-  (no hay UI de edición que consuma esto aún) y por tanto es trabajo
-  posterior, no de esta librería. Verificado solo en macOS, misma
-  limitación documentada en el resto de `docs/STATUS.md`.
+  **What's out of scope for this deliverable** (rest of Phase 3, untouched):
+  Goto Anything, command palette, search/replace bar,
+  tabs/status bar, minimap — and, within auto-indent's own scope
+  itself, the wiring to an actual editor command (Enter key,
+  reindent selection) in `lux-ui`, which doesn't exist yet in this phase
+  (there's no editing UI consuming this yet) and is therefore
+  later work, not this library's. Verified only on macOS, the same
+  limitation documented elsewhere in `docs/STATUS.md`.
