@@ -1,0 +1,24 @@
+// JetBrains' (IntelliJ IDEA) default keymap (a representative subset — see
+// docs/receipts/phase-05-keymaps-sublime-vscode-jetbrains-como.md for
+// sourcing). "key" is the Windows/Linux default (JetBrains ships the same
+// keymap for both), "mac" overrides it where macOS differs — and it
+// differs more here than in the other two presets: several commands land
+// on an entirely different key, not just Ctrl-swapped-for-Cmd.
+[
+  { "command": "find_action", "key": "ctrl+shift+a", "mac": "cmd+shift+a" },
+  { "command": "quick_open", "key": "ctrl+shift+n", "mac": "cmd+shift+o" },
+  { "command": "find", "key": "ctrl+f", "mac": "cmd+f" },
+  { "command": "find_in_files", "key": "ctrl+shift+f", "mac": "cmd+shift+f" },
+  // Not cmd+g on mac — that would collide with "Find Next".
+  { "command": "goto_line", "key": "ctrl+g", "mac": "cmd+l" },
+  { "command": "duplicate_line", "key": "ctrl+d", "mac": "cmd+d" },
+  { "command": "delete_line", "key": "ctrl+y", "mac": "cmd+backspace" },
+  { "command": "toggle_comment", "key": "ctrl+/", "mac": "cmd+/" },
+  // Ctrl, not Cmd, even on mac.
+  { "command": "select_next_occurrence", "key": "alt+j", "mac": "ctrl+g" },
+  { "command": "undo", "key": "ctrl+z", "mac": "cmd+z" },
+  { "command": "redo", "key": "ctrl+shift+z", "mac": "cmd+shift+z" },
+  // JetBrains binds plain save to "save all" — there's no per-file dirty
+  // save the way Sublime/VS Code have one.
+  { "command": "save_all", "key": "ctrl+s", "mac": "cmd+s" },
+]
