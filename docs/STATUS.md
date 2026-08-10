@@ -384,7 +384,7 @@ item, not a correctness bug hit today.
 | Token-based themes | implemented | not-started | not-started | not-started | not-started |
 | Bracket pair colorization | implemented | not-started | not-started | not-started | not-started |
 | Syntax-based code folding | implemented | not-started | not-started | not-started | not-started |
-| Auto-indent by language | not-started | not-started | not-started | not-started | not-started |
+| Auto-indent by language | implemented | not-started | not-started | not-started | not-started |
 | Goto Anything | not-started | not-started | not-started | not-started | not-started |
 | Command palette | not-started | not-started | not-started | not-started | not-started |
 | Search/replace bar | not-started | not-started | not-started | not-started | not-started |
@@ -410,6 +410,22 @@ constraint noted throughout this document). "Implemented" here is the
 library capability, checked by golden tests — wiring the computed tokens
 into `lux-ui`'s editor view (actual on-screen coloring) is separate work,
 tracked under this phase's "Token-based themes" row above.
+
+**Update, Phase 3 close-out:** `Document::highlight` scans the *whole*
+tree on every call, which measured at ~16.8 ms for a reparse+highlight
+after one keystroke in a 20k-line file — over the phase's 16 ms frame
+budget. Added `Document::highlight_range(source, byte_range)`, scoped with
+`tree_sitter::QueryCursor::set_byte_range` (not a post-hoc filter); a
+simulated 50-line visible-range scope measures at ~2.3 ms. Also cached the
+compiled highlight `Query` as a `Document` field instead of recompiling it
+(`Query::new`, hundreds of lines of `.scm` patterns) on every call — the
+dominant cost, it turned out, more than the tree traversal itself. See
+`docs/PERFORMANCE.md`'s Phase 3 measurement history for the full numbers
+and `benches/benches/phase3_budgets.rs`. `highlight` itself is unchanged
+(now delegates to `highlight_range(source, 0..source.len())`, verified
+byte-identical against the existing golden token tests) — a per-keystroke
+UI should call `highlight_range` with the visible range once wiring
+exists.
 
 **Token-based themes** is `lux-syntax::theme`: a self-contained theme format
 (background/foreground pair plus a scope-to-color table, the same shape as
@@ -462,6 +478,153 @@ full explanation). Verified on macOS only, same constraint as above.
 "Implemented" is again the library capability — wiring bracket colors and
 foldable gutter markers into `lux-ui`'s rendering is separate, not-started
 work.
+
+**Auto-indent by language** is `lux-syntax::indent_rules`: `indent_level`
+counts how many of a language's body-node kinds (`block`,
+`compound_statement`, `object`, ... — one set per grammar, established from
+each grammar's real parse tree, the same way `highlights.scm` establishes
+each grammar's capture names) enclose the target line — never by counting
+`{([:` in the source text (the v0 mistake `LUX_PROMPT_MAESTRO.md` calls out
+by name for this exact deliverable), so a brace inside a string or comment
+never fools it. Two corrections on top of the raw count: a line whose first
+token is itself the *last* token of its innermost enclosing body (a closing
+`}`, a `fi`, a `done`) dedents to the level of the line that opened that
+body, rather than counting as inside it; and YAML/Markdown subtract one
+level for the document's own top-level wrapper, since both grammars reuse
+the same node kind (`block_mapping`/`block_sequence`, `list`) for genuine
+nesting and for "the whole file," unlike JSON/HTML's outermost node, which
+has a real opening delimiter and needs no such correction. Gate: `cargo test
+-p lux-syntax indent_rules::`. Verified on macOS only, same constraint as
+above. "Implemented" is again the library capability — wiring computed
+indent into an actual Enter-key/reindent editor command is separate,
+not-started work; no editing UI exists yet at this phase for `lux-syntax`
+to depend on (golden rule #2). See
+`docs/receipts/phase-03-autoindent-lenguaje.md`.
+
+**Goto Anything** is still `not-started` as a user-facing feature — there is
+no `Cmd+P` command, no dialog, and no real project file index to search
+(that's `lux-workspace`'s incremental index, Phase 4, not built yet). What
+does exist, as groundwork: `lux-search::fuzzy::rank_paths` wraps `nucleo`
+(`docs/adr/0009-search-and-fuzzy-matching.md`) with a `Config::match_paths`
+tuning and a set of characterization tests pinning its ranking behavior, per
+that ADR's own instruction; and `lux-ui::goto_anything` parses the
+Sublime-style `file:line` suffix (`src/main.rs:42`) and combines it with
+that ranking. Gate: `cargo test -p lux-ui goto_anything::`. Verified on
+macOS only, same constraint as above. See
+`docs/receipts/phase-03-goto-anything-nucleo-sufijos-ficherolinea.md`.
+
+**Update, Phase 3 close-out:** recent-file history and preview — the other
+two things this deliverable's `LUX_PROMPT_MAESTRO.md` sentence names — are
+now implemented too: `RecentFiles` tracks opened files with a logical
+clock (same technique as `command_palette::CommandRegistry`'s recency),
+and `search_with_recency` lists recents first for an empty query, then
+ranks by fuzzy score with recency as a tie-break, same as the command
+palette's own search. `preview` returns a text snippet around a match's
+target line, from an already-loaded `Buffer` (never opens a file itself —
+that's I/O, which stays off the UI thread, golden rule #6). `@symbol` and
+`#text` are **not** implemented, and deliberately so, not just
+unfinished: they need capabilities Phase 4 (`lux-search`'s Find in Files)
+and Phase 7 (`lux-lsp`) own, and building throwaway versions now would
+either duplicate those phases' work or pull them forward against golden
+rule #7. See `docs/adr/0014-goto-anything-symbol-text-suffixes-deferred.md`
+for the full reasoning and what unblocks each one.
+
+**Command palette** is also still `not-started` as a user-facing feature —
+no `Cmd+Shift+P` dialog, and no menu UI exists yet in `lux-ui` for it to
+unify with (Phase 3 has shipped no interactive widgets so far, only passive
+ones). What does exist: `lux-ui::command_palette::CommandRegistry`, a single
+registry (`register`/`commands`/`search`) that is structurally the only
+place a command can be defined — there is no separate "menu item" type
+anywhere in the crate, so a future menu has no list to source itself from
+other than this one, which is what makes "every menu command is in the
+palette" hold rather than just being a rule someone has to remember (v0's
+actual failure, named in this deliverable in `LUX_PROMPT_MAESTRO.md`).
+Ranking reuses the same `nucleo` engine as Goto Anything through a new
+`lux-search::fuzzy::rank_by` (generic over any item + key function, unlike
+`rank_paths`, because two commands can share a display title). Recency is
+tracked with a logical clock, not a wall-clock timestamp — deterministic
+and testable, and only relative order is ever needed. `when` clauses are a
+real small parser (`&&`/`||`/`!`/`(...)`, standard precedence) over boolean
+context keys, not a stub — malformed clauses are a parse error, not a
+silently-ignored one. Gate: `cargo test -p lux-ui command_palette::`.
+Verified on macOS only, same constraint as above. See
+`docs/receipts/phase-03-paleta-comandos-unificada-menus.md`.
+
+**Search/replace bar** is also still `not-started` as a user-facing
+feature — no `Cmd+F`/`Cmd+H` dialog, and no highlight rendering pass in
+`EditorView` (Phase 3 has shipped no interactive widgets so far). The
+search/replace engine itself — literal, case-insensitive, whole-word, and
+regex, with capture-group replacement — was already `implemented` in Phase
+1 as `lux-core::find_replace` (this doc's "Find/replace in buffer" row);
+this deliverable adds no new matching logic. What's new is
+`lux-ui::search_bar::SearchBar`, the stateful part a bar UI needs on top
+of that engine: `matches()` (every match, for "highlight all of them"),
+`current()`/`current_index()` (which one is active, for distinct
+highlighting), `next_match()`/`previous_match()` (wrapping navigation by
+index over the already-computed list — cheap, since the full list is
+already held for highlighting, so navigating doesn't re-run the regex),
+and `replace_current()`/`replace_all()` (delegating straight to
+`lux-core::find_replace`, then refreshing). An invalid regex while typing
+leaves the previous good query and its matches in place instead of
+blanking the bar, the same "don't discard input on a transient invalid
+state" choice made for Goto Anything's `:line` suffix parsing. Gate:
+`cargo test -p lux-ui search_bar::`. Verified on macOS only, same
+constraint as above. See
+`docs/receipts/phase-03-barra-busqueda-reemplazo-resaltado-coincidencias.md`.
+
+**Tabs + status bar** is also still `not-started` as a user-facing feature
+— no actual tab strip or status bar widget renders anything, and no mouse/
+drag event handling exists (Phase 3 has shipped no interactive widgets so
+far). What exists: `lux-ui::tabs::TabBar`, the state machine a tab strip
+would drive — open/close, reopening the most recently closed tab (a LIFO
+stack), pinning (pinned tabs cluster at the start of the strip, in the
+order they were pinned), and `move_tab` (the reorder-by-index primitive a
+drag & drop gesture reports its drop position through — the actual pointer
+tracking is separate, not-started work). Tab ids are minted by `TabBar`
+itself, never caller-chosen, so two tabs can't collide by construction.
+And `lux-ui::status_bar`, which formats cursor position and the
+already-Phase-1-detected encoding/EOL/indent (`lux-core::buffer`, this
+doc's "EOL / indent / encoding detection" row) for display; language is a
+caller-supplied label since language detection isn't wired into `lux-ui`
+yet. "All clickable" is enforced the same way `command_palette` enforces
+"every menu command is in the palette": a `StatusBarItem` has no
+constructor that omits a `command_id`, and `status_bar::register_commands`
+registers those exact ids into a real `CommandRegistry` — a status bar
+item's click target is always a real, registered command, checked by a
+test (`every_built_status_bar_item_resolves_to_a_registered_command`), not
+just a string sitting next to a label. Gate: `cargo test -p lux-ui
+tabs:: status_bar::` (needs `--` before the two filters, same reason as
+`docs/receipts/phase-03-bracket-pair-colorization-folding-real.md`:
+`cargo test` takes one bare filter, so `cargo test -p lux-ui -- tabs::
+status_bar::` is what actually runs both). Verified on macOS only, same
+constraint as above. See `docs/receipts/phase-03-pestanas-barra-estado.md`.
+
+**Minimap** is also still `not-started` as a user-facing feature — nothing
+renders, no click-to-scroll is wired to real input (Phase 3 has shipped no
+interactive widgets so far). What exists: `lux-ui::minimap`, which —
+deliberately — never shapes a single glyph. `EditorView` (Phase 2
+deliverable 4) already only shapes visible lines specifically so a huge
+document stays fast; a minimap that shaped real text for all 50k lines of
+that same document every frame would quietly reintroduce the exact cost
+virtualization exists to avoid, just relabeled. Instead each source line
+reduces to a density bar (indent offset + content length, both plain
+character counts via the same `LineIndex` byte-splitter `EditorView`
+already uses — no new dependency on `lux-render`'s shaping at all). When
+the document has more lines than the minimap has pixel rows for,
+`build_frame` downsamples: several source lines collapse into one row,
+represented by the *densest* line in that group rather than an average, so
+a long line is never washed out by its blank neighbors — and the row count
+this produces is only ever what the content actually needs (no padding to
+`available_rows` with empty trailing rows when it doesn't divide evenly).
+A `ViewportIndicator` translates the main editor's visible line range into
+minimap rows through that same scale, and `line_for_row` is the inverse —
+the click-to-scroll navigation a minimap's whole interactive point is,
+here as a pure function ready for real input wiring later. `enabled`
+defaults to `true` (every editor that has a minimap ships it on); a
+disabled minimap's `build_frame` returns `None`, not an empty frame
+(golden rule #1). Gate: `cargo test -p lux-ui minimap::`. Verified on
+macOS only, same constraint as above. See
+`docs/receipts/phase-03-minimapa.md`.
 
 ## Projects, files & search (Phase 4, `v0.3.0`)
 

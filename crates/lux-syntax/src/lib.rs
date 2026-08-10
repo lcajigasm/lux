@@ -6,10 +6,12 @@
 //! upstream issue #3095 (ABI/version drift between the core crate and
 //! grammar crates).
 
+use std::ops::Range;
 use tree_sitter::{InputEdit, Language, Parser, Query, QueryCursor, StreamingIterator, Tree};
 
 pub mod brackets;
 pub mod folding;
+pub mod indent_rules;
 pub mod theme;
 
 /// One highlighted span: a byte range plus the highlight query capture name
@@ -149,13 +151,20 @@ impl LanguageId {
     }
 }
 
-/// An incrementally-parsed document: owns the parser and the last parse
-/// tree, so an edit only reparses the changed range instead of the whole
-/// file (`Parser::parse` reuses the unchanged subtrees of the old tree).
+/// An incrementally-parsed document: owns the parser, the last parse tree
+/// (so an edit only reparses the changed range instead of the whole file —
+/// `Parser::parse` reuses the unchanged subtrees of the old tree), and the
+/// compiled highlight query. The query is compiled once here, not on every
+/// `highlight`/`highlight_range` call: `Query::new` parses and validates
+/// the language's entire `highlights.scm` pattern set (hundreds of lines),
+/// which measured as the dominant cost in `highlight_range`'s benchmark —
+/// recompiling it per keystroke would undo most of the benefit of scoping
+/// the query to the visible range in the first place.
 pub struct Document {
     language: LanguageId,
     parser: Parser,
     tree: Option<Tree>,
+    highlight_query: Query,
 }
 
 impl Document {
@@ -165,10 +174,13 @@ impl Document {
         parser
             .set_language(&language.ts_language())
             .expect("vendored grammar ABI must match the compiled-in tree-sitter core version");
+        let highlight_query = Query::new(&language.ts_language(), language.highlights_query())
+            .expect("vendored highlights.scm must be valid for its own grammar");
         Self {
             language,
             parser,
             tree: None,
+            highlight_query,
         }
     }
 
@@ -189,36 +201,59 @@ impl Document {
 
     /// Runs this document's language's highlight query over the current
     /// tree, returning every capture as a token ordered by position.
+    ///
+    /// Scans the *whole* tree — correct, but expensive on a large file (see
+    /// `highlight_range`'s doc comment for the actual measured cost and why
+    /// it exists). Fine for one-shot uses (golden token tests, opening a
+    /// file); a per-keystroke UI should call `highlight_range` with the
+    /// visible byte range instead.
     #[must_use]
     pub fn highlight(&self, source: &str) -> Vec<Token> {
+        self.highlight_range(source, 0..source.len())
+    }
+
+    /// Like [`Self::highlight`], scoped to `byte_range` — the tree isn't
+    /// re-walked outside it (`tree_sitter::QueryCursor::set_byte_range`,
+    /// not a post-hoc filter). Exists because `highlight`'s whole-tree scan
+    /// measured at ~26 ms reparsing + re-highlighting after one keystroke in
+    /// a 20k-line file (`benches/benches/phase3_budgets.rs`), well over the
+    /// 16 ms frame budget `LUX_PROMPT_MAESTRO.md` sets for exactly that
+    /// scenario — a real UI must re-highlight only the visible range after
+    /// an edit, not the whole document, the same reason `EditorView`
+    /// (Phase 2) only shapes glyphs for `visible_line_range`.
+    #[must_use]
+    pub fn highlight_range(&self, source: &str, byte_range: Range<usize>) -> Vec<Token> {
         let Some(tree) = self.tree.as_ref() else {
             return Vec::new();
         };
-        let query = Query::new(
-            &self.language.ts_language(),
-            self.language.highlights_query(),
-        )
-        .expect("vendored highlights.scm must be valid for its own grammar");
         let mut cursor = QueryCursor::new();
+        cursor.set_byte_range(byte_range);
         let mut tokens = Vec::new();
-        let mut captures = cursor.captures(&query, tree.root_node(), source.as_bytes());
+        let mut captures =
+            cursor.captures(&self.highlight_query, tree.root_node(), source.as_bytes());
         while let Some((mat, index)) = captures.next() {
             let capture = mat.captures[*index];
             tokens.push(Token {
                 start_byte: capture.node.start_byte(),
                 end_byte: capture.node.end_byte(),
-                kind: query.capture_names()[capture.index as usize].to_string(),
+                kind: self.highlight_query.capture_names()[capture.index as usize].to_string(),
             });
         }
         tokens.sort_by_key(|t| (t.start_byte, t.end_byte));
         tokens
     }
 
-    /// The current parse tree, for modules (`brackets`, `folding`) that
-    /// walk its structure directly instead of going through a highlight
-    /// query. `None` before the first [`Self::set_text`].
+    /// The current parse tree, for modules (`brackets`, `folding`,
+    /// `indent_rules`) that walk its structure directly instead of going
+    /// through a highlight query. `None` before the first [`Self::set_text`].
     pub(crate) fn tree(&self) -> Option<&Tree> {
         self.tree.as_ref()
+    }
+
+    /// This document's language, for modules that need per-grammar
+    /// configuration (`indent_rules`).
+    pub(crate) fn language(&self) -> LanguageId {
+        self.language
     }
 }
 
@@ -290,5 +325,52 @@ impl Drop for BackgroundHighlighter {
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn highlight_delegates_to_highlight_range_over_the_whole_source() {
+        let source = "fn main() {\n    let x = 1;\n}\n";
+        let mut doc = Document::new(LanguageId::Rust);
+        doc.set_text(source);
+        assert_eq!(
+            doc.highlight(source),
+            doc.highlight_range(source, 0..source.len())
+        );
+    }
+
+    #[test]
+    fn highlight_range_excludes_tokens_outside_the_range() {
+        let source = "fn one() {}\nfn two() {}\nfn three() {}\n";
+        let mut doc = Document::new(LanguageId::Rust);
+        doc.set_text(source);
+
+        let full = doc.highlight(source);
+        assert!(
+            full.len() > 3,
+            "expected multiple tokens across 3 functions"
+        );
+
+        // Scope to just the second line ("fn two() {}").
+        let second_line_start = source.find("fn two").unwrap();
+        let second_line_end = source.find("fn three").unwrap();
+        let scoped = doc.highlight_range(source, second_line_start..second_line_end);
+
+        assert!(!scoped.is_empty());
+        assert!(scoped.len() < full.len());
+        for token in &scoped {
+            assert!(token.start_byte >= second_line_start);
+            assert!(token.end_byte <= second_line_end);
+        }
+    }
+
+    #[test]
+    fn highlight_range_on_a_never_parsed_document_is_empty() {
+        let doc = Document::new(LanguageId::Rust);
+        assert_eq!(doc.highlight_range("fn f() {}", 0..9), Vec::new());
     }
 }

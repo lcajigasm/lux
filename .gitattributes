@@ -1,0 +1,13 @@
+# Force LF everywhere, regardless of platform checkout settings.
+#
+# Windows CI runners default to `core.autocrlf=true`, which converts LF to
+# CRLF on checkout for anything Git considers text. That silently shifted
+# every byte offset in `crates/lux-syntax/tests/fixtures/**/*` relative to
+# the `.tokens` golden files (recorded in LF), breaking
+# `cargo test -p lux-syntax --test golden_tokens` on `windows-latest` only
+# -- invisible on macOS/Linux, where the stored blobs are already LF and
+# stay LF on checkout. `Eol::detect`'s own default is LF (this project's
+# style, see `crates/lux-core/src/buffer/eol.rs`); this just makes Git
+# checkouts agree with that everywhere, not only what already-decoded
+# buffer content defaults to.
+* text=auto eol=lf

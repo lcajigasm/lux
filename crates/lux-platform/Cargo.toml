@@ -13,7 +13,7 @@ accesskit_winit = { version = "0.33.2", default-features = false, features = ["r
 arboard = { version = "3.6.1", default-features = false }
 dpi = "0.1.2"
 raw-window-handle = "0.6.2"
-rfd = { version = "0.17.2", default-features = false }
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
 # Default features minus `wayland-csd-adwaita`: that feature pulls in
 # `ttf-parser` via `sctk-adwaita`'s `ab_glyph` backend, and `ttf-parser` is
 # unmaintained (RUSTSEC-2026-0192). `wayland-csd-adwaita-crossfont` gives the
