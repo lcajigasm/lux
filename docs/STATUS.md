@@ -1381,6 +1381,33 @@ stash`'s default — no `-u`/untracked-file support), conflict handling
 when a checkout would overwrite unsaved changes, and — same as every row
 in this section — the `lux-ui` wiring.
 
+**A second real `gix` finding, caught by CI rather than local testing**:
+`branches::create`/`switch`, `commit::amend`, and `stash::save`/`pop` all
+write a ref update with a ref-log entry, and every one of them originally
+relied on `gix`'s ambient `Repository::committer()` to supply that
+ref-log's identity (via the `reference()`/`edit_reference()`
+convenience methods). Per `gix`'s own documented design
+(`repository/identity.rs`: "There is no notion of a default user like in
+git, and instead failing to provide a user is fatal"), that call returns
+`None` — a hard `MissingCommitter` error — unless `user.name`/`email` is
+configured somewhere `gix` can see it, with **no** fallback to a guessed
+`user@host` the way real `git` has for non-commit ref updates. Every
+local run in this phase passed because the development machine's global
+`~/.gitconfig` has an identity configured; the `macOS` GitHub Actions
+runner has none, so every test exercising these four operations failed
+there with `RefEdit(FileTransactionCommit(CreateOrUpdateRefLog(MissingCommitter)))`
+the first time this branch's PR ran CI — a genuine portability bug, not
+a CI quirk, since the same failure would hit any real user who has git
+installed but hasn't set an identity yet. Fixed by threading explicit
+`committer_name`/`committer_email` parameters through all four functions
+(matching the pattern `commit`/`amend` already used) and calling `gix`'s
+`edit_references_as(edits, Some(committer))` instead of the ambient-only
+convenience methods. Verified both normally and with a from-scratch,
+git-identity-free environment (`env -i HOME=<empty> GIT_CONFIG_NOSYSTEM=1
+GIT_CONFIG_GLOBAL=/dev/null cargo test -p lux-git`): all 74 tests pass
+either way, confirming the fix removes the dependency rather than just
+happening to work on this machine.
+
 **Scope note (`lux-git::merge_conflicts`, tracked in
 `docs/receipts/phase-06-resolucion-conflictos-merge.md`)**: the "Merge
 conflict resolution" row above doesn't move — same reasoning as every

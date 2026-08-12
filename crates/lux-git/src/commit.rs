@@ -192,7 +192,9 @@ pub fn amend(
         name: reference,
         deref: true,
     };
-    repo.edit_reference(edit)
+    let ref_committer = signature(committer_name, committer_email);
+    let mut time_buf = gix::date::parse::TimeBuf::default();
+    repo.edit_references_as(Some(edit), Some(ref_committer.to_ref(&mut time_buf)))
         .map_err(|e| CommitError::Write(Box::new(e)))?;
     Ok(new_id)
 }

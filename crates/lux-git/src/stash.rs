@@ -79,8 +79,9 @@ fn update_stash_ref(
     repo: &gix::Repository,
     target: gix::ObjectId,
     message: impl Into<gix::bstr::BString>,
+    committer: gix::actor::SignatureRef<'_>,
 ) -> Result<(), StashError> {
-    repo.edit_reference(RefEdit {
+    let edit = RefEdit {
         change: Change::Update {
             log: LogChange {
                 mode: RefLog::AndReference,
@@ -94,8 +95,9 @@ fn update_stash_ref(
             .try_into()
             .map_err(|e: gix::validate::reference::name::Error| StashError::RefEdit(Box::new(e)))?,
         deref: false,
-    })
-    .map_err(|e| StashError::RefEdit(Box::new(e)))?;
+    };
+    repo.edit_references_as(Some(edit), Some(committer))
+        .map_err(|e| StashError::RefEdit(Box::new(e)))?;
     Ok(())
 }
 
@@ -235,7 +237,14 @@ pub fn save(
         .map_err(|e| StashError::Write(Box::new(e)))?
         .detach();
 
-    update_stash_ref(repo, stash_id, format!("stash: {message}"))?;
+    let ref_sig = signature(author_name, author_email);
+    let mut time_buf = gix::date::parse::TimeBuf::default();
+    update_stash_ref(
+        repo,
+        stash_id,
+        format!("stash: {message}"),
+        ref_sig.to_ref(&mut time_buf),
+    )?;
     checkout_tree(repo, snapshot_tree, head_tree).map_err(StashError::Branches)?;
     Ok(stash_id)
 }
@@ -269,7 +278,14 @@ pub fn list(repo: &gix::Repository) -> Result<Vec<StashEntry>, StashError> {
 /// index, then removes it from the stack (moving `refs/stash` to the
 /// entry beneath it, or deleting the ref if the stack is now empty).
 /// Fails with [`StashError::NoStash`] if there's nothing to pop.
-pub fn pop(repo: &gix::Repository) -> Result<gix::ObjectId, StashError> {
+///
+/// `committer_name`/`committer_email` are used only for the ref-log entry
+/// this writes, same reason as [`save`].
+pub fn pop(
+    repo: &gix::Repository,
+    committer_name: &str,
+    committer_email: &str,
+) -> Result<gix::ObjectId, StashError> {
     let mut reference = repo
         .find_reference(STASH_REF)
         .map_err(|_| StashError::NoStash)?;
@@ -291,10 +307,14 @@ pub fn pop(repo: &gix::Repository) -> Result<gix::ObjectId, StashError> {
         .detach();
     checkout_tree(repo, current_head_tree, stash_tree).map_err(StashError::Branches)?;
 
+    let sig = signature(committer_name, committer_email);
+    let mut time_buf = gix::date::parse::TimeBuf::default();
     match beneath {
-        Some(next_top) => update_stash_ref(repo, next_top, "stash: pop")?,
+        Some(next_top) => {
+            update_stash_ref(repo, next_top, "stash: pop", sig.to_ref(&mut time_buf))?
+        }
         None => {
-            repo.edit_reference(RefEdit {
+            let edit = RefEdit {
                 change: Change::Delete {
                     expected: PreviousValue::Any,
                     log: RefLog::AndReference,
@@ -303,8 +323,9 @@ pub fn pop(repo: &gix::Repository) -> Result<gix::ObjectId, StashError> {
                     |e: gix::validate::reference::name::Error| StashError::RefEdit(Box::new(e)),
                 )?,
                 deref: false,
-            })
-            .map_err(|e| StashError::RefEdit(Box::new(e)))?;
+            };
+            repo.edit_references_as(Some(edit), Some(sig.to_ref(&mut time_buf)))
+                .map_err(|e| StashError::RefEdit(Box::new(e)))?;
         }
     }
 
@@ -350,7 +371,7 @@ mod tests {
             "working tree is reset to HEAD after save"
         );
 
-        pop(&repo).unwrap();
+        pop(&repo, "Lux Test", "lux-test@example.com").unwrap();
         assert_eq!(
             fs::read_to_string(dir.path().join("a.rs")).unwrap(),
             "two\n",
@@ -397,7 +418,7 @@ mod tests {
             "save resets the working tree, removing the new file"
         );
 
-        pop(&repo).unwrap();
+        pop(&repo, "Lux Test", "lux-test@example.com").unwrap();
         assert_eq!(
             fs::read_to_string(dir.path().join("new.rs")).unwrap(),
             "brand new\n",
@@ -410,7 +431,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let repo = init_repo(dir.path());
         commit_one_file(&repo, dir.path(), "a.rs", "one\n", "root");
-        assert!(matches!(pop(&repo), Err(StashError::NoStash)));
+        assert!(matches!(
+            pop(&repo, "Lux Test", "lux-test@example.com"),
+            Err(StashError::NoStash)
+        ));
     }
 
     #[test]
@@ -429,14 +453,14 @@ mod tests {
         let messages: Vec<_> = entries.iter().map(|e| e.message.as_str()).collect();
         assert_eq!(messages, vec!["second stash", "first stash"]);
 
-        pop(&repo).unwrap();
+        pop(&repo, "Lux Test", "lux-test@example.com").unwrap();
         assert_eq!(
             fs::read_to_string(dir.path().join("a.rs")).unwrap(),
             "second change\n"
         );
         assert_eq!(list(&repo).unwrap().len(), 1, "one stash remains");
 
-        pop(&repo).unwrap();
+        pop(&repo, "Lux Test", "lux-test@example.com").unwrap();
         assert_eq!(
             fs::read_to_string(dir.path().join("a.rs")).unwrap(),
             "first change\n"
@@ -460,7 +484,7 @@ mod tests {
             "HEAD's version comes back after save resets the tree"
         );
 
-        pop(&repo).unwrap();
+        pop(&repo, "Lux Test", "lux-test@example.com").unwrap();
         assert!(
             !dir.path().join("a.rs").exists(),
             "pop reapplies the deletion"

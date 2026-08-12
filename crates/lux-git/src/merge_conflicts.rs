@@ -266,9 +266,16 @@ mod tests {
         let repo = init_repo(dir);
         commit_one_file(&repo, dir, "a.rs", "one\ntwo\nthree\n", "base");
         let main_head = repo.head_id().unwrap().detach();
-        create(&repo, "feature", main_head).unwrap();
+        create(
+            &repo,
+            "feature",
+            main_head,
+            "Lux Test",
+            "lux-test@example.com",
+        )
+        .unwrap();
 
-        switch(&repo, "feature").unwrap();
+        switch(&repo, "feature", "Lux Test", "lux-test@example.com").unwrap();
         let their_commit = commit_one_file(
             &repo,
             dir,
@@ -277,7 +284,9 @@ mod tests {
             "feature edit",
         );
 
-        switch(&repo, "main").unwrap_or_else(|_| switch(&repo, "master").unwrap());
+        switch(&repo, "main", "Lux Test", "lux-test@example.com").unwrap_or_else(|_| {
+            switch(&repo, "master", "Lux Test", "lux-test@example.com").unwrap()
+        });
         let our_commit = commit_one_file(
             &repo,
             dir,
@@ -294,9 +303,9 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let repo = init_repo(dir.path());
         let base = commit_one_file(&repo, dir.path(), "a.rs", "one\n", "base");
-        create(&repo, "feature", base).unwrap();
+        create(&repo, "feature", base, "Lux Test", "lux-test@example.com").unwrap();
 
-        switch(&repo, "feature").unwrap();
+        switch(&repo, "feature", "Lux Test", "lux-test@example.com").unwrap();
         let their_commit = commit_one_file(
             &repo,
             dir.path(),
@@ -305,7 +314,9 @@ mod tests {
             "feature adds b.rs",
         );
 
-        switch(&repo, "main").unwrap_or_else(|_| switch(&repo, "master").unwrap());
+        switch(&repo, "main", "Lux Test", "lux-test@example.com").unwrap_or_else(|_| {
+            switch(&repo, "master", "Lux Test", "lux-test@example.com").unwrap()
+        });
         let our_commit = repo.head_id().unwrap().detach();
 
         let outcome = merge(&repo, our_commit, their_commit).unwrap();

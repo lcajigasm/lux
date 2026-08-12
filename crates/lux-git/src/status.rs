@@ -157,9 +157,9 @@ mod tests {
         fs::write(dir.path().join("a.rs"), "content\n").unwrap();
         stage(&repo, Path::new("a.rs")).unwrap();
         let root = commit(&repo, "root", "Lux Test", "lux-test@example.com").unwrap();
-        create(&repo, "feature", root).unwrap();
+        create(&repo, "feature", root, "Lux Test", "lux-test@example.com").unwrap();
 
-        switch(&repo, "feature").unwrap();
+        switch(&repo, "feature", "Lux Test", "lux-test@example.com").unwrap();
         let status = status(&repo).unwrap();
         assert_eq!(status.branch, BranchState::Named("feature".to_string()));
     }

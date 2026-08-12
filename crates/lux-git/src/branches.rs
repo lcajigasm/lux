@@ -17,6 +17,7 @@ use gix::bstr::{BStr, ByteSlice};
 use gix::refs::Target;
 use gix::refs::transaction::{Change, LogChange, PreviousValue, RefEdit, RefLog};
 
+use crate::commit::signature;
 use crate::staging::mode_for;
 
 /// A local branch: its short name (e.g. `"main"`, not `"refs/heads/main"`)
@@ -101,19 +102,36 @@ pub fn list(repo: &gix::Repository) -> Result<Vec<Branch>, BranchError> {
 
 /// Creates a new branch named `name` pointing at `commit`. Fails if a
 /// branch with that name already exists.
+///
+/// `committer_name`/`committer_email` are used only for the ref-log entry
+/// this creates — `gix` has no notion of a default identity (unlike real
+/// `git`, which falls back to a guessed `user@host`) and requires one to
+/// be supplied explicitly, same as [`crate::commit::commit`].
 pub fn create(
     repo: &gix::Repository,
     name: &str,
     commit: gix::ObjectId,
+    committer_name: &str,
+    committer_email: &str,
 ) -> Result<Branch, BranchError> {
     let full_name = branch_full_name(name)?;
-    repo.reference(
-        full_name,
-        commit,
-        PreviousValue::MustNotExist,
-        format!("branch: Created from {commit}"),
-    )
-    .map_err(|e| BranchError::RefEdit(Box::new(e)))?;
+    let sig = signature(committer_name, committer_email);
+    let mut time_buf = gix::date::parse::TimeBuf::default();
+    let edit = RefEdit {
+        change: Change::Update {
+            log: LogChange {
+                mode: RefLog::AndReference,
+                force_create_reflog: false,
+                message: format!("branch: Created from {commit}").into(),
+            },
+            expected: PreviousValue::MustNotExist,
+            new: Target::Object(commit),
+        },
+        name: full_name,
+        deref: false,
+    };
+    repo.edit_references_as(Some(edit), Some(sig.to_ref(&mut time_buf)))
+        .map_err(|e| BranchError::RefEdit(Box::new(e)))?;
     Ok(Branch {
         name: name.to_string(),
         commit_id: commit,
@@ -218,7 +236,15 @@ pub(crate) fn checkout_tree(
 /// Switches `HEAD` to branch `name`: points `HEAD` at `refs/heads/<name>`
 /// and materializes that branch's tree onto the working directory and
 /// index (see [`checkout_tree`]'s docs for exactly what that means).
-pub fn switch(repo: &gix::Repository, name: &str) -> Result<Branch, BranchError> {
+///
+/// `committer_name`/`committer_email` are used only for the ref-log entry
+/// this creates, same reason as [`create`].
+pub fn switch(
+    repo: &gix::Repository,
+    name: &str,
+    committer_name: &str,
+    committer_email: &str,
+) -> Result<Branch, BranchError> {
     let full_name = branch_full_name(name)?;
     let commit_id = repo
         .find_reference(name)
@@ -256,7 +282,9 @@ pub fn switch(repo: &gix::Repository, name: &str) -> Result<Branch, BranchError>
             })?,
         deref: false,
     };
-    repo.edit_reference(edit)
+    let sig = signature(committer_name, committer_email);
+    let mut time_buf = gix::date::parse::TimeBuf::default();
+    repo.edit_references_as(Some(edit), Some(sig.to_ref(&mut time_buf)))
         .map_err(|e| BranchError::RefEdit(Box::new(e)))?;
 
     Ok(Branch {
@@ -296,7 +324,7 @@ mod tests {
         let repo = init_repo(dir.path());
         let root = commit_one_file(&repo, dir.path(), "a.rs", "one\n", "root");
 
-        let branch = create(&repo, "feature", root).unwrap();
+        let branch = create(&repo, "feature", root, "Lux Test", "lux-test@example.com").unwrap();
         assert_eq!(
             branch,
             Branch {
@@ -320,9 +348,9 @@ mod tests {
         let repo = init_repo(dir.path());
         let first = commit_one_file(&repo, dir.path(), "a.rs", "one\n", "first");
         let second = commit_one_file(&repo, dir.path(), "a.rs", "two\n", "second");
-        create(&repo, "feature", first).unwrap();
+        create(&repo, "feature", first, "Lux Test", "lux-test@example.com").unwrap();
         assert!(
-            create(&repo, "feature", second).is_err(),
+            create(&repo, "feature", second, "Lux Test", "lux-test@example.com").is_err(),
             "refuses to move an existing branch"
         );
     }
@@ -332,11 +360,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let repo = init_repo(dir.path());
         let root = commit_one_file(&repo, dir.path(), "a.rs", "one\n", "root");
-        create(&repo, "feature", root).unwrap();
+        create(&repo, "feature", root, "Lux Test", "lux-test@example.com").unwrap();
         // `gix`'s `PreviousValue::MustNotExist` only rejects a ref update whose target would
         // actually change an existing ref; recreating with the identical target is idempotent,
         // not an error. See this deliverable's receipt for the detail.
-        assert!(create(&repo, "feature", root).is_ok());
+        assert!(create(&repo, "feature", root, "Lux Test", "lux-test@example.com").is_ok());
     }
 
     #[test]
@@ -344,7 +372,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let repo = init_repo(dir.path());
         let root = commit_one_file(&repo, dir.path(), "shared.rs", "shared\n", "root");
-        create(&repo, "feature", root).unwrap();
+        create(&repo, "feature", root, "Lux Test", "lux-test@example.com").unwrap();
 
         fs::write(dir.path().join("main-only.rs"), "main only\n").unwrap();
         stage(&repo, Path::new("main-only.rs")).unwrap();
@@ -357,7 +385,7 @@ mod tests {
         .unwrap();
         assert!(dir.path().join("main-only.rs").exists());
 
-        switch(&repo, "feature").unwrap();
+        switch(&repo, "feature", "Lux Test", "lux-test@example.com").unwrap();
 
         assert!(
             !dir.path().join("main-only.rs").exists(),
@@ -378,14 +406,16 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let repo = init_repo(dir.path());
         let root = commit_one_file(&repo, dir.path(), "a.rs", "one\n", "root");
-        create(&repo, "feature", root).unwrap();
+        create(&repo, "feature", root, "Lux Test", "lux-test@example.com").unwrap();
 
-        switch(&repo, "feature").unwrap();
+        switch(&repo, "feature", "Lux Test", "lux-test@example.com").unwrap();
         fs::write(dir.path().join("a.rs"), "two\n").unwrap();
         stage(&repo, Path::new("a.rs")).unwrap();
         commit(&repo, "edit on feature", "Lux Test", "lux-test@example.com").unwrap();
 
-        switch(&repo, "main").unwrap_or_else(|_| switch(&repo, "master").unwrap());
+        switch(&repo, "main", "Lux Test", "lux-test@example.com").unwrap_or_else(|_| {
+            switch(&repo, "master", "Lux Test", "lux-test@example.com").unwrap()
+        });
 
         assert_eq!(
             fs::read_to_string(dir.path().join("a.rs")).unwrap(),
@@ -398,9 +428,9 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let repo = init_repo(dir.path());
         let root = commit_one_file(&repo, dir.path(), "a.rs", "one\n", "root");
-        create(&repo, "feature", root).unwrap();
+        create(&repo, "feature", root, "Lux Test", "lux-test@example.com").unwrap();
 
-        switch(&repo, "feature").unwrap();
+        switch(&repo, "feature", "Lux Test", "lux-test@example.com").unwrap();
 
         let index = repo.open_index().unwrap();
         assert!(index.entry_by_path("a.rs".into()).is_some());
