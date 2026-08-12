@@ -1,0 +1,32 @@
+[package]
+name = "lux-lsp-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Standalone from the main workspace on purpose, same reasoning as
+# lux-core/fuzz: this crate needs nightly (libfuzzer-sys), while the rest
+# of the project is pinned to stable via rust-toolchain.toml. An empty
+# [workspace] table here stops Cargo from treating it as implicitly
+# nested inside the root workspace.
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+futures = { version = "0.3", default-features = false, features = ["std", "executor"] }
+
+[dependencies.async-lsp]
+version = "0.2.4"
+
+[dependencies.lux-lsp]
+path = ".."
+
+[[bin]]
+name = "lsp_stream_fuzz"
+path = "fuzz_targets/lsp_stream_fuzz.rs"
+test = false
+doc = false
+bench = false
