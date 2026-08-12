@@ -2571,6 +2571,7 @@ name = "lux-git"
 version = "0.0.0"
 dependencies = [
  "gix",
+ "ignore",
  "tempfile",
 ]
 
