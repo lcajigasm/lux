@@ -64,6 +64,42 @@ pub fn decode(bytes: &[u8]) -> Result<(String, Encoding), DecodeError> {
     Ok((decode_latin1(bytes), Encoding::Latin1))
 }
 
+/// Like [`decode`], but takes ownership of `bytes` so the common
+/// no-BOM-valid-UTF-8 case can reuse the same allocation as the returned
+/// `String` (`String::from_utf8`) instead of copying it — the fix for the
+/// "open a 100 MB file" RSS budget documented in `docs/PERFORMANCE.md`
+/// (three simultaneous full copies of the file at peak: the raw bytes, the
+/// decoded `String`, and `ropey`'s own chunk storage). Every other path
+/// (a BOM, invalid UTF-8) still allocates a fresh `String`, same as
+/// `decode` — only the dominant plain-UTF-8 case skips the copy.
+pub fn decode_owned(bytes: Vec<u8>) -> Result<(String, Encoding), DecodeError> {
+    if bytes.starts_with(&UTF16LE_BOM) {
+        return Ok((
+            decode_utf16(&bytes[UTF16LE_BOM.len()..], u16::from_le_bytes),
+            Encoding::Utf16Le,
+        ));
+    }
+    if bytes.starts_with(&UTF16BE_BOM) {
+        return Ok((
+            decode_utf16(&bytes[UTF16BE_BOM.len()..], u16::from_be_bytes),
+            Encoding::Utf16Be,
+        ));
+    }
+    if binary_detect::looks_binary(&bytes) {
+        return Err(DecodeError::Binary);
+    }
+    if bytes.starts_with(&UTF8_BOM) {
+        return Ok((
+            String::from_utf8_lossy(&bytes[UTF8_BOM.len()..]).into_owned(),
+            Encoding::Utf8Bom,
+        ));
+    }
+    match String::from_utf8(bytes) {
+        Ok(text) => Ok((text, Encoding::Utf8)),
+        Err(e) => Ok((decode_latin1(e.as_bytes()), Encoding::Latin1)),
+    }
+}
+
 /// Encodes `text` back to bytes for the given encoding — the inverse of
 /// `decode`, used when saving so a file round-trips in its original form.
 pub fn encode(text: &str, encoding: Encoding) -> Vec<u8> {
@@ -181,5 +217,20 @@ mod tests {
         let (decoded, detected) = decode(&bytes).unwrap();
         assert_eq!(decoded, original);
         assert_eq!(detected, Encoding::Latin1);
+    }
+
+    #[test]
+    fn decode_owned_agrees_with_decode_on_every_case() {
+        let cases: Vec<Vec<u8>> = vec![
+            "héllo".as_bytes().to_vec(),
+            encode("hi", Encoding::Utf8Bom),
+            encode("hi 😀", Encoding::Utf16Le),
+            encode("hi 😀", Encoding::Utf16Be),
+            vec![b'c', b'a', 0xE9, b'f', b'e'],
+            vec![0x00, 0x01, 0x02, b'a', b'b'],
+        ];
+        for bytes in cases {
+            assert_eq!(decode(&bytes), decode_owned(bytes));
+        }
     }
 }

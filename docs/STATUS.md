@@ -40,11 +40,23 @@ suite actually runs there. Windows/Linux are untested for the same reason
 | Snippets with navigable placeholders | implemented | not-started | not-started | not-started | not-started |
 | `lux-core-cli` headless test harness | implemented | not-started | not-started | not-started | not-started |
 
-**Known gap**: the "open a 100 MB file" performance budget's RSS half (< 3×
-file size) measures 3.16×, over budget — see `docs/PERFORMANCE.md`'s
-measurement history for the root cause (three simultaneous copies of the
-file's bytes during `Buffer::open`) and why it wasn't fixed in the same pass
-that found it.
+**Closed gap** (2026-08-12, see `docs/PERFORMANCE.md`'s measurement
+history): the "open a 100 MB file" performance budget's RSS half (< 3×
+file size) measured 3.16× at Phase 1 close, over budget — three
+simultaneous copies of the file's bytes alive at once during
+`Buffer::open` (the raw `Vec<u8>`, a decoded `String`, and `ropey`'s own
+chunk storage). Left open at the time rather than fixed under close-phase
+time pressure, revisited in this pass: `Buffer::open` now goes through a
+new `encoding::decode_owned`, which reuses the `Vec<u8>` from `fs::read`
+as the decoded `String` directly (`String::from_utf8`, zero-copy) on the
+common no-BOM-valid-UTF-8 path, cutting the three simultaneous copies to
+two. `Buffer::from_bytes(&[u8])` keeps its original borrowing signature
+unchanged — the 250-call-site blast radius the original close-phase
+report flagged as the reason not to widen it — since only `open`, the
+path the budget actually measures, needed the fix. Re-measured the same
+way the original number was produced (`/usr/bin/time -l` around
+`lux-core-cli` opening a real 100 MB file): **2.16×** (215.6 MB RSS /
+100.0 MB file), inside budget.
 
 ## Rendering & desktop shell (Phase 2, `v0.1.0`)
 

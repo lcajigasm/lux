@@ -66,23 +66,42 @@ benchmarks are this small, because hosted runners are too noisy.
 |---|---|---|---|
 | Insert 1 char at 1,000 cursors in a 100k-line file | < 5 ms | **0.97 ms** (mean, 100 samples) | pass |
 | Open a 100 MB file — time | < 1 s | **85.4 ms** (mean, 10 samples) | pass |
-| Open a 100 MB file — extra RSS | < 3× file size | **3.16×** (330.9 MB RSS / 104.9 MB file, `lux-core-cli` opening a real 100 MB file, `/usr/bin/time -l` `maximum resident set size`) | **fail** |
+| Open a 100 MB file — extra RSS | < 3× file size | **3.16×** (330.9 MB RSS / 104.9 MB file, `lux-core-cli` opening a real 100 MB file, `/usr/bin/time -l` `maximum resident set size`) | **fail at the time — fixed 2026-08-12, see below** |
 
-The RSS overrun is a real, understood inefficiency, not measurement noise:
-`Buffer::open` → `Buffer::from_bytes` → `encoding::decode` keeps the
+The RSS overrun was a real, understood inefficiency, not measurement noise:
+`Buffer::open` → `Buffer::from_bytes` → `encoding::decode` kept the
 original `Vec<u8>` (from `fs::read`), a fresh owned `String` copy
 (`str::from_utf8(bytes).to_owned()`), and `ropey`'s own internal chunk
 storage (`Rope::from_str`) all alive at the same time at peak — three
 full copies of a 100 MB file simultaneously, which is where the ~315 MB
-peak RSS comes from. The fix (reuse the `Vec<u8>` as the `String` via
+peak RSS came from. The fix (reuse the `Vec<u8>` as the `String` via
 `String::from_utf8` on the common all-UTF-8 fast path, avoiding one of the
-three copies) is understood but not applied: `Buffer::from_bytes` takes
-`&[u8]`, a signature hundreds of existing tests across the crate call with
-borrowed literals (`b"..."`), and widening it to take ownership would be a
-wide-blast-radius change to already-closed, heavily-tested modules — not
+three copies) was understood but not applied at Phase 1 close: widening
+`Buffer::from_bytes`'s `&[u8]` signature to take ownership would have been
+a wide-blast-radius change to the 250 existing call sites across the
+crate that construct a `Buffer` from a borrowed byte literal, not
 something to do under close-phase time pressure without its own
-iteration. Left as an open item; see the Phase 1 closing report for
-tracking.
+iteration. Left as an open item at the time; see the Phase 1 closing
+report for the original tracking note.
+
+**2026-08-12, revisited during a full-project review (not a new phase
+close):** fixed without touching `from_bytes`'s signature at all — added
+`encoding::decode_owned(bytes: Vec<u8>)`, a second entry point that takes
+ownership so the plain-UTF-8-no-BOM case can do `String::from_utf8(bytes)`
+(zero-copy reuse of the same allocation) instead of `str::from_utf8(&bytes).to_owned()`;
+every other path (a BOM, invalid UTF-8) still copies, same as before.
+`Buffer::open` (the only path this budget measures) now goes through a
+new private `Buffer::from_owned_bytes` that calls `decode_owned`;
+`Buffer::from_bytes(&[u8])` itself is untouched, so none of the 250
+existing borrowing call sites needed to change. Cuts the three
+simultaneous copies to two (the reused `Vec`/`String` allocation, plus
+`ropey`'s own chunk storage). Re-measured the same way: **2.16×**
+(215.6 MB RSS / 100.0 MB file, `lux-core-cli` opening a real 100 MB
+file, `/usr/bin/time -l`) — **pass**, with headroom. `cargo test -p
+lux-core buffer::` (35 tests, including a new
+`encoding::decode_owned_agrees_with_decode_on_every_case` regression test
+pinning `decode_owned` byte-for-byte identical to `decode` on every
+encoding case) and the full workspace gate both clean.
 
 **2026-07-30, Phase 2 deliverable "Presupuestos de rendimiento", MacBook
 Pro M-series, `--release` (`cargo bench -p lux-render`):**

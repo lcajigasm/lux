@@ -48,7 +48,28 @@ impl Buffer {
 
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let bytes = fs::read(path)?;
-        Self::from_bytes(&bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        Self::from_owned_bytes(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    }
+
+    /// Same decode/detect logic as [`Self::from_bytes`], but takes
+    /// ownership of `bytes` so [`encoding::decode_owned`] can skip a copy
+    /// on the common plain-UTF-8 path — see that function's doc comment.
+    /// `from_bytes` keeps its borrowing `&[u8]` signature, used by the
+    /// hundreds of existing call sites across this crate that construct a
+    /// `Buffer` from a byte-string literal; only `open`, the path the "open
+    /// a 100 MB file" RSS budget actually measures, needs the owned
+    /// fast path.
+    fn from_owned_bytes(bytes: Vec<u8>) -> Result<Self, DecodeError> {
+        let (text, encoding) = encoding::decode_owned(bytes)?;
+        let eol = Eol::detect(&text);
+        let indent = Indent::detect(&text);
+        Ok(Buffer {
+            rope: Rope::from_str(&text),
+            eol,
+            indent,
+            encoding,
+            huge_file_mode: false,
+        })
     }
 
     /// Opens `path` the same way `open` does, but first checks — without

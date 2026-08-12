@@ -223,8 +223,20 @@ mod tests {
 
         fs::write(&path, r#"{ "value": "created" }"#).unwrap();
 
+        // On Linux, `fs::write`'s create (`open(O_CREAT|O_TRUNC)`) and its
+        // content write are two separate raw inotify events — `Create` for
+        // the just-opened, still-empty file, then `Modify` once the write
+        // actually lands — and this module deliberately reacts to every raw
+        // event rather than debouncing (see the module doc comment).
+        // Reloading the still-empty file parses as a real, successful
+        // `Null` document (JSONC's empty-input case), not a parse error, so
+        // it surfaces as a genuine but premature `Reloaded(Layer::User)`
+        // before the one carrying the real content. Keep waiting until the
+        // config actually reflects it, the same way any real consumer of
+        // this event stream has to.
         wait_for(&watcher, |event| {
             matches!(event, ReloadEvent::Reloaded(Layer::User))
+                && config.lock().unwrap().resolved()["value"] == "created"
         });
         assert_eq!(config.lock().unwrap().resolved()["value"], "created");
 
