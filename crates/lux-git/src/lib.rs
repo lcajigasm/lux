@@ -4,5 +4,6 @@ pub mod commit;
 pub mod diff_panel;
 pub mod gutter;
 pub mod history;
+pub mod merge_conflicts;
 pub mod staging;
 pub mod stash;
