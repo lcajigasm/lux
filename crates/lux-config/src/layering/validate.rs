@@ -163,7 +163,10 @@ fn kind_name(value: &JsonValue<'_>) -> &'static str {
 fn line_and_column(text: &str, pos: usize) -> (usize, usize) {
     let mut line = 0;
     let mut column = 0;
-    for c in text[..pos].chars() {
+    for (offset, c) in text.char_indices() {
+        if offset >= pos {
+            break;
+        }
         if c == '\n' {
             line += 1;
             column = 0;
@@ -241,6 +244,22 @@ mod tests {
     fn multiple_problems_are_all_reported_not_just_the_first() {
         let text = r#"{"editor.fontSize": "big", "editor.doesNotExist": 1}"#;
         assert_eq!(validate(text).len(), 2);
+    }
+
+    #[test]
+    fn multi_byte_characters_before_the_diagnostic_do_not_panic_or_miscount() {
+        // `line_and_column` walks `char_indices()` rather than slicing
+        // `text[..pos]` by byte offset, so a multi-byte character earlier
+        // in the document (each "é" is 2 UTF-8 bytes) can't land a byte
+        // offset off a char boundary and panic.
+        let text = "{\n  \"//café\": 1,\n  \"editor.fontSize\": \"big\"\n}";
+        let diagnostics = validate(text);
+        assert_eq!(diagnostics.len(), 2, "unknown key + type mismatch");
+        let type_mismatch = diagnostics
+            .iter()
+            .find(|d| d.message.contains("expected a number"))
+            .unwrap();
+        assert_eq!(type_mismatch.line, 3);
     }
 
     #[test]

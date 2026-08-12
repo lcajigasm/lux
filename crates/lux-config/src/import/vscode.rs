@@ -53,10 +53,14 @@ fn map_key(key: &str, value: &Value) -> Mapped {
         "editor.fontFamily" => value.as_str().map_or(Mapped::Unsupported("string"), |s| {
             Mapped::Imported("editor.fontFamily", json!(s))
         }),
-        "editor.fontSize" => value.as_i64().map_or(Mapped::Unsupported("integer"), |n| {
+        // `f64`, not an integer: both are routinely fractional in real VS
+        // Code configs (`editor.lineHeight` especially, as a multiplier
+        // like `1.5`) and Lux's own schema stores them as `f64` — see
+        // `font_settings::FontSettings`.
+        "editor.fontSize" => value.as_f64().map_or(Mapped::Unsupported("number"), |n| {
             Mapped::Imported("editor.fontSize", json!(n))
         }),
-        "editor.lineHeight" => value.as_i64().map_or(Mapped::Unsupported("integer"), |n| {
+        "editor.lineHeight" => value.as_f64().map_or(Mapped::Unsupported("number"), |n| {
             Mapped::Imported("editor.lineHeight", json!(n))
         }),
         _ => Mapped::Unknown,
@@ -106,6 +110,24 @@ mod tests {
         assert_eq!(on.imported[0].value, json!(true));
         let off = import(r#"{"editor.wordWrap": "off"}"#).unwrap();
         assert_eq!(off.imported[0].value, json!(false));
+    }
+
+    #[test]
+    fn fractional_line_height_and_font_size_are_imported_not_dropped() {
+        let report = import(r#"{"editor.lineHeight": 1.5, "editor.fontSize": 13.5}"#).unwrap();
+        assert_eq!(report.imported.len(), 2);
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|s| s.source_key == "editor.lineHeight" && s.value == json!(1.5))
+        );
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|s| s.source_key == "editor.fontSize" && s.value == json!(13.5))
+        );
     }
 
     #[test]
