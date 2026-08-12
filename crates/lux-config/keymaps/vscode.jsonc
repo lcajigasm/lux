@@ -1,0 +1,23 @@
+// VS Code's default keymap (a representative subset, not the full list —
+// see docs/receipts/phase-05-keymaps-sublime-vscode-jetbrains-como.md for
+// which of these were confirmed against code.visualstudio.com's own docs
+// vs. carried from well-established prior knowledge). Same shape VS Code's
+// own real `keybindings.json` uses: "key" is the Windows/Linux default,
+// "mac" overrides it where macOS differs.
+[
+  { "command": "command_palette", "key": "ctrl+shift+p", "mac": "cmd+shift+p" },
+  { "command": "quick_open", "key": "ctrl+p", "mac": "cmd+p" },
+  { "command": "find", "key": "ctrl+f", "mac": "cmd+f" },
+  { "command": "find_in_files", "key": "ctrl+shift+f", "mac": "cmd+shift+f" },
+  { "command": "toggle_comment", "key": "ctrl+/", "mac": "cmd+/" },
+  { "command": "delete_line", "key": "ctrl+shift+k", "mac": "cmd+shift+k" },
+  // Same physical modifier key (Alt/Option) on every platform.
+  { "command": "duplicate_line", "key": "shift+alt+down" },
+  { "command": "select_next_occurrence", "key": "ctrl+d", "mac": "cmd+d" },
+  { "command": "undo", "key": "ctrl+z", "mac": "cmd+z" },
+  { "command": "redo", "key": "ctrl+y", "mac": "cmd+shift+z" },
+  // Chained (two-chord) bindings — VS Code's "ctrl+k"/"cmd+k" prefix
+  // convention.
+  { "command": "keyboard_shortcuts", "key": "ctrl+k ctrl+s", "mac": "cmd+k cmd+s" },
+  { "command": "close_all_editors", "key": "ctrl+k ctrl+w", "mac": "cmd+k cmd+w" },
+]

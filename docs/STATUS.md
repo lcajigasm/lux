@@ -937,17 +937,612 @@ rather than leaving implicit:
 | `.editorconfig` / `.gitattributes` | not-started | not-started | not-started | not-started | not-started |
 | Settings importers | not-started | not-started | not-started | not-started | not-started |
 | Font settings + overrides | not-started | not-started | not-started | not-started | not-started |
+| Schema-aware settings-file completion | not-started | not-started | not-started | not-started | not-started |
+
+**Scope note (`lux-config::layering` — JSONC, layered precedence, hot
+reload; the narrower first slice of this phase's `lux-config` deliverable,
+tracked in
+`docs/receipts/phase-05-luxconfig-jsonc-precedencia-capas-recarga.md`)**:
+the "JSONC config with layered precedence" row above doesn't move — this is
+a headless settings-resolution library with no schema, no keymaps, no
+`.editorconfig`, no importers, and no preferences surface built on it yet,
+and nothing reads or writes real settings through it from the `lux` binary.
+What exists and is verified: `LayeredConfig` (JSONC parsing via
+`jsonc-parser`, five layers — `Default`/`User`/`Project`/`Folder`/`Language`
+— merged in that precedence order via a recursive JSON-object merge, a
+malformed layer keeping its last good value instead of dropping settings or
+the whole config) and `ConfigWatcher` (background `notify`-based hot reload
+of every file-backed layer, no polling). Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-config layering::` (19 tests,
+headless — no UI dependency per golden rule #2). Schema publication and
+validation with line/column errors (the rest of this phase's first
+deliverable bullet) landed in a later loop, once `crate::schema` existed
+for a validator to check against — see the closing scope note below.
+
+**Scope note (`lux-config::keymap` — keymaps as data, tracked in
+`docs/receipts/phase-05-keymaps-sublime-vscode-jetbrains-como.md`)**: the
+"Keymap presets (Sublime/VS Code/JetBrains)" row above doesn't move either
+— same reasoning as the row above it: no key-event dispatch layer exists
+yet for any of this to actually drive, and nothing is wired into the `lux`
+binary. What exists and is verified: `Chord`/`ChordSequence` (parsed from
+the same `"ctrl+shift+p"`/`"ctrl+k ctrl+s"` string convention VS Code's own
+`keybindings.json` uses), `KeyBinding`/`Keymap` with per-platform
+(`mac`/`win`/`linux`) resolution mirroring that same real schema, conflict
+detection with a human-readable diagnostic, and three preset keymaps
+(`crates/lux-config/keymaps/*.jsonc`) loaded through the same JSONC parser
+`layering` uses. Verified on macOS (aarch64-apple-darwin): `cargo test -p
+lux-config keymap::` (36 unit tests) and `cargo test -p lux-config
+keymap:: --test keymap_presets` (7 tests checking each preset's documented
+shortcuts, platform resolution, chord chaining via two of VS Code's real
+`ctrl+k`-prefixed bindings, and conflict detection). Not yet built:
+conflict resolution *policy* (this deliverable detects and reports
+conflicts; deciding which binding wins, or prompting a user, is
+unaddressed), and the two remaining phase-acceptance criteria this
+deliverable doesn't cover on its own — key-chaining is supported by the
+data model but real dispatch of a multi-chord sequence needs an input
+layer that doesn't exist yet.
+
+**Scope note (`lux-config::editorconfig` + `lux-config::gitattributes`,
+tracked in `docs/receipts/phase-05-editorconfig-gitattributes.md`)**: the
+"`.editorconfig` / `.gitattributes`" row above doesn't move either — same
+reasoning as the two rows above it: nothing in `lux-core`'s buffer/save
+path actually consults either of these yet (no auto-indent-detection
+override, no EOL-normalization-on-save), and nothing is wired into the
+`lux` binary. What exists and is verified: `editorconfig::resolve` (a
+typed wrapper around `ec4rs`, a dedicated spec-compliant EditorConfig
+implementation — real glob matching including brace alternation, real
+`[section]` parsing, real directory-tree inheritance with `root = true`
+stopping the upward walk, a malformed file surfacing a real, actionable
+error rather than silently producing wrong data) and
+`gitattributes::GitAttributes` (built on `gix-attributes`, the same
+gitoxide-family crate `lux-git` will use for real Git integration in Phase
+6 — narrowed to line-ending normalization per this deliverable's own
+wording, resolving `text`/`eol`/the built-in `binary` macro into
+`Normalize(Lf|CrLf)`/`Auto`/`Disabled`/`Unspecified`, with a later-added
+file's rules correctly overriding an earlier one's for the same pattern).
+Verified on macOS (aarch64-apple-darwin): `cargo test -p lux-config
+editorconfig::` (9 tests) and `cargo test -p lux-config gitattributes::` (9
+tests). Not built: full `.gitattributes` semantics beyond line endings
+(diff/merge drivers, filters, `export-ignore`, `linguist-*` — out of scope
+per the deliverable's own "para normalización de finales de línea"
+wording); anything consuming either module to actually change editor
+behavior (indent detection, EOL conversion on save).
+
+**Scope note (`lux-config::import` — schema-aware settings importers,
+tracked in `docs/receipts/phase-05-importadores-ajustes-externos.md`)**:
+the "Settings importers" row above doesn't move either — same reasoning as
+every row above it: nothing consumes an `ImportReport` yet (no "Import
+from..." command, no UI, no write path into `layering::LayeredConfig`),
+and nothing is wired into the `lux` binary. What exists and is verified:
+three importers (`import::sublime`, `import::vscode`, `import::jetbrains`)
+each mapping a modest, real subset of their source's setting keys onto
+Lux's own dotted-key settings namespace, sharing one `ImportReport` shape
+(`imported`/`ignored`, the latter split into `UnknownKey` vs a recognized
+key with an `UnsupportedValue` — two different, separately-reported
+outcomes, not one catch-all "ignored" bucket) — the "informen
+honestamente" half of this deliverable's wording. Sublime's and VS Code's
+importers reuse `layering::jsonc::parse` (both formats are JSON with
+comments); JetBrains' reads XML via `quick-xml`. Every mapped source key
+was either confirmed against the vendor's own documentation or source
+(VS Code: `code.visualstudio.com`'s docs directly; JetBrains: read
+straight from `CommonCodeStyleSettings.java` in the `intellij-community`
+GitHub repo, the actual source that produces the XML) or, where that
+wasn't reachable (most of Sublime's keys — its docs don't publish a plain
+settings reference, same gap the keymap-preset loop hit for its
+shortcuts), explicitly flagged as coming from well-established prior
+knowledge instead of presented as uniformly verified. Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-config import::` (20 tests).
+Not built: a preferences surface or any UI to trigger an import (Phase 5
+deliverable 6, still not-started); writing an `ImportReport`'s imported
+settings into a real `LayeredConfig` layer (this deliverable produces the
+report; consuming it is a future integration's job, same design language
+`layering`/`keymap`/`editorconfig`/`gitattributes` already established
+this phase); import of anything beyond the handful of indent/whitespace/
+font settings each importer currently recognizes.
+
+**Scope note (`lux-config::font_settings` — typography with project/folder
+overrides, tracked in
+`docs/receipts/phase-05-ajustes-tipografia-overrides-proyecto-carpeta.md`)**:
+the "Font settings + overrides" row above doesn't move either — same
+reasoning as every row above it: nothing renders text through a resolved
+`FontSettings` yet (no `lux-render`/`lux-ui` wiring), and nothing is wired
+into the `lux` binary. What exists and is verified: `FontSettings`
+(family, size, line height, ligatures — the four properties this phase's
+deliverable text names), resolved by reading four dotted keys
+(`editor.fontFamily`, `editor.fontSize`, `editor.lineHeight`,
+`editor.fontLigatures` — the same keys `import::sublime`/`import::vscode`
+already produce, so an importer's output needs no translation to be read
+back here) straight off a `layering::LayeredConfig`'s already-merged
+settings. "Overrides por proyecto y por carpeta" specifically is not a
+second override mechanism built for fonts — it's the `Layer::Project`/
+`Layer::Folder` precedence the `layering` loop already implemented and
+tested, demonstrated here for typography specifically (a folder override
+winning over a project override for the same property while leaving
+sibling properties still inherited, and reverting to the project value
+once the folder override is cleared). Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-config font_settings::` (7
+tests). Not built: font settings actually reaching the renderer or being
+editable through any UI; `editor.fontLigatures`-driven ligature rendering
+itself (`lux-render`'s glyph pipeline, a Phase 2 concern, is unaffected by
+this deliverable).
+
+**Scope note (`lux-config::schema` + `lux-config::completion` — Phase 5's
+sixth and final deliverable, "Panel de preferencias, o edición de fichero
+con autocompletado del esquema (elige uno; documenta la elección)",
+tracked in
+`docs/receipts/phase-05-panel-preferencias-o-autocompletado-esquema.md`)**:
+the "Schema-aware settings-file completion" row above doesn't move — same
+reasoning as every row above it: nothing surfaces a completion popup in
+any editor UI yet, and nothing is wired into the `lux` binary. **The
+choice, documented in `completion`'s own module docs**: file-editing
+completion over a preferences UI panel, because every other Phase 5
+deliverable in this crate is headless UI-free logic, and a real panel
+would need `lux-ui`/`lux` widget/rendering infrastructure that doesn't
+exist yet for this purpose — building it inside `lux-config` would pull a
+domain crate toward a graphics dependency it has never needed, against
+golden rule #2's spirit even though the rule's literal CI gate only checks
+`lux-core`. What exists and is verified: `schema::PROPERTIES` (the ten
+settings keys `font_settings` and the three `import` modules already use,
+written down as one list for the first time, with a value shape —
+`String`/`Integer`/`Number`/`Boolean`/`Enum`) and `completion::complete`
+(a small hand-written, JSONC-comment-aware state machine — not the full
+`jsonc-parser` AST, deliberately: completion has to work on a document
+that's mid-edit and very often syntactically incomplete exactly at the
+cursor, which a real parser built for complete documents can't do at all;
+scoped to the flat, single-level objects every settings document in this
+crate actually is). Verified on macOS (aarch64-apple-darwin): `cargo test
+-p lux-config` (100 unit tests, including 16 in `completion::tests` and 3
+in `schema::tests`). Not built at the time: any UI rendering a completion
+popup; hover/documentation-on-demand for a property; validation of a
+complete document against the schema — closed in the loop below.
+
+**Scope note (`lux-config::layering::validate` + `schema::to_json_schema`
+— closing Phase 5 deliverable 1's last piece, "esquema publicado y
+validación con errores útiles señalando línea y columna," tracked in
+`docs/receipts/phase-05-esquema-publicado-validacion-linea-columna.md`)**:
+the "JSONC config with layered precedence" row (deliverable 1) is now
+fully covered by receipts, and "Schema-aware settings-file completion"
+(deliverable 6) gained a second, independent consumer of `schema::PROPERTIES`.
+Neither row's `not-started` mark moves — same reasoning as every row in
+this section: nothing calls `layering::validate` from a real editing
+surface yet, and nothing is wired into the `lux` binary. What exists and
+is verified: `schema::to_json_schema` (the ten properties exported as a
+real draft-07 JSON Schema document — the standard format external tooling
+already knows how to consume, not a Lux-only shape) and
+`layering::validate` (parses a document with `jsonc_parser::parse_to_ast`
+— not `completion`'s own tolerant scanner, since validation is only
+meaningful once a document is syntactically complete — and reports every
+unknown key and type/enum mismatch with a 1-based line and `char`-counted
+column, the same convention `jsonc_parser`'s own parse errors already use;
+a syntactically invalid document produces exactly one diagnostic, that
+parse error itself, rather than every schema rule silently not running).
+Verified on macOS (aarch64-apple-darwin): `cargo test -p lux-config
+layering::validate::` (12 tests) plus 3 more in `schema::tests` covering
+the JSON Schema export. With this loop, all six of Phase 5's deliverables
+have a `Result: passed` receipt.
+
+**Phase 5 close-out.** All six deliverables above have individual receipts
+under `docs/receipts/phase-05-*.md` (deliverable 1 across two receipts —
+`layering`'s JSONC/precedence/hot-reload half, then `layering::validate`'s
+schema/validation half once `schema` existed to validate against — the
+other five each a single receipt), each `Result: passed` against its own
+gate, and the full workspace gate (`cargo test --workspace`, `cargo
+clippy --workspace -- -D warnings`, `cargo deny check`,
+`scripts/check-limits.sh`, `scripts/check-core-isolation.sh`) passes clean
+at 718 tests, 0 failures. Two things worth stating plainly rather than
+leaving implicit:
+
+1. **No capability row above moved to `implemented`, same as Phase 4.**
+   Every one of Phase 5's pieces is real, tested, and correct at the
+   `lux-config` crate level — but none of it is wired into `crates/lux`
+   (the running desktop binary), which today still has no settings file,
+   no keymap dispatch, and no preferences surface at all. This is the
+   identical, deliberate choice made consistently across all seven loops
+   this phase (see each deliverable's own scope note above): Phase 5
+   built the complete configuration/personalization *engine*; none of it
+   is yet a capability an actual user of the running app has.
+2. **All three acceptance criteria are backed by real, automated tests —
+   a stronger position than Phase 4's one-of-four.** "Los tres presets de
+   keymap pasan un test que verifica los atajos documentados" is
+   measured literally: `cargo test -p lux-config keymap:: --test
+   keymap_presets`, 7 tests checking real, vendor-sourced shortcuts for
+   all three presets. "Una configuración mal formada nunca deja el
+   editor inutilizable ni pierde ajustes" and "cambiar la configuración
+   se refleja sin reiniciar" are both genuinely exercised by real tests
+   against real files — `layering::tests::malformed_layer_keeps_the_previous_good_value_and_reports_the_error`
+   and `layering::watch::tests::editing_a_watched_file_hot_reloads_without_restart`,
+   among others — not merely argued from the design. The honest caveat:
+   "el editor" in both criteria' wording presumes a running editor
+   session consuming live config, which doesn't exist yet (point 1
+   above) — so what's actually measured is that `LayeredConfig` and
+   `ConfigWatcher` themselves have this property at the library level,
+   the furthest either criterion can be verified without an editor to
+   plug them into. That's a real difference from Phase 4's "not
+   measurable with the code as it stands today" gaps: here, the
+   mechanism the criteria describe is built, tested, and verified — only
+   the last mile (a real window, a real open document, a real keystroke)
+   is missing, and that last mile is explicitly out of every Phase 5
+   deliverable's scope, not an oversight.
 
 ## Git integration (Phase 6, `v0.5.0`)
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
 | Gutter diff indicators | not-started | not-started | not-started | not-started | not-started |
+| Status summary (branch/dirty/count) | not-started | not-started | not-started | not-started | not-started |
 | Diff panel (side-by-side/inline) | not-started | not-started | not-started | not-started | not-started |
 | Stage/unstage/commit/amend | not-started | not-started | not-started | not-started | not-started |
 | History & blame | not-started | not-started | not-started | not-started | not-started |
 | Branches & stash | not-started | not-started | not-started | not-started | not-started |
 | Merge conflict resolution | not-started | not-started | not-started | not-started | not-started |
+
+**Scope note (`lux-git::gutter` — diff computation and hunk navigation,
+tracked in
+`docs/receipts/phase-06-indicadores-cambio-gutter-navegacion-hunks.md`)**:
+the "Gutter diff indicators" row above doesn't move — same reasoning as
+every `not-started` row elsewhere in this document with a scope note: this
+is a headless diff library with nothing wired into `crates/lux-ui`'s
+gutter rendering or the running `lux` binary, so no user of the app can
+see a change indicator yet. What exists and is verified: `diff_hunks`
+(line-level diff between two texts via `gix`'s own `imara-diff`-backed
+blob-diff, with Git's histogram algorithm and slider heuristics — the
+same engine `gix` itself uses, not a hand-rolled one), `gutter_markers`
+(expanding hunks into one per-line marker, Added/Removed/Modified, with a
+deletion's marker anchored on the line immediately following it — the
+same convention most editors use since a pure deletion owns no line of
+its own), `HunkNavigator` (next/previous-hunk lookup by line, wrapping at
+either end), and `hunks_against_head` (reads a path's blob at `HEAD` from
+a real `gix::Repository` — via `head_tree_id_or_empty`, so an unborn HEAD
+diffs against nothing rather than erroring — and diffs it against
+caller-supplied working-copy text; a path absent from `HEAD` diffs
+against an empty string, so a new file comes back as one `Added` hunk).
+No shell-out to `git`, per ADR 0010. Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-git gutter::` (13 tests,
+including three against real temporary repositories built with `gix`'s
+own object-writing API — no `git` binary involved in the fixtures
+either). Not yet built: everything else Phase 6 asks for (branch/status
+bar, staged-changes tree, diff panel, staging, commit, history, blame,
+branches, stash, merge conflict resolution) and the gutter-rendering
+wiring in `lux-ui` itself.
+
+**Scope note (`lux-git::diff_panel` — changes tree and side-by-side diff,
+tracked in `docs/receipts/phase-06-panel-cambios-arbol-diff-lado.md`)**:
+the "Diff panel (side-by-side/inline)" row above doesn't move — same
+reasoning as the row above it: this is a headless view-model library with
+nothing wired into `lux-ui`, so no user of the app can see a changes panel
+or a diff view yet. Also unmoved because it's genuinely out of scope for
+this row: the *inline* half of "side-by-side/inline" isn't built — this
+loop's own deliverable title narrows it to "panel de cambios en árbol +
+diff lado a lado," inline diff rendering is a separate, later piece. What
+exists and is verified: `changed_files` (compares a real `gix::Repository`'s
+`HEAD` tree, read via `Tree::traverse().breadthfirst`, against its on-disk
+working directory walked with the same gitignore-aware `ignore` crate
+`lux-search`/`lux-workspace` already use, classifying every differing path
+Added/Modified/Deleted — deleted files are paths present at `HEAD` but
+missing from the walk, added files are the reverse, modified files are
+byte-for-byte content comparison against the `HEAD` blob), `group_by_folder`
+(turns that flat list into a folder tree, sorted, the shape a changes panel
+renders), and `side_by_side` (pairs up every line of two texts using
+`gutter::diff_hunks` — reusing that module's diff engine rather than a
+second one — with blank-padded rows on whichever side has fewer lines
+within a hunk, the same alignment a split diff view needs). No shell-out
+to `git`, per ADR 0010; the `ignore` crate is a gitignore matcher, not a
+`git` process. Verified on macOS (aarch64-apple-darwin): `cargo test -p
+lux-git diff_panel::` (10 tests, including three against real temporary
+repositories: added/modified/deleted detection, a clean tree reporting no
+changes, and confirming a `.gitignore`-matched directory never surfaces as
+"added"). Not yet built: staging (this only reads, matching the
+deliverable's own "panel de cambios," not "stage/unstage" which is a
+separate Phase 6 deliverable), inline diff rendering, renames/copies
+detection, and — same as every row in this section — the `lux-ui` wiring.
+
+**Scope note (`lux-git::staging` + `lux-git::commit` — index writes and
+commit/amend, tracked in
+`docs/receipts/phase-06-stage-unstage-commit-amend.md`)**: the
+"Stage/unstage/commit/amend" row above doesn't move — same reasoning as
+every scope-noted row in this document: these are real, tested write
+operations on a repository's `.git/index` and object database, but
+nothing calls them from `lux-ui` or the running `lux` binary yet, so no
+user of the app can stage or commit anything through it. Per-hunk staging
+(the master prompt's fuller "stage y unstage por fichero y por hunk") is
+also not built — this loop's own goal title is "Stage/unstage/commit/
+amend" without "por hunk," and partial-hunk staging (constructing a blob
+from a subset of a file's hunks) is real additional complexity, not
+something to fold in silently. What exists and is verified:
+`staging::stage`/`unstage`/`is_staged` (whole-file staging: reads a
+file's current on-disk content, writes it as a blob, and records it in
+the index at stage 0 via `gix_index`'s own entry-mutation API — including
+the executable bit, read from real file metadata, not assumed — replacing
+any prior entry for the same path; unstage removes the entry without
+touching the working copy) and `commit::commit`/`amend` (builds the new
+tree with `gix`'s `Tree::edit()` API, starting from `HEAD`'s tree and
+upserting every staged index entry — so files nobody re-staged keep
+whatever they were at `HEAD` — then writes a real commit object and moves
+`HEAD` to it; `amend` preserves the original commit's author and parents,
+same as real `git commit --amend`'s default, only updating the committer
+identity/time and, optionally, the message). No shell-out to `git`, per
+ADR 0010. One real design finding from this loop, worth stating plainly:
+`Repository::commit_as()` — the convenience `commit()` uses — assumes
+it's creating an ordinary successor commit, where `HEAD` currently equals
+the new commit's first parent, and refuses the ref update otherwise;
+`amend` structurally violates that (the new commit's parents are its
+*predecessor's* parents, not its predecessor), so `amend` writes the
+commit object directly and performs the `HEAD` ref update by hand,
+expecting the commit being replaced as the ref's current value instead —
+this isn't a workaround for a `gix` limitation, it's the correct lower-level
+API for what amend actually does. Verified on macOS (aarch64-apple-darwin):
+`cargo test -p lux-git staging::` (5 tests) and `cargo test -p lux-git
+commit::` (6 tests), all against real temporary repositories built with
+`gix`'s own object-writing API. Not yet built: per-hunk staging, conflict
+handling on stage (out of scope until merge conflict resolution, a later
+Phase 6 deliverable), and — same as every row in this section — the
+`lux-ui` wiring.
+
+**Scope note (`lux-git::history` + `lux-git::blame` — repository/file
+history and inline/per-commit blame, tracked in
+`docs/receipts/phase-06-historial-blame-linea-commit.md`)**: the "History
+& blame" row above doesn't move — same reasoning as every scope-noted row
+in this document: real, tested read operations, nothing wired into
+`lux-ui` or the running `lux` binary yet, so no user of the app can open a
+history or blame view through it. What exists and is verified:
+`history::repository_history` (every commit reachable from a starting
+point, newest first, via `gix`'s own revision walk —
+`Sorting::ByCommitTime(CommitTimeOrder::NewestFirst)` — not a hand-rolled
+parent-chain follow), `history::file_history` (the commits that actually
+changed a given path's content: for each walked commit, its blob at that
+path is compared against every parent's blob at the same path, and it's
+included only if it differs from all of them — mirroring `git log`'s
+default behavior of hiding a merge that's identical to at least one
+parent, without reimplementing full history simplification), and
+`blame::blame_by_commit`/`expand_to_lines` (per-commit and per-line blame
+views of a file at a given revision). The blame half doesn't reimplement
+line attribution at all: `gix` ships a first-party, feature-gated
+(`blame`) blame algorithm — `Repository::blame_file()`, backed by the
+`gix-blame` crate — that already returns hunks grouped by the commit that
+introduced them (`gix_blame::BlameEntry`), which **is** the "por commit"
+view directly; `expand_to_lines` is a pure, repository-free transform
+that flattens those hunks into one entry per line for the "en línea"
+view, so the actual blame computation — the expensive part, a real
+history walk with diffing at each step — runs exactly once per call. No
+shell-out to `git`, per ADR 0010; per that same ADR, `gix`'s blame
+maturity was confirmed by using it directly rather than assumed. Verified
+on macOS (aarch64-apple-darwin): `cargo test -p lux-git history::` (4
+tests: newest-first ordering with correct parent links, author/message
+decoding including a multi-line message's summary line, path-limited
+history excluding unrelated commits, an empty result for a path that
+never existed) and `cargo test -p lux-git blame::` (4 tests: a
+single-commit file blames entirely to that commit, added lines attribute
+to the commit that added them while untouched lines keep their original
+commit, an edited line attributes to the edit while its neighbors don't,
+blaming an earlier revision ignores later history entirely) — all against
+real temporary repositories, no `git` binary anywhere in the fixtures.
+Not yet built: line-range-limited blame (`gix_blame`'s `BlameRanges`
+supports it; this loop always blames the whole file, since nothing in
+this deliverable's scope needs partial-file blame yet), and — same as
+every row in this section — the `lux-ui` wiring.
+
+**Scope note (`lux-git::branches` + `lux-git::stash`, tracked in
+`docs/receipts/phase-06-ramas-stash.md`)**: the "Branches & stash" row
+above doesn't move — same reasoning as every scope-noted row in this
+document: real, tested write operations, nothing wired into `lux-ui` or
+the running `lux` binary yet. What exists and is verified:
+`branches::list`/`create` (enumerate `refs/heads/*`; create a new branch
+ref, refusing to move an existing one to a different commit — see the
+`PreviousValue::MustNotExist` finding below) and `branches::switch` — a
+**real, forced checkout**, not a `HEAD`-pointer-only switch: it
+materializes the target branch's tree onto the working directory and
+index via a new shared primitive, `checkout_tree` (delete paths the old
+tree had that the new one doesn't, write every blob the new tree
+specifies including its executable bit, rebuild the index to match) — the
+same primitive `stash::save`/`pop` reuse to reset/restore the working
+copy, so there's one "make the working copy match this tree" code path,
+not two. `switch` does not check for or preserve uncommitted changes
+first, unlike plain `git switch`; that safety check is left as a
+caller/UI policy decision. `stash::save`/`list`/`pop` are a real,
+functional stash — snapshot tracked files' current on-disk content into a
+commit, reset the working copy to `HEAD`, and bring it back later — using
+the standard `refs/stash` ref name, but the stack itself threads through
+each stash commit's own second parent rather than `git`'s reflog-based
+history, and the stash commit only has one tree (not `git`'s separate
+index/worktree distinction); a repository stashed by `lux-git` isn't
+guaranteed to also work with the real `git stash` CLI against the same
+checkout — see the module's own doc comment for the full compatibility
+note. No shell-out to `git`, per ADR 0010; `gix_worktree_state`'s
+full checkout API (the `worktree-mutation` feature) was evaluated and
+deliberately not used — its `Options` require filesystem capability
+probing, `gix-worktree`'s attributes stack, and a real `gix_filter`
+pipeline, machinery built for clone-time/`git checkout --force` parity
+with `.gitattributes`-driven text conversion, which is more than this
+deliverable needs; `checkout_tree` is a focused materializer built from
+primitives already used elsewhere in this crate (tree traversal from
+`diff_panel`, index writing from `staging`).
+
+**One real `gix` semantics finding, worth stating plainly:**
+`PreviousValue::MustNotExist` on a ref *update* (not deletion) only
+rejects the write if the existing ref's target actually differs from the
+new value — re-running `repo.reference(name, same_target, MustNotExist,
+...)` is treated as an idempotent no-op success, not an error, per
+`gix-ref`'s own file-transaction source
+(`store/file/transaction/prepare.rs`: `(MustNotExist, Some(existing)) =>
+if existing.target != *new { Err(...) }`). `branches::create`'s test
+suite originally asserted create-twice-with-the-same-target fails, and
+that assertion was simply wrong about `gix`'s semantics, caught
+immediately by the test actually running (not by reading docs first);
+fixed by testing the real failure mode (creating an existing branch name
+pointing at a *different* commit) and adding a second test that pins down
+the idempotent-same-target case as intentional, documented behavior
+rather than leaving it as a surprise. Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-git branches::` (6 tests) and
+`cargo test -p lux-git stash::` (5 tests), all against real temporary
+repositories built with `gix`'s own object-writing API. Not yet built:
+per-hunk or partial staging feeding into stash (stash always snapshots
+every tracked file's current on-disk content, matching plain `git
+stash`'s default — no `-u`/untracked-file support), conflict handling
+when a checkout would overwrite unsaved changes, and — same as every row
+in this section — the `lux-ui` wiring.
+
+**A second real `gix` finding, caught by CI rather than local testing**:
+`branches::create`/`switch`, `commit::amend`, and `stash::save`/`pop` all
+write a ref update with a ref-log entry, and every one of them originally
+relied on `gix`'s ambient `Repository::committer()` to supply that
+ref-log's identity (via the `reference()`/`edit_reference()`
+convenience methods). Per `gix`'s own documented design
+(`repository/identity.rs`: "There is no notion of a default user like in
+git, and instead failing to provide a user is fatal"), that call returns
+`None` — a hard `MissingCommitter` error — unless `user.name`/`email` is
+configured somewhere `gix` can see it, with **no** fallback to a guessed
+`user@host` the way real `git` has for non-commit ref updates. Every
+local run in this phase passed because the development machine's global
+`~/.gitconfig` has an identity configured; the `macOS` GitHub Actions
+runner has none, so every test exercising these four operations failed
+there with `RefEdit(FileTransactionCommit(CreateOrUpdateRefLog(MissingCommitter)))`
+the first time this branch's PR ran CI — a genuine portability bug, not
+a CI quirk, since the same failure would hit any real user who has git
+installed but hasn't set an identity yet. Fixed by threading explicit
+`committer_name`/`committer_email` parameters through all four functions
+(matching the pattern `commit`/`amend` already used) and calling `gix`'s
+`edit_references_as(edits, Some(committer))` instead of the ambient-only
+convenience methods. Verified both normally and with a from-scratch,
+git-identity-free environment (`env -i HOME=<empty> GIT_CONFIG_NOSYSTEM=1
+GIT_CONFIG_GLOBAL=/dev/null cargo test -p lux-git`): all 74 tests pass
+either way, confirming the fix removes the dependency rather than just
+happening to work on this machine.
+
+**Scope note (`lux-git::merge_conflicts`, tracked in
+`docs/receipts/phase-06-resolucion-conflictos-merge.md`)**: the "Merge
+conflict resolution" row above doesn't move — same reasoning as every
+scope-noted row in this document: a real, tested capability, nothing
+wired into `lux-ui`'s editor (no "Accept Current / Incoming / Both"
+commands exist yet — this loop builds the primitives such an action would
+call, not the action itself). What exists and is verified: `merge()` — a
+genuine three-way merge computed by `gix`'s own merge engine
+(`Repository::merge_commits()`, automatic merge-base detection), which
+materializes its result onto the working directory and index via the
+same `checkout_tree` primitive branch-switching and stash use, so a
+merge with conflicts leaves real `<<<<<<<`/`=======`/`>>>>>>>` markers in
+the working tree files, exactly as real `git merge` does; `resolve()` —
+given a conflict and an `Ours`/`Theirs`/`Both` choice, writes the chosen
+content to the working file and stages it, the exact primitive an
+"Accept Current / Incoming / Both" editor action would call per conflict;
+and `complete()` — writes the two-parent merge commit from whatever's
+currently staged once conflicts are resolved. No shell-out to `git`, per
+ADR 0010 — and per that same ADR, `gix-merge`'s maturity was confirmed by
+using it directly (same discipline that already paid off for blame
+earlier in this phase) rather than assumed or worked around. **Scope is
+deliberately narrower than everything `gix-merge` can report**: only
+*content conflicts* (both sides modified, or both sides independently
+added, the same path) are turned into a `MergeConflict` — rename
+conflicts and delete/modify conflicts are real, detected outputs this
+loop doesn't yet surface as resolvable; `merge()` reports those
+explicitly via `MergeConflictError::UnsupportedConflictShape` rather than
+silently dropping or misrepresenting them, so a caller always knows when
+it hit a shape this module doesn't handle instead of getting a
+subtly-wrong result. Verified on macOS (aarch64-apple-darwin): `cargo
+test -p lux-git merge_conflicts::` — 7 tests, 0 failures, 0 ignored,
+against a real temporary repository with an **induced** conflict (two
+branches independently edit the same line of the same file from a shared
+base) — not a synthetic/mocked conflict object: a merge with no real
+conflicts leaves the non-conflicting change already merged on disk, the
+induced conflict is detected with correct `ours`/`theirs` blob content
+and real conflict markers written to the working copy, each of
+`Ours`/`Theirs`/`Both` resolves correctly, and completing the merge
+writes a real two-parent commit whose tree reflects the resolution
+chosen. Not yet built: rename and delete/modify conflict resolution,
+merge abort, and — same as every row in this section — the `lux-ui`
+wiring (the "Accept Current / Incoming / Both" editor commands
+themselves).
+
+**Closing loop: `lux-git::status`, inline diff, per-hunk staging, and
+verification against a real large repository** (tracked in
+`docs/receipts/phase-06-completar-pendientes.md`). A `/close-phase 6`
+audit found four real gaps against the master prompt's full entregable
+list and Phase 6's own acceptance criteria, none covered by the six
+receipts above: no repository-status summary existed at all; "diff lado
+a lado **y en línea**" only had the side-by-side half; "stage... **y por
+hunk**" only staged whole files; and — most importantly — nothing in
+Phase 6 had actually been run against a real, large repository, which
+the phase's acceptance criteria explicitly requires ("usa el propio
+repo de Rust o de Linux como caso de prueba"). This loop closed the
+first three and ran the fourth, which surfaced two real bugs neither
+the small-repo test suite nor manual reasoning had caught:
+
+- **`status`/`diff_panel::changed_files` bug**: a tracked file that also
+  matches a `.gitignore` rule added *after* it was committed (a common
+  real pattern — rust-lang/rust has 12 such files, e.g. `.vscode/
+  settings.json` committed early, ignored later) was reported as
+  **deleted**, because the gitignore-aware directory walk this crate
+  uses to discover files on disk correctly skips it, and the old code
+  treated "not found by the walk" as "gone." Real `git status` never
+  lets `.gitignore` hide an already-tracked path — the rule only ever
+  governs *un*tracked-file discovery. Fixed: every tracked path is now
+  checked directly against disk, independent of the gitignore-aware
+  walk, which is now used only to discover genuinely untracked files.
+  Regression test: `diff_panel::tests::against_real_repo::
+  a_tracked_file_that_matches_a_later_gitignore_rule_is_not_reported_as_deleted`.
+- **`stash::save` bug**: a file that was `git add`-ed (staged) but never
+  committed was invisible to `save` — it only scanned `HEAD`'s tree, not
+  the index — so stashing right after staging a new file failed with
+  "nothing to stash" despite a real staged change sitting there. Real
+  `git stash` (even without `-u`) does capture staged-but-uncommitted
+  files; only genuinely untracked-and-unstaged files are excluded by
+  default. Fixed: the snapshot now covers the union of `HEAD`'s tree and
+  the current index, not `HEAD`'s tree alone. Regression test:
+  `stash::tests::save_includes_a_newly_staged_file_not_yet_committed`.
+
+Both were caught specifically *because* the verification ran against a
+repository with real, messy history (rust-lang/rust, shallow-cloned:
+~62,000 files, a 71,164-line real source file) rather than only the
+small, clean fixtures every other Phase 6 test builds by hand — neither
+bug is reachable from a repo with a handful of files and no
+pre-existing `.gitignore`/staging history. This is exactly the value
+the phase's large-repo acceptance criterion is protecting against, and
+it paid off on the first real run.
+
+**One gap found and deliberately not fixed, per ADR 0010's "write up the
+finding, don't shell out" instruction**: `blame::blame_by_commit` fails
+on shallow clones (`git clone --depth N`) once its history walk needs to
+cross the shallow boundary — `gix-blame` 0.16.0 reads the raw `parent`
+field from the boundary commit's object bytes and tries to fetch it,
+rather than consulting `.git/shallow` the way `git blame` itself does,
+and fails with `NotFound` on an object that was never fetched by design.
+Confirmed directly: `git cat-file -t <that oid>` also fails locally (the
+object genuinely isn't present — this is `git`'s intended shallow-clone
+behavior, not corruption), while the real `git blame` binary succeeds
+because it treats the boundary commit as parentless. This is narrow in
+practice — a normal (non-shallow) clone, the ordinary case for a
+repository opened in an editor, has every object `blame` might need, so
+this shouldn't affect real usage — but it's a genuine, reproducible
+`gix` limitation worth tracking if `lux` ever needs to support opening
+shallow clones directly (CI checkouts, some `git worktree` setups).
+
+What else exists and is verified from this loop: `status::status`
+(current branch — named, detached, or unborn — plus a dirty/clean flag
+and changed-file count, reusing `diff_panel::changed_files` for the
+count rather than a second change-detection path); `diff_view::
+inline_diff` (a unified-diff view alongside the existing `side_by_side`,
+both now living in their own module split out of `diff_panel` once
+adding it pushed that file over the 600-line cap — pure rendering,
+`diff_panel` keeps just the changes-tree data source); and `staging::
+unstaged_hunks`/`stage_hunk` (per-hunk staging: diffs a path's currently
+staged-or-`HEAD` content against its working-copy content via `gutter::
+diff_hunks`, and stages one selected hunk by applying it onto that same
+base — matching `git add -p`, verified with two independent edits to one
+file staged one hunk at a time, each producing exactly the expected
+partial content). Verified on macOS (aarch64-apple-darwin): `cargo test
+-p lux-git` — 74 tests, 0 failures, 0 ignored, plus the full workspace
+gate (`cargo test --workspace`, `cargo clippy --workspace -- -D
+warnings`, `cargo deny check`, `scripts/check-limits.sh`,
+`scripts/check-core-isolation.sh`) all clean — and, separately, the
+manual large-repository verification pass described above (not part of
+the automated suite — a 459 MB shallow clone isn't something to bundle
+into routine `cargo test`, matching how every other loop's "verified
+on..." line already describes a manual pass, not a promise that the
+exact commands are checked into CI). Still not built, and not attempted
+here because it is out of `lux-git`'s scope by golden rule 2, not an
+oversight: the "Accept Current / Incoming / Both" commands themselves
+(they live in the editor, which is `lux-ui`, and `lux-ui` doesn't
+consume `lux-git` at all yet) and rename/delete-modify conflict
+resolution (unchanged from the prior loop's note).
 
 ## LSP client (Phase 7, `v0.6.0`)
 

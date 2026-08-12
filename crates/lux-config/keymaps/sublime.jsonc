@@ -1,0 +1,23 @@
+// Sublime Text's default keymap (a representative subset — see
+// docs/receipts/phase-05-keymaps-sublime-vscode-jetbrains-como.md for
+// sourcing: Sublime doesn't publish a plain-text reference table the way
+// VS Code and JetBrains do, so this comes from well-established prior
+// knowledge of these long-stable, widely-documented defaults rather than a
+// fetched citation). "key" is the Windows/Linux default, "mac" overrides
+// it where macOS differs.
+[
+  // VS Code's command palette shortcut was borrowed from this one.
+  { "command": "command_palette", "key": "ctrl+shift+p", "mac": "cmd+shift+p" },
+  { "command": "quick_open", "key": "ctrl+p", "mac": "cmd+p" },
+  { "command": "find", "key": "ctrl+f", "mac": "cmd+f" },
+  { "command": "find_in_files", "key": "ctrl+shift+f", "mac": "cmd+shift+f" },
+  // Kept as Ctrl on mac too, not remapped to Cmd.
+  { "command": "goto_line", "key": "ctrl+g", "mac": "ctrl+g" },
+  { "command": "duplicate_line", "key": "ctrl+shift+d", "mac": "cmd+shift+d" },
+  { "command": "delete_line", "key": "ctrl+shift+k", "mac": "cmd+shift+k" },
+  { "command": "toggle_comment", "key": "ctrl+/", "mac": "cmd+/" },
+  { "command": "select_next_occurrence", "key": "ctrl+d", "mac": "cmd+d" },
+  { "command": "undo", "key": "ctrl+z", "mac": "cmd+z" },
+  { "command": "redo", "key": "ctrl+shift+z", "mac": "cmd+shift+z" },
+  { "command": "save", "key": "ctrl+s", "mac": "cmd+s" },
+]
