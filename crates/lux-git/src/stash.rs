@@ -24,6 +24,7 @@ use gix::refs::transaction::{Change, LogChange, PreviousValue, RefEdit, RefLog};
 
 use crate::branches::{BranchError, checkout_tree, tree_paths};
 use crate::commit::signature;
+use crate::staging::{StagingError, open_or_create_index};
 
 const STASH_REF: &str = "refs/stash";
 
@@ -42,6 +43,8 @@ pub enum StashError {
     NothingToStash,
     NoStash,
     Branches(BranchError),
+    Staging(StagingError),
+    NonUtf8Path,
     ReadTree(Box<dyn std::error::Error + Send + Sync>),
     ReadCommit(Box<dyn std::error::Error + Send + Sync>),
     Io(std::io::Error),
@@ -58,6 +61,8 @@ impl fmt::Display for StashError {
             StashError::NothingToStash => write!(f, "no local changes to save"),
             StashError::NoStash => write!(f, "no stash entries found"),
             StashError::Branches(e) => write!(f, "{e}"),
+            StashError::Staging(e) => write!(f, "{e}"),
+            StashError::NonUtf8Path => write!(f, "path is not valid UTF-8"),
             StashError::ReadTree(e) => write!(f, "failed to read tree: {e}"),
             StashError::ReadCommit(e) => write!(f, "failed to read stash commit: {e}"),
             StashError::Io(e) => write!(f, "failed to read working directory: {e}"),
@@ -95,10 +100,13 @@ fn update_stash_ref(
 }
 
 /// Builds a tree reflecting the *current on-disk content* of every path
-/// tracked at `head_tree` — deleted files are dropped, modified files get
-/// their current content, untouched files are carried over unchanged.
-/// Matches plain `git stash`'s default scope: tracked files only, no
-/// untracked files (no `-u`).
+/// tracked at `head_tree` **or** currently staged — deleted files are
+/// dropped, modified files get their current content, untouched files are
+/// carried over unchanged. A newly staged file (added via `staging::
+/// stage` but never committed) is included too, since it's already part
+/// of the index, not merely sitting untracked in the working directory;
+/// only a genuinely untracked-and-unstaged file is out of scope, matching
+/// plain `git stash`'s default (no `-u`).
 fn snapshot_working_tree(
     repo: &gix::Repository,
     head_tree: gix::ObjectId,
@@ -109,24 +117,39 @@ fn snapshot_working_tree(
         .map_err(|e| StashError::ReadTree(Box::new(e)))?;
     let mut editor = tree.edit().map_err(|e| StashError::ReadTree(Box::new(e)))?;
 
-    for entry in tree_paths(repo, head_tree).map_err(StashError::Branches)? {
-        if !entry.mode.is_blob() {
-            continue;
-        }
-        let rel = PathBuf::from(entry.filepath.to_string());
-        let absolute = work_dir.join(&rel);
+    let mut paths: std::collections::BTreeSet<PathBuf> = tree_paths(repo, head_tree)
+        .map_err(StashError::Branches)?
+        .into_iter()
+        .filter(|entry| entry.mode.is_blob())
+        .map(|entry| PathBuf::from(entry.filepath.to_string()))
+        .collect();
+    let index = open_or_create_index(repo).map_err(StashError::Staging)?;
+    for entry in index.entries() {
+        paths.insert(PathBuf::from(entry.path(&index).to_string()));
+    }
+
+    for rel in &paths {
+        let rel_str = rel.to_str().ok_or(StashError::NonUtf8Path)?;
+        let absolute = work_dir.join(rel);
         match std::fs::read(&absolute) {
             Ok(content) => {
                 let blob_id = repo
                     .write_blob(&content)
                     .map_err(|e| StashError::Write(Box::new(e)))?;
+                let metadata = gix::index::fs::Metadata::from_path_no_follow(&absolute)
+                    .map_err(StashError::Io)?;
+                let kind = if metadata.is_executable() {
+                    gix::objs::tree::EntryKind::BlobExecutable
+                } else {
+                    gix::objs::tree::EntryKind::Blob
+                };
                 editor
-                    .upsert(entry.filepath.clone(), entry.mode.kind(), blob_id.detach())
+                    .upsert(rel_str, kind, blob_id.detach())
                     .map_err(|e| StashError::Write(Box::new(e)))?;
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 editor
-                    .remove(entry.filepath.clone())
+                    .remove(rel_str)
                     .map_err(|e| StashError::Write(Box::new(e)))?;
             }
             Err(e) => return Err(StashError::Io(e)),
@@ -344,6 +367,42 @@ mod tests {
             save(&repo, "WIP", "Lux Test", "lux-test@example.com"),
             Err(StashError::NothingToStash)
         ));
+    }
+
+    #[test]
+    fn save_includes_a_newly_staged_file_not_yet_committed() {
+        // Real bug found verifying against a large repo: `save` only walked
+        // `HEAD`'s tree, so a brand-new file that was `git add`-ed but never
+        // committed (part of the index, not `HEAD`) was invisible to it —
+        // `save` reported `NothingToStash` even though there was a real
+        // staged change. Real `git stash` (even without `-u`) does capture
+        // staged-but-uncommitted new files; only genuinely untracked,
+        // unstaged files are out of scope.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = init_repo(dir.path());
+        commit_one_file(&repo, dir.path(), "a.rs", "one\n", "root");
+
+        fs::write(dir.path().join("new.rs"), "brand new\n").unwrap();
+        stage(&repo, Path::new("new.rs")).unwrap();
+
+        save(
+            &repo,
+            "WIP with a new file",
+            "Lux Test",
+            "lux-test@example.com",
+        )
+        .unwrap();
+        assert!(
+            !dir.path().join("new.rs").exists(),
+            "save resets the working tree, removing the new file"
+        );
+
+        pop(&repo).unwrap();
+        assert_eq!(
+            fs::read_to_string(dir.path().join("new.rs")).unwrap(),
+            "brand new\n",
+            "pop brings the new file back"
+        );
     }
 
     #[test]

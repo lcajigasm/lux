@@ -1,17 +1,16 @@
-//! Changes tree (grouped by folder) and side-by-side diff view model.
+//! Changes tree: which files changed, grouped by folder.
 //!
-//! Scope: this module answers "which files changed, and what does one of
-//! them look like side by side" — it doesn't stage, commit, or write
-//! anything. Reading the working tree happens in-process via `gix` and the
-//! same `ignore`-crate gitignore matcher `lux-search`/`lux-workspace`
-//! already use elsewhere in this workspace (Phase 4); no shell-out to
-//! `git` (see `docs/adr/0010-git-backend-gix.md`).
+//! Scope: this module answers "which files changed" — it doesn't stage,
+//! commit, or write anything, and it doesn't render a diff (see
+//! `diff_view` for side-by-side/inline rendering). Reading the working
+//! tree happens in-process via `gix` and the same `ignore`-crate
+//! gitignore matcher `lux-search`/`lux-workspace` already use elsewhere
+//! in this workspace (Phase 4); no shell-out to `git` (see
+//! `docs/adr/0010-git-backend-gix.md`).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
-
-use crate::gutter::diff_hunks;
 
 /// Where a changed path stands relative to `HEAD`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,8 +77,42 @@ pub fn changed_files(repo: &gix::Repository) -> Result<Vec<ChangedFile>, DiffPan
         .map(|entry| (PathBuf::from(entry.filepath.to_string()), entry.oid))
         .collect();
 
-    let mut seen = BTreeSet::new();
     let mut changed = Vec::new();
+
+    // Every tracked path, checked directly on disk rather than through the
+    // gitignore-aware walk below: a `.gitignore` rule never hides a path git
+    // already tracks (the rule only ever governs *untracked*-file discovery),
+    // so a tracked file that also happens to match one — e.g. a project's
+    // own `.vscode/settings.json` committed before a later-added ignore rule
+    // — must still be compared, not treated as silently deleted just because
+    // the walk skipped it.
+    for (rel, oid) in &head_blobs {
+        let absolute = work_dir.join(rel);
+        match std::fs::read(&absolute) {
+            Ok(disk_bytes) => {
+                let blob = repo
+                    .find_blob(*oid)
+                    .map_err(|e| DiffPanelError::ReadBlob(Box::new(e)))?;
+                if blob.data != disk_bytes {
+                    changed.push(ChangedFile {
+                        path: rel.clone(),
+                        status: ChangeStatus::Modified,
+                    });
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                changed.push(ChangedFile {
+                    path: rel.clone(),
+                    status: ChangeStatus::Deleted,
+                });
+            }
+            Err(e) => return Err(DiffPanelError::Io(e)),
+        }
+    }
+
+    // The gitignore-aware walk only needs to find *untracked* files now —
+    // every tracked path was already handled above regardless of ignore
+    // status.
     let walker = ignore::WalkBuilder::new(work_dir).hidden(false).build();
     for result in walker {
         let entry = result.map_err(DiffPanelError::Walk)?;
@@ -94,33 +127,10 @@ pub fn changed_files(repo: &gix::Repository) -> Result<Vec<ChangedFile>, DiffPan
             .strip_prefix(work_dir)
             .expect("walker yields paths under work_dir")
             .to_path_buf();
-        seen.insert(rel.clone());
-
-        match head_blobs.get(&rel) {
-            Some(oid) => {
-                let disk_bytes = std::fs::read(path).map_err(DiffPanelError::Io)?;
-                let blob = repo
-                    .find_blob(*oid)
-                    .map_err(|e| DiffPanelError::ReadBlob(Box::new(e)))?;
-                if blob.data != disk_bytes {
-                    changed.push(ChangedFile {
-                        path: rel,
-                        status: ChangeStatus::Modified,
-                    });
-                }
-            }
-            None => changed.push(ChangedFile {
+        if !head_blobs.contains_key(&rel) {
+            changed.push(ChangedFile {
                 path: rel,
                 status: ChangeStatus::Added,
-            }),
-        }
-    }
-
-    for path in head_blobs.keys() {
-        if !seen.contains(path) {
-            changed.push(ChangedFile {
-                path: path.clone(),
-                status: ChangeStatus::Deleted,
             });
         }
     }
@@ -183,111 +193,6 @@ fn sort_tree(folder: &mut ChangeTreeFolder) {
     }
 }
 
-/// A single row of a side-by-side diff: `before`/`after` are `None` where
-/// that side has nothing to show (padding, so the other side's changed
-/// lines still line up visually).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SideBySideRow {
-    pub before: Option<SideBySideLine>,
-    pub after: Option<SideBySideLine>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SideBySideLineKind {
-    Context,
-    Changed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SideBySideLine {
-    /// 1-based line number in its own file.
-    pub number: u32,
-    pub text: String,
-    pub kind: SideBySideLineKind,
-}
-
-/// Builds a side-by-side (split) diff of `before` against `after`: every
-/// line of both files, paired up so unchanged lines align and changed
-/// hunks sit next to each other, with blank padding on whichever side has
-/// fewer lines in a given hunk.
-pub fn side_by_side(before: &str, after: &str) -> Vec<SideBySideRow> {
-    let before_lines: Vec<&str> = before.lines().collect();
-    let after_lines: Vec<&str> = after.lines().collect();
-    let hunks = diff_hunks(before, after);
-
-    let mut rows = Vec::new();
-    let mut before_pos = 0usize;
-    let mut after_pos = 0usize;
-
-    for hunk in &hunks {
-        let hunk_before_start = (hunk.before_start - 1) as usize;
-        let hunk_after_start = (hunk.after_start - 1) as usize;
-        push_context(
-            &mut rows,
-            &before_lines,
-            &after_lines,
-            &mut before_pos,
-            &mut after_pos,
-            hunk_before_start,
-            hunk_after_start,
-        );
-
-        let before_len = hunk.before_len as usize;
-        let after_len = hunk.after_len as usize;
-        for i in 0..before_len.max(after_len) {
-            rows.push(SideBySideRow {
-                before: (i < before_len)
-                    .then(|| line(&before_lines, before_pos + i, SideBySideLineKind::Changed)),
-                after: (i < after_len)
-                    .then(|| line(&after_lines, after_pos + i, SideBySideLineKind::Changed)),
-            });
-        }
-        before_pos += before_len;
-        after_pos += after_len;
-    }
-
-    push_context(
-        &mut rows,
-        &before_lines,
-        &after_lines,
-        &mut before_pos,
-        &mut after_pos,
-        before_lines.len(),
-        after_lines.len(),
-    );
-    rows
-}
-
-/// Appends unchanged (context) rows until either side reaches its target
-/// position, advancing both cursors in lockstep.
-#[allow(clippy::too_many_arguments)]
-fn push_context(
-    rows: &mut Vec<SideBySideRow>,
-    before_lines: &[&str],
-    after_lines: &[&str],
-    before_pos: &mut usize,
-    after_pos: &mut usize,
-    before_end: usize,
-    after_end: usize,
-) {
-    while *before_pos < before_end && *after_pos < after_end {
-        rows.push(SideBySideRow {
-            before: Some(line(before_lines, *before_pos, SideBySideLineKind::Context)),
-            after: Some(line(after_lines, *after_pos, SideBySideLineKind::Context)),
-        });
-        *before_pos += 1;
-        *after_pos += 1;
-    }
-}
-
-fn line(lines: &[&str], index: usize, kind: SideBySideLineKind) -> SideBySideLine {
-    SideBySideLine {
-        number: index as u32 + 1,
-        text: lines[index].to_string(),
-        kind,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,56 +249,6 @@ mod tests {
         let c = &b.folders[0];
         assert_eq!(c.name, "c");
         assert_eq!(c.files[0].path, PathBuf::from("a/b/c/d.rs"));
-    }
-
-    #[test]
-    fn side_by_side_of_identical_text_is_all_context() {
-        let text = "one\ntwo\nthree\n";
-        let rows = side_by_side(text, text);
-        assert_eq!(rows.len(), 3);
-        assert!(rows.iter().all(|r| {
-            r.before.as_ref().unwrap().kind == SideBySideLineKind::Context
-                && r.after.as_ref().unwrap().kind == SideBySideLineKind::Context
-        }));
-    }
-
-    #[test]
-    fn side_by_side_pairs_a_modified_line() {
-        let before = "one\ntwo\nthree\n";
-        let after = "one\nTWO\nthree\n";
-        let rows = side_by_side(before, after);
-        assert_eq!(rows.len(), 3);
-        let changed_row = &rows[1];
-        assert_eq!(changed_row.before.as_ref().unwrap().text, "two");
-        assert_eq!(changed_row.after.as_ref().unwrap().text, "TWO");
-        assert_eq!(
-            changed_row.before.as_ref().unwrap().kind,
-            SideBySideLineKind::Changed
-        );
-    }
-
-    #[test]
-    fn side_by_side_pads_the_shorter_side_on_pure_insertion() {
-        let before = "one\ntwo\n";
-        let after = "one\nnew1\nnew2\ntwo\n";
-        let rows = side_by_side(before, after);
-        // context "one", two blank-before/added rows, context "two".
-        assert_eq!(rows.len(), 4);
-        assert!(rows[1].before.is_none());
-        assert_eq!(rows[1].after.as_ref().unwrap().text, "new1");
-        assert!(rows[2].before.is_none());
-        assert_eq!(rows[2].after.as_ref().unwrap().text, "new2");
-        assert_eq!(rows[3].before.as_ref().unwrap().text, "two");
-    }
-
-    #[test]
-    fn side_by_side_pads_the_shorter_side_on_pure_deletion() {
-        let before = "one\ntwo\nthree\n";
-        let after = "one\nthree\n";
-        let rows = side_by_side(before, after);
-        assert_eq!(rows.len(), 3);
-        assert_eq!(rows[1].before.as_ref().unwrap().text, "two");
-        assert!(rows[1].after.is_none());
     }
 
     mod against_real_repo {
@@ -500,6 +355,28 @@ mod tests {
                 !files
                     .iter()
                     .any(|f| f.path.to_string_lossy().contains("build"))
+            );
+        }
+
+        #[test]
+        fn a_tracked_file_that_matches_a_later_gitignore_rule_is_not_reported_as_deleted() {
+            // Real-world case found verifying against rust-lang/rust: files like
+            // `.vscode/settings.json` are committed, then a later `.gitignore` rule
+            // starts hiding that same path from ignore-aware directory walks — but
+            // the file is still tracked and unchanged, so `git status` (and this
+            // function) must not call it deleted just because a walk that respects
+            // `.gitignore` no longer visits it.
+            let dir = tempfile::tempdir().expect("tempdir");
+            let repo =
+                init_repo_with_committed_files(dir.path(), &[("settings.local.json", "{}\n")]);
+            fs::write(dir.path().join(".gitignore"), "settings.local.json\n").unwrap();
+
+            let files = changed_files(&repo).expect("changed_files");
+            assert!(
+                !files
+                    .iter()
+                    .any(|f| f.path == Path::new("settings.local.json")),
+                "the tracked, unmodified, now-ignored file must not show up as changed: {files:?}"
             );
         }
     }
