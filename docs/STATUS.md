@@ -1570,6 +1570,472 @@ resolution (unchanged from the prior loop's note).
 | Cross-file rename | not-started | not-started | not-started | excluded | not-started |
 | Formatting | not-started | not-started | not-started | excluded | not-started |
 
+**Scope note (`lux-lsp` server management — discovery, launch, capability
+handshake, clean shutdown, crash restart, one server per language+root, and
+visible per-server status with `$/progress`, tracked in
+`docs/receipts/phase-07-gestion-servidores-arranque-capacidades-reinicio.md`)**:
+the "Server lifecycle management" row above doesn't move yet — same
+reasoning as every `not-started` row elsewhere in this document with a
+scope note: `lux-lsp` is a headless client library with nothing wired into
+`crates/lux-ui` or the running `lux` binary, so no user of the app can see
+a language server's status yet. What exists and is verified: `ServerRegistry`
+(one `ServerSession` per `(language_id, root)` pair, keyed after
+canonicalizing the root, reusing a live session and replacing a
+stopped/failed one), `discover_command` (a `PATH` search performed ahead of
+spawning, so a missing binary reports a clear `Failed` status instead of an
+opaque spawn error), and `ServerSession` itself: real `initialize`/
+`initialized` handshake capturing the server's `ServerCapabilities`, clean
+`shutdown`/`exit` with a kill fallback if the server doesn't exit within its
+timeout, automatic restart (up to 3 attempts) when the connection drops
+without a matching stop request, and a `watch`-channel `ServerState`
+(status, capabilities, pid, restart count, and live `$/progress` — both
+current in-flight operations and a monotonic event counter) that updates
+event-driven, never polled. Built on `async-lsp` 0.2.4 (transport,
+JSON-RPC routing, `LanguageServer`/`LanguageClient` omnitraits) and
+`async-process` (child process I/O compatible with `async-lsp`'s
+`AsyncRead`/`AsyncWrite` transport) — the final pick ADR 0011 deferred to
+this loop; see that ADR for why `async-lsp` won over `lsp-server` and
+`tower-lsp-server`. Verified on macOS (aarch64-apple-darwin) against a real
+`rust-analyzer` (no fake/mock server): `cargo test -p lux-lsp session:: --test
+lsp_lifecycle` (5 tests) — capability handshake (asserts a real
+`hover_provider` capability), `$/progress` reporting during indexing, clean
+shutdown, one-server-per-language-and-root reuse, and crash recovery (the
+test sends a real `SIGKILL` to the server's OS pid and asserts a fresh pid
+and a re-completed handshake afterward). Not yet built: everything else
+Phase 7 asks for (diagnostics, completion, navigation, hover/signature
+help/inlay hints/semantic tokens, code actions, cross-file rename,
+formatting — document sync landed in the next loop, see the scope note
+below) and the `lux-ui`/`lux` wiring that would move any row in the table
+above.
+
+**Scope note (`lux-lsp::sync` — incremental document synchronization,
+tracked in `docs/receipts/phase-07-sincronizacion-incremental-documentos.md`)**:
+the "Incremental document sync" row above doesn't move yet — same reasoning
+as every `not-started` row elsewhere in this document with a scope note:
+`lux-lsp` is still a headless client library, nothing wired into
+`crates/lux-ui`. What exists and is verified: `DocumentSync`, tracking a
+session's open documents and speaking `didOpen`/`didChange`/`didSave`/
+`didClose` to it. `didChange` sends one content-change event per edit with
+the caller's own range (`TextDocumentSyncKind::INCREMENTAL`) when the
+server negotiated that — read from the real `ServerCapabilities` the
+handshake captured, never assumed — and falls back to sending the whole
+resulting document in a single event for `FULL`, or per-spec default when
+the server didn't specify. Position math (`apply_edit`) resolves LSP
+ranges as UTF-16 code units per line, not raw bytes, so a range past a
+multi-byte character (e.g. past `é`) still splices at the right UTF-8
+boundary. `didSave` includes the document text only when the server's
+`TextDocumentSyncOptions::save::include_text` asked for it. A crash
+restart (this crate's Phase 7 server-management loop) doesn't silently
+break sync: `DocumentSync` watches its session's live connection and
+automatically replays `didOpen` for every still-open document against the
+fresh server process once it reconnects, since the new process has no
+memory of the old one's state and no caller-side action re-triggers it.
+Verified on macOS (aarch64-apple-darwin) against a real `rust-analyzer`:
+`cargo test -p lux-lsp sync::` (11 tests) — 8 pure unit tests (edit-splicing
+including the UTF-16 case, and sync/save capability-negotiation logic
+against hand-built `ServerCapabilities` values, no process spawned) plus 3
+tests against a real spawned server, each verified via a raw `hover`
+request as an independent oracle rather than just asserting "no error":
+an incremental append is genuinely visible to the server's own analysis
+(hovering the newly-added function resolves it), save/close round-trip and
+`NotOpen` after close, and — the crash-interaction test — a document
+edited only in memory (never written to disk) is still recognized by hover
+after a real `SIGKILL`-triggered restart, which only a working replay can
+produce (the on-disk file alone doesn't contain that edit). Not yet built:
+everything else Phase 7 asks for besides server management, document sync,
+and diagnostics (see the next scope note), and the `lux-ui`/`lux` wiring
+that would move any row above.
+
+**Scope note (`lux-lsp::diagnostics` — continuous `publishDiagnostics` and
+a filterable/navigable problems view, tracked in
+`docs/receipts/phase-07-diagnosticos-panel-problemas.md`)**: the
+"Diagnostics panel" row above doesn't move yet — same reasoning as every
+`not-started` row elsewhere in this document with a scope note:
+`lux-lsp` is still a headless client library, nothing wired into
+`crates/lux-ui` (no actual panel, no editor underline). What exists and is
+verified: reception is real and continuous — `session.rs`'s `Router` now
+handles `textDocument/publishDiagnostics` (previously silently swallowed
+by the catch-all handler), replacing the full diagnostic list for that
+document on every notification per the spec (an empty list removes the
+entry, not a stale empty one) and clearing all diagnostics on
+crash/stop, since they're unknown until the reconnected server (or
+`DocumentSync`'s replay) republishes them. `Diagnostics` is the query
+layer on top: `all()`/`for_document()`, `filtered(min_severity)` (numeric
+severity comparison, defaulting an *unmarked* severity to `ERROR` so a
+filter can never accidentally hide it), `summary()` (per-severity counts
+for a panel header or status bar), and `next_after`/`previous_before` for
+diagnostic-to-diagnostic navigation in a stable (document, then position)
+order that wraps around at either end. Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-lsp diagnostics::` (8 tests) —
+7 pure unit tests (sorting, severity filtering including the
+unmarked-severity case, summary counts, and next/previous navigation with
+wraparound, against hand-built diagnostic data, no process spawned) plus
+one test against a real `rust-analyzer`: a syntax error is opened, its
+real `ERROR`-severity diagnostic is observed through both the raw watch
+channel and the `Diagnostics` query methods, then an incremental edit
+(the previous deliverable's `didChange`) fixes it and the diagnostic is
+confirmed to clear — proving diagnostics update continuously as the
+document changes, not just once at `didOpen`. Not yet built: completion
+(see the next scope note), navigation, hover/inlay hints/semantic tokens,
+code actions, cross-file rename, formatting, and the `lux-ui`/`lux` wiring
+(panel UI, gutter/editor underline, diagnostic navigation commands) that
+would move any row above.
+
+**Scope note (`lux-lsp::completion` — completion with `resolve`, tracked
+in `docs/receipts/phase-07-autocompletado-resolve.md`)**: the
+"Autocomplete" row above doesn't move yet — same reasoning as every
+`not-started` row elsewhere in this document with a scope note: `lux-lsp`
+is still a headless client library, nothing wired into `crates/lux-ui`
+(no popup UI, no keystroke-triggered invocation). What exists and is
+verified: `Completion::complete` requests `textDocument/completion` and
+sorts the result the way the spec makes client sorting mandatory
+(`sortText`, falling back to `label` when a server omits it — proven both
+against hand-built data and against `rust-analyzer`'s real, ~200-item
+`Vec<i32>` method-completion list); `Completion::resolve` requests
+`completionItem/resolve` for server-provided documentation and detail,
+returning the item unchanged when the server didn't advertise
+`completionProvider.resolveProvider` rather than sending a request the
+server never asked for. Getting real `resolve` support out of
+rust-analyzer needed one more addition to `session.rs`'s `initialize`
+handshake: declaring
+`textDocument.completion.completionItem.resolveSupport` (which properties
+we want lazily resolved) and `snippetSupport` in `ClientCapabilities` —
+without it, rust-analyzer's own `completionProvider.resolveProvider`
+capability came back `Some(false)`, confirmed by inspecting the real
+capability payload before adding the declaration. Snippet items
+(`insertTextFormat: Snippet`) are surfaced faithfully via the raw
+`lsp_types::CompletionItem` the server sent — expanding snippet
+placeholders in the editor is Phase 1's already-implemented `lux-core`
+snippet engine's job once `lux-ui` wires the two together, not something
+this deliverable reimplements. "Filtrado incremental sin latencia
+perceptible" is handled as staleness rejection: each `complete()` call
+tags itself with a monotonic generation counter, and a call whose
+response arrives after a newer call has already started returns
+`Err(CompletionError::Superseded)` instead of its (by then stale) result
+— so a fast typist's screen can never have an older keystroke's results
+flash in over a newer one's, regardless of real network response
+ordering. Verified on macOS (aarch64-apple-darwin): `cargo test -p lux-lsp
+completion::` (6 tests) — 3 pure unit tests (sort-by-`sortText`,
+label-fallback, and a case mixing both within one list) and 3 tests
+against a real `rust-analyzer`: real completions listed and confirmed
+already in server-sort order end to end, `resolve` confirmed to fill in
+real documentation text for `Vec::push` (not just "no error"), and the
+staleness-rejection race itself, proven with a spawned in-flight request
+that a fresher direct request supersedes. Not yet built: navigation (see
+the next scope note), hover/inlay hints/semantic tokens, code actions,
+cross-file rename, formatting, and the `lux-ui`/`lux` wiring that would
+move any row above.
+
+**Scope note (`lux-lsp::navigation` — definition, declaration, type
+definition, implementations, references, call hierarchy, document and
+workspace symbols, tracked in
+`docs/receipts/phase-07-navegacion-definicion-referencias-simbolos.md`)**:
+the "Navigation (definition/references/symbols)" row above doesn't move
+yet — same reasoning as every `not-started` row elsewhere in this document
+with a scope note: `lux-lsp` is still a headless client library, nothing
+wired into `crates/lux-ui` (no jump-to-definition keybinding, no problems
+list, no outline panel). What exists and is verified: `Navigation` wraps
+all nine LSP navigation requests the master prompt asks for —
+`definition`/`declaration`/`typeDefinition`/`implementation` (one shared
+normalizer, since `lsp_types` defines the latter three as literal type
+aliases of `GotoDefinitionResponse`, confirmed by reading the crate source
+rather than assumed — collapsing `Scalar`/`Array`/`Link` variants into a
+plain `Vec<Location>`, resolving a `LocationLink`'s
+`target_selection_range` rather than its coarser `target_range`),
+`references`, `documentSymbol`/`workspace/symbol` (both normalized into
+one `SymbolEntry`/`WorkspaceSymbolEntry` shape regardless of whether the
+server sent the modern nested form or the older flat
+`SymbolInformation` list), and the three-request call hierarchy flow
+(`prepareCallHierarchy` → `incomingCalls`/`outgoingCalls`). Verified on
+macOS (aarch64-apple-darwin): `cargo test -p lux-lsp navigation::` (9
+tests) — 6 pure unit tests (all four `GotoDefinitionResponse` variants,
+nested-vs-flat document symbol normalization, no process spawned) and 3
+tests against a real `rust-analyzer`, exercising a small but real fixture
+(a struct, its constructor, and two functions with a genuine
+caller/callee relationship) with actual semantic assertions, not just
+"the request didn't error": `definition` on a call site resolves to the
+real function definition line, `references` on a type finds multiple real
+usages, `implementations` finds the real `impl` block, `typeDefinition`
+resolves a variable back to its struct, `documentSymbol`/`workspace/symbol`
+list the real struct/function/method names, and `prepareCallHierarchy` +
+`incomingCalls`/`outgoingCalls` walk the real caller and the real callee.
+Not yet built: hover/signature help/inlay hints/semantic tokens (see the
+next scope note), code actions, cross-file rename, formatting, and the
+`lux-ui`/`lux` wiring that would move any row above.
+
+**Scope note (`lux-lsp::hover`/`signature`/`inlay_hints`/`semantic_tokens`
+— hover, signature help, inlay hints, and semantic tokens, tracked in
+`docs/receipts/phase-07-hover-firma-inlay-hints-semantic.md`)**: the
+"Hover / signature help / inlay hints" row above doesn't move yet — same
+reasoning as every `not-started` row elsewhere in this document with a
+scope note: `lux-lsp` is still a headless client library, nothing wired
+into `crates/lux-ui` (no hover popup, no signature tooltip, no inline
+hint rendering, no tree-sitter-combined highlighting). What exists and is
+verified: `Hover` flattens the server's three response shapes
+(`MarkedString` scalar/array, `MarkupContent`) into one plain/markdown
+text block; `Signature` requests `textDocument/signatureHelp` and
+resolves the active signature/parameter, including
+`ParameterLabel::LabelOffsets` (a UTF-16-code-unit slice into the
+signature's own label — the same UTF-16-aware position handling the
+document-sync deliverable's `apply_edit` needed) as well as the simpler
+`Simple` string label; `InlayHints` requests `textDocument/inlayHint` for
+a visible range and flattens each hint's label (a plain string, or an
+array of interactive `InlayHintLabelPart`s) to plain text;
+`SemanticTokensClient` decodes the server's delta-encoded token stream
+(each token's line/column relative to the *previous* token, per spec)
+into absolute `(line, start_char, length)` spans, with type/modifier
+indices resolved to real names via the server's advertised legend,
+falling back to `"unknown"` for an out-of-range index rather than
+panicking. `session.rs`'s `Router` now also answers
+`workspace/semanticTokens/refresh` and `workspace/inlayHint/refresh`
+(server-to-client requests telling the client its cached data is stale)
+with `Ok(())` rather than the default `METHOD_NOT_FOUND`. Verified on
+macOS (aarch64-apple-darwin): `cargo test -p lux-lsp -- hover::
+signature:: semantic_tokens:: inlay_hints::` (20 tests — note the `--`
+before the filters: `cargo test` itself only accepts one positional
+filter argument, so passing several requires forwarding them to the test
+harness, which does support multiple) — 16 pure unit tests (all three
+hover content shapes; active signature/parameter selection including the
+UTF-16 offset case; both inlay-hint label shapes; the delta-decoding math
+across same-line and new-line token deltas, plus legend resolution and
+the out-of-range fallback) and 4 tests against a real `rust-analyzer`,
+sharing the navigation deliverable's `Point`/`make`/`use_it` fixture:
+hovering a call site shows the real function signature and return type,
+signature help inside a real call shows the real parameter names
+(`x: i32`/`y: i32`, confirming rust-analyzer's parameter labels include
+type annotations, not just bare names), a real inferred-type inlay hint
+(`Point`) is found on an unannotated `let` binding, and a full
+semantic-tokens request is decoded into real, in-range, non-zero-length
+spans with real `struct`/`function` type names resolved from the legend.
+**Combining semantic tokens with tree-sitter's own highlighting** (the
+master prompt's exact phrase for this deliverable) is a rendering-layer
+decision — which span wins where the two disagree — that needs both
+`lux-syntax` (Phase 3) and `lux-lsp` wired into `lux-ui`'s renderer; this
+loop delivers the necessary piece before that's even possible (real,
+decoded, legend-resolved spans), not the combining itself, consistent
+with every other Phase 7 deliverable's headless-library boundary. Not yet
+built: code actions (see the next scope note), cross-file rename,
+formatting, and the `lux-ui`/`lux` wiring that would move any row above.
+
+**Scope note (`lux-lsp::code_actions` — code actions and quick fixes
+applying `WorkspaceEdit` transactionally, tracked in
+`docs/receipts/phase-07-code-actions-workspaceedit-transaccional.md`)**:
+the "Code actions + `WorkspaceEdit`" row above doesn't move yet — same
+reasoning as every `not-started` row elsewhere in this document with a
+scope note: `lux-lsp` is still a headless client library, nothing wired
+into `crates/lux-ui` (no lightbulb menu, no quick-fix popup). What exists
+and is verified: `CodeActions` requests `textDocument/codeAction` and
+lazily resolves an action's `edit` via `codeAction/resolve` only when the
+server advertised `resolveProvider` and the action doesn't already carry
+one; `preview` normalizes any `WorkspaceEdit` shape (the legacy flat
+`changes` map, the newer `document_changes` list of `TextDocumentEdit`s,
+or the full `DocumentChangeOperation` mix including file create/rename/
+delete) into one ordered, inspectable `Vec<FileChange>`, preferring
+`document_changes` over `changes` per spec when a server sends both.
+**Transactional apply, including multi-file edits**, is a new
+`DocumentSync::apply_all` (extending the document-sync deliverable's
+module, the same category of necessary cross-deliverable extension every
+prior Phase 7 loop has needed once): it validates every targeted URI is
+currently open *before* mutating anything, so a single not-open target
+aborts the whole call with nothing changed, proven for real by a test
+that edits two open documents together, then tries a second call mixing
+one of those same documents with a third, never-opened one and confirms
+neither open document changed. A `WorkspaceEdit` that also creates,
+renames, or deletes a file is rejected outright (`Err`, nothing applied)
+rather than silently applying just its text-edit portion, since this
+client owns already-open in-memory documents, not the filesystem, and
+partially honoring an edit would be less than what it actually asked
+for. Getting a real `WorkspaceEdit` out of rust-analyzer at all needed
+one more `session.rs` client-capability declaration: without
+`textDocument.codeAction.codeActionLiteralSupport` (plus `resolveSupport`
+and `dataSupport`), rust-analyzer's `textDocument/codeAction` returned an
+empty list for every request, discovered by confirming the client's
+capability payload was likely the gap (the same category of fix the
+completion and hover/signature deliverables each hit once) rather than
+concluding no actions were available. Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-lsp -- code_actions::` (8
+tests) — 6 pure unit tests (`WorkspaceEdit` normalization for all three
+shapes, `document_changes` taking precedence over `changes`, resource
+operations rejected with nothing converted, edits for the same file
+merged) and 2 tests against a real `rust-analyzer`: a real "Extract into
+variable" code action is requested, resolved, applied, and the open
+document's text is confirmed to have actually changed (a real `let`
+binding appears); and the multi-file transactional guarantee itself,
+proven both in the success case (two open files edited together) and the
+all-or-nothing case (a third unopened target aborts the whole call,
+neither open file touched). Not yet built: cross-file rename (see the
+next scope note), formatting, and the `lux-ui`/`lux` wiring that would
+move any row above.
+
+**Scope note (`lux-lsp::rename` — cross-file rename with multi-file
+preview and per-hunk accept/reject, tracked in
+`docs/receipts/phase-07-rename-crossfile-preview-multifichero.md`)**: the
+"Cross-file rename" row above doesn't move yet — same reasoning as every
+`not-started` row elsewhere in this document with a scope note: `lux-lsp`
+is still a headless client library, nothing wired into `crates/lux-ui`
+(no rename dialog, no diff preview panel). What exists and is verified:
+`Rename::prepare` calls `textDocument/prepareRename` to validate the
+target and get its real current name before a rename is even attempted —
+the same "ask before assuming" real editors do; `Rename::rename` requests
+`textDocument/rename` and returns the server's `WorkspaceEdit` unmodified
+(never string replacement — the master prompt's explicit "nada de
+reemplazo de cadenas"); `preview` reuses the code-actions deliverable's
+`WorkspaceEdit` normalization and flattens every file's edits into
+individually addressable `RenameHunk`s, each with a stable id. **Apply or
+reject per hunk**, not just per file or all-or-nothing across the whole
+edit: `Rename::apply` takes a set of accepted hunk ids and applies
+exactly those, atomically, via the document-sync deliverable's
+`apply_all` — rejected hunks are simply never sent, proven for real by a
+test that accepts only one file's hunks from a two-file rename, confirms
+the other file is untouched, then applies the remainder in a second,
+independent call. A rename that also requests a file create/rename/
+delete is refused outright, same reasoning as code actions: this client
+owns already-open in-memory documents, not the filesystem. **A latent
+multi-edit ordering bug in `DocumentSync`, found and fixed while building
+this deliverable**: `change`/`apply_all` applied same-file edits in
+array order via naive sequential folding, but LSP `TextEdit` ranges are
+always relative to the *original* document — an earlier edit that shifts
+line/column length (near-universal for a rename touching one file more
+than once) silently invalidated every later edit's coordinates in that
+same file. Neither prior deliverable's tests ever exercised multiple
+edits in one file, so this went unnoticed until rename's real
+multi-occurrence case exposed it. Fixed by sorting each file's edits to
+descending document position before folding (and before building the
+`didChange` sent to the server, in the same order, so both sides
+converge on the same result) — a pure unit test (`let x = x + 1;`,
+renaming both `x`s to the longer `index`) pins this down independent of
+any real server. Verified on macOS (aarch64-apple-darwin): `cargo test -p
+lux-lsp -- rename::` (7 tests) — 5 pure unit tests (hunk flattening with
+stable ids, file operations kept separate from edit hunks, a file
+operation rejecting the whole apply, only-accepted-ids included when
+building the edit map) and 2 tests against a real `rust-analyzer`: a real
+`prepareRename` response with the actual current name (`"Point"`) as the
+placeholder, and a genuine cross-file rename (a struct defined in one
+file, used via return type/associated-function call/struct literal in
+both that file and a second one) previewed, applied to only one file's
+hunks first (the other file confirmed completely unchanged), then the
+remaining hunks applied in a second call, with both files finally showing
+the renamed symbol and zero leftover occurrences of the old name. Not yet
+built: formatting, and the `lux-ui`/`lux` wiring that would move any row
+above.
+
+**Scope note (`lux-lsp::formatting` — whole-document formatting, range
+formatting, and format-on-save, with a per-language/per-workspace
+formatter configuration, tracked in
+`docs/receipts/phase-07-formateo-documento-rango-formatonsave.md`)**: the
+"Formatting" row above doesn't move yet — same reasoning as every
+`not-started` row elsewhere in this document with a scope note: `lux-lsp`
+is still a headless client library, nothing wired into `crates/lux-ui` (no
+"Format Document" command, no format-on-save preference UI). What exists
+and is verified: `Formatting::document` requests
+`textDocument/formatting`, `Formatting::range` requests
+`textDocument/rangeFormatting`, and `Formatting::format_and_save` composes
+the two prior deliverables' primitives — formats the whole document,
+applies the result through `DocumentSync::change` when the server actually
+returned edits, then calls `DocumentSync::save` — so what a real save
+writes is the *formatted* text, not a pre-format snapshot with formatting
+applied as an afterthought. `FormattingConfig`/`LanguageFormattingConfig`
+give "formateador configurable por lenguaje y por workspace con precedencia
+clara" a real precedence rule (`for_language` returns an explicit
+per-language override when one exists, the workspace default otherwise),
+not just a flat options struct. **A genuine upstream limitation, found and
+handled honestly rather than forced or hidden**: rust-analyzer's real
+`documentRangeFormattingProvider` capability came back `false` on this
+machine's stable-toolchain rustfmt — the server's own error text confirms
+why ("rustfmt range formatting is unstable ... opt-in ... using a nightly
+build of rustfmt and setting `rustfmt.rangeFormatting.enable`"), a
+rust-analyzer-specific nightly-only initialization option, not a general
+LSP capability a client should assume or force on (that would tie this
+client to one server's nightly config). The range-formatting test reads
+the real advertised capability first and asserts accordingly: a server
+that claims support must genuinely reformat only the requested range and
+leave the rest byte-for-byte untouched; a server that doesn't (this
+machine's real case) must still round-trip cleanly — empty edits or the
+server's own clean error, never a panic or a hang. Document formatting and
+format-and-save needed no such adaptation and worked end-to-end on the
+first real-server run. Verified on macOS (aarch64-apple-darwin): `cargo
+test -p lux-lsp -- formatting::` (6 tests) — 3 pure unit tests
+(per-language override precedence, workspace-default fallback, sane
+default options) and 3 tests against a real `rust-analyzer`: whole-document
+formatting turns real unformatted `rustfmt`-style input into real
+`rustfmt` output (verified spacing and indentation, not just "no error"),
+the range-formatting capability round-trip described above, and
+format-and-save confirmed to save the *formatted* text by retrying until
+the document's own content actually changes and then reading it back.
+Full crate suite re-run clean after this deliverable (`cargo test -p
+lux-lsp`, 86 tests — 81 lib + 5 `lsp_lifecycle`, up from 80 lib after the
+rename deliverable, confirming no regressions across all nine
+deliverables). This closes out Phase 7's nine numbered deliverables;
+the acceptance criteria beyond them (below), the `lux-ui`/`lux` wiring,
+and the phase-level close-out are separate work.
+
+**Closing update (fuzzer, `lux-lsp::framing`, tracked in
+`docs/receipts/phase-07-fuzzer-parser-stream-jsonrpc.md`)**: the phase's
+acceptance criteria ask for "un fuzzer del parser del stream JSON-RPC (v0
+no tenía ninguno)," separate from the nine numbered deliverables above.
+`crates/lux-lsp/fuzz/` (a standalone `cargo-fuzz` subcrate, same
+isolation pattern as `lux-core/fuzz`) drives the real production path —
+`lux_lsp::guard_stream` wrapping `async-lsp`'s own `Message::read` — with
+raw fuzzer-generated bytes. It found two real bugs, both fixed in this
+crate rather than narrowed around: (1) `async-lsp` 0.2.4's `Message::read`
+allocates `vec![0u8; content_len]` straight from an attacker- or
+bug-controlled `Content-Length` header with no upper bound, aborting the
+whole client process on a single short, hostile header line — fixed by
+the new `lux_lsp::guard_stream` (`src/framing.rs`), a transparent
+pass-through that re-parses just the wire framing (never the JSON-RPC
+payload itself, still entirely `async-lsp`'s job) and rejects any claimed
+length over 64 MiB before an allocation is ever attempted, now wired
+between every real child process's stdout and `async-lsp` in `session.rs`;
+(2) re-fuzzing after that fix found a second bug in the guard itself — its
+header-line matching was looser than `async-lsp`'s own, so a malformed
+second header line could reset the guard's tracked length back to "none
+found" while `async-lsp`'s stricter parser still read the real, huge value
+from an earlier well-formed line and tried to allocate for it anyway;
+fixed by matching `async-lsp`'s exact header-line syntax byte-for-byte, so
+the two parsers can never disagree on what counts as a real
+`Content-Length` line. Verified on macOS (aarch64-apple-darwin):
+`cargo fuzz run lsp_stream_fuzz -- -max_total_time=1800` — **53,608,974
+executions in 1801 seconds, zero crashes** — plus 8 pure unit tests in
+`framing.rs` (including regression tests for both findings above).
+
+**Closing update (acceptance criteria beyond the nine deliverables —
+five real servers, a fake-server protocol suite, and a no-thread-blocking
+proxy check, tracked in
+`docs/receipts/phase-07-criterios-aceptacion-multiservidor-mentira-nobloqueo.md`)**:
+every row in the table above still stays `not-started` — none of this
+adds `lux-ui` wiring either — but it closes the remaining gaps
+`/close-phase 7`'s own audit found: every one of the nine deliverables'
+tests, without exception, had only ever run against `rust-analyzer`.
+`crates/lux-lsp/tests/multi_server.rs` now runs the same real
+spawn → handshake → `didOpen` → real `documentSymbol` sequence against
+all five required servers (`rust-analyzer`, `typescript-language-server`,
+`pyright`, `gopls`, `clangd`), and found a real client bug while doing
+it: `session.rs`'s `initialize` call only ever sent `workspace_folders`,
+never `root_uri` — spec-deprecated, but `typescript-language-server`
+5.3.0 still needs it in practice to resolve its own `typescript`
+dependency, confirmed by manually driving the server's raw stdio to
+isolate the client's exact contribution before touching any code.
+`session.rs` now sends both. Separately, `crates/lux-lsp/tests/
+fake_server_protocol.rs` drives a new, genuinely real subprocess
+(`lux-lsp-fake-server`, a test-only binary speaking the real wire
+protocol with scripted responses) — the "servidor de mentira que ejerza
+el protocolo" the criteria name as its own thing, distinct from the
+fuzzer (malformed bytes) — proving three things a real server can't:
+exactly what `InitializeParams` this client actually sent (a real server
+never reports that back), an exact `$/progress` count instead of
+whatever a real server happens to emit, and that a server exiting on its
+own (not `SIGKILL`ed) triggers the same restart logic deliverable 1
+proved against a signal. And `crates/lux-lsp/tests/no_thread_blocking.rs`
+verifies the mechanism the literal "no LSP operation blocks the UI
+thread, verified with the frame-time monitor" criterion depends on: a
+slow, in-flight hover request never stalls a concurrent tick loop sharing
+its executor thread — the strongest honest proxy for that criterion
+until `lux-ui` exists to measure the real thing. Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-lsp --test multi_server
+--test fake_server_protocol --test no_thread_blocking` (9 tests), full
+crate suite re-run clean after the `root_uri` and `ServerSession::spawn`
+visibility changes.
+
 ## Terminal (Phase 8, `v0.7.0`)
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
