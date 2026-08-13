@@ -59,6 +59,7 @@ mod session {
         (registry, session)
     }
 
+    #[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
     #[tokio::test]
     async fn discovers_starts_and_completes_the_capability_handshake() {
         let root = rust_project_root();
@@ -96,6 +97,7 @@ mod session {
         session.stop().await;
     }
 
+    #[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
     #[tokio::test]
     async fn reports_dollar_progress_while_starting_up() {
         let root = rust_project_root();
@@ -116,6 +118,7 @@ mod session {
         session.stop().await;
     }
 
+    #[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
     #[tokio::test]
     async fn clean_shutdown_stops_the_session() {
         let root = rust_project_root();
@@ -135,6 +138,7 @@ mod session {
         assert_eq!(session.status(), ServerStatus::Stopped);
     }
 
+    #[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
     #[tokio::test]
     async fn one_server_per_language_and_root() {
         let root = rust_project_root();
@@ -160,6 +164,7 @@ mod session {
         registry.stop_all().await;
     }
 
+    #[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
     #[tokio::test]
     async fn crash_triggers_automatic_restart() {
         let root = rust_project_root();

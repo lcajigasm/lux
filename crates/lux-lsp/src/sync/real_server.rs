@@ -114,6 +114,7 @@ fn lib_rs_uri(root: &Path) -> Url {
     Url::from_file_path(root.canonicalize().unwrap().join("src/lib.rs")).unwrap()
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn incremental_change_is_reflected_by_the_server() {
     let root = rust_project_root();
@@ -199,6 +200,7 @@ async fn incremental_change_is_reflected_by_the_server() {
     session.stop().await;
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn save_and_close_round_trip_and_close_forbids_further_use() {
     let root = rust_project_root();
@@ -233,6 +235,7 @@ async fn save_and_close_round_trip_and_close_forbids_further_use() {
     session.stop().await;
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn reopens_documents_after_a_crash_restart() {
     let root = rust_project_root();

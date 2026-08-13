@@ -89,6 +89,7 @@ async fn full_tokens_until(
     .unwrap_or_else(|_| panic!("timed out waiting for a non-empty semantic tokens list"))
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn full_semantic_tokens_are_decoded_to_real_absolute_positions() {
     let root = rust_project_root();

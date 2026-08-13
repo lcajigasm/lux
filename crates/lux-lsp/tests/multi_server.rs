@@ -123,6 +123,7 @@ mod servers {
         session.stop().await;
     }
 
+    #[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
     #[tokio::test]
     async fn rust_analyzer_works() {
         let dir = tempfile::tempdir().expect("create temp dir");
@@ -138,6 +139,7 @@ mod servers {
         assert_server_works("rust", dir.path(), "src/lib.rs", text).await;
     }
 
+    #[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
     #[tokio::test]
     async fn typescript_language_server_works() {
         let dir = tempfile::tempdir().expect("create temp dir");
@@ -168,6 +170,7 @@ mod servers {
         assert_server_works("typescript", dir.path(), "fixture.ts", text).await;
     }
 
+    #[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
     #[tokio::test]
     async fn pyright_works() {
         let dir = tempfile::tempdir().expect("create temp dir");
@@ -177,6 +180,7 @@ mod servers {
         assert_server_works("python", dir.path(), "fixture.py", text).await;
     }
 
+    #[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
     #[tokio::test]
     async fn gopls_works() {
         let dir = tempfile::tempdir().expect("create temp dir");
@@ -187,6 +191,7 @@ mod servers {
         assert_server_works("go", dir.path(), "fixture.go", text).await;
     }
 
+    #[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
     #[tokio::test]
     async fn clangd_works() {
         let dir = tempfile::tempdir().expect("create temp dir");

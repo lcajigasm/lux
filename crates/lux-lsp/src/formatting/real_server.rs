@@ -100,6 +100,7 @@ async fn format_until(
     .unwrap_or_else(|_| panic!("timed out waiting for a real formatting result"))
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn document_formatting_produces_real_rustfmt_output() {
     let root = rust_project_root();
@@ -154,6 +155,7 @@ async fn document_formatting_produces_real_rustfmt_output() {
 /// `documentRangeFormattingProvider` capability), the request must still
 /// round-trip cleanly -- an empty result or the server's own real error,
 /// never a client-side panic or hang.
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn range_formatting_round_trips_against_the_real_servers_actual_capability() {
     let root = rust_project_root();
@@ -231,6 +233,7 @@ async fn range_formatting_round_trips_against_the_real_servers_actual_capability
     session.stop().await;
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn format_and_save_applies_formatting_before_saving() {
     let root = rust_project_root();

@@ -94,6 +94,7 @@ async fn hover_text_until(
     .unwrap_or_else(|_| panic!("timed out waiting for a useful hover result"))
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn hover_shows_the_real_function_signature() {
     let root = rust_project_root();

@@ -102,6 +102,7 @@ fn document_text() -> String {
     "pub fn one() -> i32 {\n    let v: Vec<i32> = Vec::new();\n    v.\n    1\n}\n".to_string()
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn lists_and_sorts_real_completions() {
     let root = rust_project_root();
@@ -150,6 +151,7 @@ async fn lists_and_sorts_real_completions() {
     session.stop().await;
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn resolve_fills_in_documentation_when_supported() {
     let root = rust_project_root();
@@ -213,6 +215,7 @@ async fn resolve_fills_in_documentation_when_supported() {
     session.stop().await;
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn a_stale_request_is_superseded_by_a_newer_one() {
     let root = rust_project_root();

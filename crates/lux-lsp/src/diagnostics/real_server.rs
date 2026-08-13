@@ -91,6 +91,7 @@ async fn wait_for_document_diagnostics(
     .unwrap_or_else(|_| panic!("timed out waiting for expected diagnostics"))
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn publishes_a_real_error_then_clears_it_once_fixed() {
     let root = rust_project_root();

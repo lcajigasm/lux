@@ -96,6 +96,7 @@ async fn inlay_hints_until(
     .unwrap_or_else(|_| panic!("timed out waiting for a useful inlay hints result"))
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn inlay_hints_show_the_real_inferred_type() {
     let root = rust_project_root();

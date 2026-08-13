@@ -66,6 +66,7 @@ async fn running_session(root: &Path) -> Arc<ServerSession> {
     session
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn a_real_code_action_edit_is_resolved_and_applied() {
     let root = rust_project_root();
@@ -157,6 +158,7 @@ async fn a_real_code_action_edit_is_resolved_and_applied() {
     session.stop().await;
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn apply_all_is_transactional_across_multiple_files() {
     let root = rust_project_root();

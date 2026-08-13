@@ -136,6 +136,7 @@ async fn rename_edit_until(
     .unwrap_or_else(|_| panic!("timed out waiting for a real cross-file rename edit"))
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn prepare_validates_the_real_symbol_at_the_cursor() {
     let root = rust_project_root();
@@ -186,6 +187,7 @@ async fn prepare_validates_the_real_symbol_at_the_cursor() {
     session.stop().await;
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn cross_file_rename_previews_and_applies_or_rejects_per_hunk() {
     let root = rust_project_root();

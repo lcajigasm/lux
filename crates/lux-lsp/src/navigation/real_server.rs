@@ -128,6 +128,7 @@ where
     .unwrap_or_else(|_| panic!("timed out waiting for the expected navigation result"))
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn goto_and_references_resolve_real_locations() {
     let root = rust_project_root();
@@ -211,6 +212,7 @@ async fn goto_and_references_resolve_real_locations() {
     session.stop().await;
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn document_and_workspace_symbols_list_real_symbols() {
     let root = rust_project_root();
@@ -258,6 +260,7 @@ async fn document_and_workspace_symbols_list_real_symbols() {
     session.stop().await;
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn call_hierarchy_walks_a_real_caller_and_callee() {
     let root = rust_project_root();

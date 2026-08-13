@@ -92,6 +92,7 @@ async fn signature_help_until(
     .unwrap_or_else(|_| panic!("timed out waiting for a useful signature help result"))
 }
 
+#[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
 #[tokio::test]
 async fn signature_help_shows_real_parameters_and_the_active_one() {
     let root = rust_project_root();
