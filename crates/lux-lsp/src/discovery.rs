@@ -50,26 +50,37 @@ pub fn spec_for_language(language_id: &str) -> Option<&'static ServerSpec> {
 /// Search `PATH` for an executable named `command`, the same way the OS
 /// would resolve it when spawning — but ahead of time, so a missing server
 /// can be reported as a clear status instead of an opaque spawn failure.
+/// Returns the *actual* file that was found (see `resolve_executable` on
+/// Windows, where that's not always `dir.join(command)` verbatim) — the
+/// caller spawns this exact path, so it must genuinely exist on disk.
 pub fn discover_command(command: &str) -> Option<PathBuf> {
     let path_var = env::var_os("PATH")?;
-    env::split_paths(&path_var).find_map(|dir| {
-        let candidate = dir.join(command);
-        is_executable(&candidate).then_some(candidate)
-    })
+    env::split_paths(&path_var).find_map(|dir| resolve_executable(&dir.join(command)))
 }
 
 #[cfg(unix)]
-fn is_executable(path: &Path) -> bool {
+fn resolve_executable(candidate: &Path) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path)
-        .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+    std::fs::metadata(candidate)
+        .ok()
+        .filter(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+        .map(|_| candidate.to_path_buf())
 }
 
 #[cfg(windows)]
-fn is_executable(path: &Path) -> bool {
-    // ponytail: PATHEXT-aware lookup (.exe/.cmd/.bat) if a Windows server
-    // ever ships without the extension pre-attached to `ServerSpec::command`.
-    path.with_extension("exe").is_file() || path.is_file()
+fn resolve_executable(candidate: &Path) -> Option<PathBuf> {
+    // ponytail: full PATHEXT-aware lookup (.cmd/.bat/...) if a Windows
+    // server ever ships without .exe pre-attached to `ServerSpec::command`.
+    // Must return the path that's actually a real file on disk -- Windows'
+    // `CreateProcess` (what `std`/`async-process`'s `Command` calls) does
+    // not itself append `.exe` to an explicit path the way a bare-name
+    // `PATH` search would, so spawning `candidate` unchanged when only
+    // `candidate.exe` really exists would fail.
+    let with_exe = candidate.with_extension("exe");
+    if with_exe.is_file() {
+        return Some(with_exe);
+    }
+    candidate.is_file().then(|| candidate.to_path_buf())
 }
 
 #[cfg(test)]
