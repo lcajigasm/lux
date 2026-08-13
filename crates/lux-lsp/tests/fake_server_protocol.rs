@@ -88,8 +88,15 @@ mod protocol {
         // canonicalize its root itself (that's `ServerRegistry`'s job) --
         // match exactly what was actually passed in, not a resolved
         // version of it (macOS's `/var/folders` is itself a symlink to
-        // `/private/var/folders`, so those legitimately differ).
-        let expected_root_uri = format!("file://{}", dir.path().display());
+        // `/private/var/folders`, so those legitimately differ). Built the
+        // same way `session.rs` itself builds it (`Url::from_file_path`),
+        // not a hand-rolled `format!` string -- a naive `file://{path}`
+        // is wrong on Windows (backslashes, no leading slash before the
+        // drive letter), which is exactly what `Url::from_file_path`
+        // exists to get right.
+        let expected_root_uri = async_lsp::lsp_types::Url::from_file_path(dir.path())
+            .unwrap()
+            .to_string();
         assert_eq!(
             captured["root_uri"], expected_root_uri,
             "root_uri sent to the server did not match the session's actual root"
