@@ -106,10 +106,22 @@ async fn main() {
             .service(router)
     });
 
+    // `PipeStdin`/`PipeStdout` (non-blocking, needed so the scripted
+    // background task above can run concurrently with the main read loop
+    // -- see the module doc comment) rely on `rustix`'s raw fd tricks,
+    // Unix-only. Same fallback the `async-lsp` crate's own
+    // `examples/server_builder.rs` uses for everywhere else: wrap
+    // `tokio::io::stdin`/`stdout` (both real, non-blocking tokio I/O) to
+    // satisfy `futures::io::AsyncRead`/`AsyncWrite`.
     #[cfg(unix)]
     let (stdin, stdout) = (
         async_lsp::stdio::PipeStdin::lock_tokio().unwrap(),
         async_lsp::stdio::PipeStdout::lock_tokio().unwrap(),
+    );
+    #[cfg(not(unix))]
+    let (stdin, stdout) = (
+        tokio_util::compat::TokioAsyncReadCompatExt::compat(tokio::io::stdin()),
+        tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(tokio::io::stdout()),
     );
 
     let _ = server.run_buffered(stdin, stdout).await;
