@@ -39,7 +39,10 @@ mod blocking {
         // jitter.
         std::fs::write(dir.path().join("fake-lsp-hover-delay-ms"), "1000").unwrap();
 
-        let session = Arc::new(ServerSession::spawn(FAKE_SERVER_SPEC, dir.path().to_path_buf()));
+        let session = Arc::new(ServerSession::spawn(
+            FAKE_SERVER_SPEC,
+            dir.path().to_path_buf(),
+        ));
         tokio::time::timeout(Duration::from_secs(30), async {
             let mut rx = session.watch();
             loop {
