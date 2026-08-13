@@ -164,6 +164,11 @@ mod session {
         registry.stop_all().await;
     }
 
+    // `libc::kill`/`SIGKILL` are POSIX-only -- Windows has no equivalent
+    // signal, so this test (already manual-only, see #[ignore] below)
+    // simply doesn't exist there rather than needing a different
+    // termination mechanism it wouldn't be testing anyway.
+    #[cfg(unix)]
     #[ignore = "requires a real language server on PATH -- not installed in CI, run manually"]
     #[tokio::test]
     async fn crash_triggers_automatic_restart() {
