@@ -193,7 +193,10 @@ impl Pty {
     }
 }
 
-#[cfg(test)]
+// Unix-only: every test here spawns `/bin/sh`/`/bin/cat` and asserts on
+// POSIX signal semantics. `tests/conpty.rs` pins the analogous
+// Windows/ConPTY behavior against `cmd.exe`.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
@@ -302,20 +305,13 @@ mod tests {
         let status = pty.kill_and_wait().expect("kill and reap child");
         assert!(!status.success());
 
-        #[cfg(unix)]
-        {
-            // ESRCH: no such process. Confirms the child was actually
-            // reaped, not merely signaled and left as a zombie.
-            let rc = unsafe { libc::kill(pid as libc::pid_t, 0) };
-            assert_eq!(rc, -1);
-            assert_eq!(
-                std::io::Error::last_os_error().raw_os_error(),
-                Some(libc::ESRCH)
-            );
-        }
-        #[cfg(not(unix))]
-        {
-            let _ = pid;
-        }
+        // ESRCH: no such process. Confirms the child was actually reaped,
+        // not merely signaled and left as a zombie.
+        let rc = unsafe { libc::kill(pid as libc::pid_t, 0) };
+        assert_eq!(rc, -1);
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ESRCH)
+        );
     }
 }

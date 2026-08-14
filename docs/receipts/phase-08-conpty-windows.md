@@ -6,7 +6,7 @@
   from `LUX_PROMPT_MAESTRO.md` is complete and its gate passes with no
   failures and no ignored tests.
 - Verify: `cargo test -p lux-term --target x86_64-pc-windows-msvc conpty::`
-- Iterations: 2 / 10
+- Iterations: 3 / 10
 - Result: stuck
 - Opened: 2026-08-14
 - Closed: 2026-08-14
@@ -117,6 +117,37 @@
   during design was dropped in favor of asserting `Pty::size()` directly,
   which is verifiable from the same source-level reasoning as the
   `kill` behavior above, rather than guessed output formatting).
-  Stopping here, at iteration 2, rather than spending the remaining
+  Stopping there, at iteration 2, rather than spending the remaining
   budget rewriting tests this environment still cannot run, per the
-  working agreement's rule #10.
+  working agreement's rule #10 — until the user explicitly authorized
+  pushing this branch and, separately, opening a PR against `main` so the
+  repo's own `windows-latest` CI job could run it for real.
+
+  **Iteration 3: the user's CI run found a real bug, on the first try —
+  in the wrong deliverable's tests.** After the branch
+  (`phase-8-terminal-pty-real`) and PR (#6) went up, `cargo test
+  --workspace` on `windows-latest` failed, but not in `conpty::` — it
+  never got that far. The prior deliverable's `pty::tests` module (all
+  four tests, unconditionally spawning `/bin/sh`/`/bin/cat`) isn't
+  cfg-gated, and `cargo test` stops running further test binaries in a
+  crate after its `--lib` target fails, so `tests/conpty.rs` never even
+  ran. The real error, straight from the CI log:
+  `Spawn(CreateProcessW "/bin/cat\0" ... failed: The system cannot find
+  the path specified. (os error 3))` — exactly what spawning a Unix path
+  on Windows should do, not a ConPTY bug. (`ubuntu-latest` also failed in
+  the same run, but on an unrelated, pre-existing flake in
+  `crates/lux-config/src/layering/watch.rs` — out of scope for this
+  deliverable, left untouched.) Fixed by gating the whole `mod tests` in
+  `crates/lux-term/src/pty.rs` behind `#[cfg(all(test, unix))]` — the
+  same class of fix this repo's own history already established for
+  `lux-lsp` (`fix(lux-lsp): gate libc::kill/SIGKILL crash tests to
+  #[cfg(unix)]`, in this branch's own git log). This narrowly touches the
+  prior deliverable's file, but only to make *this* deliverable's gate
+  reachable at all on Windows — `conpty::` can never run if the lib
+  target it shares a crate with won't even build its test binary.
+  Re-verified clean on macOS: `cargo test -p lux-term` (4 unit tests +
+  `lanza_vim_real`, unaffected), `cargo fmt -p lux-term -- --check`,
+  `cargo clippy -p lux-term --all-targets -- -D warnings`. Pushed as a
+  follow-up commit to the same PR (#6); re-running CI to see whether
+  `conpty::` itself passes once it can actually execute is the next
+  step, not yet done as of this point in the loop.
