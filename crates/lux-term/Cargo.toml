@@ -6,3 +6,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[dependencies]
+alacritty_terminal = "0.26"
+anyhow = "1"
+portable-pty = "0.9"
+thiserror = "2"
+
+[target."cfg(unix)".dev-dependencies]
+libc = "0.2"

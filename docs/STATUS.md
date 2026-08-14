@@ -2047,6 +2047,40 @@ visibility changes.
 | Build-error link detection | not-started | not-started | not-started | excluded | not-started |
 | Task panel with cancellation | not-started | not-started | not-started | excluded | not-started |
 
+**Scope note (`lux-term` PTY real — `portable-pty` + `alacritty_terminal`,
+signals, resize; tracked in
+`docs/receipts/phase-08-pty-real-portablepty-alacrittyterminal-senales.md`)**:
+the "Real PTY terminal" row above doesn't move yet — same reasoning as
+every `not-started` row elsewhere in this document with a scope note:
+`lux-term` is a headless crate with nothing wired into `crates/lux-ui` or
+the running `lux` binary, so no user of the app can open a terminal panel
+yet. What exists and is verified: `Pty::spawn` opens a real OS pty via
+`portable-pty`'s `NativePtySystem` and spawns a real, persistent child
+process into it — not a one-shot captured command, the exact failure
+golden rule #1 and ADR 0012 exist to forbid. Every byte the child writes
+is fed through `alacritty_terminal`'s own VT parser (`vte::ansi::Processor`
+driving a `Term`) on a dedicated reader thread that blocks on the real pty
+file descriptor — event-driven, no polling loop (golden rule #5).
+`Pty::resize` updates both the kernel's `TIOCSWINSZ` winsize and the VT
+grid's dimensions together. `Pty::kill_and_wait` reaps the child so no
+zombie or orphan is left behind. Signals need no dedicated API:
+`Pty::write` sends raw bytes, and the kernel's own tty line discipline
+turns control bytes like `0x03` into real `SIGINT` — verified with a real
+`cat` process actually dying from a real `SIGINT`, not a simulated one.
+`crates/lux-term/tests/lanza_vim_real.rs` drives a real `vim` end to end:
+spawn, wait for its real intro screen to render, resize live, confirm
+`vim` itself (not just the local grid) observed the new size via
+`&columns`/`&lines` — proof `SIGWINCH` was actually delivered — send
+`:q!`, and a clean exit with the child reaped. Scrollback, search,
+selection, multiple named terminals/shell profiles, link detection, and
+the task panel are separate, later deliverables in the same phase; ConPTY
+(Windows) and Linux are unverified — `portable-pty` claims to support
+both, but only macOS (aarch64-apple-darwin) has actually been run.
+Verified on macOS (aarch64-apple-darwin): `cargo test -p lux-term` (4 unit
+tests + `lanza_vim_real`, all passing, none ignored), `cargo clippy
+-p lux-term --all-targets -- -D warnings` (clean), `cargo fmt -p lux-term
+-- --check` (clean).
+
 ## Plugins (Phase 9, `v0.8.0`)
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
