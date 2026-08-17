@@ -151,3 +151,67 @@
   follow-up commit to the same PR (#6); re-running CI to see whether
   `conpty::` itself passes once it can actually execute is the next
   step, not yet done as of this point in the loop.
+
+  **Iteration 4: the re-run found a real deadlock — a 6-hour CI job, not
+  a quick failure.** `windows-latest` came back `fail` after
+  `6h0m6s` (GitHub's default job ceiling; it was canceled, not finished):
+  `conpty::resize_reaches_the_real_conpty_pseudoconsole` passed,
+  `conpty::spawns_a_real_process_through_conpty` failed after exactly the
+  test's own 5s timeout, and
+  `conpty::kill_and_wait_reaps_a_conpty_child_without_hanging` hung
+  ("has been running for over 60 seconds") until the job was killed.
+  `ubuntu-latest` failed again too, but on the exact same pre-existing
+  `crates/lux-config` flake as iteration 3's run — confirmed by comparing
+  the panic location (`watch.rs:266`) byte-for-byte across both runs;
+  still out of scope, still untouched.
+
+  Root-caused the hang from `portable-pty`'s own Windows source
+  (`src/win/conpty.rs`), not guessed: `ConPtyMasterPty` and
+  `ConPtySlavePty` share the *same* `Arc<Mutex<Inner>>`, where `Inner`
+  owns the `PsuedoCon` (the actual `HPCON` from `CreatePseudoConsole`).
+  Dropping `pair.slave` right after spawn — the exact pattern that works
+  correctly on Unix, borrowed from `portable-pty`'s own `bash.rs`
+  example — is a complete no-op on Windows: it just decrements a
+  refcount, since `Inner`'s real teardown (`ClosePseudoConsole`, in
+  `PsuedoCon`'s `Drop`) only happens when the *last* reference goes away.
+  `Pty` keeps `master` alive for its entire lifetime (`resize` needs it),
+  so `Pty::kill_and_wait`'s prior implementation — waiting for the child,
+  then joining the reader thread while `self` (and therefore `master`)
+  was still alive — could never let the pseudoconsole close, so the
+  reader thread's blocking read on the ConPTY output pipe could never see
+  EOF. A real, structural deadlock specific to the ConPTY backend, exactly
+  the kind of "portable-pty Windows quirk" ADR 0012 asked this phase to
+  pin. Fixed by destructuring `self` inside `kill_and_wait` and
+  explicitly dropping `writer` and `master` — releasing the last `Inner`
+  reference, triggering `ClosePseudoConsole` — *before* joining the
+  reader thread. Confirmed harmless on Unix (where EOF already doesn't
+  depend on `master`'s lifetime): `kill_and_wait_leaves_no_orphan` and
+  the rest of the crate suite stayed green across 3 re-runs on macOS
+  after the rewrite.
+
+  For the `spawns_a_real_process_through_conpty` failure, ruled out one
+  real candidate cause before treating it as a timing issue:
+  `filedescriptor` (the crate `portable-pty` builds its Windows pipes on)
+  uses plain `CreatePipe` — an anonymous, always-synchronous pipe, never
+  `FILE_FLAG_OVERLAPPED` — so a blocking `.read()` on it is the correct,
+  supported way to consume it; there's no overlapped-I/O misuse to fix.
+  `resize_reaches_the_real_conpty_pseudoconsole` (same run) spawned
+  `cmd.exe` via the same ConPTY path and returned in well under a second
+  when it didn't also wait on output, meaning ConPTY/`conhost.exe`
+  creation itself isn't the slow part — specifically waiting for output
+  to travel child → ConPTY → pipe → reader thread → VT parser is what hit
+  the wall. GitHub's own Windows runners are documented to be
+  meaningfully slower than Linux/macOS ones for process-spawn-heavy
+  work, which fits a first-ConPTY-use cold start better than a
+  structural bug — but this is reasoned, not proven the way the deadlock
+  fix is. Raised the test's timeout from 5s to 20s as a defensive,
+  honest improvement, not a confirmed fix; documented here as such and
+  in the STATUS.md scope note (see below) — this receipt does not claim
+  `spawns_a_real_process_through_conpty` is fixed, only that the deadlock
+  is, until the next real Windows run says otherwise.
+
+  Re-verified clean on macOS after both changes: `cargo test -p lux-term`
+  (7 unit tests + `lanza_vim_real`, 3 re-runs, 0 failures), `cargo clippy
+  -p lux-term --all-targets -- -D warnings`, `cargo fmt -p lux-term --
+  --check`, `./scripts/check-limits.sh`, `cargo build --workspace`.
+  Pushed as a second follow-up commit to PR #6.

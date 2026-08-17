@@ -60,7 +60,7 @@ impl Dimensions for GridSize {
 }
 
 #[derive(Clone)]
-struct ChannelListener(mpsc::Sender<Event>);
+pub(crate) struct ChannelListener(mpsc::Sender<Event>);
 
 impl EventListener for ChannelListener {
     fn send_event(&self, event: Event) {
@@ -82,7 +82,7 @@ pub struct Pty {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
-    term: Arc<FairMutex<Term<ChannelListener>>>,
+    pub(crate) term: Arc<FairMutex<Term<ChannelListener>>>,
     events: Receiver<Event>,
     reader: Option<JoinHandle<()>>,
 }
@@ -143,14 +143,17 @@ impl Pty {
         Ok(())
     }
 
-    /// Render the current visible grid as plain text, one line per row.
+    /// Render the current viewport as plain text, one line per row —
+    /// honors `scroll`, so a scrolled-back viewport renders scrollback
+    /// content instead of always the live bottom.
     pub fn snapshot(&self) -> String {
         let term = self.term.lock();
         let grid = term.grid();
+        let top = -(grid.display_offset() as i32);
         let mut lines = Vec::with_capacity(grid.screen_lines());
         for row in 0..grid.screen_lines() {
             let mut text = String::with_capacity(grid.columns());
-            for cell in &grid[Line(row as i32)] {
+            for cell in &grid[Line(top + row as i32)] {
                 text.push(cell.c);
             }
             lines.push(text.trim_end().to_string());
@@ -181,12 +184,40 @@ impl Pty {
 
     /// Terminate the child and block until it is reaped, leaving no
     /// orphaned or zombie process behind.
-    pub fn kill_and_wait(mut self) -> Result<ExitStatus, PtyError> {
+    pub fn kill_and_wait(self) -> Result<ExitStatus, PtyError> {
+        let Pty {
+            master,
+            writer,
+            mut child,
+            reader,
+            ..
+        } = self;
+
         // Best-effort: if it's already dead, `kill` erroring is fine, the
         // `wait` below still reaps it.
-        let _ = self.child.kill();
-        let status = self.child.wait()?;
-        if let Some(reader) = self.reader.take() {
+        let _ = child.kill();
+        let status = child.wait()?;
+
+        // Drop the writer and the master pty handle *before* joining the
+        // reader thread. On Unix this changes nothing (closing our
+        // `slave` copy at spawn time, plus the child's own exit, already
+        // produce EOF independent of `master`'s lifetime) — but on
+        // Windows it's load-bearing: `portable-pty`'s ConPTY master and
+        // slave share the same underlying `Arc<Mutex<Inner>>` (see
+        // `portable-pty`'s own `src/win/conpty.rs`), so dropping our
+        // `slave` copy at spawn time was a no-op there. The
+        // pseudoconsole — and the OS pipe handle it owns — only actually
+        // closes, via `ClosePseudoConsole`, when the *last* reference to
+        // that shared `Inner` drops. `master` stays alive for `Pty`'s
+        // whole life (needed for `resize`), so without dropping it here
+        // first, the reader thread's blocking read on that pipe would
+        // never see EOF while we're joining it below: a real deadlock,
+        // confirmed by a 6-hour CI hang on real Windows before this fix,
+        // not a hypothetical one.
+        drop(writer);
+        drop(master);
+
+        if let Some(reader) = reader {
             let _ = reader.join();
         }
         Ok(status)

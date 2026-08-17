@@ -55,8 +55,13 @@ mod conpty {
         cmd.args(["/C", "echo hello-lux-conpty"]);
         let mut pty = Pty::spawn(cmd, small_size()).expect("spawn cmd.exe via real ConPTY");
 
+        // 20s, not 5: a cold GitHub Actions Windows runner's first
+        // ConPTY/conhost.exe + cmd.exe startup can genuinely take longer
+        // than a warm local run — confirmed by `resize_reaches_the_real_
+        // conpty_pseudoconsole` (below) spawning cmd.exe in well under a
+        // second when it doesn't also wait on output.
         assert!(
-            wait_until(Duration::from_secs(5), || pty
+            wait_until(Duration::from_secs(20), || pty
                 .snapshot()
                 .contains("hello-lux-conpty")),
             "expected output missing from the ConPTY-backed grid:\n{}",
@@ -64,7 +69,7 @@ mod conpty {
         );
 
         assert!(
-            wait_until(Duration::from_secs(5), || pty
+            wait_until(Duration::from_secs(20), || pty
                 .try_wait()
                 .expect("poll child")
                 .is_some()),
