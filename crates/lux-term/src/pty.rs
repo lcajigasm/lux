@@ -114,7 +114,17 @@ impl Pty {
             let mut buf = [0u8; 8192];
             loop {
                 match reader.read(&mut buf) {
-                    Ok(0) | Err(_) => break,
+                    Ok(0) => break,
+                    // A real I/O error ends the terminal same as EOF, but
+                    // silently was wrong: it left no trace of *why* the
+                    // grid stopped updating. `eprintln!` here is cheap
+                    // and, unlike a panic, can't take the whole process
+                    // down over what a real terminal treats as "the
+                    // stream closed."
+                    Err(err) => {
+                        eprintln!("lux-term: pty reader stopped: {err}");
+                        break;
+                    }
                     Ok(n) => processor.advance(&mut *reader_term.lock(), &buf[..n]),
                 }
             }

@@ -215,3 +215,45 @@
   -p lux-term --all-targets -- -D warnings`, `cargo fmt -p lux-term --
   --check`, `./scripts/check-limits.sh`, `cargo build --workspace`.
   Pushed as a second follow-up commit to PR #6.
+
+  **Iteration 5: the deadlock fix held — `kill_and_wait_reaps_a_conpty_
+  child_without_hanging` now passes, in `7m22s` total instead of a
+  6-hour cancellation. `spawns_a_real_process_through_conpty` still
+  failed, but the 20s timeout ruled out iteration 4's "maybe it's just
+  cold-start latency" theory: it used the full 20 seconds and still
+  found nothing — `pty.snapshot()` came back completely blank, all 24
+  rows, not partial or garbled output. That's a real, distinct data-flow
+  bug, not a timing one, and one this session cannot diagnose further by
+  reading source alone: `spawn_command`'s `CreateProcessW` call clearly
+  succeeded (no panic there), `resize_reaches_the_real_conpty_
+  pseudoconsole` proves ConPTY creation itself isn't the problem, and
+  `filedescriptor`'s plain (non-overlapped) `CreatePipe` was already
+  ruled out as a misuse candidate in iteration 4. The remaining
+  candidates — the reader thread never actually starting, its `read()`
+  call erroring immediately, or something specific to how `cmd.exe`'s
+  output reaches the pipe under `PSEUDOCONSOLE_WIN32_INPUT_MODE` — can't
+  be told apart from a blank grid alone, and `Pty`'s reader thread was
+  silently swallowing `Err` the same as clean `Ok(0)` EOF, discarding
+  exactly the information that would disambiguate them.
+
+  Fixed that silent swallowing on its own merits, not as a throwaway
+  debug hack: a real I/O error ending the reader thread should leave a
+  trace instead of the terminal just quietly going stale forever with no
+  signal to anything watching it. `crates/lux-term/src/pty.rs`'s reader
+  loop now `eprintln!`s the actual `io::Error` before breaking, which
+  `cargo test` captures and surfaces automatically on the next failure —
+  no `--nocapture` needed. This is the fifth iteration touching
+  Windows-specific behavior on this deliverable; each one has found and
+  fixed something concrete and different (Unix-only test gating, a real
+  ConPTY deadlock, and now instrumenting an unexplained data-flow gap) —
+  not a repeat of the same failure, so continuing was still warranted
+  under the "three repeats" rule, but if this round's real error message
+  doesn't point to a fixable, confident root cause, the honest move next
+  is to stop and report rather than keep guessing blind.
+
+  Re-verified clean on macOS: `cargo test -p lux-term` (7 unit tests +
+  `lanza_vim_real`), `cargo clippy -p lux-term --all-targets --
+  -D warnings`, `cargo fmt -p lux-term -- --check`. Pushed as a third
+  follow-up commit to PR #6; the real error text from the next
+  `windows-latest` run is what determines whether this deliverable can
+  actually close.
