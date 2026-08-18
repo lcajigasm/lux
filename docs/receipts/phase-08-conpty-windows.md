@@ -6,7 +6,7 @@
   from `LUX_PROMPT_MAESTRO.md` is complete and its gate passes with no
   failures and no ignored tests.
 - Verify: `cargo test -p lux-term --target x86_64-pc-windows-msvc conpty::`
-- Iterations: 7 / 10
+- Iterations: 8 / 10
 - Result: stuck
 - Opened: 2026-08-14
 - Closed: 2026-08-18
@@ -346,3 +346,62 @@
   opening a real terminal on Windows right now would see a permanently
   blank pane for any command whose output they need to read — the exact
   failure golden rule #1 exists to prevent papering over.
+
+  **Iteration 8: found the actual root cause — with the user's help
+  attacking it from a different angle than another blind CI round.**
+  Reading source alone had been exhausted; the user asked whether there
+  was a way to approach this differently without a Windows machine, at
+  all, using GitHub CI. `WebSearch` (free, no CI round-trip) found the
+  exact answer within one query: `portable-pty` 0.9.0 has a known,
+  reported, still-open upstream regression on Windows
+  (wezterm/wezterm#6783) — reading returns nothing useful starting
+  exactly at 0.9.0, while 0.8.1 worked. Reading the full issue thread
+  (via `gh api`, not `WebFetch`'s lossy HTML-to-markdown summary) surfaced
+  the real mechanism, explained by wezterm's own maintainer: Windows'
+  ConPTY sends `ESC[6n` (a cursor position query, part of its own startup
+  handshake) and **blocks all further output until it receives a
+  reply** — the `PSEUDOCONSOLE_INHERIT_CURSOR` flag `portable-pty` passes
+  to `CreatePseudoConsole` is what triggers this. Any real terminal
+  emulator must answer that query; `lux-term`'s reader thread only ever
+  *read* bytes, never *wrote* a reply — a real, universal terminal
+  correctness gap (not Windows-specific in principle), just one that
+  happened to never matter on Unix because the shells and `vim` this
+  crate's own tests spawn don't query cursor position at startup. Several
+  independent projects (`distant`, `senpi`, `deno-pty`, linked from the
+  same issue thread) found and fixed the identical symptom by
+  hand-detecting `ESC[6n` and writing back a *hardcoded* `ESC[1;1R`.
+  `alacritty_terminal::Term` already implements this correctly and
+  generically — `device_status(6)` computes the real cursor position and
+  emits it as `Event::PtyWrite(text)` (confirmed by reading
+  `term/mod.rs` directly) — `lux-term` was just never consuming that
+  event and writing it back.
+
+  **The fix.** `Pty::spawn`'s reader thread now drains `Term`'s event
+  channel after every read and, for `Event::PtyWrite`, writes the reply
+  straight back to the pty itself (matching wezterm's own real,
+  production handling of this event, not the hardcoded-answer workaround
+  the other projects needed because they aren't running a real VT
+  emulator); every other event still republishes through the existing
+  `events` channel unchanged, so `try_recv_event` keeps working the same
+  way for callers. This meant `writer` had to become shareable
+  (`Arc<Mutex<Box<dyn Write + Send>>>` instead of a bare
+  `Box<dyn Write + Send>`) so both the reader thread and `Pty::write`
+  can use it; `kill_and_wait`'s drop-order fix from iteration 4 stays
+  correct since `master`, not `writer`, was always the load-bearing one
+  there. Added `pty::device_status_tests::
+  cursor_position_queries_get_a_real_answer`, a fast, fully portable
+  unit test (`Term` + `Processor` directly, no real process, so it runs
+  identically on every OS including Windows) pinning the exact mechanism
+  the fix depends on: feeding `Term` a raw `ESC[6n` byte sequence and
+  asserting it emits `Event::PtyWrite("\x1b[1;1R")`.
+
+  Verified on macOS (aarch64-apple-darwin): full crate suite,
+  `cargo test -p lux-term` (8 unit tests + `lanza_vim_real`, up from 7 —
+  the new device-status test — all passing, 3 re-runs, 0 failures),
+  `cargo clippy -p lux-term --all-targets -- -D warnings` (clean),
+  `cargo fmt -p lux-term -- --check` (clean), `./scripts/check-limits.sh`
+  (clean — `pty.rs` grew to 435 lines, still well under 600),
+  `cargo build --workspace` (no regressions elsewhere). Not yet
+  verified: whether this actually fixes `spawns_a_real_process_through_
+  conpty` on real `windows-latest` — that CI run is the next step, and
+  this receipt does not move to `passed` until it comes back green.

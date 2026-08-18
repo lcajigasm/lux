@@ -5,8 +5,8 @@
 //! produces into grid state. See `docs/adr/0012-terminal-real-pty.md`.
 
 use std::io::{self, Read, Write};
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use alacritty_terminal::event::{Event, EventListener};
@@ -80,7 +80,7 @@ impl EventListener for ChannelListener {
 /// the new size to the kernel makes it deliver `SIGWINCH`.
 pub struct Pty {
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
     child: Box<dyn Child + Send + Sync>,
     pub(crate) term: Arc<FairMutex<Term<ChannelListener>>>,
     events: Receiver<Event>,
@@ -99,16 +99,24 @@ impl Pty {
         drop(pair.slave);
 
         let mut reader = pair.master.try_clone_reader().map_err(PtyError::Open)?;
-        let writer = pair.master.take_writer().map_err(PtyError::Open)?;
+        let writer: Arc<Mutex<Box<dyn Write + Send>>> = Arc::new(Mutex::new(
+            pair.master.take_writer().map_err(PtyError::Open)?,
+        ));
 
-        let (tx, events) = mpsc::channel();
+        // `term_tx` feeds `alacritty_terminal`'s own events to the reader
+        // thread below, which answers terminal queries (cursor position
+        // reports, ...) itself and republishes everything else through
+        // `events` for callers to observe via `try_recv_event`.
+        let (term_tx, term_rx) = mpsc::channel();
+        let (events_tx, events) = mpsc::channel();
         let term = Arc::new(FairMutex::new(Term::new(
             Config::default(),
             &GridSize::from_pty_size(size),
-            ChannelListener(tx),
+            ChannelListener(term_tx),
         )));
 
         let reader_term = Arc::clone(&term);
+        let reply_writer = Arc::clone(&writer);
         let reader = std::thread::spawn(move || {
             let mut processor = Processor::<StdSyncHandler>::new();
             let mut buf = [0u8; 8192];
@@ -132,6 +140,31 @@ impl Pty {
                     Ok(n) => {
                         total += n;
                         processor.advance(&mut *reader_term.lock(), &buf[..n]);
+
+                        // Any real terminal emulator must answer control
+                        // queries the client sends it (cursor position
+                        // reports and the like) — `alacritty_terminal`
+                        // already computes the correct reply, we just have
+                        // to write it back. Windows' ConPTY sends a cursor
+                        // position query (`ESC[6n`) as part of its own
+                        // startup handshake and *blocks all further output*
+                        // until it gets an answer — found via a real,
+                        // reported upstream issue
+                        // (wezterm/wezterm#6783), not a guess: this is why
+                        // spawning a process was hanging with an
+                        // eternally-blank grid only on Windows.
+                        while let Ok(event) = term_rx.try_recv() {
+                            match event {
+                                Event::PtyWrite(text) => {
+                                    if let Ok(mut w) = reply_writer.lock() {
+                                        let _ = w.write_all(text.as_bytes());
+                                    }
+                                }
+                                other => {
+                                    let _ = events_tx.send(other);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -149,7 +182,7 @@ impl Pty {
 
     /// Write raw bytes (keystrokes, pastes) to the child's stdin.
     pub fn write(&mut self, bytes: &[u8]) -> Result<(), PtyError> {
-        self.writer.write_all(bytes)?;
+        self.writer.lock().unwrap().write_all(bytes)?;
         Ok(())
     }
 
@@ -215,11 +248,11 @@ impl Pty {
         let _ = child.kill();
         let status = child.wait()?;
 
-        // Drop the writer and the master pty handle *before* joining the
-        // reader thread. On Unix this changes nothing (closing our
-        // `slave` copy at spawn time, plus the child's own exit, already
-        // produce EOF independent of `master`'s lifetime) — but on
-        // Windows it's load-bearing: `portable-pty`'s ConPTY master and
+        // Drop our copy of the writer and the master pty handle *before*
+        // joining the reader thread. `master` is the load-bearing one: on
+        // Unix, closing our `slave` copy at spawn time plus the child's
+        // own exit already produce EOF independent of `master`'s
+        // lifetime — but on Windows, `portable-pty`'s ConPTY master and
         // slave share the same underlying `Arc<Mutex<Inner>>` (see
         // `portable-pty`'s own `src/win/conpty.rs`), so dropping our
         // `slave` copy at spawn time was a no-op there. The
@@ -230,7 +263,9 @@ impl Pty {
         // first, the reader thread's blocking read on that pipe would
         // never see EOF while we're joining it below: a real deadlock,
         // confirmed by a 6-hour CI hang on real Windows before this fix,
-        // not a hypothetical one.
+        // not a hypothetical one. `writer` is shared with the reader
+        // thread too (it auto-answers terminal queries), so dropping our
+        // copy here is just tidiness, not itself load-bearing.
         drop(writer);
         drop(master);
 
@@ -361,5 +396,37 @@ mod tests {
             std::io::Error::last_os_error().raw_os_error(),
             Some(libc::ESRCH)
         );
+    }
+}
+
+// Portable — no real process involved, just `alacritty_terminal`'s own VT
+// parser, so this runs on every platform, Windows included.
+#[cfg(test)]
+mod device_status_tests {
+    use super::*;
+
+    #[test]
+    fn cursor_position_queries_get_a_real_answer() {
+        // The exact mechanism `Pty::spawn`'s reader thread relies on:
+        // ConPTY sends `ESC[6n` (a cursor position query) as part of its
+        // own Windows startup handshake and blocks all further output
+        // until it's answered (confirmed via wezterm/wezterm#6783) — a
+        // real terminal must answer it, not just relay bytes one way.
+        // `Term` already computes the correct reply; this pins that it
+        // keeps doing so.
+        let (tx, rx) = mpsc::channel();
+        let mut term = Term::new(
+            Config::default(),
+            &GridSize { rows: 24, cols: 80 },
+            ChannelListener(tx),
+        );
+        let mut processor = Processor::<StdSyncHandler>::new();
+        processor.advance(&mut term, b"\x1b[6n");
+
+        match rx.try_recv() {
+            Ok(Event::PtyWrite(text)) => assert_eq!(text, "\x1b[1;1R"),
+            Ok(_) => panic!("expected a PtyWrite reply to the cursor position query"),
+            Err(_) => panic!("device_status did not emit any reply at all"),
+        }
     }
 }
