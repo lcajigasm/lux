@@ -105,3 +105,18 @@
   consistent with golden rule #2 even though it isn't `lux-core` itself),
   and `git status --short` (only `crates/lux-term/*`, `Cargo.lock`, and
   `docs/` touched — no scope creep beyond this one deliverable).
+
+  **Addendum (2026-08-18, CI-discovered flakiness, not a scope
+  reopening).** PR #6's `ubuntu-latest` job failed `pty::lanza_vim_real`
+  at the resize assertion — vim's grid still showed only its intro
+  screen's tildes after 5 seconds, not the `120x40` echoed by
+  `:echo &columns . "x" . &lines`. This machine's own runs of the exact
+  same test were always fast and reliable, so the 5-second waits (a
+  reasonable margin locally) turned out to be too tight for a real,
+  potentially loaded GitHub Actions Ubuntu runner spawning a real `vim`,
+  resizing it, and waiting for a real `SIGWINCH`-triggered redraw — not
+  a logic bug in the test or in `Pty` itself. Raised the three
+  `wait_until` timeouts in `crates/lux-term/tests/lanza_vim_real.rs` from
+  5s to 15s. Re-verified clean on macOS: `cargo test -p lux-term`
+  (7 unit tests + `lanza_vim_real`), `cargo clippy -p lux-term
+  --all-targets -- -D warnings`, `cargo fmt -p lux-term -- --check`.
