@@ -257,3 +257,39 @@
   follow-up commit to PR #6; the real error text from the next
   `windows-latest` run is what determines whether this deliverable can
   actually close.
+
+  **Iteration 6: the instrumentation ran, and printed nothing — which is
+  itself the finding.** `kill_and_wait_reaps_a_conpty_child_without_
+  hanging` and `resize_reaches_the_real_conpty_pseudoconsole` both still
+  pass, quickly (job total `8m28s`, no hang). `spawns_a_real_process_
+  through_conpty` failed again, using the full 20s, grid still
+  completely blank — but the reader thread's new `eprintln!` on the
+  `Err` path never fired. Ruled out: cmdline quoting
+  (`CommandBuilder::cmdline`'s Windows quoting produces `cmd.exe /C
+  "echo hello-lux-conpty"`, the standard, documented `cmd /c "..."`
+  invocation shape, not a malformed one). Added one more diagnostic in
+  the same spirit as iteration 5, not yet pushed and observed as of this
+  entry: the `Ok(0)` (clean EOF) branch now also `eprintln!`s, with a
+  running byte counter, so the next real Windows run distinguishes "the
+  pipe closed almost immediately, before or without ever delivering
+  `cmd.exe`'s output" from "the reader is still blocked in `read()` when
+  the test gives up and the process exits" — the two remaining
+  explanations this receipt cannot currently tell apart. Re-verified
+  clean on macOS (`cargo test -p lux-term`, `cargo clippy`, `cargo fmt
+  --check`).
+
+  **This is the boundary.** Six iterations have gone into this one
+  deliverable, three of them chasing this single test's failure
+  specifically. Each round has ruled out a real, distinct candidate
+  (Unix-only test paths, the ConPTY-shared-`Inner` deadlock, overlapped
+  I/O misuse, cmdline quoting, a swallowed I/O error) rather than
+  repeating the same guess — genuine progress, not a stall — but this
+  session has no way to attach a debugger or add a breakpoint on real
+  Windows; every remaining hypothesis can only be tested by pushing,
+  waiting roughly ten minutes for a CI round-trip, and reading whatever
+  text comes back. If the next run's `eprintln!` output doesn't point to
+  a confident, fixable cause, the honest next step is to stop iterating
+  here and report the blocker in plain language rather than keep
+  guessing — `spawns_a_real_process_through_conpty` would stay a real,
+  open, documented gap in `docs/STATUS.md` rather than something papered
+  over.

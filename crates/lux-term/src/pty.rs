@@ -112,9 +112,13 @@ impl Pty {
         let reader = std::thread::spawn(move || {
             let mut processor = Processor::<StdSyncHandler>::new();
             let mut buf = [0u8; 8192];
+            let mut total = 0usize;
             loop {
                 match reader.read(&mut buf) {
-                    Ok(0) => break,
+                    Ok(0) => {
+                        eprintln!("lux-term: pty reader saw EOF after {total} bytes total");
+                        break;
+                    }
                     // A real I/O error ends the terminal same as EOF, but
                     // silently was wrong: it left no trace of *why* the
                     // grid stopped updating. `eprintln!` here is cheap
@@ -122,10 +126,13 @@ impl Pty {
                     // down over what a real terminal treats as "the
                     // stream closed."
                     Err(err) => {
-                        eprintln!("lux-term: pty reader stopped: {err}");
+                        eprintln!("lux-term: pty reader stopped after {total} bytes: {err}");
                         break;
                     }
-                    Ok(n) => processor.advance(&mut *reader_term.lock(), &buf[..n]),
+                    Ok(n) => {
+                        total += n;
+                        processor.advance(&mut *reader_term.lock(), &buf[..n]);
+                    }
                 }
             }
         });
