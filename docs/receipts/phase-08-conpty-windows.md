@@ -6,8 +6,8 @@
   from `LUX_PROMPT_MAESTRO.md` is complete and its gate passes with no
   failures and no ignored tests.
 - Verify: `cargo test -p lux-term --target x86_64-pc-windows-msvc conpty::`
-- Iterations: 8 / 10
-- Result: stuck
+- Iterations: 9 / 10
+- Result: passed
 - Opened: 2026-08-14
 - Closed: 2026-08-18
 - Notes:
@@ -401,7 +401,32 @@
   `cargo clippy -p lux-term --all-targets -- -D warnings` (clean),
   `cargo fmt -p lux-term -- --check` (clean), `./scripts/check-limits.sh`
   (clean — `pty.rs` grew to 435 lines, still well under 600),
-  `cargo build --workspace` (no regressions elsewhere). Not yet
-  verified: whether this actually fixes `spawns_a_real_process_through_
-  conpty` on real `windows-latest` — that CI run is the next step, and
-  this receipt does not move to `passed` until it comes back green.
+  `cargo build --workspace` (no regressions elsewhere).
+
+  **Iteration 9: confirmed on real Windows. All three `conpty::` tests
+  pass.** PR #6's `windows-latest` job (run `32119332445`, job
+  `95655925891`, `12m16s`, native `cargo test --workspace` — no
+  cross-compilation involved, a real Windows runner with a real MSVC
+  toolchain): `conpty::resize_reaches_the_real_conpty_pseudoconsole`,
+  `conpty::kill_and_wait_reaps_a_conpty_child_without_hanging`, and —
+  the one that took eight iterations to actually fix —
+  `conpty::spawns_a_real_process_through_conpty`, all `ok`. Every check
+  on the PR is green: `cargo test` on `macos-latest`, `ubuntu-latest`,
+  and `windows-latest`, `cargo clippy`, `cargo fmt --check`,
+  `cargo deny check`, `lux-core` UI-isolation check, and the file/struct
+  size limit check.
+
+  **What actually closed this out, worth remembering.** Six iterations
+  of source-reading, targeted logging, and elimination got the deadlock
+  fixed and ruled out every plausible cause this session could reach
+  through static analysis and CI round-trips alone — but the actual
+  answer (a documented upstream `portable-pty` 0.9.0 regression, a known
+  ConPTY startup handshake requirement, and prior art from three
+  unrelated projects) was one `WebSearch` query away the whole time and
+  was only tried after the user explicitly asked whether there was a way
+  to attack the problem differently without a Windows machine, using
+  GitHub CI. Worth promoting as a durable lesson: when a bug resists
+  several rounds of pure source-reading and blind CI iteration, checking
+  whether it's already a known, reported issue in the exact dependency
+  version in use is a cheap, zero-round-trip step that should come
+  *before* further blind guessing, not after eight iterations of it.

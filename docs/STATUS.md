@@ -2073,13 +2073,89 @@ spawn, wait for its real intro screen to render, resize live, confirm
 `&columns`/`&lines` — proof `SIGWINCH` was actually delivered — send
 `:q!`, and a clean exit with the child reaped. Scrollback, search,
 selection, multiple named terminals/shell profiles, link detection, and
-the task panel are separate, later deliverables in the same phase; ConPTY
-(Windows) and Linux are unverified — `portable-pty` claims to support
-both, but only macOS (aarch64-apple-darwin) has actually been run.
-Verified on macOS (aarch64-apple-darwin): `cargo test -p lux-term` (4 unit
-tests + `lanza_vim_real`, all passing, none ignored), `cargo clippy
--p lux-term --all-targets -- -D warnings` (clean), `cargo fmt -p lux-term
--- --check` (clean).
+the task panel are separate, later deliverables in the same phase; Linux
+is unverified — `portable-pty` claims to support it, but only macOS
+(aarch64-apple-darwin) has actually been run there. ConPTY (Windows) is
+covered separately below, now verified. Verified on macOS
+(aarch64-apple-darwin): `cargo test -p lux-term` (4 unit tests +
+`lanza_vim_real`, all passing, none ignored), `cargo clippy -p lux-term
+--all-targets -- -D warnings` (clean), `cargo fmt -p lux-term --
+--check` (clean).
+
+**Scope note (`lux-term` ConPTY on Windows; tracked in
+`docs/receipts/phase-08-conpty-windows.md`)**: the "ConPTY" row above
+doesn't move yet, same not-wired-into-`lux-ui` reasoning as every other
+scope note here — but unlike the notes for macOS-only deliverables,
+this one is verified on the actual target platform, not just reasoned
+about from source. `portable-pty`'s `NativePtySystem` already resolves
+to its own `win::conpty::ConPtySystem` under `#[cfg(windows)]`, so no
+new Windows-specific *spawn* code was needed — but a real, universal
+terminal-correctness gap had to be fixed first: Windows' ConPTY sends
+`ESC[6n` (a cursor position query) as part of its own startup handshake
+and blocks all further output until it receives a reply, and `Pty` only
+ever read bytes, never answered terminal queries. `alacritty_terminal`
+already computes the correct reply (`Term::device_status` emits
+`Event::PtyWrite`); `Pty::spawn`'s reader thread now drains that event
+and writes real replies back to the pty, the same mechanism a real
+terminal emulator (this crate's own dependency, and wezterm, which
+`portable-pty` was extracted from) relies on — not the hardcoded
+`ESC[1;1R` workaround several other, non-VT-emulating projects needed
+for the identical symptom. `crates/lux-term/tests/conpty.rs`
+(`#[cfg(windows)]`) pins `cmd.exe` spawn + live resize via a real
+`ResizePseudoConsole` call, and kill + reap with no hang and no orphan
+(`portable-pty`'s Windows `ChildKiller` calls `TerminateProcess`
+directly, no `SIGHUP` grace period the way Unix does). Verified on
+Windows via GitHub Actions' `windows-latest` runner (a real Windows
+Server image with a real MSVC toolchain, not a cross-compile): all three
+`conpty::` tests pass, run
+`https://github.com/lcajigasm/lux/actions/runs/32119332445`. Getting
+here took nine iterations, documented in full in the receipt, including
+a real ConPTY-specific deadlock (`portable-pty`'s Windows master and
+slave share one `Arc<Mutex<Inner>>`, so `Pty`'s Unix-derived "drop the
+slave at spawn" pattern didn't release the pseudoconsole on its own) and
+a still-open upstream `portable-pty` 0.9.0 issue
+(wezterm/wezterm#6783) that a plain web search — not another blind CI
+round — is what actually surfaced the fix.
+
+**Scope note (`lux-term` scrollback, search, selection/copy; tracked in
+`docs/receipts/phase-08-scrollback-busqueda-seleccion-copia.md`)**: the
+"Scrollback, search, selection" row above doesn't move yet, same
+not-wired-into-`lux-ui` reasoning as every other scope note here. What
+exists and is verified, all as a thin `Pty`-shaped surface over
+`alacritty_terminal` capabilities already present since the PTY-real
+deliverable (`Config::scrolling_history` already keeps 10,000 lines of
+history; nothing new needed there) — this deliverable didn't reimplement
+any of it, only exposed it: `Pty::scroll` (`Scroll::{Lines,PageUp,
+PageDown,Top,Bottom}`) moves the viewport into real scrollback via
+`Term::scroll_display`; `Pty::scrollback_position` reports how much
+history exists and how far the viewport is scrolled into it;
+`Pty::search` runs `alacritty_terminal`'s real DFA-compiled regex search
+(`RegexSearch`/`Term::search_next`) across the *entire* buffer, not just
+the visible screen, and scrolls a match into view; `Pty::select` and
+`Pty::clear_selection` wrap `alacritty_terminal`'s own `Selection` and
+`Term::selection_to_string` for real select-and-copy. `Pty::snapshot`
+(from the PTY-real deliverable) was fixed to render whatever the
+viewport is currently scrolled to instead of always the live bottom —
+a real bug the scrollback work surfaced, not a new feature. Verified on
+macOS (aarch64-apple-darwin) with real, non-interactive shells (no
+fixtures or canned VT sequences): a shell that outputs 100 lines into a
+24-row viewport, scrolled to `Top` to confirm `line-1` becomes visible
+and `Bottom` to confirm it returns to `line-100`, live; a regex search
+for a marker line already scrolled out of the live viewport, found in
+real scrollback and scrolled back into view; a selection over known
+output text returning the exact expected string. `cargo test -p lux-term
+scrollback::` (3 tests, re-run 4 times clean), full crate suite `cargo
+test -p lux-term` (7 unit tests + `lanza_vim_real`, all passing, none
+ignored — no regressions in the PTY-real or ConPTY deliverables), `cargo
+clippy -p lux-term --all-targets -- -D warnings` (clean), `cargo fmt -p
+lux-term -- --check` (clean), `./scripts/check-limits.sh` (clean —
+`scrollback.rs` split out as its own file specifically to keep `pty.rs`
+from growing indefinitely as more Phase 8 deliverables land on it).
+Selection/copy and search are exposed as data (matched `Point` ranges,
+extracted `String`s) with no UI attached — highlighting a selection or
+rendering a find bar is `lux-ui`'s job, out of this headless crate's
+scope. Named multiple terminals/shell profiles, link detection, and the
+task panel remain separate, not-yet-started deliverables.
 
 ## Plugins (Phase 9, `v0.8.0`)
 
