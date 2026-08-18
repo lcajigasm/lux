@@ -6,10 +6,10 @@
   from `LUX_PROMPT_MAESTRO.md` is complete and its gate passes with no
   failures and no ignored tests.
 - Verify: `cargo test -p lux-term --target x86_64-pc-windows-msvc conpty::`
-- Iterations: 3 / 10
+- Iterations: 7 / 10
 - Result: stuck
 - Opened: 2026-08-14
-- Closed: 2026-08-14
+- Closed: 2026-08-18
 - Notes:
 
   **Blocked immediately, on this machine, for a reason no amount of
@@ -278,18 +278,71 @@
   clean on macOS (`cargo test -p lux-term`, `cargo clippy`, `cargo fmt
   --check`).
 
-  **This is the boundary.** Six iterations have gone into this one
+  **This is the boundary.** Six iterations went into this one
   deliverable, three of them chasing this single test's failure
-  specifically. Each round has ruled out a real, distinct candidate
+  specifically. Each round ruled out a real, distinct candidate
   (Unix-only test paths, the ConPTY-shared-`Inner` deadlock, overlapped
   I/O misuse, cmdline quoting, a swallowed I/O error) rather than
   repeating the same guess — genuine progress, not a stall — but this
   session has no way to attach a debugger or add a breakpoint on real
   Windows; every remaining hypothesis can only be tested by pushing,
   waiting roughly ten minutes for a CI round-trip, and reading whatever
-  text comes back. If the next run's `eprintln!` output doesn't point to
-  a confident, fixable cause, the honest next step is to stop iterating
-  here and report the blocker in plain language rather than keep
-  guessing — `spawns_a_real_process_through_conpty` would stay a real,
-  open, documented gap in `docs/STATUS.md` rather than something papered
-  over.
+  text comes back.
+
+  **Iteration 7: the promised boundary. Neither `eprintln!` fired —
+  which is itself the answer.** The run this session was waiting on
+  (`windows-latest`, job `95646925207`, `8m18s`) came back with
+  `resize_reaches_the_real_conpty_pseudoconsole` and
+  `kill_and_wait_reaps_a_conpty_child_without_hanging` both still
+  passing, and `spawns_a_real_process_through_conpty` still failing —
+  but with **no `"lux-term: pty reader"` line anywhere in the log**,
+  neither the `Ok(0)`/EOF branch added in iteration 5 nor the `Err`
+  branch added in iteration 6. That rules out both remaining
+  explanations this receipt was choosing between: the pipe did not close
+  early (no EOF message), and the read did not fail (no error message).
+  The only account left standing: the reader thread's `reader.read(&mut
+  buf)` call itself blocks forever on real Windows for this exact
+  scenario, receiving zero bytes, for the full 20 seconds this session
+  waited and (since the thread is a plain detached `std::thread::spawn`,
+  outliving the test's own timeout) indefinitely beyond that too — a
+  real, live gap in `Pty::spawn`'s data path on Windows, not a timing
+  artifact, not a swallowed error, not a quoting bug.
+
+  Per this session's own stated boundary, stopping here rather than
+  attempting a seventh guess with no new evidence to narrow it further.
+  What was ruled out, with the evidence for each, so the next attempt
+  doesn't repeat this session's work: overlapped I/O misuse
+  (`filedescriptor` uses plain `CreatePipe`, never
+  `FILE_FLAG_OVERLAPPED` — a blocking `.read()` is the documented,
+  correct way to consume it); cmdline quoting (`CommandBuilder::cmdline`
+  produces `cmd.exe /C "echo hello-lux-conpty"`, the standard, documented
+  `cmd /c "..."` invocation shape); the ConPTY control channel itself
+  (`resize_reaches_the_real_conpty_pseudoconsole`'s real, HRESULT-checked
+  `ResizePseudoConsole` call succeeds, so `CreatePseudoConsole` and the
+  pseudoconsole object are genuinely alive and responsive — only the
+  *output data* channel is silent); a swallowed I/O error or an
+  early-but-unlogged EOF (both paths now instrumented, neither fired).
+  What remains unverified and untested: whether `try_clone_reader`'s
+  handle duplication timing relative to `spawn_command` matters on
+  Windows specifically (this session's ordering — clone after spawning
+  and after dropping `slave` — was never varied and re-tested, since each
+  variant costs a full CI round-trip); whether this is specific to
+  GitHub Actions' Windows Server runner image (antivirus/console-hook
+  interference with anonymous pipes is a documented class of issue on
+  hosted CI runners, though unconfirmed here); and whether comparing
+  against `wezterm`'s own production usage of this exact same
+  `portable-pty` version would surface a required step this
+  implementation is missing.
+
+  **What this means for the deliverable.** Two of `lux-term`'s three
+  ConPTY-specific behaviors are now genuinely verified on real Windows:
+  process spawn + live resize, and kill + reap with no hang and no
+  orphan. The third — receiving a spawned Windows process's actual
+  output back through ConPTY — remains a real, open, *failing* check on
+  `windows-latest`, left failing rather than skipped or marked
+  `#[ignore]`, per this loop's own instruction that no test may be
+  ignored to call this done. `docs/STATUS.md`'s ConPTY row stays
+  `not-started`, not because nothing was learned, but because a user
+  opening a real terminal on Windows right now would see a permanently
+  blank pane for any command whose output they need to read — the exact
+  failure golden rule #1 exists to prevent papering over.
