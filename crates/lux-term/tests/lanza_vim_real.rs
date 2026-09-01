@@ -41,10 +41,12 @@ mod pty {
         )
         .expect("spawn real vim through a real pty");
 
-        // 15s, not 5: a loaded CI runner can be noticeably slower than a
-        // local dev machine to start vim and render its first screen.
+        // 30s: a loaded CI runner can be noticeably slower than a local
+        // dev machine to start vim, render its first screen, and react
+        // to a live resize (this bumped once already, 5s -> 15s, and
+        // still flaked on ubuntu-latest at the resize wait).
         assert!(
-            wait_until(Duration::from_secs(15), || pty.snapshot().contains("VIM")),
+            wait_until(Duration::from_secs(30), || pty.snapshot().contains("VIM")),
             "vim did not draw its startup screen:\n{}",
             pty.snapshot()
         );
@@ -66,7 +68,7 @@ mod pty {
         pty.write(b":echo &columns . \"x\" . &lines\r")
             .expect("write the size-echo command");
         assert!(
-            wait_until(Duration::from_secs(15), || pty
+            wait_until(Duration::from_secs(30), || pty
                 .snapshot()
                 .contains("120x40")),
             "vim did not observe the resize (no SIGWINCH?):\n{}",
@@ -76,7 +78,7 @@ mod pty {
         pty.write(b":q!\r").expect("write the quit command");
 
         let mut exit_status = None;
-        let exited = wait_until(Duration::from_secs(15), || {
+        let exited = wait_until(Duration::from_secs(30), || {
             exit_status = pty.try_wait().expect("poll the child");
             exit_status.is_some()
         });
