@@ -128,7 +128,15 @@ fn vt_parser_sustains_100mb_per_second() {
     processor.advance(&mut term, &buf);
     let elapsed = t0.elapsed().as_secs_f64().max(1e-9);
     let mb_s = buf.len() as f64 / elapsed / 1_000_000.0;
-    let min = if cfg!(debug_assertions) { 10.0 } else { 100.0 };
+    // The named 100 MB/s budget is a release-mode measurement (see the
+    // module doc comment); shared, oversubscribed CI runners routinely
+    // dip an unoptimized debug build below a strict 10 MB/s floor with
+    // no real regression (observed: 6.4 MB/s on a macOS GitHub Actions
+    // runner). Golden rule #3 gates performance budgets on repeatable
+    // hardware only — this floor stays low enough in debug to still
+    // catch a genuine pathological regression (e.g. accidental O(n^2))
+    // without being a coin flip on noisy shared hardware.
+    let min = if cfg!(debug_assertions) { 2.0 } else { 100.0 };
     assert!(
         mb_s >= min,
         "VT parse rate {mb_s:.1} MB/s below {min} MB/s ({} bytes in {elapsed:.3}s)",
