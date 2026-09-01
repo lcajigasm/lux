@@ -41,12 +41,16 @@ mod pty {
         )
         .expect("spawn real vim through a real pty");
 
-        // 30s: a loaded CI runner can be noticeably slower than a local
-        // dev machine to start vim, render its first screen, and react
-        // to a live resize (this bumped once already, 5s -> 15s, and
-        // still flaked on ubuntu-latest at the resize wait).
+        // 60s: this workspace has grown substantially (plugins, chrome,
+        // pack, mobile hosts), and `cargo test --workspace` on a shared
+        // CI runner now has far more concurrent load than when this test
+        // was written — confirmed by CI history: this exact test passed
+        // cleanly right after it was last touched, and only started
+        // flaking once unrelated commits grew the workspace. Bumped
+        // twice already (5s -> 15s -> 30s) and still exhausted 30s on a
+        // busy ubuntu-latest run.
         assert!(
-            wait_until(Duration::from_secs(30), || pty.snapshot().contains("VIM")),
+            wait_until(Duration::from_secs(60), || pty.snapshot().contains("VIM")),
             "vim did not draw its startup screen:\n{}",
             pty.snapshot()
         );
@@ -68,7 +72,7 @@ mod pty {
         pty.write(b":echo &columns . \"x\" . &lines\r")
             .expect("write the size-echo command");
         assert!(
-            wait_until(Duration::from_secs(30), || pty
+            wait_until(Duration::from_secs(60), || pty
                 .snapshot()
                 .contains("120x40")),
             "vim did not observe the resize (no SIGWINCH?):\n{}",
@@ -78,7 +82,7 @@ mod pty {
         pty.write(b":q!\r").expect("write the quit command");
 
         let mut exit_status = None;
-        let exited = wait_until(Duration::from_secs(30), || {
+        let exited = wait_until(Duration::from_secs(60), || {
             exit_status = pty.try_wait().expect("poll the child");
             exit_status.is_some()
         });
