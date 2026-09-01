@@ -114,6 +114,7 @@ impl App {
             atlas,
             atlas_dirty,
             scale_cx,
+            chrome,
             ..
         } = self;
         let Some(gpu_window) = gpu_window.as_mut() else {
@@ -126,7 +127,7 @@ impl App {
         let text_left = frame.gutter_width + TEXT_LEFT_PADDING;
 
         let mut glyph_instances = Vec::new();
-        let foreground = color(Theme::LUX_DARK.foreground);
+        let foreground = color(chrome.theme.foreground);
         for line in &frame.lines {
             let y = line.index as f32 * LINE_HEIGHT - viewport.scroll_y;
             for cluster in line.layout.clusters() {
@@ -146,7 +147,7 @@ impl App {
 
         let mut quad_instances = vec![QuadInstance {
             rect: [0.0, 0.0, viewport.width, viewport.height],
-            color: color(Theme::LUX_DARK.background),
+            color: color(chrome.theme.background),
         }];
         for ruler_x in &frame.column_ruler_x {
             quad_instances.push(QuadInstance {
@@ -156,7 +157,7 @@ impl App {
                     1.0,
                     viewport.height,
                 ],
-                color: color(Theme::LUX_DARK.muted),
+                color: color(chrome.theme.muted),
             });
         }
         for line in &frame.lines {
@@ -164,7 +165,7 @@ impl App {
             for guide_x in &line.indent_guides {
                 quad_instances.push(QuadInstance {
                     rect: [text_left + guide_x - viewport.scroll_x, y, 1.0, LINE_HEIGHT],
-                    color: color(Theme::LUX_DARK.muted),
+                    color: color(chrome.theme.muted),
                 });
             }
         }
@@ -178,7 +179,7 @@ impl App {
                     width,
                     LINE_HEIGHT,
                 ],
-                color: color(Theme::LUX_DARK.selection),
+                color: color(chrome.theme.selection),
             });
         }
 
@@ -190,7 +191,7 @@ impl App {
             if cursor_glyph.visible {
                 quad_instances.push(QuadInstance {
                     rect: [x, y, 2.0, LINE_HEIGHT],
-                    color: color(Theme::LUX_DARK.accent),
+                    color: color(chrome.theme.accent),
                 });
             }
         }
@@ -226,7 +227,7 @@ impl App {
             // desktop IME candidate UI already uses.
             quad_instances.push(QuadInstance {
                 rect: [x, y + LINE_HEIGHT - 2.0, layout.width().max(1.0), 2.0],
-                color: color(Theme::LUX_DARK.accent),
+                color: color(chrome.theme.accent),
             });
             gpu_window.window.set_ime_cursor_area(
                 dpi::PhysicalPosition::new(x as i32, y as i32),
@@ -247,13 +248,12 @@ impl App {
         let _ = scheduler.take_dirty_regions();
         paint(gpu_window, &quad_instances, &glyph_instances);
 
-        // Schedule the next cursor-blink transition — event-driven, not a
-        // poll: this fires exactly once for a known future instant, per
-        // golden rule #5 and `RepaintScheduler`'s own doc comment.
-        let phase = elapsed.as_millis() / BLINK_INTERVAL.as_millis().max(1);
-        let next_toggle = *start + BLINK_INTERVAL * (phase as u32 + 1);
-        scheduler.request_repaint_at(next_toggle);
-        ctx.request_wakeup(next_toggle);
+        if chrome.motion.cursor_blinks() {
+            let phase = elapsed.as_millis() / BLINK_INTERVAL.as_millis().max(1);
+            let next_toggle = *start + BLINK_INTERVAL * (phase as u32 + 1);
+            scheduler.request_repaint_at(next_toggle);
+            ctx.request_wakeup(next_toggle);
+        }
     }
 }
 

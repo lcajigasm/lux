@@ -7,6 +7,7 @@ mod font;
 mod render;
 
 fn main() {
+    lux_pack::install_panic_hook();
     let (path, font_bytes) = font::load_system_monospace_font().expect(
         "no known macOS system monospace font was found — see \
          crates/lux/src/font.rs's candidate list",
