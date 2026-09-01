@@ -26,7 +26,8 @@ of huge files. Read `docs/adr/` before proposing architectural changes.
    own initiative.
 8. **`docs/STATUS.md` is the source of truth** for what works, per platform. It
    is updated in the same PR that changes behavior. The README promises nothing
-   STATUS does not confirm.
+   STATUS does not confirm. Crate tests alone do not flip STATUS rows — see
+   ADR 0017 and the integration backlog in `TODO.md`.
 9. **Decisions go in ADRs.** `docs/adr/NNNN-title.md`. To reverse a decision,
    supersede it with a new ADR; never rewrite an old one.
 10. **When a target is unreachable, stop and report.** Write up the finding and

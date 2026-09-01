@@ -11,12 +11,11 @@ default.
 
 ## Status
 
-Phase 0 (foundations). There is no editor yet — no window, no buffer, no
-UI — by design; see `LUX_PROMPT_MAESTRO.md` for why this phase exists before
-any of that. The full, current, per-platform capability matrix is
-`docs/STATUS.md`, which is the only source of truth for what works. This
-README will grow real usage instructions once `docs/STATUS.md` has something
-to point at.
+Domain crates through the phase-10 library work exist; the shipping `lux`
+binary is still a thin desktop shell (sample buffer, not a full editor).
+Per-platform truth is always [`docs/STATUS.md`](docs/STATUS.md). The
+ordered backlog to finish product wiring is [`TODO.md`](TODO.md) (see ADR
+0017). Do not trust older "phase done" wording in isolation.
 
 ## Building
 

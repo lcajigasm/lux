@@ -12,6 +12,9 @@ them:**
 - [`docs/STATUS.md`](docs/STATUS.md) — what is *actually* implemented right
   now, per platform. This is ground truth; if it disagrees with the
   checklist below, trust `STATUS.md`.
+- [`TODO.md`](TODO.md) — **integration backlog to finish the product**.
+  Phases 1–10 are largely `library-done`; agents should execute `TODO.md`
+  items (`G01`…) via `/goal`, not re-build domain crates from scratch.
 - [`docs/NON-GOALS.md`](docs/NON-GOALS.md) — explicitly out of scope until
   after `v1.0.0`. Do not implement these no matter how small the ask seems.
 - [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) — the measured performance
@@ -19,6 +22,8 @@ them:**
 - [`docs/adr/`](docs/adr/) — every architectural decision already made
   (UI stack, text rendering stack, platform trait, dependency choices).
   Do not reopen these without new evidence; supersede with a new ADR.
+  See especially
+  [`docs/adr/0017-crate-complete-is-not-product-complete.md`](docs/adr/0017-crate-complete-is-not-product-complete.md).
 - `LUX_PROMPT_MAESTRO.md` (repo root) — the original build brief this file
   distills, with full rationale and acceptance criteria per phase.
 
@@ -38,34 +43,47 @@ no telemetry by default.
 
 ## Roadmap
 
+Status vocabulary (ADR 0017):
+
+- **`library-done`** — crate + tests + receipts exist; STATUS rows may still
+  be `not-started` until wired into `lux` / mobile hosts.
+- **`product-done`** — matching `docs/STATUS.md` cells are `implemented` on
+  the claimed platforms.
+- **`in progress` / `blocked`** — active or externally blocked work.
+
 | Phase | What | Release | Status |
 |---|---|---|---|
-| 0 | Foundations & quality gate | — | done |
-| 1 | `lux-core`: headless text engine | — | done |
-| 2 | Renderer & desktop shell | `v0.1.0` | done |
-| 3 | Syntax, navigation, command palette | `v0.2.0` | done |
-| 4 | Projects, files, global search | `v0.3.0` | done |
-| 5 | Config, keymaps, personalization | `v0.4.0` | done |
-| 6 | Git integration (`gix`) | `v0.5.0` | done |
-| 7 | Real LSP client | `v0.6.0` | done |
-| 8 | Real PTY terminal | `v0.7.0` | done |
-| 9 | WASM plugins with sandbox | `v0.8.0` | done |
-| 10 | Accessibility, i18n, polish | `v0.9.0` | done |
-| 11 | Packaging & distribution | `v1.0.0` | in progress (unsigned pack + crash/update verify; signing blocked on certs) |
-| 12 | iPadOS & iOS | `v1.1.0` | in progress (Swift/MTKView host; no App Store build) |
-| 13 | Android | `v1.2.0` | in progress (Kotlin SurfaceView+IME+SAF; no Play build) |
+| 0 | Foundations & quality gate | — | product-done |
+| 1 | `lux-core`: headless text engine | — | library-done (desktop product editing path partial via `lux`) |
+| 2 | Renderer & desktop shell | `v0.1.0` | library-done + thin `lux` shell (macOS STATUS partial; Win/Linux shell not STATUS-proven) |
+| 3 | Syntax, navigation, command palette | `v0.2.0` | library-done; product wiring in `TODO.md` G04–G07 |
+| 4 | Projects, files, global search | `v0.3.0` | library-done; product wiring in `TODO.md` G08–G10 |
+| 5 | Config, keymaps, personalization | `v0.4.0` | library-done; product wiring in `TODO.md` G03 |
+| 6 | Git integration (`gix`) | `v0.5.0` | library-done; product wiring in `TODO.md` G11 |
+| 7 | Real LSP client | `v0.6.0` | library-done; product wiring in `TODO.md` G12 |
+| 8 | Real PTY terminal | `v0.7.0` | library-done; product wiring in `TODO.md` G13 |
+| 9 | WASM plugins with sandbox | `v0.8.0` | library-done; product wiring in `TODO.md` G14 |
+| 10 | Accessibility, i18n, polish | `v0.9.0` | library-done / chrome partial; AT proof in `TODO.md` G16 |
+| 11 | Packaging & distribution | `v1.0.0` | in progress — `TODO.md` G17 (signing often blocked on certs) |
+| 12 | iPadOS & iOS | `v1.1.0` | skeleton host — `TODO.md` G18 |
+| 13 | Android | `v1.2.0` | skeleton host — `TODO.md` G19 |
+
+**To finish:** execute [`TODO.md`](TODO.md) in order (integration spine),
+updating `docs/STATUS.md` in the same PRs. Do not treat the old "done"
+checklists below as permission to skip STATUS.
 
 ---
 
 ## Phase 0 — Foundations & quality gate
 
-*Done.* Cargo workspace, `CLAUDE.md`, ADRs 0001–0015, CI (fmt/clippy/test/
-deny/limits/benches), `scripts/check-limits.sh`, core-isolation CI job,
-Criterion baseline, `docs/STATUS.md` skeleton, `deny.toml`.
+*Product-done (gates).* Cargo workspace, `CLAUDE.md`, ADRs (through 0017),
+CI (fmt/clippy/test/deny/limits/benches), `scripts/check-limits.sh`,
+core-isolation CI job, Criterion baseline, `docs/STATUS.md`, `deny.toml`,
+integration backlog in `TODO.md`.
 
 ## Phase 1 — `lux-core`: headless text engine
 
-*Done.* `Buffer` on `ropey` with atomic save+backup and EOL/indent/encoding
+*Library-done.* `Buffer` on `ropey` with atomic save+backup and EOL/indent/encoding
 detection; grapheme-aware positions/selections; first-class multicursor
 with merge-on-overlap; transactional undo/redo; Sublime-style edit
 operations and selections; buffer find/replace; navigable snippets;
@@ -73,15 +91,16 @@ operations and selections; buffer find/replace; navigable snippets;
 
 ## Phase 2 — Renderer & desktop shell (`v0.1.0`)
 
-*Done.* `lux-platform` trait + `winit` backend; `lux-render` wgpu context
+*Library-done + thin product shell.* `lux-platform` trait + `winit` backend; `lux-render` wgpu context
 and own glyph atlas (`etagere` + `swash`, 4×1 subpixel); `parley` +
 `fontique` text layout; `lux-ui` virtualized editor view; working desktop
 IME (preedit + cursor area); `accesskit` wired from first render; Lux Dark
-theme; event-driven render loop. Released as `v0.1.0`.
+theme; event-driven render loop. Released as `v0.1.0`. Win/Linux boot fonts
+and STATUS parity: `TODO.md` G01/G15.
 
 ## Phase 3 — Syntax, navigation, command palette (`v0.2.0`)
 
-*Done.* `lux-syntax` incremental tree-sitter across the 15 baseline
+*Library-done — product wiring `TODO.md` G04–G07.* `lux-syntax` incremental tree-sitter across the 15 baseline
 languages (grammars compiled into the binary); token/scope-based themes;
 bracket pair colorization + real syntax-driven folding; per-language
 auto-indent; Goto Anything (`Cmd+P`) with Sublime-style suffixes; unified
@@ -90,7 +109,7 @@ command palette; find/replace bar; tabs + status bar; minimap. Released as
 
 ## Phase 4 — Projects, files, global search (`v0.3.0`)
 
-*Done.* `lux-workspace` with real multi-root and `.lux-project`; virtualized
+*Library-done — product wiring `TODO.md` G08–G10.* `lux-workspace` with real multi-root and `.lux-project`; virtualized
 tree file explorer; native FS watchers (no polling); Find in Files on an
 embedded ripgrep engine; project-wide replace with diff preview; workspace
 index fed by watchers; sessions/recovery; explicit huge-file and binary-file
@@ -98,7 +117,7 @@ handling. Released as `v0.3.0`.
 
 ## Phase 5 — Config, keymaps, personalization (`v0.4.0`)
 
-*Done.* `lux-config` JSONC with layered precedence and hot reload; keymaps
+*Library-done — product wiring `TODO.md` G03.* `lux-config` JSONC with layered precedence and hot reload; keymaps
 as data with Sublime/VS Code/JetBrains presets; `.editorconfig` and
 `.gitattributes` support; schema-aware settings importers; typography
 settings with per-project/folder overrides; preferences UI. Released as
@@ -106,14 +125,14 @@ settings with per-project/folder overrides; preferences UI. Released as
 
 ## Phase 6 — Git integration with `gix` (`v0.5.0`)
 
-*Done.* In-process Git, no shell-out: gutter change indicators + hunk
+*Library-done — product wiring `TODO.md` G11.* In-process Git, no shell-out: gutter change indicators + hunk
 navigation; tree changes panel + side-by-side diff; stage/unstage/commit/
 amend; history + inline/commit blame; branches + stash; merge conflict
 resolution. Released as `v0.5.0`.
 
 ## Phase 7 — Real LSP client (`v0.6.0`)
 
-*Done.* Full server lifecycle management with visible per-server status;
+*Library-done — product wiring `TODO.md` G12.* Full server lifecycle management with visible per-server status;
 incremental document sync; continuous diagnostics + problems panel;
 completion with resolve; full navigation (definition/references/symbols);
 hover/signature/inlay hints/semantic tokens; transactional code actions and
@@ -124,7 +143,7 @@ on-save); JSON-RPC stream fuzzer. Verified against `rust-analyzer`,
 
 ## Phase 8 — Real PTY terminal (`v0.7.0`)
 
-*Done.* `lux-term` on `portable-pty` + `alacritty_terminal`.
+*Library-done — product wiring `TODO.md` G13.* `lux-term` on `portable-pty` + `alacritty_terminal`.
 
 - [x] Real PTY: persistent processes, signals, correct resize
       (`docs/receipts/phase-08-pty-real-portablepty-alacrittyterminal-senales.md`)
@@ -147,11 +166,11 @@ on-save); JSON-RPC stream fuzzer. Verified against `rust-analyzer`,
       explicitly that this capability will not exist on iOS/iPadOS
       (`docs/receipts/phase-08-cierre-vt-throughput-orphans.md`)
 
-Released as `v0.7.0` (crate-complete; UI wiring is Phase 10).
+Released as `v0.7.0` (library-done; product UI wiring is `TODO.md` G13).
 
 ## Phase 9 — WASM plugins with sandbox (`v0.8.0`)
 
-*Done.* See ADR 0016 and `docs/plugins/API.md`.
+*Library-done — product wiring `TODO.md` G14.* See ADR 0016 and `docs/plugins/API.md`.
 
 - [x] `wasmtime` host with Component Model
 - [x] Versioned extension API with explicit per-capability permissions
@@ -166,7 +185,7 @@ Release `v0.8.0`.
 
 ## Phase 10 — Accessibility, i18n, polish (`v0.9.0`)
 
-*Done as code; screen-reader hardware passes remain STATUS `not-started`.*
+*Library-done / chrome partial — AT proof `TODO.md` G16.* Screen-reader hardware passes remain STATUS `not-started`.
 
 - [x] Full keyboard navigation across all panels (F6 ring, Escape untrap)
 - [ ] Complete `accesskit` verified with VoiceOver, NVDA, and Orca

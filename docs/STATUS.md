@@ -1,8 +1,11 @@
 # Status
 
-Source of truth for what actually works, per platform (golden rule #9).
+Source of truth for what actually works, per platform (golden rule #8/#9).
 Updated in the same PR that changes behavior. The README promises nothing
 this file does not confirm.
+
+**Product wiring backlog:** [`TODO.md`](../TODO.md) (ADR 0017). Library
+tests alone do not flip rows below to `implemented`.
 
 Legend: `not-started` · `partial` (behind an `experimental.*` flag, listed
 under Experimental below) · `implemented` · `excluded` (permanently out of
