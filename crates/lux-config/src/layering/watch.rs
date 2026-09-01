@@ -148,6 +148,27 @@ mod tests {
 
     const RECV_TIMEOUT: Duration = Duration::from_secs(5);
 
+    /// Replaces an *existing* watched file's contents in a single atomic
+    /// step, the way a real editor's save does. `fs::write` is not atomic:
+    /// its `open(O_CREAT|O_TRUNC)` empties the file before the new bytes are
+    /// written, so on Linux inotify can deliver a `Modify` for the
+    /// momentarily-empty file — which parses as a successful, empty `Null`
+    /// document (JSONC's empty-input case), not a parse error — ahead of the
+    /// `Modify` carrying the real content. Because this module deliberately
+    /// reacts to every raw event (see the module docs), that intermediate
+    /// state is observable and, under parallel test load, races the content
+    /// write. Writing to a sibling temp file and renaming it over the target
+    /// collapses the change into one event with no empty window, which is
+    /// what these "edit an existing file" tests actually mean to exercise.
+    /// (First-*creation* tests keep using `fs::write` on purpose — there is
+    /// no prior content to truncate, and the create/modify split is part of
+    /// what they assert.)
+    fn atomic_replace(path: &Path, contents: &str) {
+        let tmp = path.with_extension("jsonc.tmp");
+        fs::write(&tmp, contents).unwrap();
+        fs::rename(&tmp, path).unwrap();
+    }
+
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "lux-config-watch-test-{label}-{:?}-{}",
@@ -200,7 +221,7 @@ mod tests {
             ConfigWatcher::new(Arc::clone(&config), [(Layer::User, path.clone())]).unwrap();
         assert_eq!(config.lock().unwrap().resolved()["value"], "before");
 
-        fs::write(&path, r#"{ "value": "after" }"#).unwrap();
+        atomic_replace(&path, r#"{ "value": "after" }"#);
 
         wait_for(&watcher, |event| {
             matches!(event, ReloadEvent::Reloaded(Layer::User))
@@ -255,7 +276,7 @@ mod tests {
             ConfigWatcher::new(Arc::clone(&config), [(Layer::User, path.clone())]).unwrap();
         assert_eq!(config.lock().unwrap().resolved()["value"], "good");
 
-        fs::write(&path, "{ not valid").unwrap();
+        atomic_replace(&path, "{ not valid");
 
         wait_for(&watcher, |event| {
             matches!(
@@ -288,7 +309,7 @@ mod tests {
         assert_eq!(config.lock().unwrap().resolved()["a"], "user");
         assert_eq!(config.lock().unwrap().resolved()["b"], "project");
 
-        fs::write(&project_path, r#"{ "b": "project-updated" }"#).unwrap();
+        atomic_replace(&project_path, r#"{ "b": "project-updated" }"#);
         wait_for(&watcher, |event| {
             matches!(event, ReloadEvent::Reloaded(Layer::Project))
         });
