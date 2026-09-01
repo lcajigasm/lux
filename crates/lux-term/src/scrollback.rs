@@ -93,7 +93,8 @@ impl Pty {
     }
 }
 
-#[cfg(test)]
+// Unix-only: every test here spawns `/bin/sh`, same as `pty::tests`.
+#[cfg(all(test, unix))]
 mod tests {
     use std::time::{Duration, Instant};
 
