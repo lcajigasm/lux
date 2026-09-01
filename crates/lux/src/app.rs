@@ -68,6 +68,10 @@ pub(crate) struct App {
     pub(crate) config: Option<crate::config::RuntimeConfig>,
     /// Tree-sitter highlights for the open path (G04); `None` if no grammar.
     pub(crate) syntax: Option<crate::syntax::SyntaxHighlight>,
+    /// Open tabs + parked documents (G05). Active bytes stay in the fields above.
+    pub(crate) tabs: crate::tab_session::TabSession,
+    /// Last pointer position (for tab-strip hit-testing; mouse buttons lack coords).
+    pub(crate) pointer: (f64, f64),
 }
 
 impl App {
@@ -130,7 +134,14 @@ impl App {
             hl.set_text(buffer.text());
         }
 
-        Self {
+        let initial_tab_title = path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("Untitled")
+            .to_string();
+
+        let app = Self {
             editor_view,
             font,
             buffer,
@@ -156,7 +167,12 @@ impl App {
             modifiers: Modifiers::default(),
             config,
             syntax,
-        }
+            tabs: crate::tab_session::TabSession::bootstrap(initial_tab_title),
+
+            pointer: (0.0, 0.0),
+        };
+        println!("Lux: tabs + status bar");
+        app
     }
 
     fn move_cursor(&mut self, to: Position, reset_goal_column: bool) {
@@ -217,10 +233,10 @@ impl App {
         self.refresh_syntax();
     }
 
-
     fn mark_dirty(&mut self) {
         if !self.dirty {
             self.dirty = true;
+            self.sync_tab_title();
             self.refresh_title();
         }
     }
@@ -238,8 +254,7 @@ impl App {
         }
     }
 
-
-    fn refresh_title(&self) {
+    pub(crate) fn refresh_title(&self) {
         let Some(gpu) = &self.gpu_window else {
             return;
         };
@@ -251,46 +266,9 @@ impl App {
         gpu.window.set_title(&title);
     }
 
-    fn replace_document(
-        &mut self,
-        buffer: Buffer,
-        path: Option<PathBuf>,
-        read_only: bool,
-        dirty: bool,
-    ) {
-        self.buffer = buffer;
-        self.path = path;
-        self.read_only = read_only;
-        self.dirty = dirty;
-        self.cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
-        self.goal_column = 0;
-        self.viewport.scroll_x = 0.0;
-        self.viewport.scroll_y = 0.0;
-        self.scheduler.invalidate_all();
-        self.refresh_title();
-        self.syntax = self
-            .path
-            .as_ref()
-            .and_then(|p| crate::syntax::SyntaxHighlight::for_path(p));
-        if let Some(hl) = &self.syntax {
-            hl.set_text(self.buffer.text());
-        }
-    }
 
     fn open_path_on_ui_thread(&mut self, path: PathBuf) {
-        match crate::document::open_path(&path) {
-            Ok(opened) => {
-                println!("Lux: opened {}", opened.path.display());
-                if opened.read_only {
-                    println!(
-                        "Lux: {} is huge — opened read-only (no fake preview)",
-                        opened.path.display()
-                    );
-                }
-                self.replace_document(opened.buffer, Some(opened.path), opened.read_only, false);
-            }
-            Err(err) => eprintln!("Lux: {err}"),
-        }
+        self.open_path_in_tab(path);
     }
 
     fn save_to_path_on_ui_thread(&mut self, path: PathBuf) {
@@ -299,6 +277,7 @@ impl App {
                 println!("Lux: saved {}", path.display());
                 self.path = Some(path);
                 self.dirty = false;
+                self.sync_tab_title();
                 self.refresh_title();
             }
             Err(err) => eprintln!("Lux: {err}"),
@@ -335,7 +314,7 @@ impl App {
         }
     }
 
-    fn chord_primary(&self) -> bool {
+    pub(crate) fn chord_primary(&self) -> bool {
         self.modifiers.control || self.modifiers.meta
     }
 
@@ -507,6 +486,12 @@ impl PlatformEventHandler for App {
                 if key_event.state != ElementState::Pressed {
                     return;
                 }
+                if self.handle_tab_chord(&key_event.key) {
+                    if let Some(gpu_window) = &self.gpu_window {
+                        gpu_window.window.request_redraw();
+                    }
+                    return;
+                }
                 if self.handle_keymap_chord(ctx, &key_event.key) {
                     if let Some(gpu_window) = &self.gpu_window {
                         gpu_window.window.request_redraw();
@@ -531,6 +516,14 @@ impl PlatformEventHandler for App {
             PlatformEvent::Ime(ime_event) => {
                 self.apply_ime(ime_event);
                 if let Some(gpu_window) = &self.gpu_window {
+                    gpu_window.window.request_redraw();
+                }
+            }
+            PlatformEvent::MouseMoved(_)
+            | PlatformEvent::MouseButton { .. } => {
+                if self.handle_chrome_pointer(&event)
+                    && let Some(gpu_window) = &self.gpu_window
+                {
                     gpu_window.window.request_redraw();
                 }
             }

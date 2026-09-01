@@ -131,7 +131,7 @@ Legend: `OPEN` · `BLOCKED` · `DONE`
 ## Track 4 — Editor chrome & navigation
 
 ### G05 — Tabs + status bar wired and painted
-- Status: `OPEN`
+- Status: `DONE`
 - Depends: G02, G03
 - Goal: Multi-buffer tabs and a status bar are visible and operable in
   `lux` using existing `lux-ui` modules (not new parallel widgets).
@@ -139,6 +139,10 @@ Legend: `OPEN` · `BLOCKED` · `DONE`
   cursor/encoding/EOL or honest subset; STATUS rows move
 - Verify: `cargo test -p lux-ui` + `cargo test -p lux` + receipt
 - Out of scope: custom drag-drop tab DnD polish beyond existing module
+- Closed: 2026-09-01 — Linux: `TabBar` + `status_bar::build` painted in the
+  shell; open/switch/close (click + Ctrl+W / Ctrl+Tab) operate real buffers;
+  status shows cursor/language/encoding/EOL/indent. Windows/macOS on-screen
+  left unverified.
 
 ### G06 — Command palette + Goto Anything wired
 - Status: `OPEN`

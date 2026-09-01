@@ -151,6 +151,16 @@ impl TabBar {
         self.active = Some(id);
         true
     }
+
+    /// Updates the displayed title of an open tab (dirty marker, rename after
+    /// save-as). `false` if `id` isn't open.
+    pub fn set_title(&mut self, id: TabId, title: impl Into<String>) -> bool {
+        let Some(index) = self.index_of(id) else {
+            return false;
+        };
+        self.tabs[index].title = title.into();
+        true
+    }
 }
 
 #[cfg(test)]
@@ -322,5 +332,13 @@ mod tests {
         let a = bar.open("a.rs");
         bar.close(a);
         assert!(!bar.activate(a));
+    }
+    #[test]
+    fn set_title_updates_display_name() {
+        let mut bar = TabBar::new();
+        let a = bar.open("a.rs");
+        assert!(bar.set_title(a, "• a.rs"));
+        assert_eq!(bar.tabs()[0].title, "• a.rs");
+        assert!(!bar.set_title(TabId(999), "nope"));
     }
 }

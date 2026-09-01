@@ -431,7 +431,7 @@ item, not a correctness bug hit today.
 | Goto Anything | not-started | not-started | not-started | not-started | not-started |
 | Command palette | not-started | not-started | not-started | not-started | not-started |
 | Search/replace bar | not-started | not-started | not-started | not-started | not-started |
-| Tabs + status bar | not-started | not-started | not-started | not-started | not-started |
+| Tabs + status bar | not-started | not-started | implemented | not-started | not-started |
 | Minimap | not-started | not-started | not-started | not-started | not-started |
 
 **G04 update (2026-09-01, `docs/receipts/g04-wire-lux-syntax-highlights.md`)**: the
@@ -627,7 +627,15 @@ state" choice made for Goto Anything's `:line` suffix parsing. Gate:
 constraint as above. See
 `docs/receipts/phase-03-barra-busqueda-reemplazo-resaltado-coincidencias.md`.
 
-**Tabs + status bar** is also still `not-started` as a user-facing feature
+**G05 update (2026-09-01, `docs/receipts/g05-tabs-status-bar.md`)**: the `lux`
+desktop binary on Linux paints a real tab strip and status bar using
+`lux_ui::tabs::TabBar` and `lux_ui::status_bar::build` (no parallel widgets).
+Multiple files open as separate tabs; click / middle-click / click / × / Ctrl+W close; Ctrl+Tab cycles; status shows cursor, language, encoding, EOL, and indent from
+the active buffer. Linux **Tabs + status bar** is now on-screen in the shell.
+macOS/Windows stay `not-started` until a host run. DnD tab reorder polish is
+out of scope (the `move_tab` primitive remains available).
+
+**Tabs + status bar** (library half) was previously documented as `not-started` as a user-facing feature
 — no actual tab strip or status bar widget renders anything, and no mouse/
 drag event handling exists (Phase 3 has shipped no interactive widgets so
 far). What exists: `lux-ui::tabs::TabBar`, the state machine a tab strip

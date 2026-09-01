@@ -6,8 +6,12 @@ mod app;
 mod config;
 mod document;
 mod font;
+mod glyph_draw;
+mod chrome_paint;
 mod render;
 mod syntax;
+mod tab_session;
+mod tabs_actions;
 
 use std::path::PathBuf;
 

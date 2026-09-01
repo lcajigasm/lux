@@ -7,13 +7,14 @@ use std::time::Instant;
 use dpi::{LogicalSize, PhysicalSize};
 use lux_platform::{PlatformContext, PlatformWindow, ScrollDelta, WindowAttributes};
 use lux_render::{
-    GlyphInstance, GlyphKey, GpuContext, QuadInstance, QuadPipeline, Surface, TextPipeline,
-    TextRenderingMode,
+    GlyphInstance, GpuContext, QuadInstance, QuadPipeline, Surface, TextPipeline,
 };
 use lux_ui::Theme;
-use swash::FontRef;
 use wgpu::CurrentSurfaceTexture;
 
+use crate::tab_session::{language_label, TAB_STRIP_HEIGHT, STATUS_BAR_HEIGHT};
+use lux_ui::status_bar;
+use crate::glyph_draw::{color, push_glyph};
 use crate::app::{
     ATLAS_SIDE, App, BLINK_INTERVAL, GpuWindow, TEXT_LEFT_PADDING,
 };
@@ -117,6 +118,9 @@ impl App {
             scale_cx,
             chrome,
             syntax,
+            path,
+            dirty,
+            tabs,
             ..
         } = self;
         let Some(gpu_window) = gpu_window.as_mut() else {
@@ -125,15 +129,22 @@ impl App {
         let line_height = editor_view.metrics().line_height;
         let font_size = editor_view.metrics().font_size;
         let font = *font;
+        let window_w = viewport.width;
+        let window_h = viewport.height;
+        let editor_top = TAB_STRIP_HEIGHT;
+        let editor_h = (window_h - TAB_STRIP_HEIGHT - STATUS_BAR_HEIGHT).max(1.0);
+        // Virtually shrink the viewport so virtualization matches the editor pane.
+        viewport.height = editor_h;
 
         let elapsed = Instant::now().duration_since(*start);
         let frame = editor_view.build_frame(buffer, cursors, viewport, elapsed);
+        viewport.height = window_h;
         let text_left = frame.gutter_width + TEXT_LEFT_PADDING;
 
         let mut glyph_instances = Vec::new();
         let foreground = color(chrome.theme.foreground);
         for line in &frame.lines {
-            let y = line.index as f32 * line_height - viewport.scroll_y;
+            let y = editor_top + line.index as f32 * line_height - viewport.scroll_y;
             for cluster in line.layout.clusters() {
                 let glyph_color = syntax
                     .as_ref()
@@ -166,15 +177,15 @@ impl App {
             quad_instances.push(QuadInstance {
                 rect: [
                     text_left + ruler_x - viewport.scroll_x,
-                    0.0,
+                    editor_top,
                     1.0,
-                    viewport.height,
+                    editor_h,
                 ],
                 color: color(chrome.theme.muted),
             });
         }
         for line in &frame.lines {
-            let y = line.index as f32 * line_height - viewport.scroll_y;
+            let y = editor_top + line.index as f32 * line_height - viewport.scroll_y;
             for guide_x in &line.indent_guides {
                 quad_instances.push(QuadInstance {
                     rect: [text_left + guide_x - viewport.scroll_x, y, 1.0, line_height],
@@ -183,7 +194,7 @@ impl App {
             }
         }
         for selection in &frame.selections {
-            let y = selection.line as f32 * line_height - viewport.scroll_y;
+            let y = editor_top + selection.line as f32 * line_height - viewport.scroll_y;
             let width = (selection.x_end - selection.x_start).max(1.0);
             quad_instances.push(QuadInstance {
                 rect: [
@@ -199,7 +210,7 @@ impl App {
         let mut cursor_screen = None;
         for cursor_glyph in &frame.cursors {
             let x = text_left + cursor_glyph.x - viewport.scroll_x;
-            let y = cursor_glyph.line as f32 * line_height - viewport.scroll_y;
+            let y = editor_top + cursor_glyph.line as f32 * line_height - viewport.scroll_y;
             cursor_screen = Some((x, y));
             if cursor_glyph.visible {
                 quad_instances.push(QuadInstance {
@@ -254,6 +265,40 @@ impl App {
             );
         }
 
+        let status = status_bar::build(
+            buffer,
+            cursors.primary().head,
+            &language_label(path.as_deref()),
+        );
+        crate::chrome_paint::paint_tab_strip(
+            chrome,
+            editor_view,
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            font,
+            font_size,
+            tabs.bar(),
+            window_w,
+            &mut quad_instances,
+            &mut glyph_instances,
+        );
+        crate::chrome_paint::paint_status_bar(
+            chrome,
+            editor_view,
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            font,
+            font_size,
+            &status,
+            window_w,
+            window_h,
+            &mut quad_instances,
+            &mut glyph_instances,
+        );
+        let _ = dirty; // dirty marker is already reflected in tab titles
+
         if *atlas_dirty {
             gpu_window.text.upload_atlas(&gpu_window.gpu.queue, atlas);
             *atlas_dirty = false;
@@ -269,60 +314,6 @@ impl App {
             ctx.request_wakeup(next_toggle);
         }
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn push_glyph(
-    atlas: &mut lux_render::GlyphAtlas,
-    atlas_dirty: &mut bool,
-    scale_cx: &mut swash::scale::ScaleContext,
-    font: FontRef,
-    cluster: &lux_render::ClusterGeometry,
-    origin_x: f32,
-    origin_y: f32,
-    font_size: f32,
-    color: [f32; 4],
-    out: &mut Vec<GlyphInstance>,
-) {
-    let Some(glyph_id) = cluster.glyph_id else {
-        return;
-    };
-    // TrueType/OpenType glyph indices are defined as 16-bit by the font
-    // format spec itself; `parley::Glyph::id` is a `u32` for API-level
-    // headroom, but no real font can produce a value this cast would
-    // truncate.
-    let key = GlyphKey::new(
-        font.key.value(),
-        glyph_id as u16,
-        font_size,
-        cluster.x.fract(),
-        TextRenderingMode::Subpixel,
-    );
-    let was_cached = atlas.is_cached(&key);
-    let Some(entry) = atlas.rasterize(scale_cx, font, key) else {
-        return; // no visible ink (e.g. a space) — nothing to draw
-    };
-    if !was_cached {
-        *atlas_dirty = true;
-    }
-    let side = ATLAS_SIDE as f32;
-    let uv = [
-        entry.atlas_x as f32 / side,
-        entry.atlas_y as f32 / side,
-        (entry.atlas_x + entry.width) as f32 / side,
-        (entry.atlas_y + entry.height) as f32 / side,
-    ];
-    out.push(GlyphInstance::new(
-        [
-            origin_x + cluster.x,
-            origin_y,
-            entry.width as f32,
-            entry.height as f32,
-        ],
-        uv,
-        color,
-        entry.kind,
-    ));
 }
 
 fn paint(gpu_window: &mut GpuWindow, quads: &[QuadInstance], glyphs: &[GlyphInstance]) {
@@ -384,20 +375,4 @@ fn paint(gpu_window: &mut GpuWindow, quads: &[QuadInstance], glyphs: &[GlyphInst
     gpu_window.window.pre_present_notify();
     gpu_window.gpu.queue.submit(Some(encoder.finish()));
     gpu_window.gpu.queue.present(texture);
-}
-
-/// `Theme::Color`'s straight sRGB-space bytes, normalized to `0.0..=1.0` —
-/// matched consistently between the clear/background quad and the text
-/// pipeline's `background_color` uniform (what subpixel compositing mixes
-/// against), which is the only thing that actually has to agree; whether
-/// that number is *technically* linear or sRGB gamma doesn't change the
-/// internal consistency of that mix. A real gamma-correct pass is future
-/// polish, not a correctness bug this app hits today.
-fn color(c: lux_ui::Color) -> [f32; 4] {
-    [
-        c.r as f32 / 255.0,
-        c.g as f32 / 255.0,
-        c.b as f32 / 255.0,
-        c.a as f32 / 255.0,
-    ]
 }
