@@ -1,7 +1,4 @@
-//! The application's own state and its `PlatformEventHandler` wiring — the
-//! first real assembly of every Phase 2 crate into one running program.
-//! Frame drawing lives in `crate::render` (an `impl App` block in a
-//! separate file, kept apart only to stay under the 600-line file limit).
+//! Application state and `PlatformEventHandler` wiring. Drawing: `crate::render`.
 
 use std::time::{Duration, Instant};
 
@@ -23,10 +20,7 @@ use lux_ui::{Chrome, FocusTarget};
 use swash::FontRef;
 use swash::scale::ScaleContext;
 
-/// Fallback document when the binary is launched with no path argument and
-/// the user has not opened a file yet. Real open/save (G02) replaces this
-/// with an on-disk path; the sample remains a legitimate untitled buffer,
-/// not a stub API.
+/// Untitled sample buffer when launched with no path.
 const SAMPLE_TEXT: &str = include_str!("sample.txt");
 
 pub(crate) const FONT_SIZE: f32 = 16.0;
@@ -38,10 +32,7 @@ pub(crate) const ATLAS_SIDE: u32 = 1024;
 /// their own shaping pass; see the receipt), only their reserved width.
 pub(crate) const TEXT_LEFT_PADDING: f32 = 8.0;
 
-/// Everything that needs a live GPU device/surface/window — created once,
-/// in `resumed`, and gone if the app is ever suspended (desktop never
-/// actually calls `surfaces_lost` today, but the type still models the real
-/// lifecycle `lux-platform`'s trait documents).
+/// Live GPU device/surface/window created in `resumed`.
 pub(crate) struct GpuWindow {
     pub(crate) window: &'static dyn PlatformWindow,
     pub(crate) id: WindowId,
@@ -53,15 +44,7 @@ pub(crate) struct GpuWindow {
 
 pub(crate) struct App {
     pub(crate) editor_view: EditorView,
-    /// Built exactly once from leaked, process-lifetime font bytes and
-    /// reused for every frame. `swash::FontRef::key` is a global,
-    /// per-call-incrementing counter, not derived from the font's content
-    /// (see `swash::cache::CacheKey::new`) — calling `FontRef::from_index`
-    /// again on every redraw, even on the *same* bytes, would mint a fresh
-    /// key each time, so every `GlyphKey` built from it would miss the
-    /// atlas cache every single frame (constant needless re-rasterization
-    /// and eviction churn — a real, confirmed bug this field exists to fix,
-    /// not a hypothetical one).
+    /// Process-lifetime font ref; rebuilt FontRef keys would bust the atlas.
     pub(crate) font: FontRef<'static>,
     pub(crate) buffer: Buffer,
     pub(crate) cursors: MultiCursor,
@@ -81,17 +64,15 @@ pub(crate) struct App {
     /// Huge files open read-only (see `document::open_path`).
     pub(crate) read_only: bool,
     pub(crate) modifiers: Modifiers,
-    /// Layered settings + keymap dispatch (G03). `None` only when
-    /// bootstrap failed; the shell then keeps hardcoded fallbacks.
+    /// Layered settings + keymap dispatch (G03).
     pub(crate) config: Option<crate::config::RuntimeConfig>,
+    /// Tree-sitter highlights for the open path (G04); `None` if no grammar.
+    pub(crate) syntax: Option<crate::syntax::SyntaxHighlight>,
 }
 
 impl App {
     pub(crate) fn new(font_bytes: Vec<u8>, open_path: Option<PathBuf>) -> Self {
-        // Leaked once, for the process's lifetime — the same real,
-        // intentional pattern used for the window (see `crate::render`):
-        // `FontRef<'static>` needs `'static` bytes, and this app never
-        // needs to free or swap the font while running.
+        // Leaked for process lifetime — FontRef needs 'static bytes.
         let font_bytes: &'static [u8] = Box::leak(font_bytes.into_boxed_slice());
         let font = FontRef::from_index(font_bytes, 0)
             .expect("system font bytes read from disk must parse as a real font");
@@ -142,6 +123,13 @@ impl App {
         };
         let cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
 
+        let syntax = path
+            .as_ref()
+            .and_then(|p| crate::syntax::SyntaxHighlight::for_path(p));
+        if let Some(hl) = &syntax {
+            hl.set_text(buffer.text());
+        }
+
         Self {
             editor_view,
             font,
@@ -167,6 +155,7 @@ impl App {
             read_only,
             modifiers: Modifiers::default(),
             config,
+            syntax,
         }
     }
 
@@ -191,6 +180,7 @@ impl App {
         let new_pos = Position::from_char(&self.buffer, pos.char + text.chars().count());
         self.move_cursor(new_pos, true);
         self.mark_dirty();
+        self.refresh_syntax();
     }
 
     fn backspace(&mut self) {
@@ -207,6 +197,7 @@ impl App {
         let new_pos = Position::from_char(&self.buffer, prev.char);
         self.move_cursor(new_pos, true);
         self.mark_dirty();
+        self.refresh_syntax();
     }
 
     fn delete_forward(&mut self) {
@@ -223,6 +214,7 @@ impl App {
         let new_pos = Position::from_char(&self.buffer, pos.char);
         self.move_cursor(new_pos, true);
         self.mark_dirty();
+        self.refresh_syntax();
     }
 
 
@@ -232,6 +224,20 @@ impl App {
             self.refresh_title();
         }
     }
+
+    fn refresh_syntax(&mut self) {
+        if let Some(hl) = &self.syntax {
+            hl.set_text(self.buffer.text());
+        }
+    }
+
+    fn poll_syntax(&mut self) -> bool {
+        match self.syntax.as_mut() {
+            Some(hl) => hl.poll(),
+            None => false,
+        }
+    }
+
 
     fn refresh_title(&self) {
         let Some(gpu) = &self.gpu_window else {
@@ -262,6 +268,13 @@ impl App {
         self.viewport.scroll_y = 0.0;
         self.scheduler.invalidate_all();
         self.refresh_title();
+        self.syntax = self
+            .path
+            .as_ref()
+            .and_then(|p| crate::syntax::SyntaxHighlight::for_path(p));
+        if let Some(hl) = &self.syntax {
+            hl.set_text(self.buffer.text());
+        }
     }
 
     fn open_path_on_ui_thread(&mut self, path: PathBuf) {
@@ -548,6 +561,13 @@ impl PlatformEventHandler for App {
         {
             let metrics = config.editor_metrics();
             self.editor_view.set_metrics(metrics);
+            self.atlas_dirty = true;
+            self.scheduler.invalidate_all();
+            if let Some(gpu_window) = &self.gpu_window {
+                gpu_window.window.request_redraw();
+            }
+        }
+        if self.poll_syntax() {
             self.atlas_dirty = true;
             self.scheduler.invalidate_all();
             if let Some(gpu_window) = &self.gpu_window {

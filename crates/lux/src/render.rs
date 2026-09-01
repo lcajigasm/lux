@@ -116,6 +116,7 @@ impl App {
             atlas_dirty,
             scale_cx,
             chrome,
+            syntax,
             ..
         } = self;
         let Some(gpu_window) = gpu_window.as_mut() else {
@@ -134,6 +135,14 @@ impl App {
         for line in &frame.lines {
             let y = line.index as f32 * line_height - viewport.scroll_y;
             for cluster in line.layout.clusters() {
+                let glyph_color = syntax
+                    .as_ref()
+                    .and_then(|hl| {
+                        let abs = line.byte_start + cluster.byte_range.start;
+                        hl.color_at(abs)
+                    })
+                    .map(crate::syntax::to_rgba)
+                    .unwrap_or(foreground);
                 push_glyph(
                     atlas,
                     atlas_dirty,
@@ -143,7 +152,7 @@ impl App {
                     text_left - viewport.scroll_x,
                     y,
                     font_size,
-                    foreground,
+                    glyph_color,
                     &mut glyph_instances,
                 );
             }

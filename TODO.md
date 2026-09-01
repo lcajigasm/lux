@@ -108,7 +108,7 @@ Legend: `OPEN` · `BLOCKED` · `DONE`
 ## Track 3 — Syntax on screen
 
 ### G04 — Wire `lux-syntax` highlights into the editor paint path
-- Status: `OPEN`
+- Status: `DONE`
 - Depends: G02 (G03 optional but preferred for theme choice)
 - Goal: Tree-sitter tokens from `lux-syntax` color glyphs in `lux`'s
   render path for at least one opened buffer language; incremental edit
@@ -122,6 +122,9 @@ Legend: `OPEN` · `BLOCKED` · `DONE`
 - Verify: `cargo test -p lux-syntax && cargo test -p lux` + receipt
   screenshot or deterministic render test if one exists
 - Out of scope: all 18 languages polished in UI chrome; folding UI (G07+)
+- Closed: 2026-09-01 — Linux: Rust files get `LUX_DARK` token colors via
+  `BackgroundHighlighter` + paint-path `color_at`; edits resubmit off the
+  UI thread (`try_recv` drain). Windows/macOS on-screen left unverified.
 
 ---
 

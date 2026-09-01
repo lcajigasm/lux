@@ -52,6 +52,10 @@ pub struct EditorViewMetrics {
 /// the vertical indent-guide x-positions that apply to it.
 pub struct VisibleLine {
     pub index: usize,
+    /// Absolute byte offset of this line's start in the buffer text —
+    /// so paint can map each cluster's line-local `byte_range` to a
+    /// document-absolute span for syntax tokens (G04).
+    pub byte_start: usize,
     pub number: String,
     pub layout: LineLayout,
     pub indent_guides: Vec<f32>,
@@ -182,6 +186,7 @@ impl EditorView {
         let mut lines = Vec::with_capacity(visible_line_range.len());
         for line_idx in visible_line_range.clone() {
             let byte_range = index.line_byte_range(&text, line_idx);
+            let byte_start = byte_range.start;
             let line_text = &text[byte_range];
             let style =
                 Self::line_style(&self.family, self.metrics.font_size, self.metrics.ligatures);
@@ -189,6 +194,7 @@ impl EditorView {
             let indent_guides = indent_guide_x(&layout, line_text, indent);
             lines.push(VisibleLine {
                 index: line_idx,
+                byte_start,
                 number: format!("{:>gutter_digits$}", line_idx + 1),
                 layout,
                 indent_guides,

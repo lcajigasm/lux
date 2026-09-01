@@ -423,8 +423,8 @@ item, not a correctness bug hit today.
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| Tree-sitter incremental highlighting | implemented | not-started | not-started | not-started | not-started |
-| Token-based themes | implemented | not-started | not-started | not-started | not-started |
+| Tree-sitter incremental highlighting | implemented | not-started | implemented | not-started | not-started |
+| Token-based themes | implemented | not-started | implemented | not-started | not-started |
 | Bracket pair colorization | implemented | not-started | not-started | not-started | not-started |
 | Syntax-based code folding | implemented | not-started | not-started | not-started | not-started |
 | Auto-indent by language | implemented | not-started | not-started | not-started | not-started |
@@ -433,6 +433,18 @@ item, not a correctness bug hit today.
 | Search/replace bar | not-started | not-started | not-started | not-started | not-started |
 | Tabs + status bar | not-started | not-started | not-started | not-started | not-started |
 | Minimap | not-started | not-started | not-started | not-started | not-started |
+
+**G04 update (2026-09-01, `docs/receipts/g04-wire-lux-syntax-highlights.md`)**: the
+`lux` desktop binary on Linux colors glyphs from tree-sitter tokens for
+opened files whose extension maps to a shipped grammar (verified with
+Rust). Parse/highlight runs on `BackgroundHighlighter`'s worker thread;
+the UI drains results with non-blocking `try_recv` and never calls
+tree-sitter on the event-loop thread. Token colors come from
+`lux_syntax::theme::LUX_DARK` (no invented palette). Linux **Tree-sitter
+incremental highlighting** and **Token-based themes** now mean on-screen
+in the shell, not library-only. macOS rows stay `implemented` for the
+original library verification; Windows stays `not-started` until a host
+run. Unknown extensions stay uncolored (honest flat foreground).
 
 **Tree-sitter incremental highlighting** is `lux-syntax`: incremental
 parsing (`Document::edit` applies a `tree_sitter::InputEdit` to the previous

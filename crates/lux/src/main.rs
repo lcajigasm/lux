@@ -7,6 +7,7 @@ mod config;
 mod document;
 mod font;
 mod render;
+mod syntax;
 
 use std::path::PathBuf;
 

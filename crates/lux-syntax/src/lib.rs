@@ -314,6 +314,13 @@ impl BackgroundHighlighter {
     pub fn recv(&self) -> Option<Vec<Token>> {
         self.results.recv().ok()
     }
+
+    /// Non-blocking: the next already-finished highlight result, if any.
+    /// Used by the UI event loop to drain completed work without parking
+    /// the UI thread on tree-sitter (golden rule #6).
+    pub fn try_recv(&self) -> Option<Vec<Token>> {
+        self.results.try_recv().ok()
+    }
 }
 
 impl Drop for BackgroundHighlighter {

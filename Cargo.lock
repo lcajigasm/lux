@@ -3216,6 +3216,7 @@ dependencies = [
  "lux-pack",
  "lux-platform",
  "lux-render",
+ "lux-syntax",
  "lux-ui",
  "pollster 1.0.1",
  "swash",
