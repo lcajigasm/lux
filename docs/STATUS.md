@@ -630,15 +630,12 @@ constraint as above. See
 **G05 update (2026-09-01, `docs/receipts/g05-tabs-status-bar.md`)**: the `lux`
 desktop binary on Linux paints a real tab strip and status bar using
 `lux_ui::tabs::TabBar` and `lux_ui::status_bar::build` (no parallel widgets).
-Multiple files open as separate tabs; click / middle-click / click / × / Ctrl+W close; Ctrl+Tab cycles; status shows cursor, language, encoding, EOL, and indent from
+Multiple files open as separate tabs; click to switch; × / middle-click / Ctrl+W to close; Ctrl+Tab to cycle; status shows cursor, language, encoding, EOL, and indent from
 the active buffer. Linux **Tabs + status bar** is now on-screen in the shell.
 macOS/Windows stay `not-started` until a host run. DnD tab reorder polish is
 out of scope (the `move_tab` primitive remains available).
 
-**Tabs + status bar** (library half) was previously documented as `not-started` as a user-facing feature
-— no actual tab strip or status bar widget renders anything, and no mouse/
-drag event handling exists (Phase 3 has shipped no interactive widgets so
-far). What exists: `lux-ui::tabs::TabBar`, the state machine a tab strip
+**Tabs + status bar** library types remain `lux-ui::tabs::TabBar`, the state machine a tab strip
 would drive — open/close, reopening the most recently closed tab (a LIFO
 stack), pinning (pinned tabs cluster at the start of the strip, in the
 order they were pinned), and `move_tab` (the reorder-by-index primitive a
