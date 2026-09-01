@@ -81,6 +81,9 @@ pub(crate) struct App {
     /// Huge files open read-only (see `document::open_path`).
     pub(crate) read_only: bool,
     pub(crate) modifiers: Modifiers,
+    /// Layered settings + keymap dispatch (G03). `None` only when
+    /// bootstrap failed; the shell then keeps hardcoded fallbacks.
+    pub(crate) config: Option<crate::config::RuntimeConfig>,
 }
 
 impl App {
@@ -94,12 +97,16 @@ impl App {
             .expect("system font bytes read from disk must parse as a real font");
 
         let text_layout = lux_render::TextLayoutContext::new();
-        let metrics = EditorViewMetrics {
-            line_height: LINE_HEIGHT,
-            font_size: FONT_SIZE,
-            ligatures: true,
-            column_rulers: vec![80],
-            blink_interval: BLINK_INTERVAL,
+        let config = crate::config::RuntimeConfig::bootstrap();
+        let metrics = match &config {
+            Some(cfg) => cfg.editor_metrics(),
+            None => EditorViewMetrics {
+                line_height: LINE_HEIGHT,
+                font_size: FONT_SIZE,
+                ligatures: true,
+                column_rulers: vec![80],
+                blink_interval: BLINK_INTERVAL,
+            },
         };
         let editor_view = EditorView::new(text_layout, font_bytes, metrics)
             .expect("system font bytes read from disk must parse as a real font");
@@ -159,6 +166,7 @@ impl App {
             dirty: false,
             read_only,
             modifiers: Modifiers::default(),
+            config,
         }
     }
 
@@ -318,9 +326,30 @@ impl App {
         self.modifiers.control || self.modifiers.meta
     }
 
-    /// Ctrl/Cmd+O / S / Shift+S. Returns true when the key was consumed as a
-    /// file command (including when a dialog is cancelled).
-    fn handle_file_chord(&mut self, ctx: &dyn PlatformContext, key: &Key) -> bool {
+    /// Dispatches a single chord through the loaded keymap. Only commands
+    /// that this shell actually implements (`save` / `open` / `save_as`) are
+    /// indexed; everything else falls through to normal input.
+    fn handle_keymap_chord(&mut self, ctx: &dyn PlatformContext, key: &Key) -> bool {
+        let Some(config) = self.config.as_ref() else {
+            return self.handle_file_chord_fallback(ctx, key);
+        };
+        let Some(chord) = crate::config::chord_from_key(&self.modifiers, key) else {
+            return false;
+        };
+        let Some(command) = config.lookup_command(&chord).map(str::to_string) else {
+            return false;
+        };
+        match command.as_str() {
+            "open" => self.action_open(ctx),
+            "save" => self.action_save(ctx),
+            "save_as" => self.action_save_as(ctx),
+            _ => return false,
+        }
+        true
+    }
+
+    /// Pre-G03 hard chords — used only when config bootstrap failed.
+    fn handle_file_chord_fallback(&mut self, ctx: &dyn PlatformContext, key: &Key) -> bool {
         if !self.chord_primary() {
             return false;
         }
@@ -422,10 +451,11 @@ impl App {
         let buffer = &self.buffer;
         let cursors = &self.cursors;
         let family = self.editor_view.family().to_string();
+        let font_size = self.editor_view.metrics().font_size;
         lux_ui::build_accessibility_tree(
             self.editor_view.text_layout_mut(),
             &family,
-            FONT_SIZE,
+            font_size,
             buffer,
             cursors,
         )
@@ -464,7 +494,7 @@ impl PlatformEventHandler for App {
                 if key_event.state != ElementState::Pressed {
                     return;
                 }
-                if self.handle_file_chord(ctx, &key_event.key) {
+                if self.handle_keymap_chord(ctx, &key_event.key) {
                     if let Some(gpu_window) = &self.gpu_window {
                         gpu_window.window.request_redraw();
                     }
@@ -513,6 +543,17 @@ impl PlatformEventHandler for App {
     }
 
     fn about_to_wait(&mut self, _ctx: &dyn PlatformContext) {
+        if let Some(config) = self.config.as_mut()
+            && config.drain_reloads()
+        {
+            let metrics = config.editor_metrics();
+            self.editor_view.set_metrics(metrics);
+            self.atlas_dirty = true;
+            self.scheduler.invalidate_all();
+            if let Some(gpu_window) = &self.gpu_window {
+                gpu_window.window.request_redraw();
+            }
+        }
         let Some(gpu_window) = &self.gpu_window else {
             return;
         };

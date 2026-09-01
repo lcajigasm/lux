@@ -975,12 +975,26 @@ rather than leaving implicit:
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| JSONC config with layered precedence | not-started | not-started | not-started | not-started | not-started |
-| Keymap presets (Sublime/VS Code/JetBrains) | not-started | not-started | not-started | not-started | not-started |
+| JSONC config with layered precedence | not-started | not-started | implemented | not-started | not-started |
+| Keymap presets (Sublime/VS Code/JetBrains) | not-started | not-started | implemented | not-started | not-started |
 | `.editorconfig` / `.gitattributes` | not-started | not-started | not-started | not-started | not-started |
 | Settings importers | not-started | not-started | not-started | not-started | not-started |
-| Font settings + overrides | not-started | not-started | not-started | not-started | not-started |
+| Font settings + overrides | not-started | not-started | implemented | not-started | not-started |
 | Schema-aware settings-file completion | not-started | not-started | not-started | not-started | not-started |
+
+**G03 update (2026-09-01, `docs/receipts/g03-wire-lux-config-settings-keymaps.md`)**: the
+`lux` desktop binary on Linux loads layered JSONC defaults + optional
+`settings.jsonc` under the user config dir, watches that file with
+`ConfigWatcher` (notify, no polling), and applies `editor.fontSize` /
+`editor.lineHeight` / `editor.fontLigatures` to `EditorView` metrics on
+reload. Input for save/open/save_as is dispatched through the Sublime
+keymap preset (plus Lux open/save-as overlays); unwired preset commands are
+not indexed and do not fake behavior. Linux rows for **JSONC config with
+layered precedence**, **Keymap presets**, and **Font settings + overrides**
+move to `implemented` for this product path. Windows/macOS stay
+`not-started` until a host run exercises the same binary. No preferences UI
+was added (rule #1). `.editorconfig` / importers / schema-completion rows
+stay library-scoped as before.
 
 **Scope note (`lux-config::layering` — JSONC, layered precedence, hot
 reload; the narrower first slice of this phase's `lux-config` deliverable,

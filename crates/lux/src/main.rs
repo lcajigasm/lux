@@ -3,6 +3,7 @@
 //! closing out Phase 2 (see `docs/receipts/phase-02-lux-app-binario-unificado.md`).
 
 mod app;
+mod config;
 mod document;
 mod font;
 mod render;

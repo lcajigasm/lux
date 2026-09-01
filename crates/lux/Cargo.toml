@@ -11,6 +11,7 @@ publish.workspace = true
 accesskit = "0.24.1"
 dpi = "0.1.2"
 lux-core = { path = "../lux-core", version = "0.0.0" }
+lux-config = { path = "../lux-config", version = "0.0.0" }
 lux-platform = { path = "../lux-platform", version = "0.0.0" }
 lux-render = { path = "../lux-render", version = "0.0.0" }
 lux-ui = { path = "../lux-ui", version = "0.0.0" }

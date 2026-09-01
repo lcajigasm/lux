@@ -126,6 +126,17 @@ impl EditorView {
         &self.family
     }
 
+    /// Live typography knobs — read by the paint path and updated when
+    /// `lux-config` hot-reloads `editor.fontSize` / `editor.lineHeight` /
+    /// `editor.fontLigatures` (G03).
+    pub fn metrics(&self) -> &EditorViewMetrics {
+        &self.metrics
+    }
+
+    pub fn set_metrics(&mut self, metrics: EditorViewMetrics) {
+        self.metrics = metrics;
+    }
+
     /// A free function, not a `&self` method: it only needs `family` and
     /// `font_size`, and taking them by value (instead of `&self`) leaves
     /// `self.text_layout` free to be borrowed mutably right after, since

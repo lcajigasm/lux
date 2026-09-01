@@ -84,7 +84,7 @@ Legend: `OPEN` · `BLOCKED` · `DONE`
 ## Track 2 — Config drives the app
 
 ### G03 — Wire `lux-config` into `lux` (settings + keymaps)
-- Status: `OPEN`
+- Status: `DONE`
 - Depends: G02
 - Goal: Layered JSONC settings and keymap presets actually drive input and
   editor options in the running binary (hot reload via existing watchers,
@@ -99,6 +99,9 @@ Legend: `OPEN` · `BLOCKED` · `DONE`
 - Out of scope: preferences GUI beyond what is needed to prove layering;
   importers can stay library-only until a later goal if STATUS already
   separates them
+- Closed: 2026-09-01 — Linux: Sublime keymap dispatches save/open/save_as;
+  `editor.fontSize` hot-reload via `ConfigWatcher` (unit + xvfb smoke).
+  Windows STATUS left `not-started` (see receipt)
 
 ---
 

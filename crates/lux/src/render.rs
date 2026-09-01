@@ -15,7 +15,7 @@ use swash::FontRef;
 use wgpu::CurrentSurfaceTexture;
 
 use crate::app::{
-    ATLAS_SIDE, App, BLINK_INTERVAL, FONT_SIZE, GpuWindow, LINE_HEIGHT, TEXT_LEFT_PADDING,
+    ATLAS_SIDE, App, BLINK_INTERVAL, GpuWindow, TEXT_LEFT_PADDING,
 };
 
 impl App {
@@ -83,8 +83,9 @@ impl App {
     }
 
     pub(crate) fn scroll(&mut self, delta: ScrollDelta) {
+        let line_height = self.editor_view.metrics().line_height;
         let dy = match delta {
-            ScrollDelta::Lines { y, .. } => y * LINE_HEIGHT,
+            ScrollDelta::Lines { y, .. } => y * line_height,
             ScrollDelta::Pixels(p) => p.y as f32,
         };
         self.viewport.scroll_y = (self.viewport.scroll_y - dy).max(0.0);
@@ -120,6 +121,8 @@ impl App {
         let Some(gpu_window) = gpu_window.as_mut() else {
             return;
         };
+        let line_height = editor_view.metrics().line_height;
+        let font_size = editor_view.metrics().font_size;
         let font = *font;
 
         let elapsed = Instant::now().duration_since(*start);
@@ -129,7 +132,7 @@ impl App {
         let mut glyph_instances = Vec::new();
         let foreground = color(chrome.theme.foreground);
         for line in &frame.lines {
-            let y = line.index as f32 * LINE_HEIGHT - viewport.scroll_y;
+            let y = line.index as f32 * line_height - viewport.scroll_y;
             for cluster in line.layout.clusters() {
                 push_glyph(
                     atlas,
@@ -139,6 +142,7 @@ impl App {
                     &cluster,
                     text_left - viewport.scroll_x,
                     y,
+                    font_size,
                     foreground,
                     &mut glyph_instances,
                 );
@@ -161,23 +165,23 @@ impl App {
             });
         }
         for line in &frame.lines {
-            let y = line.index as f32 * LINE_HEIGHT - viewport.scroll_y;
+            let y = line.index as f32 * line_height - viewport.scroll_y;
             for guide_x in &line.indent_guides {
                 quad_instances.push(QuadInstance {
-                    rect: [text_left + guide_x - viewport.scroll_x, y, 1.0, LINE_HEIGHT],
+                    rect: [text_left + guide_x - viewport.scroll_x, y, 1.0, line_height],
                     color: color(chrome.theme.muted),
                 });
             }
         }
         for selection in &frame.selections {
-            let y = selection.line as f32 * LINE_HEIGHT - viewport.scroll_y;
+            let y = selection.line as f32 * line_height - viewport.scroll_y;
             let width = (selection.x_end - selection.x_start).max(1.0);
             quad_instances.push(QuadInstance {
                 rect: [
                     text_left + selection.x_start - viewport.scroll_x,
                     y,
                     width,
-                    LINE_HEIGHT,
+                    line_height,
                 ],
                 color: color(chrome.theme.selection),
             });
@@ -186,11 +190,11 @@ impl App {
         let mut cursor_screen = None;
         for cursor_glyph in &frame.cursors {
             let x = text_left + cursor_glyph.x - viewport.scroll_x;
-            let y = cursor_glyph.line as f32 * LINE_HEIGHT - viewport.scroll_y;
+            let y = cursor_glyph.line as f32 * line_height - viewport.scroll_y;
             cursor_screen = Some((x, y));
             if cursor_glyph.visible {
                 quad_instances.push(QuadInstance {
-                    rect: [x, y, 2.0, LINE_HEIGHT],
+                    rect: [x, y, 2.0, line_height],
                     color: color(chrome.theme.accent),
                 });
             }
@@ -202,7 +206,7 @@ impl App {
             let family = editor_view.family().to_string();
             let style = lux_render::LineStyle {
                 family: &family,
-                font_size: FONT_SIZE,
+                font_size,
                 ligatures: false,
             };
             let preedit_text = ime.preedit_text().to_string();
@@ -218,6 +222,7 @@ impl App {
                     &cluster,
                     x,
                     y,
+                    font_size,
                     foreground,
                     &mut glyph_instances,
                 );
@@ -226,17 +231,17 @@ impl App {
             // already-committed text — the same visual convention every
             // desktop IME candidate UI already uses.
             quad_instances.push(QuadInstance {
-                rect: [x, y + LINE_HEIGHT - 2.0, layout.width().max(1.0), 2.0],
+                rect: [x, y + line_height - 2.0, layout.width().max(1.0), 2.0],
                 color: color(chrome.theme.accent),
             });
             gpu_window.window.set_ime_cursor_area(
                 dpi::PhysicalPosition::new(x as i32, y as i32),
-                dpi::PhysicalSize::new(layout.width().max(1.0) as u32, LINE_HEIGHT as u32),
+                dpi::PhysicalSize::new(layout.width().max(1.0) as u32, line_height as u32),
             );
         } else if let Some((x, y)) = cursor_screen {
             gpu_window.window.set_ime_cursor_area(
                 dpi::PhysicalPosition::new(x as i32, y as i32),
-                dpi::PhysicalSize::new(2, LINE_HEIGHT as u32),
+                dpi::PhysicalSize::new(2, line_height as u32),
             );
         }
 
@@ -266,6 +271,7 @@ fn push_glyph(
     cluster: &lux_render::ClusterGeometry,
     origin_x: f32,
     origin_y: f32,
+    font_size: f32,
     color: [f32; 4],
     out: &mut Vec<GlyphInstance>,
 ) {
@@ -279,7 +285,7 @@ fn push_glyph(
     let key = GlyphKey::new(
         font.key.value(),
         glyph_id as u16,
-        FONT_SIZE,
+        font_size,
         cluster.x.fract(),
         TextRenderingMode::Subpixel,
     );
