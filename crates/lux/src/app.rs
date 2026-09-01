@@ -11,9 +11,11 @@ use lux_core::movement;
 use lux_core::multicursor::MultiCursor;
 use lux_core::position::Position;
 use lux_core::selection::Selection;
+use std::path::PathBuf;
+
 use lux_platform::{
-    ElementState, Ime, ImeComposition, ImeUpdate, Key, NamedKey, PlatformContext, PlatformEvent,
-    PlatformEventHandler, PlatformWindow, WindowId,
+    ElementState, FileDialogOptions, Ime, ImeComposition, ImeUpdate, Key, Modifiers, NamedKey,
+    PlatformContext, PlatformEvent, PlatformEventHandler, PlatformWindow, WindowId,
 };
 use lux_render::{GlyphAtlas, GpuContext, QuadPipeline, RepaintScheduler, Surface, TextPipeline};
 use lux_ui::editor_view::{EditorView, EditorViewMetrics, Viewport};
@@ -21,10 +23,10 @@ use lux_ui::{Chrome, FocusTarget};
 use swash::FontRef;
 use swash::scale::ScaleContext;
 
-/// A placeholder document: real enough to demonstrate virtualized scroll,
-/// real shaping, real cursor movement and editing — not sample marketing
-/// copy. Phase 4's "open a real file" work is what replaces this with an
-/// actual file path from argv/a native file dialog.
+/// Fallback document when the binary is launched with no path argument and
+/// the user has not opened a file yet. Real open/save (G02) replaces this
+/// with an on-disk path; the sample remains a legitimate untitled buffer,
+/// not a stub API.
 const SAMPLE_TEXT: &str = include_str!("sample.txt");
 
 pub(crate) const FONT_SIZE: f32 = 16.0;
@@ -73,10 +75,16 @@ pub(crate) struct App {
     pub(crate) scale_cx: ScaleContext,
     pub(crate) gpu_window: Option<GpuWindow>,
     pub(crate) chrome: Chrome,
+    /// On-disk path for the current buffer, if any. `None` means untitled.
+    pub(crate) path: Option<PathBuf>,
+    pub(crate) dirty: bool,
+    /// Huge files open read-only (see `document::open_path`).
+    pub(crate) read_only: bool,
+    pub(crate) modifiers: Modifiers,
 }
 
 impl App {
-    pub(crate) fn new(font_bytes: Vec<u8>) -> Self {
+    pub(crate) fn new(font_bytes: Vec<u8>, open_path: Option<PathBuf>) -> Self {
         // Leaked once, for the process's lifetime — the same real,
         // intentional pattern used for the window (see `crate::render`):
         // `FontRef<'static>` needs `'static` bytes, and this app never
@@ -96,7 +104,35 @@ impl App {
         let editor_view = EditorView::new(text_layout, font_bytes, metrics)
             .expect("system font bytes read from disk must parse as a real font");
 
-        let buffer = Buffer::from_bytes(SAMPLE_TEXT.as_bytes()).expect("sample.txt must decode");
+        let (buffer, path, read_only) = match open_path {
+            Some(path) => match crate::document::open_path(&path) {
+                Ok(opened) => {
+                    println!("Lux: opened {}", opened.path.display());
+                    if opened.read_only {
+                        println!(
+                            "Lux: {} is huge — opened read-only (no fake preview)",
+                            opened.path.display()
+                        );
+                    }
+                    (opened.buffer, Some(opened.path), opened.read_only)
+                }
+                Err(err) => {
+                    eprintln!("Lux: {err}");
+                    eprintln!("Lux: falling back to the untitled sample buffer");
+                    (
+                        Buffer::from_bytes(SAMPLE_TEXT.as_bytes())
+                            .expect("sample.txt must decode"),
+                        None,
+                        false,
+                    )
+                }
+            },
+            None => (
+                Buffer::from_bytes(SAMPLE_TEXT.as_bytes()).expect("sample.txt must decode"),
+                None,
+                false,
+            ),
+        };
         let cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
 
         Self {
@@ -119,6 +155,10 @@ impl App {
             scale_cx: ScaleContext::new(),
             gpu_window: None,
             chrome: Chrome::default(),
+            path,
+            dirty: false,
+            read_only,
+            modifiers: Modifiers::default(),
         }
     }
 
@@ -134,13 +174,22 @@ impl App {
         if text.is_empty() {
             return;
         }
+        if self.read_only {
+            eprintln!("Lux: buffer is read-only (huge file); edit refused");
+            return;
+        }
         let pos = self.cursors.primary().head;
         self.buffer.insert(pos.char, text);
         let new_pos = Position::from_char(&self.buffer, pos.char + text.chars().count());
         self.move_cursor(new_pos, true);
+        self.mark_dirty();
     }
 
     fn backspace(&mut self) {
+        if self.read_only {
+            eprintln!("Lux: buffer is read-only (huge file); edit refused");
+            return;
+        }
         let pos = self.cursors.primary().head;
         let prev = pos.prev_grapheme(&self.buffer);
         if prev == pos {
@@ -149,9 +198,14 @@ impl App {
         self.buffer.delete(prev.char..pos.char);
         let new_pos = Position::from_char(&self.buffer, prev.char);
         self.move_cursor(new_pos, true);
+        self.mark_dirty();
     }
 
     fn delete_forward(&mut self) {
+        if self.read_only {
+            eprintln!("Lux: buffer is read-only (huge file); edit refused");
+            return;
+        }
         let pos = self.cursors.primary().head;
         let next = pos.next_grapheme(&self.buffer);
         if next == pos {
@@ -160,6 +214,135 @@ impl App {
         self.buffer.delete(pos.char..next.char);
         let new_pos = Position::from_char(&self.buffer, pos.char);
         self.move_cursor(new_pos, true);
+        self.mark_dirty();
+    }
+
+
+    fn mark_dirty(&mut self) {
+        if !self.dirty {
+            self.dirty = true;
+            self.refresh_title();
+        }
+    }
+
+    fn refresh_title(&self) {
+        let Some(gpu) = &self.gpu_window else {
+            return;
+        };
+        let title = crate::document::window_title(
+            self.path.as_deref(),
+            self.dirty,
+            self.read_only,
+        );
+        gpu.window.set_title(&title);
+    }
+
+    fn replace_document(
+        &mut self,
+        buffer: Buffer,
+        path: Option<PathBuf>,
+        read_only: bool,
+        dirty: bool,
+    ) {
+        self.buffer = buffer;
+        self.path = path;
+        self.read_only = read_only;
+        self.dirty = dirty;
+        self.cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
+        self.goal_column = 0;
+        self.viewport.scroll_x = 0.0;
+        self.viewport.scroll_y = 0.0;
+        self.scheduler.invalidate_all();
+        self.refresh_title();
+    }
+
+    fn open_path_on_ui_thread(&mut self, path: PathBuf) {
+        match crate::document::open_path(&path) {
+            Ok(opened) => {
+                println!("Lux: opened {}", opened.path.display());
+                if opened.read_only {
+                    println!(
+                        "Lux: {} is huge — opened read-only (no fake preview)",
+                        opened.path.display()
+                    );
+                }
+                self.replace_document(opened.buffer, Some(opened.path), opened.read_only, false);
+            }
+            Err(err) => eprintln!("Lux: {err}"),
+        }
+    }
+
+    fn save_to_path_on_ui_thread(&mut self, path: PathBuf) {
+        match crate::document::save_buffer(&self.buffer, &path) {
+            Ok(()) => {
+                println!("Lux: saved {}", path.display());
+                self.path = Some(path);
+                self.dirty = false;
+                self.refresh_title();
+            }
+            Err(err) => eprintln!("Lux: {err}"),
+        }
+    }
+
+    fn action_open(&mut self, ctx: &dyn PlatformContext) {
+        let options = FileDialogOptions {
+            title: Some("Open File".to_string()),
+            starting_directory: self.path.as_ref().and_then(|p| p.parent().map(|d| d.to_path_buf())),
+            filters: vec![("Text".to_string(), vec!["txt".to_string(), "md".to_string(), "rs".to_string()])],
+        };
+        if let Some(path) = ctx.file_dialogs().pick_file(&options) {
+            self.open_path_on_ui_thread(path);
+        }
+    }
+
+    fn action_save(&mut self, ctx: &dyn PlatformContext) {
+        if let Some(path) = self.path.clone() {
+            self.save_to_path_on_ui_thread(path);
+        } else {
+            self.action_save_as(ctx);
+        }
+    }
+
+    fn action_save_as(&mut self, ctx: &dyn PlatformContext) {
+        let options = FileDialogOptions {
+            title: Some("Save As".to_string()),
+            starting_directory: self.path.as_ref().and_then(|p| p.parent().map(|d| d.to_path_buf())),
+            filters: vec![("Text".to_string(), vec!["txt".to_string(), "md".to_string(), "rs".to_string()])],
+        };
+        if let Some(path) = ctx.file_dialogs().save_file(&options) {
+            self.save_to_path_on_ui_thread(path);
+        }
+    }
+
+    fn chord_primary(&self) -> bool {
+        self.modifiers.control || self.modifiers.meta
+    }
+
+    /// Ctrl/Cmd+O / S / Shift+S. Returns true when the key was consumed as a
+    /// file command (including when a dialog is cancelled).
+    fn handle_file_chord(&mut self, ctx: &dyn PlatformContext, key: &Key) -> bool {
+        if !self.chord_primary() {
+            return false;
+        }
+        let Key::Character(ch) = key else {
+            return false;
+        };
+        let letter = ch.as_str();
+        match (letter, self.modifiers.shift) {
+            ("o" | "O", false) => {
+                self.action_open(ctx);
+                true
+            }
+            ("s" | "S", false) => {
+                self.action_save(ctx);
+                true
+            }
+            ("s" | "S", true) => {
+                self.action_save_as(ctx);
+                true
+            }
+            _ => false,
+        }
     }
 
     fn handle_named_key(&mut self, key: NamedKey) -> bool {
@@ -255,6 +438,7 @@ impl PlatformEventHandler for App {
             return;
         }
         self.create_gpu_window(ctx);
+        self.refresh_title();
     }
 
     fn window_event(&mut self, ctx: &dyn PlatformContext, window: WindowId, event: PlatformEvent) {
@@ -273,15 +457,25 @@ impl PlatformEventHandler for App {
             PlatformEvent::RedrawRequested => {
                 self.redraw(ctx);
             }
+            PlatformEvent::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers;
+            }
             PlatformEvent::Keyboard(key_event) => {
                 if key_event.state != ElementState::Pressed {
                     return;
                 }
-                let handled = match key_event.key {
-                    Key::Named(named) => self.handle_named_key(named),
+                if self.handle_file_chord(ctx, &key_event.key) {
+                    if let Some(gpu_window) = &self.gpu_window {
+                        gpu_window.window.request_redraw();
+                    }
+                    return;
+                }
+                let handled = match &key_event.key {
+                    Key::Named(named) => self.handle_named_key(*named),
                     _ => false,
                 };
                 if !handled
+                    && !self.chord_primary()
                     && !self.ime.is_composing()
                     && let Some(text) = &key_event.text
                 {

@@ -25,13 +25,14 @@ rule #2); the "implemented" mark below reflects where it's actually been
 (`cargo build -p lux-core --target ...`, no linker needed — it's an `rlib`,
 no final binary) — Phase 1's specific portability check — but that's a build
 check, not a behavioral one, so those columns stay `not-started` until the
-suite actually runs there. Windows/Linux are untested for the same reason
-(no non-macOS dev environment available yet); the code itself uses only
-`std::fs`/`std::path`, nothing OS-specific.
+suite actually runs there. Windows remains untested on a real host for
+this row; Linux Buffer load/save is exercised via the `lux` binary and
+`document` tests as of G02 (see the G02 update below). The code itself uses
+only `std::fs`/`std::path`, nothing OS-specific.
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| Buffer load/save (atomic + backup) | implemented | not-started | not-started | not-started | not-started |
+| Buffer load/save (atomic + backup) | implemented | not-started | implemented | not-started | not-started |
 | EOL / indent / encoding detection | implemented | not-started | not-started | not-started | not-started |
 | Positions/selections (byte/char/column, grapheme-aware) | implemented | not-started | not-started | not-started | not-started |
 | Multicursor + multiselection | implemented | not-started | not-started | not-started | not-started |
@@ -42,6 +43,18 @@ suite actually runs there. Windows/Linux are untested for the same reason
 | Find/replace in buffer | implemented | not-started | not-started | not-started | not-started |
 | Snippets with navigable placeholders | implemented | not-started | not-started | not-started | not-started |
 | `lux-core-cli` headless test harness | implemented | not-started | not-started | not-started | not-started |
+
+**G02 update (2026-09-01, `docs/receipts/g02-open-save-real-files.md`)**: the
+`lux` desktop binary on Linux opens a UTF-8 path from argv (and Ctrl/Cmd+O
+via the native file dialog), saves through `Buffer::save` (atomic + `.bak`),
+surfaces dirty state in the window title, refuses binary files without a
+fake preview, and opens huge files read-only. Linux **Buffer load/save**
+moves to `implemented` for this product path. Windows stays `not-started`
+until a Windows host/CI run exercises the same binary (unit tests cover the
+shared `document` helpers). Phase 4's "Huge/binary file handling" row stays
+`not-started` as a full editor-session feature; G02 only wires the existing
+`lux-core` policy into the shell.
+
 
 **Closed gap** (2026-08-12, see `docs/PERFORMANCE.md`'s measurement
 history): the "open a 100 MB file" performance budget's RSS half (< 3×

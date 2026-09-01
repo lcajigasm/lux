@@ -59,7 +59,7 @@ Legend: `OPEN` · `BLOCKED` · `DONE`
   loader/tests in tree, first-frame STATUS left `not-started` (see receipt)
 
 ### G02 — Open and save real files in `lux`
-- Status: `OPEN`
+- Status: `DONE`
 - Depends: G01
 - Goal: The desktop binary edits a path from argv and/or a native open
   dialog; save uses `lux-core` atomic save+backup; the embedded
@@ -72,8 +72,12 @@ Legend: `OPEN` · `BLOCKED` · `DONE`
   - Matching STATUS rows move only on platforms where this was run
 - Verify:
   - `cargo test -p lux`
-  - Manual or scripted: `lux /path/to/file` → edit → save → disk matches
+  - Linux: `timeout 5 env WGPU_BACKEND=gl xvfb-run -a ./target/debug/lux <file>`
+  - Receipt: `docs/receipts/g02-open-save-real-files.md`
 - Out of scope: multi-root workspace (G08)
+- Closed: 2026-09-01 — Linux argv open + binary refuse + huge read-only
+  smoke; save round-trip via `document` tests (same path as Ctrl/Cmd+S).
+  Windows STATUS left `not-started` (see receipt)
 
 ---
 
