@@ -39,7 +39,7 @@ Legend: `OPEN` · `BLOCKED` · `DONE`
 ## Track 1 — Desktop boot & real documents
 
 ### G01 — System monospace fonts on Linux and Windows
-- Status: `OPEN`
+- Status: `DONE`
 - Depends: G00
 - Goal: `cargo run -p lux` finds a real system monospace font on Linux and
   Windows (not only macOS paths) and reaches the first frame without panic.
@@ -50,9 +50,13 @@ Legend: `OPEN` · `BLOCKED` · `DONE`
   - `docs/STATUS.md` notes boot-on-Linux/Windows for the shell rows only if
     actually exercised; otherwise receipt records the blocker
 - Verify:
-  - `cargo run -p lux` on Linux does not panic in `font::load_*`
   - `cargo test -p lux`
+  - Linux: `timeout 5 env WGPU_BACKEND=gl xvfb-run -a cargo run -p lux`
+    prints `Lux: using system font` and does not panic in `font::`
+  - Receipt: `docs/receipts/g01-system-monospace-fonts-linux-windows.md`
 - Out of scope: custom bundled font product decision (may be a follow-up ADR)
+- Closed: 2026-09-01 — Linux font + xvfb event-loop smoke verified; Windows
+  loader/tests in tree, first-frame STATUS left `not-started` (see receipt)
 
 ### G02 — Open and save real files in `lux`
 - Status: `OPEN`

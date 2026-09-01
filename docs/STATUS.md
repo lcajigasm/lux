@@ -72,6 +72,21 @@ way the original number was produced (`/usr/bin/time -l` around
 | Lux Dark theme | implemented | not-started | not-started | not-started | not-started |
 | Virtualized editor view | implemented | not-started | not-started | not-started | not-started |
 
+**G01 update (2026-09-01,
+`docs/receipts/g01-system-monospace-fonts-linux-windows.md`)**: `lux` no
+longer assumes macOS-only font paths. Linux probes DejaVu / Liberation /
+Noto / Ubuntu / JetBrains / Cascadia paths and may fall back to one-shot
+`fc-match`; Windows probes Cascadia / Consolas / Courier / Lucida under
+`%WINDIR%\Fonts` (and `%LOCALAPPDATA%`). Verified on this Linux host:
+`cargo test -p lux` and `timeout 5 env WGPU_BACKEND=gl xvfb-run -a
+./target/debug/lux` print `Lux: using system font
+/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf` and stay up until
+timeout (no `font::` panic). **Phase 2 Linux/Windows rows stay
+`not-started`**: xvfb smoke is not a full desktop STATUS pass (IME,
+accesskit, real GPU), and Windows first-frame was not run here — track
+G15. Honest missing-font errors remain panics with platform-specific
+messages (no blank window).
+
 **Scope note (`lux-platform` trait + `winit` backend — this phase's first
 deliverable, tracked in `docs/receipts/phase-02-luxplatform-trait-impl-winit.md`)**:
 the trait covers window creation, keyboard/mouse/touch input, IME event
