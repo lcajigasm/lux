@@ -41,6 +41,10 @@ allow = [
     # domain dedication) — no copyleft, no attribution requirement, fully
     # compatible with redistributing Lux under MIT OR Apache-2.0.
     "CC0-1.0",
+    # wasmtime 47 (Phase 9): Cranelift/LLVM exception, same as the LLVM
+    # runtime many compilers ship. Permissive; binds only if we modify
+    # those crates' sources.
+    "Apache-2.0 WITH LLVM-exception",
 ]
 confidence-threshold = 0.8
 exceptions = []

@@ -41,6 +41,7 @@ pub enum StatusError {
     ReadHead(Box<dyn std::error::Error + Send + Sync>),
     NonUtf8Name,
     Changes(DiffPanelError),
+    Discover(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl fmt::Display for StatusError {
@@ -49,6 +50,7 @@ impl fmt::Display for StatusError {
             StatusError::ReadHead(e) => write!(f, "failed to read HEAD: {e}"),
             StatusError::NonUtf8Name => write!(f, "branch name is not valid UTF-8"),
             StatusError::Changes(e) => write!(f, "failed to compute changed files: {e}"),
+            StatusError::Discover(e) => write!(f, "failed to discover repository: {e}"),
         }
     }
 }
@@ -92,6 +94,12 @@ pub fn status(repo: &gix::Repository) -> Result<RepositoryStatus, StatusError> {
         branch,
         changed_files: changed.len(),
     })
+}
+
+/// Discover a repo at `path` (or a parent) and summarize it.
+pub fn status_at(path: &std::path::Path) -> Result<RepositoryStatus, StatusError> {
+    let repo = gix::discover(path).map_err(|e| StatusError::Discover(Box::new(e)))?;
+    status(&repo)
 }
 
 #[cfg(test)]

@@ -2155,7 +2155,32 @@ Selection/copy and search are exposed as data (matched `Point` ranges,
 extracted `String`s) with no UI attached — highlighting a selection or
 rendering a find bar is `lux-ui`'s job, out of this headless crate's
 scope. Named multiple terminals/shell profiles, link detection, and the
-task panel remain separate, not-yet-started deliverables.
+task panel are covered in the notes below.
+
+**Scope note (`lux-term` named terminals + shell profiles; tracked in
+`docs/receipts/phase-08-terminales-nombrados-perfiles-shell.md`)**: row stays
+`not-started` until wired into `lux-ui`. `Terminals` + `ShellProfile` spawn
+independent real PTYs; killing one session leaves the other live (verified
+with `kill(pid, 0)`). `cargo test -p lux-term sessions::` clean on macOS.
+
+**Scope note (`lux-term` build-error links; tracked in
+`docs/receipts/phase-08-deteccion-enlaces-file-line.md`)**: `detect_links` /
+`Pty::detect_links` return `SourceLocation` (path, line, optional column)
+from rustc/gcc/Python shapes. No editor jump. `cargo test -p lux-term
+links::` clean.
+
+**Scope note (`lux-term` task panel; tracked in
+`docs/receipts/phase-08-panel-tareas-cancelacion.md`)**: `TaskPanel::cancel`
+is `Pty::kill_and_wait` — the child is gone (`ESRCH`). `cargo test -p
+lux-term tasks::` clean.
+
+**Scope note (Phase 8 close; tracked in
+`docs/receipts/phase-08-cierre-vt-throughput-orphans.md` and
+`docs/receipts/phase-08-release-notes.md`)**: VT pins + snapshot-after-flood
+< 16 ms + parser rate gate live in `vt.rs` (test-only). Orphans: existing
+`kill_and_wait` tests. iOS/iPadOS: `excluded` in the table above (ADR 0006);
+crate rustdoc states the same. Android stays `not-started` (not in v0.7.0).
+`cargo test -p lux-term` (19 unit tests + `lanza_vim_real`) clean on macOS.
 
 ## Plugins (Phase 9, `v0.8.0`)
 
@@ -2167,6 +2192,12 @@ task panel remain separate, not-yet-started deliverables.
 | Extension points (commands, grammars, themes...) | not-started | not-started | not-started | not-started | not-started |
 | Local plugin install | not-started | not-started | not-started | not-started | not-started |
 
+**Scope note (`lux-plugin`; tracked in
+`docs/receipts/phase-09-wasmtime-host-sandbox-permisos.md`, ADR 0016)**:
+rows stay `not-started` until wired into the `lux` binary. The crate runs
+on macOS: Component Model `run`, fuel, memory cap, grants, trusted
+install, three examples. `cargo test -p lux-plugin` (10 tests) clean.
+
 ## Accessibility, i18n & polish (Phase 10, `v0.9.0`)
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
@@ -2177,6 +2208,14 @@ task panel remain separate, not-yet-started deliverables.
 | i18n (es/en) | not-started | not-started | not-started | not-started | not-started |
 | RTL layout | not-started | not-started | not-started | not-started | not-started |
 
+**Scope note (Phase 10 chrome; tracked in
+`docs/receipts/phase-10-a11y-i18n-chrome.md`)**: `lux` now owns `Chrome`
+(focus/locale/motion/theme/scale) and paints `chrome.theme`. F6/Escape
+are wired. High-contrast theme passes WCAG AA in unit tests. Git/term
+link/plugin grant APIs are called from `lux-ui::surfaces`. VoiceOver/NVDA/
+Orca rows stay `not-started` — not run. Windows/Linux columns stay
+`not-started` (not executed there).
+
 ## Packaging & distribution (Phase 11, `v1.0.0`)
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
@@ -2184,6 +2223,12 @@ task panel remain separate, not-yet-started deliverables.
 | Signed, notarized installer | not-started (.dmg) | not-started (.msi + winget) | not-started (.deb/.rpm/AppImage/Flatpak) | n/a (App Store, Phase 12) | n/a (Play Store, Phase 13) |
 | Auto-update | not-started | not-started | not-started | n/a | n/a |
 | Local crash reports (no auto-send) | not-started | not-started | not-started | not-started | not-started |
+
+**Scope note (Phase 11; `docs/receipts/phase-11-pack-crash-update.md`)**:
+`lux-pack` writes crash logs under `~/Library/Logs/Lux` (macOS) and
+verifies Ed25519 update payloads. `lux` installs the panic hook. Signed
+installers / notarization / hosted update channel: not done.
+`scripts/package.sh` is unsigned layout only.
 
 ## Mobile shells (Phase 12 `v1.1.0`, Phase 13 `v1.2.0`)
 
@@ -2195,6 +2240,14 @@ task panel remain separate, not-yet-started deliverables.
 | Sandboxed file access (`UIDocumentPicker` / SAF) | not-started | not-started |
 | `accesskit_ios` / `accesskit_android` | not-started | not-started |
 | App Store / Play Store signed build | not-started | not-started |
+
+**Scope note (Phase 12/13; receipts `phase-12-uikit-host.md`,
+`phase-13-android-host.md`)**: Swift `LuxViewController` (MTKView,
+UIKeyInput, document picker) and Kotlin `LuxActivity` (SurfaceView,
+InputConnection, SAF) live in `host-ios/` and `host-android/`. Rust FFI
+modules compile on desktop as `available() == false`. Not run on device;
+store rows stay `not-started`. `lux_platform::child_processes_allowed`
+is false on iOS.
 
 ## Experimental
 

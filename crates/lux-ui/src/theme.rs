@@ -87,6 +87,35 @@ impl Theme {
         selection: Color::rgba(0xF0, 0xB4, 0x42, 0x33),
         muted: Color::rgb(0x6E, 0x6E, 0x82),
     };
+
+    /// High-contrast dark: near-black / near-white, WCAG AA for body text.
+    pub const LUX_DARK_HIGH_CONTRAST: Theme = Theme {
+        background: Color::rgb(0x00, 0x00, 0x00),
+        foreground: Color::rgb(0xFF, 0xFF, 0xFF),
+        accent: Color::rgb(0xFF, 0xD0, 0x00),
+        selection: Color::rgba(0xFF, 0xD0, 0x00, 0x66),
+        muted: Color::rgb(0xC0, 0xC0, 0xC0),
+    };
+}
+
+/// Relative-luminance contrast ratio (WCAG 2).
+pub fn contrast_ratio(a: Color, b: Color) -> f64 {
+    let l1 = relative_luminance(a);
+    let l2 = relative_luminance(b);
+    let (hi, lo) = if l1 > l2 { (l1, l2) } else { (l2, l1) };
+    (hi + 0.05) / (lo + 0.05)
+}
+
+fn relative_luminance(c: Color) -> f64 {
+    fn chan(u: u8) -> f64 {
+        let s = f64::from(u) / 255.0;
+        if s <= 0.03928 {
+            s / 12.92
+        } else {
+            ((s + 0.055) / 1.055).powf(2.4)
+        }
+    }
+    0.2126 * chan(c.r) + 0.7152 * chan(c.g) + 0.0722 * chan(c.b)
 }
 
 /// Side length, in pixels, of each solid color square in [`capture_swatch`].
@@ -233,5 +262,12 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn high_contrast_theme_meets_wcag_aa() {
+        let t = Theme::LUX_DARK_HIGH_CONTRAST;
+        assert!(contrast_ratio(t.foreground, t.background) >= 4.5);
+        assert!(contrast_ratio(t.muted, t.background) >= 4.5);
     }
 }

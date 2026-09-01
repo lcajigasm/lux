@@ -6,13 +6,18 @@
 //! 12/13 add hand-written UIKit and Android/JNI backends later without
 //! touching a single line above this crate.
 
+pub mod android;
+pub mod capability;
 pub mod clipboard;
 pub mod desktop;
 pub mod dialog;
 pub mod error;
 pub mod event;
 pub mod ime;
+pub mod uikit;
 pub mod window;
+
+pub use capability::{child_processes_allowed, pty_and_lsp_ui_shipped};
 
 pub use clipboard::Clipboard;
 pub use dialog::{FileDialogOptions, FileDialogs};
