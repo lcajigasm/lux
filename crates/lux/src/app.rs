@@ -17,6 +17,7 @@ use lux_platform::{
 };
 use lux_render::{GlyphAtlas, GpuContext, QuadPipeline, RepaintScheduler, Surface, TextPipeline};
 use lux_ui::editor_view::{EditorView, EditorViewMetrics, Viewport};
+use lux_ui::{Chrome, FocusTarget};
 use swash::FontRef;
 use swash::scale::ScaleContext;
 
@@ -71,6 +72,7 @@ pub(crate) struct App {
     pub(crate) atlas_dirty: bool,
     pub(crate) scale_cx: ScaleContext,
     pub(crate) gpu_window: Option<GpuWindow>,
+    pub(crate) chrome: Chrome,
 }
 
 impl App {
@@ -116,6 +118,7 @@ impl App {
             atlas_dirty: true,
             scale_cx: ScaleContext::new(),
             gpu_window: None,
+            chrome: Chrome::default(),
         }
     }
 
@@ -162,6 +165,18 @@ impl App {
     fn handle_named_key(&mut self, key: NamedKey) -> bool {
         let pos = self.cursors.primary().head;
         match key {
+            NamedKey::F(6) => {
+                let next = self.chrome.focus.focus_next();
+                if !lux_ui::surfaces::terminal_focus_allowed(next) && next == FocusTarget::Terminal
+                {
+                    self.chrome.focus.focus_next();
+                }
+                true
+            }
+            NamedKey::Escape => {
+                self.chrome.focus.escape_to_editor();
+                true
+            }
             NamedKey::ArrowLeft => {
                 self.move_cursor(movement::move_char_left(&self.buffer, pos), true);
                 true
