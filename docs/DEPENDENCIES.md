@@ -8,10 +8,13 @@ RUSTSEC advisory newly introduced and unpatched, `gpui` unchanged). Two minor
 corrections to the original table are noted below the main table. Re-verify
 again before Phase 2 (the render stack) and before any major-version bump.
 
-None of these are wired into a crate yet — Phase 0 crates are empty stubs by
-design (see `docs/adr/0001-lessons-from-v0.md` and the master prompt's
-explicit "no UI in this phase" instruction). This table is what each phase
-pulls in when it needs it.
+This table records historical dependency decisions. Many are now wired into
+domain crates; Cargo manifests and `Cargo.lock` describe the current graph.
+Crate presence alone does not establish application integration (see AUDIT.md).
+
+Document audit, 2026-09-08: `tempfile` 3.27.0 is now a normal `lux-core`
+dependency for exclusive same-directory temporary files and atomic persist.
+The package was already in the workspace lockfile; core isolation is retained.
 
 | Area | Crate(s) | Version (verified 2026-07-26) | Note |
 |---|---|---|---|

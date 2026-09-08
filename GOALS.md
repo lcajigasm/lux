@@ -1,5 +1,10 @@
 # Lux — Project Goals
 
+> Acceptance audit reopened 2026-09-08: [confirmed gaps](docs/AUDIT.md).
+> The phase labels below record historical implementation claims, not
+> verified completion of the running product. Integration, current tests,
+> platform validation and release evidence must be checked before closure.
+
 This is the full goal map, phase by phase, from an empty repository to
 `v1.2.0`. It exists so an IDE agent (Cursor or otherwise) can pick up this
 project and drive it to completion without re-deriving the plan.

@@ -8,6 +8,8 @@
 mod encoding;
 mod eol;
 mod indent;
+mod lines;
+mod save;
 
 pub use encoding::{DecodeError, Encoding};
 pub use eol::Eol;
@@ -19,9 +21,9 @@ use ropey::Rope;
 use std::fs;
 use std::io;
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Buffer {
     rope: Rope,
     eol: Eol,
@@ -165,56 +167,13 @@ impl Buffer {
     pub(crate) fn rope(&self) -> &Rope {
         &self.rope
     }
-
-    /// Writes the buffer to `path` atomically: content goes to a temp file in
-    /// the same directory, is fsync'd, then renamed over the target, so a
-    /// crash or power loss never leaves a half-written file. If `path`
-    /// already has content, it's preserved at `path` + `.bak` first.
-    pub fn save(&self, path: impl AsRef<Path>) -> io::Result<()> {
-        let path = path.as_ref();
-        let bytes = encoding::encode(&self.text(), self.encoding);
-
-        let dir = path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or_else(|| Path::new("."));
-        let tmp_path = dir.join(format!(
-            ".{}.lux-tmp",
-            path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("buffer")
-        ));
-
-        {
-            use std::io::Write;
-            let mut tmp = fs::File::create(&tmp_path)?;
-            tmp.write_all(&bytes)?;
-            tmp.sync_all()?;
-        }
-
-        if path.exists() {
-            fs::copy(path, Self::backup_path(path))?;
-        }
-
-        fs::rename(&tmp_path, path)?;
-        Ok(())
-    }
-
-    fn backup_path(path: &Path) -> PathBuf {
-        let mut name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("buffer")
-            .to_owned();
-        name.push_str(".bak");
-        path.with_file_name(name)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
 
     fn temp_dir() -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

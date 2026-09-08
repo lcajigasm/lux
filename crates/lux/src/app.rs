@@ -7,25 +7,19 @@ use std::time::{Duration, Instant};
 
 use accesskit::TreeUpdate;
 use lux_core::buffer::Buffer;
-use lux_core::movement;
+use lux_core::history::History;
 use lux_core::multicursor::MultiCursor;
 use lux_core::position::Position;
 use lux_core::selection::Selection;
 use lux_platform::{
-    ElementState, Ime, ImeComposition, ImeUpdate, Key, NamedKey, PlatformContext, PlatformEvent,
+    Ime, ImeComposition, ImeUpdate, Modifiers, PlatformContext, PlatformEvent,
     PlatformEventHandler, PlatformWindow, WindowId,
 };
 use lux_render::{GlyphAtlas, GpuContext, QuadPipeline, RepaintScheduler, Surface, TextPipeline};
+use lux_ui::Chrome;
 use lux_ui::editor_view::{EditorView, EditorViewMetrics, Viewport};
-use lux_ui::{Chrome, FocusTarget};
 use swash::FontRef;
 use swash::scale::ScaleContext;
-
-/// A placeholder document: real enough to demonstrate virtualized scroll,
-/// real shaping, real cursor movement and editing — not sample marketing
-/// copy. Phase 4's "open a real file" work is what replaces this with an
-/// actual file path from argv/a native file dialog.
-const SAMPLE_TEXT: &str = include_str!("sample.txt");
 
 pub(crate) const FONT_SIZE: f32 = 16.0;
 pub(crate) const LINE_HEIGHT: f32 = FONT_SIZE * 1.4;
@@ -50,6 +44,9 @@ pub(crate) struct GpuWindow {
 }
 
 pub(crate) struct App {
+    pub(crate) scale_factor: f32,
+    pub(crate) presentation: crate::presentation::Presentation,
+    pub(crate) documents: crate::document::Documents,
     pub(crate) editor_view: EditorView,
     /// Built exactly once from leaked, process-lifetime font bytes and
     /// reused for every frame. `swash::FontRef::key` is a global,
@@ -63,7 +60,9 @@ pub(crate) struct App {
     pub(crate) font: FontRef<'static>,
     pub(crate) buffer: Buffer,
     pub(crate) cursors: MultiCursor,
-    pub(crate) goal_column: usize,
+    pub(crate) goal_columns: Vec<usize>,
+    pub(crate) history: History,
+    pub(crate) modifiers: Modifiers,
     pub(crate) viewport: Viewport,
     pub(crate) scheduler: RepaintScheduler,
     pub(crate) ime: ImeComposition,
@@ -96,15 +95,20 @@ impl App {
         let editor_view = EditorView::new(text_layout, font_bytes, metrics)
             .expect("system font bytes read from disk must parse as a real font");
 
-        let buffer = Buffer::from_bytes(SAMPLE_TEXT.as_bytes()).expect("sample.txt must decode");
+        let buffer = Buffer::from_bytes(b"").expect("empty document decodes");
         let cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
 
         Self {
+            scale_factor: 1.0,
+            presentation: Default::default(),
+            documents: crate::document::Documents::default(),
             editor_view,
             font,
             buffer,
             cursors,
-            goal_column: 0,
+            goal_columns: vec![0],
+            history: History::new(),
+            modifiers: Modifiers::default(),
             viewport: Viewport {
                 width: 1000.0,
                 height: 700.0,
@@ -122,109 +126,10 @@ impl App {
         }
     }
 
-    fn move_cursor(&mut self, to: Position, reset_goal_column: bool) {
-        self.cursors = MultiCursor::new(Selection::cursor(to));
-        if reset_goal_column {
-            self.goal_column = to.column;
-        }
-        self.scheduler.invalidate_all();
-    }
-
-    fn insert_at_cursor(&mut self, text: &str) {
-        if text.is_empty() {
+    pub(crate) fn apply_ime(&mut self, event: Ime) {
+        if self.editing_blocked() {
             return;
         }
-        let pos = self.cursors.primary().head;
-        self.buffer.insert(pos.char, text);
-        let new_pos = Position::from_char(&self.buffer, pos.char + text.chars().count());
-        self.move_cursor(new_pos, true);
-    }
-
-    fn backspace(&mut self) {
-        let pos = self.cursors.primary().head;
-        let prev = pos.prev_grapheme(&self.buffer);
-        if prev == pos {
-            return;
-        }
-        self.buffer.delete(prev.char..pos.char);
-        let new_pos = Position::from_char(&self.buffer, prev.char);
-        self.move_cursor(new_pos, true);
-    }
-
-    fn delete_forward(&mut self) {
-        let pos = self.cursors.primary().head;
-        let next = pos.next_grapheme(&self.buffer);
-        if next == pos {
-            return;
-        }
-        self.buffer.delete(pos.char..next.char);
-        let new_pos = Position::from_char(&self.buffer, pos.char);
-        self.move_cursor(new_pos, true);
-    }
-
-    fn handle_named_key(&mut self, key: NamedKey) -> bool {
-        let pos = self.cursors.primary().head;
-        match key {
-            NamedKey::F(6) => {
-                let next = self.chrome.focus.focus_next();
-                if !lux_ui::surfaces::terminal_focus_allowed(next) && next == FocusTarget::Terminal
-                {
-                    self.chrome.focus.focus_next();
-                }
-                true
-            }
-            NamedKey::Escape => {
-                self.chrome.focus.escape_to_editor();
-                true
-            }
-            NamedKey::ArrowLeft => {
-                self.move_cursor(movement::move_char_left(&self.buffer, pos), true);
-                true
-            }
-            NamedKey::ArrowRight => {
-                self.move_cursor(movement::move_char_right(&self.buffer, pos), true);
-                true
-            }
-            NamedKey::ArrowUp => {
-                let to = movement::move_line_up(&self.buffer, pos, self.goal_column);
-                self.move_cursor(to, false);
-                true
-            }
-            NamedKey::ArrowDown => {
-                let to = movement::move_line_down(&self.buffer, pos, self.goal_column);
-                self.move_cursor(to, false);
-                true
-            }
-            NamedKey::Home => {
-                self.move_cursor(movement::line_start(&self.buffer, pos), true);
-                true
-            }
-            NamedKey::End => {
-                self.move_cursor(movement::line_end(&self.buffer, pos), true);
-                true
-            }
-            NamedKey::Backspace => {
-                self.backspace();
-                true
-            }
-            NamedKey::Delete => {
-                self.delete_forward();
-                true
-            }
-            NamedKey::Enter => {
-                let eol = self.buffer.eol().as_str().to_string();
-                self.insert_at_cursor(&eol);
-                true
-            }
-            NamedKey::Tab => {
-                self.insert_at_cursor("\t");
-                true
-            }
-            _ => false,
-        }
-    }
-
-    fn apply_ime(&mut self, event: Ime) {
         match self.ime.apply(event) {
             ImeUpdate::Idle | ImeUpdate::Composing { .. } => {
                 // Preedit is drawn inline by `crate::render` reading
@@ -233,6 +138,7 @@ impl App {
             }
             ImeUpdate::Committed(text) => self.insert_at_cursor(&text),
         }
+        self.update_document_title();
     }
 
     fn build_accessibility_tree(&mut self) -> TreeUpdate {
@@ -242,7 +148,7 @@ impl App {
         lux_ui::build_accessibility_tree(
             self.editor_view.text_layout_mut(),
             &family,
-            FONT_SIZE,
+            FONT_SIZE * self.scale_factor,
             buffer,
             cursors,
         )
@@ -250,11 +156,18 @@ impl App {
 }
 
 impl PlatformEventHandler for App {
+    fn background_event(&mut self, ctx: &dyn PlatformContext) {
+        self.finish_document_operation(ctx);
+    }
     fn resumed(&mut self, ctx: &dyn PlatformContext) {
         if self.gpu_window.is_some() {
             return;
         }
         self.create_gpu_window(ctx);
+        self.update_document_title();
+        if let Some(path) = self.documents.initial_path.take() {
+            self.request_document(ctx, crate::document::Request::Open(Some(path)));
+        }
     }
 
     fn window_event(&mut self, ctx: &dyn PlatformContext, window: WindowId, event: PlatformEvent) {
@@ -266,31 +179,48 @@ impl PlatformEventHandler for App {
         }
 
         match event {
-            PlatformEvent::CloseRequested => ctx.exit(),
+            PlatformEvent::CloseRequested => {
+                self.request_document(ctx, crate::document::Request::Close)
+            }
             PlatformEvent::Resized(size) => {
                 self.resize(size);
+            }
+            PlatformEvent::ScaleFactorChanged { scale_factor } => {
+                self.set_display_scale(scale_factor);
+                if let Some(gpu) = &self.gpu_window {
+                    gpu.window.request_redraw();
+                }
+            }
+            PlatformEvent::Occluded(hidden) => {
+                self.presentation.set_hidden(hidden);
+                if !hidden {
+                    self.scheduler.invalidate_all();
+                    if let Some(gpu) = &self.gpu_window {
+                        gpu.window.request_redraw();
+                    }
+                }
+            }
+            PlatformEvent::Focused(true) => {
+                self.presentation.set_hidden(false);
+                self.scheduler.invalidate_all();
+                if let Some(gpu) = &self.gpu_window {
+                    gpu.window.request_redraw();
+                }
             }
             PlatformEvent::RedrawRequested => {
                 self.redraw(ctx);
             }
             PlatformEvent::Keyboard(key_event) => {
-                if key_event.state != ElementState::Pressed {
-                    return;
+                if !self.document_key(ctx, &key_event) {
+                    self.handle_key(&key_event);
                 }
-                let handled = match key_event.key {
-                    Key::Named(named) => self.handle_named_key(named),
-                    _ => false,
-                };
-                if !handled
-                    && !self.ime.is_composing()
-                    && let Some(text) = &key_event.text
-                {
-                    self.insert_at_cursor(text);
-                }
+                self.update_document_title();
                 if let Some(gpu_window) = &self.gpu_window {
                     gpu_window.window.request_redraw();
                 }
             }
+            PlatformEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers,
+            PlatformEvent::Focused(false) => self.modifiers = Modifiers::default(),
             PlatformEvent::Ime(ime_event) => {
                 self.apply_ime(ime_event);
                 if let Some(gpu_window) = &self.gpu_window {
@@ -322,7 +252,7 @@ impl PlatformEventHandler for App {
         let Some(gpu_window) = &self.gpu_window else {
             return;
         };
-        if self.scheduler.needs_repaint(Instant::now()) {
+        if self.presentation.ready(Instant::now()) && self.scheduler.needs_repaint(Instant::now()) {
             gpu_window.window.request_redraw();
         }
     }

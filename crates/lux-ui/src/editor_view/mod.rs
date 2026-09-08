@@ -5,17 +5,11 @@
 //! shaping, see `lux_render::text_layout`) — see `docs/ARCHITECTURE.md`:
 //! `lux-ui` is the one crate allowed to know about both.
 //!
-//! This produces the geometry a render pass would draw, not pixels: the
-//! quad/text `wgpu` pipeline doesn't exist yet (a separate, later slice of
-//! `lux-render`'s own deliverable), so there is nothing to paint onto a
-//! framebuffer yet. What's real and tested here is the layer that pipeline
-//! will consume — the same reasoning the glyph-atlas and text-layout
-//! receipts already used for their own "not on screen yet" scope notes.
+//! This crate produces geometry for the desktop application's GPU pipeline.
+//! Line access and selection geometry are bounded by the visible viewport.
 
-// `pub(crate)`, not private: `crate::accessibility` (Phase 2 deliverable 6)
-// reuses this same line-splitting helper rather than duplicating it — see
-// that module's doc comment for why it needs the same byte-range-per-line
-// index this view already builds every frame.
+// The accessibility tree still uses this historical snapshot index; frame
+// construction now uses Buffer's indexed line access directly.
 pub(crate) mod line_index;
 
 use std::ops::Range;
@@ -24,8 +18,6 @@ use std::time::Duration;
 use lux_core::buffer::{Buffer, Indent};
 use lux_core::multicursor::MultiCursor;
 use lux_render::{LineLayout, LineStyle, TextLayoutContext};
-
-use line_index::LineIndex;
 
 /// Visible viewport geometry in pixels, plus current scroll offsets — what
 /// a real resize/scroll event updates every frame.
@@ -57,12 +49,13 @@ pub struct VisibleLine {
     pub indent_guides: Vec<f32>,
 }
 
-/// A single blinking caret (an empty selection) at a point on one line.
+/// A blinking caret at a selection's head, including nonempty selections.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct CursorGlyph {
     pub line: usize,
     pub x: f32,
     pub visible: bool,
+    pub primary: bool,
 }
 
 /// One line's worth of a (possibly multi-line) selection highlight.
@@ -93,6 +86,13 @@ pub struct EditorView {
 }
 
 impl EditorView {
+    /// Update physical text dimensions after an OS display-scale change.
+    pub fn set_text_dimensions(&mut self, font_size: f32, line_height: f32) {
+        assert!(font_size.is_finite() && font_size > 0.0);
+        assert!(line_height.is_finite() && line_height > 0.0);
+        self.metrics.font_size = font_size;
+        self.metrics.line_height = line_height;
+    }
     /// Registers `font_bytes` (see `lux_render::TextLayoutContext` — no
     /// system font discovery, by design) and returns `None` if they don't
     /// parse as a font.
@@ -155,23 +155,14 @@ impl EditorView {
         let column_ruler_x = self.column_ruler_x();
         let blink_visible = cursor_blink_visible(elapsed, self.metrics.blink_interval);
 
-        // `Buffer` has no public per-line accessor (see `line_index`'s doc
-        // comment): this is the one place per frame this view materializes
-        // the whole document, specifically so the expensive per-character
-        // shaping work below stays limited to `visible_line_range`.
-        let text = buffer.text();
-        let index = LineIndex::build(&text);
-        debug_assert_eq!(
-            index.len(),
-            total_lines,
-            "LineIndex's own line-splitting must agree with Buffer::len_lines"
-        );
         let indent = buffer.indent();
 
         let mut lines = Vec::with_capacity(visible_line_range.len());
         for line_idx in visible_line_range.clone() {
-            let byte_range = index.line_byte_range(&text, line_idx);
-            let line_text = &text[byte_range];
+            let content = buffer
+                .line_content(line_idx)
+                .expect("visible line is in range");
+            let line_text = content.as_str();
             let style =
                 Self::line_style(&self.family, self.metrics.font_size, self.metrics.ligatures);
             let layout = self.text_layout.layout_line(&style, line_text, &[]);
@@ -186,26 +177,34 @@ impl EditorView {
 
         let mut cursor_glyphs = Vec::new();
         let mut selection_rects = Vec::new();
+        let primary = cursors.primary();
         for selection in cursors.cursors() {
+            let pos = selection.head;
+            if let Some(line) = visible_line(&lines, &visible_line_range, pos.line) {
+                let line_start = buffer
+                    .line_start_byte(pos.line)
+                    .expect("visible line is in range");
+                let x = x_for_byte(&line.layout, pos.byte - line_start);
+                cursor_glyphs.push(CursorGlyph {
+                    line: pos.line,
+                    x,
+                    visible: blink_visible,
+                    primary: *selection == primary,
+                });
+            }
             if selection.is_empty() {
-                let pos = selection.head;
-                if let Some(line) = visible_line(&lines, &visible_line_range, pos.line) {
-                    let line_start = index.line_byte_range(&text, pos.line).start;
-                    let x = x_for_byte(&line.layout, pos.byte - line_start);
-                    cursor_glyphs.push(CursorGlyph {
-                        line: pos.line,
-                        x,
-                        visible: blink_visible,
-                    });
-                }
                 continue;
             }
             let (start, end) = selection.ordered();
-            for line_idx in start.line..=end.line {
+            let first = start.line.max(visible_line_range.start);
+            let last = end.line.saturating_add(1).min(visible_line_range.end);
+            for line_idx in first..last {
                 let Some(line) = visible_line(&lines, &visible_line_range, line_idx) else {
                     continue;
                 };
-                let line_start = index.line_byte_range(&text, line_idx).start;
+                let line_start = buffer
+                    .line_start_byte(line_idx)
+                    .expect("visible line is in range");
                 let x_start = if line_idx == start.line {
                     x_for_byte(&line.layout, start.byte - line_start)
                 } else {

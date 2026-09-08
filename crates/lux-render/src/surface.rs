@@ -83,6 +83,11 @@ impl<'window> Surface<'window> {
         &self.config
     }
 
+    /// Reconfigure an outdated swapchain even when its size is unchanged.
+    pub fn reconfigure(&self, device: &wgpu::Device) {
+        self.surface.configure(device, &self.config);
+    }
+
     /// Reconfigures the surface for a new size. A no-op when the size
     /// hasn't actually changed, so a stream of identical resize events
     /// (winit can send these) doesn't stall the GPU waiting to reconfigure
@@ -98,8 +103,7 @@ impl<'window> Surface<'window> {
     }
 
     /// Acquires the next frame to render into. Callers must handle
-    /// `Outdated`/`Lost` by reconfiguring (`resize` with the current size
-    /// forces that) and retrying, per `wgpu`'s own contract.
+    /// `Outdated` with `reconfigure`; `Lost` requires a new Surface.
     pub fn acquire_frame(&self) -> wgpu::CurrentSurfaceTexture {
         self.surface.get_current_texture()
     }

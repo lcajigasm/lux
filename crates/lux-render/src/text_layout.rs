@@ -72,6 +72,13 @@ pub struct LineLayout {
 }
 
 impl LineLayout {
+    /// Baseline offset in the same physical units as the shaped geometry.
+    pub fn baseline(&self) -> f32 {
+        self.layout
+            .get(0)
+            .map(|line| line.metrics().baseline)
+            .unwrap_or(0.0)
+    }
     pub fn width(&self) -> f32 {
         self.layout.width()
     }

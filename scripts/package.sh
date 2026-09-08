@@ -5,13 +5,25 @@ set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 dest="${1:-dist/lux}"
-rm -rf "$dest"
-mkdir -p "$dest/bin" "$dest/share/doc"
+# Never replace an existing destination: it may contain user data.
+if [[ -e "$dest" || -L "$dest" ]]; then
+  echo "package: destination already exists: $dest" >&2
+  exit 1
+fi
 cargo build -p lux --release
 bin="target/release/lux"
-if [[ -f "$bin" ]]; then
-  cp "$bin" "$dest/bin/lux"
+if [[ ! -f "$bin" ]]; then
+  echo "package: built executable is missing: $bin" >&2
+  exit 1
 fi
-cp README.md "$dest/share/doc/" 2>/dev/null || true
-cp LICENSE* "$dest/share/doc/" 2>/dev/null || true
+mkdir -p "$(dirname "$dest")"
+# mkdir without -p also rejects a destination created concurrently.
+mkdir "$dest"
+mkdir "$dest/bin" "$dest/share" "$dest/share/doc"
+cp "$bin" "$dest/bin/lux"
+cp README.md "$dest/share/doc/"
+for license in LICENSE*; do
+  [[ -f "$license" ]] || continue
+  cp "$license" "$dest/share/doc/"
+done
 echo "packed $dest (unsigned)"

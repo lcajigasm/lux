@@ -4,11 +4,12 @@
 
 use std::time::Instant;
 
+use crate::presentation::Outcome;
 use dpi::{LogicalSize, PhysicalSize};
 use lux_platform::{PlatformContext, PlatformWindow, ScrollDelta, WindowAttributes};
 use lux_render::{
-    GlyphInstance, GlyphKey, GpuContext, QuadInstance, QuadPipeline, Surface, TextPipeline,
-    TextRenderingMode,
+    GlyphAtlas, GlyphInstance, GlyphKey, GpuContext, QuadInstance, QuadPipeline, Surface,
+    TextPipeline, TextRenderingMode,
 };
 use lux_ui::Theme;
 use swash::FontRef;
@@ -31,6 +32,7 @@ impl App {
         let window: &'static dyn PlatformWindow = Box::leak(window);
 
         let size = window.inner_size();
+        self.set_display_scale(window.scale_factor());
         let gpu = pollster::block_on(GpuContext::new(None))
             .expect("a real GPU adapter must be available to run the Lux desktop app");
         let surface = Surface::new(&gpu.instance, &gpu.adapter, &gpu.device, window, size)
@@ -63,6 +65,8 @@ impl App {
     }
 
     pub(crate) fn resize(&mut self, size: PhysicalSize<u32>) {
+        self.presentation
+            .set_hidden(size.width == 0 || size.height == 0);
         let Some(gpu_window) = &mut self.gpu_window else {
             return;
         };
@@ -84,7 +88,7 @@ impl App {
 
     pub(crate) fn scroll(&mut self, delta: ScrollDelta) {
         let dy = match delta {
-            ScrollDelta::Lines { y, .. } => y * LINE_HEIGHT,
+            ScrollDelta::Lines { y, .. } => y * LINE_HEIGHT * self.scale_factor,
             ScrollDelta::Pixels(p) => p.y as f32,
         };
         self.viewport.scroll_y = (self.viewport.scroll_y - dy).max(0.0);
@@ -101,6 +105,9 @@ impl App {
     /// in progress — the real inline preedit text at the actual cursor
     /// position, all in one real `wgpu` submit + present.
     pub(crate) fn redraw(&mut self, ctx: &dyn PlatformContext) {
+        if !self.presentation.ready(Instant::now()) {
+            return;
+        }
         let App {
             gpu_window,
             editor_view,
@@ -115,30 +122,36 @@ impl App {
             atlas_dirty,
             scale_cx,
             chrome,
+            scale_factor,
+            presentation,
             ..
         } = self;
         let Some(gpu_window) = gpu_window.as_mut() else {
             return;
         };
         let font = *font;
+        let font_size = FONT_SIZE * *scale_factor;
+        let line_height = LINE_HEIGHT * *scale_factor;
+        let stroke = *scale_factor;
 
         let elapsed = Instant::now().duration_since(*start);
         let frame = editor_view.build_frame(buffer, cursors, viewport, elapsed);
-        let text_left = frame.gutter_width + TEXT_LEFT_PADDING;
+        let text_left = frame.gutter_width + TEXT_LEFT_PADDING * *scale_factor;
 
         let mut glyph_instances = Vec::new();
         let foreground = color(chrome.theme.foreground);
         for line in &frame.lines {
-            let y = line.index as f32 * LINE_HEIGHT - viewport.scroll_y;
+            let y = line.index as f32 * line_height - viewport.scroll_y;
             for cluster in line.layout.clusters() {
                 push_glyph(
                     atlas,
                     atlas_dirty,
                     scale_cx,
                     font,
+                    font_size,
                     &cluster,
                     text_left - viewport.scroll_x,
-                    y,
+                    y + line.layout.baseline(),
                     foreground,
                     &mut glyph_instances,
                 );
@@ -154,30 +167,35 @@ impl App {
                 rect: [
                     text_left + ruler_x - viewport.scroll_x,
                     0.0,
-                    1.0,
+                    stroke,
                     viewport.height,
                 ],
                 color: color(chrome.theme.muted),
             });
         }
         for line in &frame.lines {
-            let y = line.index as f32 * LINE_HEIGHT - viewport.scroll_y;
+            let y = line.index as f32 * line_height - viewport.scroll_y;
             for guide_x in &line.indent_guides {
                 quad_instances.push(QuadInstance {
-                    rect: [text_left + guide_x - viewport.scroll_x, y, 1.0, LINE_HEIGHT],
+                    rect: [
+                        text_left + guide_x - viewport.scroll_x,
+                        y,
+                        stroke,
+                        line_height,
+                    ],
                     color: color(chrome.theme.muted),
                 });
             }
         }
         for selection in &frame.selections {
-            let y = selection.line as f32 * LINE_HEIGHT - viewport.scroll_y;
+            let y = selection.line as f32 * line_height - viewport.scroll_y;
             let width = (selection.x_end - selection.x_start).max(1.0);
             quad_instances.push(QuadInstance {
                 rect: [
                     text_left + selection.x_start - viewport.scroll_x,
                     y,
                     width,
-                    LINE_HEIGHT,
+                    line_height,
                 ],
                 color: color(chrome.theme.selection),
             });
@@ -186,11 +204,13 @@ impl App {
         let mut cursor_screen = None;
         for cursor_glyph in &frame.cursors {
             let x = text_left + cursor_glyph.x - viewport.scroll_x;
-            let y = cursor_glyph.line as f32 * LINE_HEIGHT - viewport.scroll_y;
-            cursor_screen = Some((x, y));
+            let y = cursor_glyph.line as f32 * line_height - viewport.scroll_y;
+            if cursor_glyph.primary {
+                cursor_screen = Some((x, y));
+            }
             if cursor_glyph.visible {
                 quad_instances.push(QuadInstance {
-                    rect: [x, y, 2.0, LINE_HEIGHT],
+                    rect: [x, y, 2.0 * stroke, line_height],
                     color: color(chrome.theme.accent),
                 });
             }
@@ -202,7 +222,7 @@ impl App {
             let family = editor_view.family().to_string();
             let style = lux_render::LineStyle {
                 family: &family,
-                font_size: FONT_SIZE,
+                font_size,
                 ligatures: false,
             };
             let preedit_text = ime.preedit_text().to_string();
@@ -215,9 +235,10 @@ impl App {
                     atlas_dirty,
                     scale_cx,
                     font,
+                    font_size,
                     &cluster,
                     x,
-                    y,
+                    y + layout.baseline(),
                     foreground,
                     &mut glyph_instances,
                 );
@@ -226,17 +247,22 @@ impl App {
             // already-committed text — the same visual convention every
             // desktop IME candidate UI already uses.
             quad_instances.push(QuadInstance {
-                rect: [x, y + LINE_HEIGHT - 2.0, layout.width().max(1.0), 2.0],
+                rect: [
+                    x,
+                    y + line_height - 2.0 * stroke,
+                    layout.width().max(stroke),
+                    2.0 * stroke,
+                ],
                 color: color(chrome.theme.accent),
             });
             gpu_window.window.set_ime_cursor_area(
                 dpi::PhysicalPosition::new(x as i32, y as i32),
-                dpi::PhysicalSize::new(layout.width().max(1.0) as u32, LINE_HEIGHT as u32),
+                dpi::PhysicalSize::new(layout.width().max(stroke) as u32, line_height as u32),
             );
         } else if let Some((x, y)) = cursor_screen {
             gpu_window.window.set_ime_cursor_area(
                 dpi::PhysicalPosition::new(x as i32, y as i32),
-                dpi::PhysicalSize::new(2, LINE_HEIGHT as u32),
+                dpi::PhysicalSize::new((2.0 * stroke) as u32, line_height as u32),
             );
         }
 
@@ -245,8 +271,19 @@ impl App {
             *atlas_dirty = false;
         }
 
-        let _ = scheduler.take_dirty_regions();
-        paint(gpu_window, &quad_instances, &glyph_instances);
+        let outcome = paint(
+            gpu_window,
+            &quad_instances,
+            &glyph_instances,
+            atlas,
+            color(chrome.theme.background),
+        );
+        if let Some(at) = presentation.finish(outcome, scheduler, Instant::now()) {
+            ctx.request_wakeup(at);
+        }
+        if !matches!(outcome, Outcome::Presented) {
+            return;
+        }
 
         if chrome.motion.cursor_blinks() {
             let phase = elapsed.as_millis() / BLINK_INTERVAL.as_millis().max(1);
@@ -263,6 +300,7 @@ fn push_glyph(
     atlas_dirty: &mut bool,
     scale_cx: &mut swash::scale::ScaleContext,
     font: FontRef,
+    font_size: f32,
     cluster: &lux_render::ClusterGeometry,
     origin_x: f32,
     origin_y: f32,
@@ -279,8 +317,8 @@ fn push_glyph(
     let key = GlyphKey::new(
         font.key.value(),
         glyph_id as u16,
-        FONT_SIZE,
-        cluster.x.fract(),
+        font_size,
+        (origin_x + cluster.x).fract(),
         TextRenderingMode::Subpixel,
     );
     let was_cached = atlas.is_cached(&key);
@@ -299,8 +337,8 @@ fn push_glyph(
     ];
     out.push(GlyphInstance::new(
         [
-            origin_x + cluster.x,
-            origin_y,
+            (origin_x + cluster.x).floor() + entry.left as f32,
+            origin_y.round() - entry.top as f32,
             entry.width as f32,
             entry.height as f32,
         ],
@@ -310,24 +348,54 @@ fn push_glyph(
     ));
 }
 
-fn paint(gpu_window: &mut GpuWindow, quads: &[QuadInstance], glyphs: &[GlyphInstance]) {
+fn paint(
+    gpu_window: &mut GpuWindow,
+    quads: &[QuadInstance],
+    glyphs: &[GlyphInstance],
+    atlas: &GlyphAtlas,
+    background: [f32; 4],
+) -> Outcome {
     let current = gpu_window.surface.acquire_frame();
     let texture = match current {
         CurrentSurfaceTexture::Success(t) | CurrentSurfaceTexture::Suboptimal(t) => t,
-        CurrentSurfaceTexture::Timeout | CurrentSurfaceTexture::Occluded => return,
+        CurrentSurfaceTexture::Timeout => return Outcome::Retry,
+        CurrentSurfaceTexture::Occluded => return Outcome::Hidden,
         CurrentSurfaceTexture::Outdated => {
-            let size = PhysicalSize::new(
-                gpu_window.surface.config().width,
-                gpu_window.surface.config().height,
-            );
-            gpu_window.surface.resize(&gpu_window.gpu.device, size);
-            gpu_window.window.request_redraw();
-            return;
+            gpu_window.surface.reconfigure(&gpu_window.gpu.device);
+            return Outcome::Retry;
         }
-        // Real gap: recovering from a lost surface needs rebuilding a whole
-        // new `wgpu::Surface` (this crate's `Surface::new` again), not
-        // implemented in this first pass — flagged, not silently ignored.
-        CurrentSurfaceTexture::Lost | CurrentSurfaceTexture::Validation => return,
+        CurrentSurfaceTexture::Lost => {
+            let size = gpu_window.window.inner_size();
+            let surface = match Surface::new(
+                &gpu_window.gpu.instance,
+                &gpu_window.gpu.adapter,
+                &gpu_window.gpu.device,
+                gpu_window.window,
+                size,
+            ) {
+                Ok(surface) => surface,
+                Err(error) => {
+                    eprintln!("Lux: cannot recreate rendering surface: {error}");
+                    return Outcome::Failed;
+                }
+            };
+            let format = surface.config().format;
+            gpu_window.surface = surface;
+            gpu_window.quads = QuadPipeline::new(&gpu_window.gpu.device, format);
+            gpu_window.text = TextPipeline::new(&gpu_window.gpu.device, format, ATLAS_SIDE);
+            gpu_window
+                .quads
+                .set_viewport_size(&gpu_window.gpu.queue, size.width, size.height);
+            gpu_window
+                .text
+                .set_globals(&gpu_window.gpu.queue, size.width, size.height, background);
+            gpu_window.text.upload_atlas(&gpu_window.gpu.queue, atlas);
+            return Outcome::Retry;
+        }
+        CurrentSurfaceTexture::Validation => {
+            eprintln!("Lux: surface acquisition failed validation");
+            return Outcome::Failed;
+        }
     };
     let view = texture
         .texture
@@ -369,6 +437,7 @@ fn paint(gpu_window: &mut GpuWindow, quads: &[QuadInstance], glyphs: &[GlyphInst
     gpu_window.window.pre_present_notify();
     gpu_window.gpu.queue.submit(Some(encoder.finish()));
     gpu_window.gpu.queue.present(texture);
+    Outcome::Presented
 }
 
 /// `Theme::Color`'s straight sRGB-space bytes, normalized to `0.0..=1.0` —

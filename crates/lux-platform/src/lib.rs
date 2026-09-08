@@ -41,6 +41,8 @@ pub use window::{PlatformWindow, SafeAreaInsets, WindowAttributes, WindowId};
 /// backgrounding. The desktop backend calls both pairs back-to-back today;
 /// a future Android backend is what actually needs the gap between them.
 pub trait PlatformEventHandler {
+    /// A worker has queued results. Drain the application's result channel.
+    fn background_event(&mut self, _ctx: &dyn PlatformContext) {}
     /// The application became active and may now create windows.
     fn resumed(&mut self, ctx: &dyn PlatformContext);
 
@@ -79,6 +81,11 @@ pub trait PlatformEventHandler {
 /// What a `PlatformEventHandler` can do back to the platform: create
 /// windows, reach the clipboard and file dialogs, and ask to exit.
 pub trait PlatformContext {
+    /// Thread-safe event-loop notification, usable after this callback ends.
+    fn background_waker(&self) -> std::sync::Arc<dyn Fn() + Send + Sync>;
+
+    /// Owned native dialog service for a worker while the main loop runs.
+    fn background_dialogs(&self) -> std::sync::Arc<dyn FileDialogs>;
     /// Creates a new window with the given attributes.
     fn create_window(
         &self,

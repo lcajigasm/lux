@@ -11,18 +11,26 @@ default.
 
 ## Status
 
-Phase 0 (foundations). There is no editor yet — no window, no buffer, no
-UI — by design; see `LUX_PROMPT_MAESTRO.md` for why this phase exists before
-any of that. The full, current, per-platform capability matrix is
-`docs/STATUS.md`, which is the only source of truth for what works. This
-README will grow real usage instructions once `docs/STATUS.md` has something
-to point at.
+The desktop binary is an early editor shell with GPU text rendering,
+file opening/saving, transactional keyboard editing and multicursor selection.
+Domain crates contain additional
+functionality, but most is not connected to the application. This is not yet
+a finished editor. See [the implementation audit](docs/AUDIT.md) for confirmed
+integration gaps and [the capability matrix](docs/STATUS.md) for historical
+verification notes and platform limitations.
 
 ## Building
 
     cargo build --workspace
     cargo test --workspace
-    cargo xtask verify      # everything CI runs, in one command
+    cargo run -p xtask      # local quality checks
+
+Run `cargo run -p lux -- path/to/file` to open a document, or omit the path
+for a new document. Cmd on macOS / Ctrl on other desktops: O opens, S saves,
+Shift+S saves as, N starts a new document, A selects all, D selects the next
+occurrence, Z undoes, Shift+Z redoes, W requests close. Shift+arrows select.
+Open/save and close confirmation have been exercised on macOS; Windows and
+Linux application behavior remains unverified.
 
 See `rust-toolchain.toml` for the pinned toolchain.
 
@@ -33,9 +41,8 @@ See `rust-toolchain.toml` for the pinned toolchain.
 - `docs/adr/` — architectural decisions, with context and alternatives.
 - `docs/STATUS.md`, `docs/NON-GOALS.md`, `docs/PERFORMANCE.md` — what works,
   what's explicitly out of scope, and the measured performance budgets.
-- `LUX_PROMPT_MAESTRO.md` — the full phase-by-phase build plan.
-- `LUX_LOOP_ENGINEERING.md` — how this project is built: verified loops,
-  receipts, and the memory layers that keep sessions coherent over months.
+- `GOALS.md` — the phase-by-phase roadmap.
+- `docs/receipts/` — historical implementation and verification records.
 
 ## Contributing
 

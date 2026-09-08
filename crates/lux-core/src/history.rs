@@ -122,8 +122,17 @@ fn should_coalesce(prev: &Transaction, next: &Transaction) -> bool {
 
 #[derive(Debug, Default)]
 pub struct History {
-    undo_stack: Vec<Transaction>,
-    redo_stack: Vec<Transaction>,
+    undo_stack: Vec<HistoryEntry>,
+    redo_stack: Vec<HistoryEntry>,
+    state: u64,
+    next_state: u64,
+}
+
+#[derive(Debug)]
+struct HistoryEntry {
+    transaction: Transaction,
+    before: u64,
+    after: u64,
 }
 
 impl History {
@@ -137,35 +146,51 @@ impl History {
     /// Recording anything clears the redo stack, since redoing past it would
     /// no longer replay onto the buffer state it was computed against.
     pub fn record(&mut self, transaction: Transaction) {
-        self.redo_stack.clear();
-        if let Some(last) = self.undo_stack.last_mut()
-            && should_coalesce(last, &transaction)
-        {
-            last.edits.extend(transaction.edits);
-            last.selections_after = transaction.selections_after;
+        if transaction.edits.is_empty() {
             return;
         }
-        self.undo_stack.push(transaction);
+        self.next_state = self
+            .next_state
+            .checked_add(1)
+            .expect("history state exhausted");
+        let before = self.state;
+        self.state = self.next_state;
+        self.redo_stack.clear();
+        if let Some(last) = self.undo_stack.last_mut()
+            && should_coalesce(&last.transaction, &transaction)
+        {
+            last.transaction.edits.extend(transaction.edits);
+            last.transaction.selections_after = transaction.selections_after;
+            last.after = self.state;
+            return;
+        }
+        self.undo_stack.push(HistoryEntry {
+            transaction,
+            before,
+            after: self.state,
+        });
     }
 
     /// Undoes the last recorded step, mutating `buffer` in place. Returns
     /// the cursor selections to restore, or `None` if there's nothing to
     /// undo.
     pub fn undo(&mut self, buffer: &mut Buffer) -> Option<Vec<Selection>> {
-        let transaction = self.undo_stack.pop()?;
-        transaction.undo(buffer);
-        let selections = transaction.selections_before.clone();
-        self.redo_stack.push(transaction);
+        let entry = self.undo_stack.pop()?;
+        entry.transaction.undo(buffer);
+        let selections = entry.transaction.selections_before.clone();
+        self.state = entry.before;
+        self.redo_stack.push(entry);
         Some(selections)
     }
 
     /// Re-applies the last undone step. Returns the cursor selections to
     /// restore, or `None` if there's nothing to redo.
     pub fn redo(&mut self, buffer: &mut Buffer) -> Option<Vec<Selection>> {
-        let transaction = self.redo_stack.pop()?;
-        transaction.apply(buffer);
-        let selections = transaction.selections_after.clone();
-        self.undo_stack.push(transaction);
+        let entry = self.redo_stack.pop()?;
+        entry.transaction.apply(buffer);
+        let selections = entry.transaction.selections_after.clone();
+        self.state = entry.after;
+        self.undo_stack.push(entry);
         Some(selections)
     }
 
@@ -176,12 +201,53 @@ impl History {
     pub fn can_redo(&self) -> bool {
         !self.redo_stack.is_empty()
     }
+
+    /// Identifies the current content state within this History's lifetime.
+    /// Undo/redo restores IDs; a new branch never reuses a discarded ID.
+    pub fn state_id(&self) -> u64 {
+        self.state
+    }
+
+    /// Makes the current state reachable by undo even if later typing would
+    /// otherwise coalesce across a saved snapshot or explicit command boundary.
+    pub fn checkpoint(&mut self) -> u64 {
+        if let Some(last) = self.undo_stack.last_mut() {
+            last.transaction.chainable = false;
+        }
+        self.state
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::position::Position;
+
+    #[test]
+    fn saved_state_survives_undo_redo_coalescing_and_branching() {
+        let mut buffer = Buffer::from_bytes(b"").unwrap();
+        let mut history = History::new();
+        record_insert(&mut history, &mut buffer, 0, "a");
+        record_insert(&mut history, &mut buffer, 1, "b");
+        let saved = history.checkpoint();
+        record_insert(&mut history, &mut buffer, 2, "c");
+        let later = history.state_id();
+        history.undo(&mut buffer);
+        assert_eq!(buffer.text(), "ab");
+        assert_eq!(history.state_id(), saved);
+        history.redo(&mut buffer);
+        assert_eq!(history.state_id(), later);
+        history.undo(&mut buffer);
+        record_insert(&mut history, &mut buffer, 2, "d");
+        assert_ne!(history.state_id(), later);
+        assert_ne!(history.state_id(), saved);
+        assert!(!history.can_redo());
+        history.undo(&mut buffer);
+        assert_eq!(history.state_id(), saved);
+        history.undo(&mut buffer);
+        assert_eq!(history.state_id(), 0);
+        assert_eq!(buffer.text(), "");
+    }
 
     fn cursor_at(buffer: &Buffer, char_idx: usize) -> Selection {
         Selection::cursor(Position::from_char(buffer, char_idx))

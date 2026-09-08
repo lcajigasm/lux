@@ -3218,6 +3218,7 @@ dependencies = [
  "lux-ui",
  "pollster 1.0.1",
  "swash",
+ "tempfile",
  "wgpu",
 ]
 
@@ -3253,6 +3254,7 @@ dependencies = [
  "proptest",
  "regex",
  "ropey",
+ "tempfile",
  "unicode-segmentation",
 ]
 

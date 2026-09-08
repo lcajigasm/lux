@@ -24,12 +24,18 @@ pub enum DecodeError {
     /// The content looks like a binary file (a NUL byte was found), so it
     /// isn't opened as text.
     Binary,
+    /// A BOM declares UTF-8/UTF-16, but the payload is malformed. Refuse
+    /// rather than discard bytes or insert replacement characters on open.
+    InvalidEncoding,
 }
 
 impl fmt::Display for DecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DecodeError::Binary => write!(f, "file looks binary, refusing to decode as text"),
+            DecodeError::InvalidEncoding => {
+                write!(f, "file has malformed Unicode for its declared encoding")
+            }
         }
     }
 }
@@ -44,17 +50,19 @@ impl Error for DecodeError {}
 /// the final fallback, which always succeeds.
 pub fn decode(bytes: &[u8]) -> Result<(String, Encoding), DecodeError> {
     if let Some(rest) = bytes.strip_prefix(&UTF16LE_BOM) {
-        return Ok((decode_utf16(rest, u16::from_le_bytes), Encoding::Utf16Le));
+        return Ok((decode_utf16(rest, u16::from_le_bytes)?, Encoding::Utf16Le));
     }
     if let Some(rest) = bytes.strip_prefix(&UTF16BE_BOM) {
-        return Ok((decode_utf16(rest, u16::from_be_bytes), Encoding::Utf16Be));
+        return Ok((decode_utf16(rest, u16::from_be_bytes)?, Encoding::Utf16Be));
     }
     if binary_detect::looks_binary(bytes) {
         return Err(DecodeError::Binary);
     }
     if let Some(rest) = bytes.strip_prefix(&UTF8_BOM) {
         return Ok((
-            String::from_utf8_lossy(rest).into_owned(),
+            std::str::from_utf8(rest)
+                .map_err(|_| DecodeError::InvalidEncoding)?
+                .to_owned(),
             Encoding::Utf8Bom,
         ));
     }
@@ -75,13 +83,13 @@ pub fn decode(bytes: &[u8]) -> Result<(String, Encoding), DecodeError> {
 pub fn decode_owned(bytes: Vec<u8>) -> Result<(String, Encoding), DecodeError> {
     if bytes.starts_with(&UTF16LE_BOM) {
         return Ok((
-            decode_utf16(&bytes[UTF16LE_BOM.len()..], u16::from_le_bytes),
+            decode_utf16(&bytes[UTF16LE_BOM.len()..], u16::from_le_bytes)?,
             Encoding::Utf16Le,
         ));
     }
     if bytes.starts_with(&UTF16BE_BOM) {
         return Ok((
-            decode_utf16(&bytes[UTF16BE_BOM.len()..], u16::from_be_bytes),
+            decode_utf16(&bytes[UTF16BE_BOM.len()..], u16::from_be_bytes)?,
             Encoding::Utf16Be,
         ));
     }
@@ -90,7 +98,9 @@ pub fn decode_owned(bytes: Vec<u8>) -> Result<(String, Encoding), DecodeError> {
     }
     if bytes.starts_with(&UTF8_BOM) {
         return Ok((
-            String::from_utf8_lossy(&bytes[UTF8_BOM.len()..]).into_owned(),
+            std::str::from_utf8(&bytes[UTF8_BOM.len()..])
+                .map_err(|_| DecodeError::InvalidEncoding)?
+                .to_owned(),
             Encoding::Utf8Bom,
         ));
     }
@@ -122,12 +132,14 @@ pub fn encode(text: &str, encoding: Encoding) -> Vec<u8> {
     }
 }
 
-fn decode_utf16(bytes: &[u8], from_bytes: fn([u8; 2]) -> u16) -> String {
-    let units = bytes
-        .chunks_exact(2)
-        .map(|pair| from_bytes([pair[0], pair[1]]));
+fn decode_utf16(bytes: &[u8], from_bytes: fn([u8; 2]) -> u16) -> Result<String, DecodeError> {
+    let (pairs, remainder) = bytes.as_chunks::<2>();
+    if !remainder.is_empty() {
+        return Err(DecodeError::InvalidEncoding);
+    }
+    let units = pairs.iter().map(|pair| from_bytes(*pair));
     char::decode_utf16(units)
-        .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER))
+        .map(|r| r.map_err(|_| DecodeError::InvalidEncoding))
         .collect()
 }
 
@@ -146,6 +158,19 @@ fn decode_latin1(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn malformed_bom_payloads_are_rejected_without_silent_data_loss() {
+        for bytes in [
+            vec![0xef, 0xbb, 0xbf, 0xff], // Invalid UTF-8 after BOM.
+            vec![0xff, 0xfe, 0x61],       // Partial UTF-16 code unit.
+            vec![0xff, 0xfe, 0x00, 0xd8], // Unpaired high surrogate.
+            vec![0xfe, 0xff, 0xdc, 0x00], // Unpaired low surrogate.
+        ] {
+            assert_eq!(decode(&bytes), Err(DecodeError::InvalidEncoding));
+            assert_eq!(decode_owned(bytes), Err(DecodeError::InvalidEncoding));
+        }
+    }
 
     #[test]
     fn detects_plain_utf8() {

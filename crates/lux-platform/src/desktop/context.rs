@@ -44,6 +44,22 @@ impl<'a> DesktopContext<'a> {
 }
 
 impl PlatformContext for DesktopContext<'_> {
+    fn background_waker(&self) -> std::sync::Arc<dyn Fn() + Send + Sync> {
+        let proxy = self.accessibility_proxy.clone();
+        std::sync::Arc::new(move || {
+            let _ = proxy.send_event(AccessibilityEvent::Background);
+        })
+    }
+
+    fn background_dialogs(&self) -> std::sync::Arc<dyn FileDialogs> {
+        let windows = self.windows.borrow();
+        let dialogs = windows
+            .values()
+            .next()
+            .map(|record| RfdFileDialogs::with_parent(&record.window))
+            .unwrap_or_default();
+        std::sync::Arc::new(dialogs)
+    }
     fn create_window(
         &self,
         attrs: WindowAttributes,

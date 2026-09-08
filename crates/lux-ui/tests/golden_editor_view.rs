@@ -27,6 +27,37 @@ const AHEM_TTF: &[u8] = include_bytes!("fixtures/ahem.ttf");
 /// tight enough that a wrong cluster/line lookup still fails the test.
 const TOLERANCE: f32 = 0.5;
 
+#[test]
+fn mixed_line_endings_and_selected_primary_caret_use_rope_byte_offsets() {
+    let buffer = Buffer::from_bytes("é\r猫\r\nabc\n".as_bytes()).unwrap();
+    let selection = Selection::new(
+        Position::from_char(&buffer, 6),
+        Position::from_char(&buffer, 5),
+    );
+    let cursors = MultiCursor::from_cursors(vec![
+        Selection::cursor(Position::document_end(&buffer)),
+        selection,
+    ]);
+    let mut view = build_view();
+    let frame = view.build_frame(
+        &buffer,
+        &cursors,
+        &Viewport {
+            width: 800.0,
+            height: 120.0,
+            scroll_x: 0.0,
+            scroll_y: 0.0,
+        },
+        Duration::ZERO,
+    );
+    assert_eq!(frame.lines.len(), 4);
+    let caret = frame.cursors.iter().find(|c| c.primary).unwrap();
+    assert_eq!(caret.line, 2);
+    assert!(caret.x.abs() < TOLERANCE);
+    assert_eq!(frame.selections.len(), 1);
+    assert!(frame.selections[0].x_end > frame.selections[0].x_start);
+}
+
 fn source_lines() -> Vec<&'static str> {
     vec![
         "fn main() {",                 // 0

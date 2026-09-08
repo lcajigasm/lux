@@ -13,15 +13,16 @@ use super::context::DesktopContext;
 use super::convert;
 use super::dialog::RfdFileDialogs;
 
-/// The event loop's user-event payload: just a newtype around
-/// `accesskit_winit::Event` so `DesktopApp` can implement
-/// `ApplicationHandler<AccessibilityEvent>` — see
-/// `docs/adr/0013-platform-accessibility-adapter-wiring.md`.
-pub(super) struct AccessibilityEvent(pub(super) accesskit_winit::Event);
+/// Accessibility events and worker notifications share the native event
+/// loop's proxy. No backend-specific event types escape the platform trait.
+pub(super) enum AccessibilityEvent {
+    Accessibility(accesskit_winit::Event),
+    Background,
+}
 
 impl From<accesskit_winit::Event> for AccessibilityEvent {
     fn from(event: accesskit_winit::Event) -> Self {
-        AccessibilityEvent(event)
+        AccessibilityEvent::Accessibility(event)
     }
 }
 
@@ -54,7 +55,7 @@ impl<H: PlatformEventHandler> DesktopApp<H> {
         DesktopApp {
             handler,
             clipboard,
-            dialogs: RfdFileDialogs,
+            dialogs: RfdFileDialogs::default(),
             windows: RefCell::new(HashMap::new()),
             next_id: Cell::new(1),
             accessibility_proxy,
@@ -127,10 +128,25 @@ impl<H: PlatformEventHandler> ApplicationHandler<AccessibilityEvent> for Desktop
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: AccessibilityEvent) {
+        let event = match event {
+            AccessibilityEvent::Accessibility(event) => event,
+            AccessibilityEvent::Background => {
+                let ctx = DesktopContext::new(
+                    event_loop,
+                    &self.clipboard,
+                    &self.dialogs,
+                    &self.windows,
+                    &self.next_id,
+                    &self.accessibility_proxy,
+                );
+                self.handler.background_event(&ctx);
+                return;
+            }
+        };
         let accesskit_winit::Event {
             window_id,
             window_event,
-        } = event.0;
+        } = event;
         let Some(id) = self.windows.borrow().get(&window_id).map(|r| r.id) else {
             return;
         };
