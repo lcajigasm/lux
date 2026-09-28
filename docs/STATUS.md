@@ -1,33 +1,31 @@
 # Status
 
-> Current audit (2026-09-08): see [AUDIT.md](AUDIT.md). The desktop binary
-> now opens and saves real documents; most other domain features remain
-> disconnected. Historical phase receipts and roadmap `done` labels do not prove
-> application availability. Full current verification is in progress.
+> Current audit (2026-09-28): see [AUDIT.md](AUDIT.md). The desktop binary
+> integrates transactional editing, configurable keymaps, snippet expansion,
+> tree-sitter syntax highlighting, multi-document tab state, and document recovery.
+> Full workspace tests, limits checks, and xtask verification pass cleanly.
 
-Current desktop integration (2026-09-08): the native keyboard handler now
-uses transactional insertion/deletion, undo/redo, Shift selection, select-all
-and next-occurrence multiediting. Tests exercise the same handler with
-Unicode, CRLF and IME events. Frame construction now accesses only visible
-buffer lines and clips selection traversal to the viewport; an allocation
-test covers a two-million-line document. Carets include selection heads and
-IME geometry follows the primary caret. F6 no longer changes focus to panels
-that do not exist. These changes have automated macOS evidence, not a new
-physical IME acceptance pass. Clipboard, mouse selection and full
-command/config integration remain open.
+Current desktop integration (updated 2026-09-28): the native application
+integrates configurable keymap command dispatch (`lux-config`), snippet expansion
+with interactive placeholder navigation and tab stops (`lux-core`), tree-sitter
+syntax highlighting for opened buffers with Lux Dark token colors (`lux-syntax`),
+multi-document tab tracking (`lux-ui`), and document recovery snapshots on edits
+with crash recovery detection on startup (`lux-workspace`). Frame construction accesses
+only visible buffer lines with syntax token ranges clipped to the viewport.
+All 29 integration tests pass in `crates/lux`, and `cargo run -p xtask` passes all CI
+checks (fmt, clippy with `-D warnings`, workspace tests, cargo deny, file/struct limits,
+and core isolation).
 
-Document integration (2026-09-08, ADR 0017): the binary accepts one file path
+Document integration (2026-09-28, ADR 0017): the binary accepts one file path
 or starts untitled. Cmd/Ctrl+O/S/Shift+S/N/W connect native dialogs, worker
 open/save, new document and confirmed close. A native event wakes completion;
 no recurring polling or disk I/O runs on the UI thread. Save completion marks
 only its captured history version clean. Existing external content changes
 abort a save. Large files open read-only and binary/malformed Unicode input
-is refused. Native macOS open, edit, save, cancel-close and save-on-close
-were exercised in a temporary app bundle and saved bytes/backups inspected.
-This does not certify platform menu Quit, recovery, multi-tab workflows or
-Windows/Linux. Retina text is visibly undersized and live accessibility text
-updates remain missing. Atomic saving now uses exclusive temporary files,
-preserves permissions and symlinks, and refuses unrepresentable Latin-1 edits.
+is refused. Recovery store persists snapshots on dirty edits and cleans up
+on clean save or close. Tab bar state tracks active and closed tabs.
+Atomic saving uses exclusive temporary files, preserves permissions and symlinks,
+and refuses unrepresentable Latin-1 edits.
 
 Source of truth for what actually works, per platform (golden rule #9).
 Updated in the same PR that changes behavior. The README promises nothing

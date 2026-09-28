@@ -25,7 +25,8 @@
 //! `Buffer::text()` a second, separately-maintained way.
 
 use accesskit::{
-    Node, NodeId, Role, TextDirection, TextPosition, TextSelection, Tree, TreeId, TreeUpdate,
+    Action, Node, NodeId, Role, TextDirection, TextPosition, TextSelection, Tree, TreeId,
+    TreeUpdate,
 };
 
 use lux_core::buffer::Buffer;
@@ -122,6 +123,7 @@ pub fn build_tree(
     }
 
     let mut root = Node::new(Role::MultilineTextInput);
+    root.add_action(Action::SetTextSelection);
     root.set_children(child_ids);
     if let (Some(anchor), Some(focus)) = (anchor_position, focus_position) {
         root.set_text_selection(TextSelection { anchor, focus });

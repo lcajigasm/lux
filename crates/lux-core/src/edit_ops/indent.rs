@@ -32,8 +32,6 @@ pub fn indent(buffer: &mut Buffer, selection: Selection) -> (Vec<Edit>, Selectio
         edit.apply(buffer);
         edits.push(edit);
     }
-    edits.reverse();
-
     // A position past `last_line` (e.g. `end.line` sitting on the phantom
     // trailing line `touched_lines` excluded) still shifts by every indent
     // that landed before it, but no more than the total that happened.
@@ -76,8 +74,6 @@ pub fn dedent(buffer: &mut Buffer, selection: Selection) -> (Vec<Edit>, Selectio
         edit.apply(buffer);
         edits.push(edit);
     }
-    edits.reverse();
-
     // Same phantom-trailing-line concern as `indent`'s shift: a position on
     // a line past `last_line` (not in `removals`) still owes the full
     // total, not a per-line lookup that would index out of bounds.
@@ -104,6 +100,8 @@ pub fn dedent(buffer: &mut Buffer, selection: Selection) -> (Vec<Edit>, Selectio
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::history::History;
+    use crate::multicursor::MultiCursor;
 
     fn cursor_at(buffer: &Buffer, char_idx: usize) -> Selection {
         Selection::cursor(Position::from_char(buffer, char_idx))
@@ -123,6 +121,28 @@ mod tests {
         let (_, sel) = indent(&mut buffer, sel);
         assert_eq!(buffer.text(), "        let x = 1;\n    let y = 2;\n");
         assert_eq!(sel.head.char, 14);
+    }
+
+    #[test]
+    fn multiline_indent_and_dedent_transactions_undo_without_corrupting_text() {
+        let original = "    one\n    two";
+        let mut buffer = Buffer::from_bytes(original.as_bytes()).unwrap();
+        let selection = range_at(&buffer, 0, buffer.rope().len_chars());
+        let cursors = MultiCursor::new(selection);
+        let mut history = History::new();
+
+        let (dedent_transaction, dedented) =
+            super::super::apply_to_each(&mut buffer, &cursors, dedent);
+        history.record(dedent_transaction);
+        assert_eq!(buffer.text(), "one\ntwo");
+
+        let (indent_transaction, _) = super::super::apply_to_each(&mut buffer, &dedented, indent);
+        history.record(indent_transaction);
+        assert_eq!(buffer.text(), original);
+        history.undo(&mut buffer);
+        assert_eq!(buffer.text(), "one\ntwo");
+        history.undo(&mut buffer);
+        assert_eq!(buffer.text(), original);
     }
 
     #[test]

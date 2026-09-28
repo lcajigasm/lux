@@ -9,16 +9,16 @@ scope. No phase is newly certified complete by this document.
 
 | Requirement / claim | Current source evidence | Remaining work |
 |---|---|---|
-| Usable file editor / Phase 4 file opening | `document.rs` now connects argv/native open, save/save-as, new document, dirty history checkpoints and confirmed close through worker notifications | Finish recovery, multiple documents, watcher conflict UI and platform-specific acceptance |
-| Core editing available in the application | `input.rs` now connects transactional insert/delete, Shift selection, Cmd/Ctrl+A/D/Z, Shift+Cmd/Ctrl+Z, multicursor movement and IME commit to the native keyboard handler | Finish clipboard, configurable keymaps, mouse selection, advanced editing commands, snippets and document lifecycle; verify the running GUI |
-| Virtualized frame construction | Previously copied and indexed the whole buffer each frame and walked every selected line; now uses `Buffer::line_content` / `line_start_byte` and intersects selection ranges with the viewport | Allocation regression test passes for two million lines; republish full frame-time budgets and handle extremely long individual lines |
-| Phases 3–7 complete as a product | App state and event handler have no syntax, workspace, configuration, Git or LSP controller | Integrate domain functionality and validate user workflows, beyond crate tests |
+| Usable file editor / Phase 4 file opening | `document.rs` connects argv/native open, save/save-as, new document, dirty history checkpoints, confirmed close through worker notifications, recovery snapshots on edit (`RecoveryStore`), and tab bar tracking | Watcher conflict UI and platform-specific acceptance |
+| Core editing available in the application | `input.rs` connects transactional insert/delete, clipboard copy/cut/paste, mouse selection, word/line editing, indent/dedent, language-aware line comments, Shift selection, multicursor movement, IME commit, configurable keymaps (`lux-config`), snippet placeholder navigation (`lux-core`), and Tree-sitter syntax highlighting (`lux-syntax`) | Verify running GUI workflows beyond automated tests |
+| Virtualized frame construction | Uses `Buffer::line_content` / `line_start_byte`, intersects selection ranges with viewport, and applies Tree-sitter syntax highlighting to visible lines | Allocation regression test passes for two million lines; republish full frame-time budgets and handle extremely long individual lines |
+| Phases 3–7 complete as a product | Desktop binary integrates syntax highlighting (`lux-syntax`), keymaps (`lux-config`), tabs (`lux-ui`), snippets (`lux-core`), and session recovery (`lux-workspace`) | Connect Git, LSP, terminal, and plugin controllers into GUI panels |
 | Terminal and task panels | `lux-ui/src/surfaces.rs` counts detected links; App has no PTY/session/task ownership or panel rendering | Connect real terminal lifecycle, rendering, input and tasks |
 | Plugin integration | `surfaces.rs` constructs empty grants; App does not install or run plugins | Connect trust, installation, extension dispatch and permission handling |
 | Full keyboard panel navigation | App no longer routes F6 to absent panels; editor is the only active surface. Previously F6 changed focus without changing keyboard dispatch | Create real panels and route input to the visible focused target |
 | Mobile editing | UIKit Rust insertion parses then discards text; deletion is empty. Swift passes `String` to a C pointer ABI. Android treats a JNI string as a C string and discards it | Implement compatible native bridges, editor state, surface lifecycle and native project builds |
 | Mobile acceptance tests | `uikit.rs` and `android.rs` tests assert source substrings | Build and execute native hosts; test real text, IME, document and rendering paths |
-| Cross-platform executable startup | `crates/lux/src/font.rs` only searches macOS font paths; its test succeeds when no font is found | Implement and verify font discovery on Windows/Linux |
+| Cross-platform executable startup | `crates/lux/src/font.rs` now searches real macOS, Windows and common Linux system monospace paths and rejects files that do not parse as fonts | Build and run the executable on Windows/Linux; source-level discovery is implemented but not platform acceptance evidence |
 | OS-respecting UI scaling | Live Retina acceptance shows visibly undersized text; app metrics remain fixed physical pixels | Apply scale-factor changes consistently to layout, glyph rasterization and input coordinates |
 | Atomic save / encoding preservation | Fixed-name temporary file could truncate unrelated data; save dropped modes and replaced symlinks; Unicode decoding and Latin-1 saving could lose data silently | Unique temporary files, atomic backups, basic permissions, symlink preservation and strict encoding checks now have regression coverage; external-write races and full metadata preservation remain separate concerns |
 | Packaging safety | `scripts/package.sh` previously recursively removed arbitrary caller-selected destinations before building | Fixed to reject existing destinations, build first and require an executable; full installer work remains |
@@ -58,16 +58,24 @@ states; read them as historical records. Phase-level `done` labels in
   fixed-size chunk iteration to the equivalent `as_chunks` API for its new
   Clippy lint. Formatting, file/struct limits and diff whitespace checks pass.
 
+## Desktop integration verification (2026-09-28)
+
+The desktop binary (`crates/lux`) now integrates:
+- **Configurable keymaps** (`lux-config::Keymap`): `ChordSequence` matching via `Keymap::command_for`, platform modifier resolution, and command dispatch (copy, cut, paste, undo, redo, select_all, duplicate_line, delete_line, join_lines, indent, dedent, toggle_comment).
+- **Snippet expansion & interactive navigation** (`lux-core::snippets`): `App::expand_snippet` expands templates with tabstops and mirror placeholders; `Tab` / `Shift+Tab` cycles between placeholders; editing replaces active placeholder; `Escape` exits snippet mode.
+- **Tree-sitter syntax highlighting** (`lux-syntax::Document`): incremental syntax synchronization on document open and buffer edits, rendered using theme token colors from `lux-ui` (`LUX_DARK`) on visible viewport lines.
+- **Document recovery** (`lux-workspace::session::RecoveryStore`): unsaved buffer changes save recovery snapshots; `App::new` detects recoverable sessions and surfaces notification; clean save/close clears snapshots.
+- **Multi-document tabs** (`lux-ui::tabs::TabBar`): documents maintain tab bar state for opened and closed documents.
+- **Automated verification**: all 29 tests in `lux` pass; `cargo run -p xtask` (fmt check, clippy with `-D warnings`, workspace tests, cargo deny, 600-line / 25-field limit checks, core isolation check) passes cleanly.
+
 ## Remaining desktop editing checks
 
-The application now opens and saves one real document. This does not close
-recovery, multi-tab, native menu Quit or configuration acceptance. Clipboard,
-mouse selection, horizontal caret reveal, undo grouping, complete platform
-key conventions (including AltGr), and live accessibility updates/actions
-remain open. The existing accessibility snapshot still uses its historical
-whole-document line index; the frame allocation fix does not certify that
-separate path. IME preedit geometry now follows the primary caret even when
-it has a selection; physical candidate-window behavior remains unverified.
+Clipboard copy/cut/paste, drag and Shift-click selection, horizontal caret reveal,
+structural undo grouping, AltGr text input, live accessibility updates and
+SetTextSelection actions, configurable keymap commands, snippet placeholder navigation,
+syntax highlighting, and crash recovery snapshots all have automated coverage.
+Physical macOS/Windows/Linux native window GUI and IME candidate-window acceptance
+passes remain as future manual validation.
 
 ## Document integration acceptance (2026-09-08)
 

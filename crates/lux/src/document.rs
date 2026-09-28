@@ -30,12 +30,13 @@ struct Pending {
 
 pub(crate) struct Documents {
     pub(crate) path: Option<PathBuf>,
+    pub(crate) tabs: lux_ui::tabs::TabBar,
     saved_version: u64,
     disk_snapshot: Option<Buffer>,
     pending: Option<Pending>,
     sender: Sender<Result<Outcome, String>>,
     receiver: Receiver<Result<Outcome, String>>,
-    message: Option<String>,
+    pub(crate) message: Option<String>,
     close_when_idle: bool,
     pub(crate) initial_path: Option<PathBuf>,
 }
@@ -45,6 +46,7 @@ impl Default for Documents {
         let (sender, receiver) = mpsc::channel();
         Self {
             path: None,
+            tabs: lux_ui::tabs::TabBar::new(),
             saved_version: 0,
             disk_snapshot: None,
             pending: None,
@@ -89,7 +91,7 @@ impl App {
         let command = if cfg!(target_os = "macos") {
             self.modifiers.meta
         } else {
-            self.modifiers.control
+            self.modifiers.control && !self.modifiers.alt
         };
         if !command || event.state != ElementState::Pressed || self.ime.is_composing() {
             return false;
@@ -174,23 +176,40 @@ impl App {
                 close,
             }) => {
                 if let Some((path, snapshot)) = saved {
+                    if let Some(store) = recovery_store() {
+                        let _ = store.clear(&path);
+                    }
                     self.documents.path = Some(path);
                     self.documents.disk_snapshot = Some(snapshot);
                     self.documents.saved_version = pending.version;
+                    self.update_syntax_on_open();
                 }
                 if let Some((path, buffer)) = opened {
+                    let title = path
+                        .as_ref()
+                        .and_then(|p| p.file_name())
+                        .and_then(|f| f.to_str())
+                        .unwrap_or("Untitled");
+                    self.documents.tabs.open(title);
                     self.documents.disk_snapshot = path.as_ref().map(|_| buffer.clone());
                     self.documents.path = path;
                     self.buffer = buffer;
                     self.history = History::new();
                     self.documents.saved_version = 0;
                     self.cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
+                    self.mouse.selection_anchor = None;
+                    self.snippet_session = None;
                     self.ime = ImeComposition::new();
                     self.viewport.scroll_x = 0.0;
                     self.viewport.scroll_y = 0.0;
                     self.reset_goal_columns();
+                    self.update_syntax_on_open();
                 }
                 if close {
+                    if let Some(active) = self.documents.tabs.active() {
+                        let id = active.id;
+                        self.documents.tabs.close(id);
+                    }
                     ctx.exit();
                 } else if std::mem::take(&mut self.documents.close_when_idle) {
                     self.request_document(ctx, Request::Close);
@@ -198,6 +217,7 @@ impl App {
             }
         }
         self.update_document_title();
+        self.refresh_accessibility();
         if let Some(gpu) = &self.gpu_window {
             gpu.window.request_redraw();
         }
@@ -267,6 +287,9 @@ fn save_snapshot(
         .buffer
         .save(&path)
         .map_err(|e| format!("Cannot save {}: {e}", path.display()))?;
+    if let Some(store) = recovery_store() {
+        let _ = store.clear(&path);
+    }
     Ok(Some((path, snapshot.buffer.clone())))
 }
 
@@ -345,6 +368,37 @@ fn execute(
         opened,
         close: matches!(request, Request::Close),
     })
+}
+
+fn recovery_store() -> Option<lux_workspace::session::RecoveryStore> {
+    let dir = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
+        .unwrap_or_else(std::env::temp_dir)
+        .join("lux");
+    Some(lux_workspace::session::RecoveryStore::new(dir))
+}
+
+impl App {
+    pub(crate) fn save_recovery_snapshot(&self) {
+        if self.document_dirty()
+            && let Some(path) = &self.documents.path
+            && !self.buffer.is_huge_file_mode()
+            && let Some(store) = recovery_store()
+        {
+            let _ = store.save(path, &self.buffer.text());
+        }
+    }
+
+    pub(crate) fn recoverable_documents() -> Vec<PathBuf> {
+        if let Some(store) = recovery_store()
+            && let Ok(recoverable) = store.recoverable()
+        {
+            recoverable.into_iter().map(|s| s.path).collect()
+        } else {
+            Vec::new()
+        }
+    }
 }
 
 #[cfg(test)]

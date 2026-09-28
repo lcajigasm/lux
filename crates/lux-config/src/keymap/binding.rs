@@ -67,6 +67,14 @@ impl Keymap {
             .find(|b| b.command == command)
             .map(|b| b.resolve(platform))
     }
+
+    /// The command bound to `chord` on `platform`, if any.
+    pub fn command_for(&self, chord: &ChordSequence, platform: Platform) -> Option<&str> {
+        self.bindings
+            .iter()
+            .find(|b| b.resolve(platform) == chord)
+            .map(|b| b.command.as_str())
+    }
 }
 
 #[cfg(test)]
@@ -113,5 +121,21 @@ mod tests {
             "cmd+s"
         );
         assert!(keymap.binding_for("nonexistent", Platform::Mac).is_none());
+    }
+
+    #[test]
+    fn command_for_finds_by_chord_and_resolves_the_platform() {
+        let keymap = Keymap {
+            name: "test".to_string(),
+            bindings: vec![binding("save", "ctrl+s", Some("cmd+s"))],
+        };
+        let mac_chord: ChordSequence = "cmd+s".parse().unwrap();
+        let win_chord: ChordSequence = "ctrl+s".parse().unwrap();
+        assert_eq!(keymap.command_for(&mac_chord, Platform::Mac), Some("save"));
+        assert_eq!(
+            keymap.command_for(&win_chord, Platform::Windows),
+            Some("save")
+        );
+        assert!(keymap.command_for(&win_chord, Platform::Mac).is_none());
     }
 }

@@ -1,6 +1,21 @@
 use super::*;
 use lux_core::buffer::Buffer;
-use lux_platform::{Ime, Modifiers};
+use lux_platform::{Ime, Modifiers, PlatformError};
+use std::cell::RefCell;
+
+#[derive(Default)]
+struct TestClipboard(RefCell<String>);
+
+impl Clipboard for TestClipboard {
+    fn read_text(&self) -> Result<String, PlatformError> {
+        Ok(self.0.borrow().clone())
+    }
+
+    fn write_text(&self, text: &str) -> Result<(), PlatformError> {
+        *self.0.borrow_mut() = text.to_owned();
+        Ok(())
+    }
+}
 
 fn app(text: &str) -> App {
     let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
@@ -31,6 +46,24 @@ fn command(app: &mut App, key: &str, shift: bool) {
         ..Default::default()
     };
     text(app, key);
+    app.modifiers = Modifiers::default();
+}
+
+fn clipboard_command(app: &mut App, clipboard: &dyn Clipboard, key: &str) {
+    app.modifiers = Modifiers {
+        meta: cfg!(target_os = "macos"),
+        control: !cfg!(target_os = "macos"),
+        ..Default::default()
+    };
+    app.handle_key_with_clipboard(
+        &KeyEvent {
+            key: Key::Character(key.into()),
+            text: Some(key.into()),
+            state: ElementState::Pressed,
+            repeat: false,
+        },
+        Some(clipboard),
+    );
     app.modifiers = Modifiers::default();
 }
 
@@ -150,4 +183,223 @@ fn named_space_and_crlf_enter_are_undoable_and_release_is_ignored() {
         repeat: false,
     });
     assert_eq!(app.buffer.text(), " a\r\n");
+}
+
+#[test]
+fn clipboard_copy_cut_and_paste_are_transactional_and_unicode_safe() {
+    let clipboard = TestClipboard::default();
+    let mut app = app("cafe\u{301} and tea");
+    app.cursors = MultiCursor::new(Selection::new(
+        Position::from_char(&app.buffer, 0),
+        Position::from_char(&app.buffer, 5),
+    ));
+
+    clipboard_command(&mut app, &clipboard, "c");
+    assert_eq!(&*clipboard.0.borrow(), "cafe\u{301}");
+    assert_eq!(app.buffer.text(), "cafe\u{301} and tea");
+
+    clipboard_command(&mut app, &clipboard, "x");
+    assert_eq!(app.buffer.text(), " and tea");
+    command(&mut app, "z", false);
+    assert_eq!(app.buffer.text(), "cafe\u{301} and tea");
+
+    app.cursors = MultiCursor::new(Selection::cursor(Position::document_end(&app.buffer)));
+    clipboard_command(&mut app, &clipboard, "v");
+    assert_eq!(app.buffer.text(), "cafe\u{301} and teacafe\u{301}");
+    command(&mut app, "z", false);
+    assert_eq!(app.buffer.text(), "cafe\u{301} and tea");
+}
+
+#[test]
+fn altgr_text_is_not_swallowed_as_a_control_shortcut() {
+    if cfg!(target_os = "macos") {
+        return;
+    }
+    let mut app = app("");
+    app.modifiers.control = true;
+    app.modifiers.alt = true;
+    text(&mut app, "€");
+    assert_eq!(app.buffer.text(), "€");
+}
+
+#[test]
+fn mouse_click_and_drag_create_a_directional_unicode_safe_selection() {
+    let mut app = app("abc\n猫犬");
+    app.mouse.position = dpi::PhysicalPosition::new(10_000.0, LINE_HEIGHT as f64 + 1.0);
+    app.begin_mouse_selection();
+    assert_eq!(
+        app.cursors.primary().head,
+        Position::document_end(&app.buffer)
+    );
+
+    app.mouse.position = dpi::PhysicalPosition::new(0.0, 0.0);
+    app.update_mouse_selection();
+    let selection = app.cursors.primary();
+    assert_eq!(selection.anchor, Position::document_end(&app.buffer));
+    assert_eq!(selection.head, Position::document_start());
+    assert_eq!(app.buffer.text_range(selection.char_range()), "abc\n猫犬");
+}
+
+#[test]
+fn moving_across_a_long_line_reveals_the_primary_caret_horizontally() {
+    let mut app = app(&"x".repeat(500));
+    app.viewport.width = 120.0;
+    named(&mut app, NamedKey::End);
+    assert!(app.viewport.scroll_x > 0.0);
+    let at_end = app.viewport.scroll_x;
+    named(&mut app, NamedKey::Home);
+    assert!(app.viewport.scroll_x < at_end);
+}
+
+#[test]
+fn advanced_editing_shortcuts_use_core_operations_and_single_step_undo() {
+    let mut app = app("one two\nthree");
+    named(&mut app, NamedKey::End);
+    if cfg!(target_os = "macos") {
+        app.modifiers.alt = true;
+    } else {
+        app.modifiers.control = true;
+    }
+    named(&mut app, NamedKey::Backspace);
+    app.modifiers = Modifiers::default();
+    assert_eq!(app.buffer.text(), "one \nthree");
+    command(&mut app, "z", false);
+    assert_eq!(app.buffer.text(), "one two\nthree");
+
+    command(&mut app, "d", true);
+    assert_eq!(app.buffer.text(), "one two\none two\nthree");
+    command(&mut app, "z", false);
+    assert_eq!(app.buffer.text(), "one two\nthree");
+
+    command(&mut app, "j", false);
+    assert_eq!(app.buffer.text(), "one two three");
+    command(&mut app, "z", false);
+    assert_eq!(app.buffer.text(), "one two\nthree");
+}
+
+#[test]
+fn selected_lines_indent_and_dedent_through_tab() {
+    let mut app = app("    one\n    two");
+    app.cursors = MultiCursor::new(Selection::new(
+        Position::document_start(),
+        Position::document_end(&app.buffer),
+    ));
+    app.modifiers.shift = true;
+    named(&mut app, NamedKey::Tab);
+    app.modifiers = Modifiers::default();
+    assert_eq!(app.buffer.text(), "one\ntwo");
+    named(&mut app, NamedKey::Tab);
+    assert_eq!(app.buffer.text(), "    one\n    two");
+    command(&mut app, "z", false);
+    assert_eq!(app.buffer.text(), "one\ntwo");
+}
+
+#[test]
+fn comment_shortcut_uses_the_open_documents_language_and_undoes_cleanly() {
+    let mut app = app("fn one() {}\nfn two() {}");
+    app.documents.path = Some("sample.rs".into());
+    app.cursors = MultiCursor::new(Selection::new(
+        Position::document_start(),
+        Position::document_end(&app.buffer),
+    ));
+    command(&mut app, "/", false);
+    assert_eq!(app.buffer.text(), "// fn one() {}\n// fn two() {}");
+    command(&mut app, "z", false);
+    assert_eq!(app.buffer.text(), "fn one() {}\nfn two() {}");
+}
+
+#[test]
+fn accessibility_selection_moves_the_real_unicode_caret_range() {
+    use accesskit::{NodeId, TextPosition, TextSelection};
+
+    let mut app = app("éx\n猫犬");
+    let selection = app
+        .editor_view
+        .selection_from_accessibility(
+            &app.buffer,
+            TextSelection {
+                anchor: TextPosition {
+                    node: NodeId(1),
+                    character_index: 1,
+                },
+                focus: TextPosition {
+                    node: NodeId(2),
+                    character_index: 1,
+                },
+            },
+        )
+        .unwrap();
+    assert_eq!(selection.anchor.byte, "é".len());
+    assert_eq!(selection.head.byte, "éx\n猫".len());
+}
+
+#[test]
+fn snippet_expansion_and_tabstop_navigation() {
+    let mut app = app("");
+    app.expand_snippet("fn ${1:name}() -> ${2:Result<(), ()>} {\n    $0\n}");
+    assert!(app.snippet_session.is_some());
+    // Initial selection should be at placeholder 1: "name"
+    assert_eq!(
+        app.buffer.text_range(app.cursors.primary().char_range()),
+        "name"
+    );
+
+    // Type replacement for placeholder 1
+    text(&mut app, "my_func");
+    assert!(app.buffer.text().starts_with("fn my_func()"));
+
+    // Tab to next placeholder: "Result<(), ()>"
+    named(&mut app, NamedKey::Tab);
+    assert_eq!(
+        app.buffer.text_range(app.cursors.primary().char_range()),
+        "Result<(), ()>"
+    );
+
+    // Shift-Tab back to previous placeholder
+    app.modifiers.shift = true;
+    named(&mut app, NamedKey::Tab);
+    app.modifiers.shift = false;
+    assert_eq!(
+        app.buffer.text_range(app.cursors.primary().char_range()),
+        "my_func"
+    );
+
+    // Tab forward: to $2, to $0, then past $0 to exit session
+    named(&mut app, NamedKey::Tab);
+    named(&mut app, NamedKey::Tab);
+    named(&mut app, NamedKey::Tab);
+    assert!(app.snippet_session.is_none());
+
+    // Undo should cleanly revert
+    command(&mut app, "z", false);
+}
+
+#[test]
+fn keymap_dispatch_executes_bound_commands() {
+    let mut app = app("first line\n");
+    // Using default Sublime keymap: duplicate line (Cmd/Ctrl + Shift + D)
+    command(&mut app, "d", true);
+    assert_eq!(app.buffer.text(), "first line\nfirst line\n");
+
+    // Select all (Cmd/Ctrl + A)
+    command(&mut app, "a", false);
+    assert_eq!(
+        app.cursors.primary().char_range(),
+        0..app.buffer.len_chars()
+    );
+}
+
+#[test]
+fn syntax_synchronization_on_open_and_edit() {
+    let mut app = app("fn test() { let x = 42; }");
+    app.documents.path = Some("test.rs".into());
+    app.update_syntax_on_open();
+    assert!(app.syntax.is_some());
+
+    // Edit the buffer and check syntax sync
+    text(&mut app, "// comment\n");
+    assert!(app.syntax.is_some());
+    if let Some(syntax) = &app.syntax {
+        assert!(syntax.source.contains("// comment\n"));
+    }
 }

@@ -124,6 +124,7 @@ impl App {
             chrome,
             scale_factor,
             presentation,
+            syntax,
             ..
         } = self;
         let Some(gpu_window) = gpu_window.as_mut() else {
@@ -142,7 +143,28 @@ impl App {
         let foreground = color(chrome.theme.foreground);
         for line in &frame.lines {
             let y = line.index as f32 * line_height - viewport.scroll_y;
+            let line_start = buffer.line_start_byte(line.index).unwrap_or(0);
+            let line_len = buffer.line_content(line.index).map_or(0, |c| c.len());
+            let line_end = line_start + line_len;
+            let line_tokens = if let Some(syntax) = syntax.as_ref()
+                && let Some(doc) = &syntax.document
+            {
+                doc.highlight_range(&syntax.source, line_start..line_end)
+            } else {
+                Vec::new()
+            };
+
             for cluster in line.layout.clusters() {
+                let abs_byte = line_start + cluster.byte_range.start;
+                let glyph_color = if let Some(syntax) = syntax.as_ref()
+                    && let Some(token) = line_tokens
+                        .iter()
+                        .find(|t| t.start_byte <= abs_byte && abs_byte < t.end_byte)
+                {
+                    syntax_color(syntax.theme.color_for_token(token))
+                } else {
+                    foreground
+                };
                 push_glyph(
                     atlas,
                     atlas_dirty,
@@ -152,7 +174,7 @@ impl App {
                     &cluster,
                     text_left - viewport.scroll_x,
                     y + line.layout.baseline(),
-                    foreground,
+                    glyph_color,
                     &mut glyph_instances,
                 );
             }
@@ -453,5 +475,14 @@ fn color(c: lux_ui::Color) -> [f32; 4] {
         c.g as f32 / 255.0,
         c.b as f32 / 255.0,
         c.a as f32 / 255.0,
+    ]
+}
+
+fn syntax_color(c: lux_syntax::theme::Color) -> [f32; 4] {
+    [
+        c.r as f32 / 255.0,
+        c.g as f32 / 255.0,
+        c.b as f32 / 255.0,
+        1.0,
     ]
 }

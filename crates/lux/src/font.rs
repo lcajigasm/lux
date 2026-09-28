@@ -9,14 +9,9 @@
 //! — the same bytes-registration path the test suite's bundled Ahem fixture
 //! already uses, just pointed at a real, legible system file instead.
 
-use std::path::Path;
+use std::path::PathBuf;
 
-/// Tried in order; the first path that exists and reads successfully wins.
-/// All are real macOS system fonts — this list is macOS-only by
-/// construction, a real, documented gap (not a silent one): there is no
-/// Windows or Linux environment on this machine to find or verify
-/// equivalent system font paths against, the same gap every other Phase 2
-/// deliverable this session has hit.
+#[cfg(target_os = "macos")]
 const MACOS_MONOSPACE_CANDIDATES: &[&str] = &[
     // San Francisco Mono: the actual system monospace font on modern macOS.
     "/System/Library/Fonts/SFNSMono.ttf",
@@ -25,15 +20,53 @@ const MACOS_MONOSPACE_CANDIDATES: &[&str] = &[
     "/System/Library/Fonts/Supplemental/Andale Mono.ttf",
 ];
 
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+const LINUX_MONOSPACE_CANDIDATES: &[&str] = &[
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationMono-Regular.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+    "/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf",
+    "/run/current-system/sw/share/X11/fonts/TTF/DejaVuSansMono.ttf",
+];
+
+fn candidates() -> Vec<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        MACOS_MONOSPACE_CANDIDATES
+            .iter()
+            .map(PathBuf::from)
+            .collect()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let fonts = std::env::var_os("WINDIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+            .join("Fonts");
+        ["consola.ttf", "lucon.ttf", "cour.ttf"]
+            .into_iter()
+            .map(|name| fonts.join(name))
+            .collect()
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        LINUX_MONOSPACE_CANDIDATES
+            .iter()
+            .map(PathBuf::from)
+            .collect()
+    }
+}
+
 /// Returns the first candidate's raw bytes that actually exists and reads
 /// successfully, along with the path it came from (for the window title and
 /// startup log). `None` only if every candidate is missing — a real,
 /// reportable failure, not a silent fallback to nothing.
 pub fn load_system_monospace_font() -> Option<(String, Vec<u8>)> {
-    MACOS_MONOSPACE_CANDIDATES.iter().find_map(|path| {
-        std::fs::read(Path::new(path))
+    candidates().into_iter().find_map(|path| {
+        std::fs::read(&path)
             .ok()
-            .map(|bytes| (path.to_string(), bytes))
+            .filter(|bytes| swash::FontRef::from_index(bytes, 0).is_some())
+            .map(|bytes| (path.display().to_string(), bytes))
     })
 }
 
@@ -42,7 +75,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_real_macos_system_monospace_font_is_found_and_parses() {
+    fn a_real_system_monospace_font_is_found_and_parses() {
         let Some((path, bytes)) = load_system_monospace_font() else {
             // Not this crate's bug: same "no environment to verify against"
             // gap as every cross-platform check this session has hit.

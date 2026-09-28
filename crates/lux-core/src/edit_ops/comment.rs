@@ -55,8 +55,6 @@ pub fn toggle_line_comment(
             edits.push(edit);
         }
     }
-    edits.reverse();
-
     // Comment/uncomment shifts char offsets per-line in a way that isn't
     // worth tracking precisely (unlike indent's uniform shift, each line's
     // delta depends on whether it already had a comment and any variable
@@ -179,6 +177,21 @@ mod tests {
         let (_, sel) = toggle_line_comment(&mut buffer, sel, "//");
         toggle_line_comment(&mut buffer, sel, "//");
         assert_eq!(buffer.text(), original);
+    }
+
+    #[test]
+    fn multiline_line_comment_edits_are_replayable_and_undoable() {
+        use crate::history::Transaction;
+
+        let mut buffer = Buffer::from_bytes(b"a\nb\n").unwrap();
+        let before = range_at(&buffer, 0, 3);
+        let (edits, after) = toggle_line_comment(&mut buffer, before, "//");
+        let transaction = Transaction::new(edits, vec![before], vec![after]);
+        assert_eq!(buffer.text(), "// a\n// b\n");
+        transaction.undo(&mut buffer);
+        assert_eq!(buffer.text(), "a\nb\n");
+        transaction.apply(&mut buffer);
+        assert_eq!(buffer.text(), "// a\n// b\n");
     }
 
     #[test]

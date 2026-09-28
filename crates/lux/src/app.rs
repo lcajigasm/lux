@@ -5,15 +5,15 @@
 
 use std::time::{Duration, Instant};
 
-use accesskit::TreeUpdate;
+use accesskit::{ActionData, TreeUpdate};
 use lux_core::buffer::Buffer;
 use lux_core::history::History;
 use lux_core::multicursor::MultiCursor;
 use lux_core::position::Position;
 use lux_core::selection::Selection;
 use lux_platform::{
-    Ime, ImeComposition, ImeUpdate, Modifiers, PlatformContext, PlatformEvent,
-    PlatformEventHandler, PlatformWindow, WindowId,
+    ElementState, Ime, ImeComposition, ImeUpdate, Modifiers, MouseButton, PlatformContext,
+    PlatformEvent, PlatformEventHandler, PlatformWindow, WindowId,
 };
 use lux_render::{GlyphAtlas, GpuContext, QuadPipeline, RepaintScheduler, Surface, TextPipeline};
 use lux_ui::Chrome;
@@ -43,17 +43,28 @@ pub(crate) struct GpuWindow {
     pub(crate) text: TextPipeline,
 }
 
+pub(crate) struct MouseState {
+    pub(crate) position: dpi::PhysicalPosition<f64>,
+    pub(crate) selection_anchor: Option<Position>,
+}
+
+pub(crate) struct SyntaxState {
+    pub(crate) document: Option<lux_syntax::Document>,
+    pub(crate) source: String,
+    pub(crate) theme: &'static lux_syntax::theme::SyntaxTheme,
+}
+
 pub(crate) struct App {
     pub(crate) scale_factor: f32,
     pub(crate) presentation: crate::presentation::Presentation,
     pub(crate) documents: crate::document::Documents,
     pub(crate) editor_view: EditorView,
     /// Built exactly once from leaked, process-lifetime font bytes and
-    /// reused for every frame. `swash::FontRef::key` is a global,
+    /// reused for every frame. The swash font key is a global
     /// per-call-incrementing counter, not derived from the font's content
-    /// (see `swash::cache::CacheKey::new`) — calling `FontRef::from_index`
-    /// again on every redraw, even on the *same* bytes, would mint a fresh
-    /// key each time, so every `GlyphKey` built from it would miss the
+    /// (see swash cache CacheKey) — calling FontRef from index
+    /// again on every redraw, even on the same bytes, would mint a fresh
+    /// key each time, so every GlyphKey built from it would miss the
     /// atlas cache every single frame (constant needless re-rasterization
     /// and eviction churn — a real, confirmed bug this field exists to fix,
     /// not a hypothetical one).
@@ -63,6 +74,8 @@ pub(crate) struct App {
     pub(crate) goal_columns: Vec<usize>,
     pub(crate) history: History,
     pub(crate) modifiers: Modifiers,
+    pub(crate) mouse: MouseState,
+    pub(crate) accessibility_active: bool,
     pub(crate) viewport: Viewport,
     pub(crate) scheduler: RepaintScheduler,
     pub(crate) ime: ImeComposition,
@@ -72,6 +85,9 @@ pub(crate) struct App {
     pub(crate) scale_cx: ScaleContext,
     pub(crate) gpu_window: Option<GpuWindow>,
     pub(crate) chrome: Chrome,
+    pub(crate) keymap: lux_config::Keymap,
+    pub(crate) snippet_session: Option<lux_core::snippets::SnippetSession>,
+    pub(crate) syntax: Option<SyntaxState>,
 }
 
 impl App {
@@ -98,10 +114,21 @@ impl App {
         let buffer = Buffer::from_bytes(b"").expect("empty document decodes");
         let cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
 
+        let mut documents = crate::document::Documents::default();
+        if let Some(first) = Self::recoverable_documents().first() {
+            documents.message = Some(format!(
+                "Unsaved recovery session available: {}",
+                first
+                    .file_name()
+                    .unwrap_or(first.as_os_str())
+                    .to_string_lossy()
+            ));
+        }
+
         Self {
             scale_factor: 1.0,
             presentation: Default::default(),
-            documents: crate::document::Documents::default(),
+            documents,
             editor_view,
             font,
             buffer,
@@ -109,6 +136,11 @@ impl App {
             goal_columns: vec![0],
             history: History::new(),
             modifiers: Modifiers::default(),
+            mouse: MouseState {
+                position: dpi::PhysicalPosition::new(0.0, 0.0),
+                selection_anchor: None,
+            },
+            accessibility_active: false,
             viewport: Viewport {
                 width: 1000.0,
                 height: 700.0,
@@ -123,6 +155,9 @@ impl App {
             scale_cx: ScaleContext::new(),
             gpu_window: None,
             chrome: Chrome::default(),
+            keymap: lux_config::keymap::presets::sublime(),
+            snippet_session: None,
+            syntax: None,
         }
     }
 
@@ -152,6 +187,53 @@ impl App {
             buffer,
             cursors,
         )
+    }
+
+    pub(crate) fn refresh_accessibility(&mut self) {
+        if !self.accessibility_active {
+            return;
+        }
+        let update = self.build_accessibility_tree();
+        if let Some(gpu_window) = &self.gpu_window {
+            gpu_window.window.update_accessibility_tree(update);
+        }
+    }
+
+    pub(crate) fn update_syntax_on_open(&mut self) {
+        if self.buffer.is_huge_file_mode() {
+            self.syntax = None;
+            return;
+        }
+        let language = self.documents.path.as_ref().and_then(|p| {
+            p.extension()
+                .and_then(|ext| ext.to_str())
+                .and_then(lux_syntax::LanguageId::from_extension)
+        });
+        if let Some(lang) = language {
+            let source = self.buffer.text();
+            let mut doc = lux_syntax::Document::new(lang);
+            doc.set_text(&source);
+            self.syntax = Some(SyntaxState {
+                document: Some(doc),
+                source,
+                theme: &lux_syntax::theme::LUX_DARK,
+            });
+        } else {
+            self.syntax = None;
+        }
+    }
+
+    pub(crate) fn sync_syntax_on_edit(&mut self) {
+        if self.buffer.is_huge_file_mode() {
+            self.syntax = None;
+            return;
+        }
+        if let Some(syntax) = &mut self.syntax {
+            syntax.source = self.buffer.text();
+            if let Some(doc) = &mut syntax.document {
+                doc.set_text(&syntax.source);
+            }
+        }
     }
 }
 
@@ -212,17 +294,23 @@ impl PlatformEventHandler for App {
             }
             PlatformEvent::Keyboard(key_event) => {
                 if !self.document_key(ctx, &key_event) {
-                    self.handle_key(&key_event);
+                    self.handle_key_with_clipboard(&key_event, Some(ctx.clipboard()));
                 }
+                self.save_recovery_snapshot();
                 self.update_document_title();
+                self.refresh_accessibility();
                 if let Some(gpu_window) = &self.gpu_window {
                     gpu_window.window.request_redraw();
                 }
             }
             PlatformEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers,
-            PlatformEvent::Focused(false) => self.modifiers = Modifiers::default(),
+            PlatformEvent::Focused(false) => {
+                self.modifiers = Modifiers::default();
+                self.mouse.selection_anchor = None;
+            }
             PlatformEvent::Ime(ime_event) => {
                 self.apply_ime(ime_event);
+                self.refresh_accessibility();
                 if let Some(gpu_window) = &self.gpu_window {
                     gpu_window.window.request_redraw();
                 }
@@ -230,20 +318,52 @@ impl PlatformEventHandler for App {
             PlatformEvent::MouseWheel(delta) => {
                 self.scroll(delta);
             }
+            PlatformEvent::MouseMoved(position) => {
+                self.mouse.position = position;
+                if self.mouse.selection_anchor.is_some() {
+                    self.update_mouse_selection();
+                    self.refresh_accessibility();
+                    if let Some(gpu_window) = &self.gpu_window {
+                        gpu_window.window.request_redraw();
+                    }
+                }
+            }
+            PlatformEvent::MouseButton {
+                button: MouseButton::Left,
+                state,
+            } => {
+                if state == ElementState::Pressed {
+                    self.begin_mouse_selection();
+                } else {
+                    self.mouse.selection_anchor = None;
+                }
+                self.refresh_accessibility();
+                if let Some(gpu_window) = &self.gpu_window {
+                    gpu_window.window.request_redraw();
+                }
+            }
             PlatformEvent::AccessibilityInitialTreeRequested => {
+                self.accessibility_active = true;
                 let update = self.build_accessibility_tree();
                 if let Some(gpu_window) = &self.gpu_window {
                     gpu_window.window.update_accessibility_tree(update);
                 }
             }
-            PlatformEvent::AccessibilityActionRequested(_request) => {
-                // No editable accessibility actions (set-selection, etc.)
-                // are wired to real buffer mutation yet — a real, flagged
-                // gap for a future pass, not silently ignored: screen
-                // readers can still read content/cursor/selection today,
-                // just not drive them from this path.
+            PlatformEvent::AccessibilityActionRequested(request) => {
+                if let Some(ActionData::SetTextSelection(selection)) = request.data
+                    && let Some(selection) = self
+                        .editor_view
+                        .selection_from_accessibility(&self.buffer, selection)
+                {
+                    self.cursors = MultiCursor::new(selection);
+                    self.reset_goal_columns();
+                    self.refresh_accessibility();
+                    if let Some(gpu_window) = &self.gpu_window {
+                        gpu_window.window.request_redraw();
+                    }
+                }
             }
-            PlatformEvent::AccessibilityDeactivated => {}
+            PlatformEvent::AccessibilityDeactivated => self.accessibility_active = false,
             _ => {}
         }
     }
