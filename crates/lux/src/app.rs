@@ -29,6 +29,10 @@ pub(crate) const ATLAS_SIDE: u32 = 1024;
 /// gutter *numbers* aren't painted yet (a real, flagged gap: they need
 /// their own shaping pass; see the receipt), only their reserved width.
 pub(crate) const TEXT_LEFT_PADDING: f32 = 8.0;
+pub(crate) const TAB_BAR_HEIGHT: f32 = 32.0;
+pub(crate) const TAB_MIN_WIDTH: f32 = 120.0;
+pub(crate) const TAB_MAX_WIDTH: f32 = 200.0;
+pub(crate) const TAB_CLOSE_BTN_WIDTH: f32 = 24.0;
 
 /// Everything that needs a live GPU device/surface/window — created once,
 /// in `resumed`, and gone if the app is ever suspended (desktop never
@@ -143,7 +147,7 @@ impl App {
             accessibility_active: false,
             viewport: Viewport {
                 width: 1000.0,
-                height: 700.0,
+                height: 700.0 - TAB_BAR_HEIGHT,
                 scroll_x: 0.0,
                 scroll_y: 0.0,
             },
@@ -234,6 +238,53 @@ impl App {
                 doc.set_text(&syntax.source);
             }
         }
+    }
+
+    pub(crate) fn tab_bar_height(&self) -> f32 {
+        TAB_BAR_HEIGHT * self.scale_factor
+    }
+
+    pub(crate) fn tab_width(&self) -> f32 {
+        let count = self.documents.tabs.tabs().len().max(1) as f32;
+        let per_tab = self.viewport.width / count;
+        per_tab.clamp(
+            TAB_MIN_WIDTH * self.scale_factor,
+            TAB_MAX_WIDTH * self.scale_factor,
+        )
+    }
+
+    pub(crate) fn handle_mouse_click_on_chrome(
+        &mut self,
+        ctx: &dyn PlatformContext,
+        button: MouseButton,
+    ) -> bool {
+        let mouse_y = self.mouse.position.y as f32;
+        if mouse_y >= self.tab_bar_height() {
+            return false;
+        }
+        let mouse_x = self.mouse.position.x as f32;
+        let tab_w = self.tab_width();
+        let tabs = self.documents.tabs.tabs().to_vec();
+        let tab_idx = (mouse_x / tab_w) as usize;
+        if let Some(tab) = tabs.get(tab_idx) {
+            let tab_x = tab_idx as f32 * tab_w;
+            let close_w = TAB_CLOSE_BTN_WIDTH * self.scale_factor;
+            let on_close = mouse_x >= tab_x + tab_w - close_w;
+            match button {
+                MouseButton::Left => {
+                    if on_close {
+                        self.close_tab(ctx, tab.id);
+                    } else {
+                        self.switch_to_tab(tab.id);
+                    }
+                }
+                MouseButton::Middle => {
+                    self.close_tab(ctx, tab.id);
+                }
+                _ => {}
+            }
+        }
+        true
     }
 }
 
@@ -328,13 +379,14 @@ impl PlatformEventHandler for App {
                     }
                 }
             }
-            PlatformEvent::MouseButton {
-                button: MouseButton::Left,
-                state,
-            } => {
+            PlatformEvent::MouseButton { button, state } => {
                 if state == ElementState::Pressed {
-                    self.begin_mouse_selection();
-                } else {
+                    if !self.handle_mouse_click_on_chrome(ctx, button)
+                        && button == MouseButton::Left
+                    {
+                        self.begin_mouse_selection();
+                    }
+                } else if button == MouseButton::Left {
                     self.mouse.selection_anchor = None;
                 }
                 self.refresh_accessibility();

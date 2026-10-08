@@ -120,7 +120,7 @@ fn should_coalesce(prev: &Transaction, next: &Transaction) -> bool {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct History {
     undo_stack: Vec<HistoryEntry>,
     redo_stack: Vec<HistoryEntry>,
@@ -128,7 +128,7 @@ pub struct History {
     next_state: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct HistoryEntry {
     transaction: Transaction,
     before: u64,

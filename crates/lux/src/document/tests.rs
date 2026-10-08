@@ -1,5 +1,9 @@
 use super::*;
-use lux_platform::{Clipboard, PlatformError, PlatformWindow, WindowAttributes};
+use lux_platform::dialog::SaveDecision;
+use lux_platform::{
+    Clipboard, FileDialogOptions, FileDialogs, MouseButton, PlatformError, PlatformWindow,
+    WindowAttributes,
+};
 use std::cell::Cell;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -270,4 +274,163 @@ fn open_rejects_binary_and_enforces_large_file_readonly() {
     app.insert_at_cursor("blocked");
     assert_eq!(app.buffer.len_chars(), chars);
     assert!(!app.document_dirty());
+}
+
+#[test]
+fn opening_second_file_creates_new_tab_and_switching_preserves_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let file1 = dir.path().join("file1.txt");
+    let file2 = dir.path().join("file2.txt");
+    std::fs::write(&file1, "content 1").unwrap();
+    std::fs::write(&file2, "content 2").unwrap();
+
+    let ctx = Context::new(None, None, SaveDecision::Discard);
+    let mut app = app();
+
+    // First file replaces the empty untitled tab
+    app.request_document(&ctx, Request::Open(Some(file1.clone())));
+    ctx.complete(&mut app);
+    assert_eq!(app.documents.tabs.tabs().len(), 1);
+    assert_eq!(app.buffer.text(), "content 1");
+    let tab1_id = app.documents.active_tab.unwrap();
+
+    // Edit file 1
+    app.insert_at_cursor("prefix ");
+    assert_eq!(app.buffer.text(), "prefix content 1");
+    assert!(app.document_dirty());
+
+    // Open second file -> creates a new tab
+    app.request_document(&ctx, Request::Open(Some(file2.clone())));
+    ctx.complete(&mut app);
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+    assert_eq!(app.buffer.text(), "content 2");
+    let tab2_id = app.documents.active_tab.unwrap();
+    assert_ne!(tab1_id, tab2_id);
+
+    // Switch to tab 1 -> restores edits, dirty state, buffer
+    assert!(app.switch_to_tab(tab1_id));
+    assert_eq!(app.documents.active_tab, Some(tab1_id));
+    assert_eq!(app.buffer.text(), "prefix content 1");
+    assert!(app.document_dirty());
+
+    // Switch to next tab (tab 2)
+    assert!(app.switch_to_next_tab());
+    assert_eq!(app.documents.active_tab, Some(tab2_id));
+    assert_eq!(app.buffer.text(), "content 2");
+    assert!(!app.document_dirty());
+
+    // Switch to prev tab (tab 1)
+    assert!(app.switch_to_prev_tab());
+    assert_eq!(app.documents.active_tab, Some(tab1_id));
+    assert_eq!(app.buffer.text(), "prefix content 1");
+}
+
+#[test]
+fn opening_already_opened_file_switches_to_existing_tab() {
+    let dir = tempfile::tempdir().unwrap();
+    let file1 = dir.path().join("a.rs");
+    let file2 = dir.path().join("b.rs");
+    std::fs::write(&file1, "fn a() {}").unwrap();
+    std::fs::write(&file2, "fn b() {}").unwrap();
+
+    let ctx = Context::new(None, None, SaveDecision::Discard);
+    let mut app = app();
+
+    app.request_document(&ctx, Request::Open(Some(file1.clone())));
+    ctx.complete(&mut app);
+    let tab1_id = app.documents.active_tab.unwrap();
+
+    app.request_document(&ctx, Request::Open(Some(file2.clone())));
+    ctx.complete(&mut app);
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+
+    // Reopen file 1 -> should activate tab 1 without adding a 3rd tab
+    app.request_document(&ctx, Request::Open(Some(file1.clone())));
+    ctx.complete(&mut app);
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+    assert_eq!(app.documents.active_tab, Some(tab1_id));
+    assert_eq!(app.buffer.text(), "fn a() {}");
+}
+
+#[test]
+fn closing_tab_with_multiple_open_does_not_exit_app_and_reopen_restores_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let file1 = dir.path().join("one.txt");
+    let file2 = dir.path().join("two.txt");
+    std::fs::write(&file1, "one").unwrap();
+    std::fs::write(&file2, "two").unwrap();
+
+    let ctx = Context::new(None, None, SaveDecision::Discard);
+    let mut app = app();
+
+    app.request_document(&ctx, Request::Open(Some(file1.clone())));
+    ctx.complete(&mut app);
+    let tab1_id = app.documents.active_tab.unwrap();
+
+    app.request_document(&ctx, Request::Open(Some(file2.clone())));
+    ctx.complete(&mut app);
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+
+    // Close tab 2 (active)
+    app.request_document(&ctx, Request::Close);
+    ctx.complete(&mut app);
+
+    // App must NOT have exited because tab 1 is still open
+    assert!(!ctx.exited.get());
+    assert_eq!(app.documents.tabs.tabs().len(), 1);
+    assert_eq!(app.documents.active_tab, Some(tab1_id));
+    assert_eq!(app.buffer.text(), "one");
+
+    // Reopening last closed tab restores tab 2
+    assert!(app.reopen_last_closed_tab());
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+    assert_eq!(app.buffer.text(), "two");
+}
+
+#[test]
+fn mouse_and_keyboard_tab_interactions() {
+    let dir = tempfile::tempdir().unwrap();
+    let file1 = dir.path().join("t1.txt");
+    let file2 = dir.path().join("t2.txt");
+    std::fs::write(&file1, "tab one").unwrap();
+    std::fs::write(&file2, "tab two").unwrap();
+
+    let ctx = Context::new(None, None, SaveDecision::Discard);
+    let mut app = app();
+    app.viewport.width = 800.0;
+
+    app.request_document(&ctx, Request::Open(Some(file1)));
+    ctx.complete(&mut app);
+    let tab1_id = app.documents.active_tab.unwrap();
+
+    app.request_document(&ctx, Request::Open(Some(file2)));
+    ctx.complete(&mut app);
+    let tab2_id = app.documents.active_tab.unwrap();
+    assert_eq!(app.documents.active_tab, Some(tab2_id));
+
+    // Mouse click on first tab (x = 10.0, y = 10.0 in tab bar)
+    app.mouse.position = dpi::PhysicalPosition::new(10.0, 10.0);
+    assert!(app.handle_mouse_click_on_chrome(&ctx, MouseButton::Left));
+    assert_eq!(app.documents.active_tab, Some(tab1_id));
+    assert_eq!(app.buffer.text(), "tab one");
+
+    // Middle click on second tab closes tab 2
+    let tab_w = app.tab_width();
+    app.mouse.position = dpi::PhysicalPosition::new((tab_w + 10.0) as f64, 10.0);
+    assert!(app.handle_mouse_click_on_chrome(&ctx, MouseButton::Middle));
+    assert_eq!(app.documents.tabs.tabs().len(), 1);
+    assert_eq!(app.documents.active_tab, Some(tab1_id));
+
+    // Keyboard shortcut to reopen last closed tab (Cmd/Ctrl+Shift+T)
+    let key_event = lux_platform::event::KeyEvent {
+        state: ElementState::Pressed,
+        key: Key::Character("t".into()),
+        text: None,
+        repeat: false,
+    };
+    app.modifiers.meta = true;
+    app.modifiers.shift = true;
+    assert!(app.document_key(&ctx, &key_event));
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+    assert_eq!(app.buffer.text(), "tab two");
 }

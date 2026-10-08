@@ -90,11 +90,12 @@ impl App {
     }
 
     fn position_at_mouse(&mut self) -> Position {
+        let local_y = (self.mouse.position.y as f32 - self.tab_bar_height()).max(0.0);
         self.editor_view.hit_test(
             &self.buffer,
             &self.viewport,
             self.mouse.position.x as f32,
-            self.mouse.position.y as f32,
+            local_y,
             crate::app::TEXT_LEFT_PADDING * self.scale_factor,
         )
     }

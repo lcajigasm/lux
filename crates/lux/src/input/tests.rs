@@ -225,14 +225,17 @@ fn altgr_text_is_not_swallowed_as_a_control_shortcut() {
 #[test]
 fn mouse_click_and_drag_create_a_directional_unicode_safe_selection() {
     let mut app = app("abc\n猫犬");
-    app.mouse.position = dpi::PhysicalPosition::new(10_000.0, LINE_HEIGHT as f64 + 1.0);
+    app.mouse.position = dpi::PhysicalPosition::new(
+        10_000.0,
+        app.tab_bar_height() as f64 + LINE_HEIGHT as f64 + 1.0,
+    );
     app.begin_mouse_selection();
     assert_eq!(
         app.cursors.primary().head,
         Position::document_end(&app.buffer)
     );
 
-    app.mouse.position = dpi::PhysicalPosition::new(0.0, 0.0);
+    app.mouse.position = dpi::PhysicalPosition::new(0.0, app.tab_bar_height() as f64);
     app.update_mouse_selection();
     let selection = app.cursors.primary();
     assert_eq!(selection.anchor, Position::document_end(&app.buffer));

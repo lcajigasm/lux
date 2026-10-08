@@ -4,14 +4,16 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 
+mod io;
+
+use io::{Outcome, Snapshot, execute, recovery_store};
 use lux_core::{
-    buffer::Buffer, history::History, huge_file::HugeFilePolicy, multicursor::MultiCursor,
-    position::Position, selection::Selection,
+    buffer::Buffer, history::History, multicursor::MultiCursor, position::Position,
+    selection::Selection,
 };
-use lux_platform::dialog::SaveDecision;
 use lux_platform::event::KeyEvent;
-use lux_platform::{ElementState, Key};
-use lux_platform::{FileDialogOptions, FileDialogs, ImeComposition, PlatformContext};
+use lux_platform::{ElementState, ImeComposition, Key, NamedKey, PlatformContext};
+use lux_ui::tabs::TabId;
 
 use crate::app::App;
 
@@ -28,11 +30,52 @@ struct Pending {
     version: u64,
 }
 
+#[derive(Clone)]
+pub(crate) struct DocumentEntry {
+    pub(crate) tab_id: TabId,
+    pub(crate) path: Option<PathBuf>,
+    pub(crate) buffer: Buffer,
+    pub(crate) cursors: MultiCursor,
+    pub(crate) goal_columns: Vec<usize>,
+    pub(crate) history: History,
+    pub(crate) saved_version: u64,
+    pub(crate) disk_snapshot: Option<Buffer>,
+    pub(crate) scroll_x: f32,
+    pub(crate) scroll_y: f32,
+    pub(crate) snippet_session: Option<lux_core::snippets::SnippetSession>,
+}
+
+impl DocumentEntry {
+    pub(crate) fn is_dirty(&self) -> bool {
+        self.history.state_id() != self.saved_version
+    }
+
+    pub(crate) fn new(tab_id: TabId, path: Option<PathBuf>, buffer: Buffer) -> Self {
+        let disk_snapshot = path.as_ref().map(|_| buffer.clone());
+        Self {
+            tab_id,
+            path,
+            disk_snapshot,
+            buffer,
+            cursors: MultiCursor::new(Selection::cursor(Position::document_start())),
+            goal_columns: vec![0],
+            history: History::new(),
+            saved_version: 0,
+            scroll_x: 0.0,
+            scroll_y: 0.0,
+            snippet_session: None,
+        }
+    }
+}
+
 pub(crate) struct Documents {
+    pub(crate) entries: Vec<DocumentEntry>,
+    pub(crate) active_tab: Option<TabId>,
+    pub(crate) closed_entries: Vec<DocumentEntry>,
     pub(crate) path: Option<PathBuf>,
     pub(crate) tabs: lux_ui::tabs::TabBar,
-    saved_version: u64,
-    disk_snapshot: Option<Buffer>,
+    pub(crate) saved_version: u64,
+    pub(crate) disk_snapshot: Option<Buffer>,
     pending: Option<Pending>,
     sender: Sender<Result<Outcome, String>>,
     receiver: Receiver<Result<Outcome, String>>,
@@ -44,9 +87,16 @@ pub(crate) struct Documents {
 impl Default for Documents {
     fn default() -> Self {
         let (sender, receiver) = mpsc::channel();
+        let mut tabs = lux_ui::tabs::TabBar::new();
+        let tab_id = tabs.open("Untitled");
+        let buffer = Buffer::from_bytes(b"").expect("empty document decodes");
+        let initial_entry = DocumentEntry::new(tab_id, None, buffer);
         Self {
+            entries: vec![initial_entry],
+            active_tab: Some(tab_id),
+            closed_entries: Vec::new(),
             path: None,
-            tabs: lux_ui::tabs::TabBar::new(),
+            tabs,
             saved_version: 0,
             disk_snapshot: None,
             pending: None,
@@ -57,22 +107,6 @@ impl Default for Documents {
             initial_path: None,
         }
     }
-}
-
-enum Outcome {
-    Cancelled,
-    Finished {
-        saved: Option<(PathBuf, Buffer)>,
-        opened: Option<(Option<PathBuf>, Buffer)>,
-        close: bool,
-    },
-}
-
-struct Snapshot {
-    buffer: Buffer,
-    path: Option<PathBuf>,
-    dirty: bool,
-    disk: Option<Buffer>,
 }
 
 impl App {
@@ -88,17 +122,31 @@ impl App {
     }
 
     pub(crate) fn document_key(&mut self, ctx: &dyn PlatformContext, event: &KeyEvent) -> bool {
+        if event.state != ElementState::Pressed || self.ime.is_composing() {
+            return false;
+        }
         let command = if cfg!(target_os = "macos") {
             self.modifiers.meta
         } else {
             self.modifiers.control && !self.modifiers.alt
         };
-        if !command || event.state != ElementState::Pressed || self.ime.is_composing() {
+        if (self.modifiers.control || command) && matches!(&event.key, Key::Named(NamedKey::Tab)) {
+            if self.modifiers.shift {
+                self.switch_to_prev_tab();
+            } else {
+                self.switch_to_next_tab();
+            }
+            return true;
+        }
+        if !command {
             return false;
         }
         let Key::Character(key) = &event.key else {
             return false;
         };
+        if self.modifiers.shift && key.eq_ignore_ascii_case("t") {
+            return self.reopen_last_closed_tab();
+        }
         let request = match key.to_lowercase().as_str() {
             "o" => Request::Open(None),
             "s" => Request::Save {
@@ -110,6 +158,138 @@ impl App {
         };
         self.request_document(ctx, request);
         true
+    }
+
+    pub(crate) fn sync_active_document_to_entry(&mut self) {
+        if let Some(active_id) = self.documents.active_tab {
+            if let Some(entry) = self
+                .documents
+                .entries
+                .iter_mut()
+                .find(|e| e.tab_id == active_id)
+            {
+                entry.path = self.documents.path.clone();
+                entry.buffer = self.buffer.clone();
+                entry.cursors = self.cursors.clone();
+                entry.goal_columns = self.goal_columns.clone();
+                entry.history = self.history.clone();
+                entry.saved_version = self.documents.saved_version;
+                entry.disk_snapshot = self.documents.disk_snapshot.clone();
+                entry.scroll_x = self.viewport.scroll_x;
+                entry.scroll_y = self.viewport.scroll_y;
+                entry.snippet_session = self.snippet_session.clone();
+            }
+        }
+    }
+
+    pub(crate) fn switch_to_tab(&mut self, target_id: TabId) -> bool {
+        if self.documents.active_tab == Some(target_id) {
+            return true;
+        }
+        self.sync_active_document_to_entry();
+        let Some(entry) = self
+            .documents
+            .entries
+            .iter()
+            .find(|e| e.tab_id == target_id)
+            .cloned()
+        else {
+            return false;
+        };
+        self.documents.active_tab = Some(target_id);
+        self.documents.tabs.activate(target_id);
+        self.documents.path = entry.path;
+        self.buffer = entry.buffer;
+        self.cursors = entry.cursors;
+        self.goal_columns = entry.goal_columns;
+        self.history = entry.history;
+        self.documents.saved_version = entry.saved_version;
+        self.documents.disk_snapshot = entry.disk_snapshot;
+        self.viewport.scroll_x = entry.scroll_x;
+        self.viewport.scroll_y = entry.scroll_y;
+        self.snippet_session = entry.snippet_session;
+        self.mouse.selection_anchor = None;
+        self.ime = ImeComposition::new();
+        self.reset_goal_columns();
+        self.update_syntax_on_open();
+        self.update_document_title();
+        self.refresh_accessibility();
+        self.scheduler.invalidate_all();
+        if let Some(gpu) = &self.gpu_window {
+            gpu.window.request_redraw();
+        }
+        true
+    }
+
+    pub(crate) fn cycle_tab(&mut self, forward: bool) -> bool {
+        let tabs = self.documents.tabs.tabs();
+        if tabs.len() <= 1 {
+            return false;
+        }
+        let Some(pos) = tabs
+            .iter()
+            .position(|t| Some(t.id) == self.documents.active_tab)
+        else {
+            return false;
+        };
+        let next = if forward {
+            (pos + 1) % tabs.len()
+        } else {
+            (pos + tabs.len() - 1) % tabs.len()
+        };
+        self.switch_to_tab(tabs[next].id)
+    }
+
+    pub(crate) fn switch_to_next_tab(&mut self) -> bool {
+        self.cycle_tab(true)
+    }
+
+    pub(crate) fn switch_to_prev_tab(&mut self) -> bool {
+        self.cycle_tab(false)
+    }
+
+    pub(crate) fn reopen_last_closed_tab(&mut self) -> bool {
+        let Some(reopened_id) = self.documents.tabs.reopen_last_closed() else {
+            return false;
+        };
+        let Some(mut entry) = self.documents.closed_entries.pop() else {
+            return false;
+        };
+        entry.tab_id = reopened_id;
+        self.documents.entries.push(entry);
+        self.switch_to_tab(reopened_id)
+    }
+
+    pub(crate) fn close_tab(&mut self, ctx: &dyn PlatformContext, target_id: TabId) {
+        if self.documents.active_tab == Some(target_id) {
+            self.request_document(ctx, Request::Close);
+            return;
+        }
+        let is_dirty = self
+            .documents
+            .entries
+            .iter()
+            .find(|e| e.tab_id == target_id)
+            .is_some_and(|e| e.is_dirty());
+        if is_dirty {
+            self.switch_to_tab(target_id);
+            self.request_document(ctx, Request::Close);
+        } else {
+            self.documents.tabs.close(target_id);
+            if let Some(pos) = self
+                .documents
+                .entries
+                .iter()
+                .position(|e| e.tab_id == target_id)
+            {
+                let removed = self.documents.entries.remove(pos);
+                self.documents.closed_entries.push(removed);
+            }
+            self.scheduler.invalidate_all();
+            if let Some(gpu) = &self.gpu_window {
+                gpu.window.request_redraw();
+            }
+        }
     }
 
     pub(crate) fn request_document(&mut self, ctx: &dyn PlatformContext, request: Request) {
@@ -159,9 +339,6 @@ impl App {
         let Some(pending) = self.documents.pending.take() else {
             return;
         };
-        // Native modal loops may occlude the surface without delivering a
-        // matching winit Occluded(false). Completion is an explicit reason
-        // to try acquisition again; if still hidden the GPU will say so.
         self.presentation.set_hidden(false);
         self.scheduler.invalidate_all();
         match outcome {
@@ -179,38 +356,94 @@ impl App {
                     if let Some(store) = recovery_store() {
                         let _ = store.clear(&path);
                     }
-                    self.documents.path = Some(path);
+                    self.documents.path = Some(path.clone());
                     self.documents.disk_snapshot = Some(snapshot);
                     self.documents.saved_version = pending.version;
+                    let title = path
+                        .file_name()
+                        .and_then(|f| f.to_str())
+                        .unwrap_or("Untitled");
+                    if let Some(id) = self.documents.active_tab {
+                        self.documents.tabs.set_title(id, title);
+                    }
+                    self.sync_active_document_to_entry();
                     self.update_syntax_on_open();
                 }
                 if let Some((path, buffer)) = opened {
-                    let title = path
-                        .as_ref()
-                        .and_then(|p| p.file_name())
-                        .and_then(|f| f.to_str())
-                        .unwrap_or("Untitled");
-                    self.documents.tabs.open(title);
-                    self.documents.disk_snapshot = path.as_ref().map(|_| buffer.clone());
-                    self.documents.path = path;
-                    self.buffer = buffer;
-                    self.history = History::new();
-                    self.documents.saved_version = 0;
-                    self.cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
-                    self.mouse.selection_anchor = None;
-                    self.snippet_session = None;
-                    self.ime = ImeComposition::new();
-                    self.viewport.scroll_x = 0.0;
-                    self.viewport.scroll_y = 0.0;
-                    self.reset_goal_columns();
-                    self.update_syntax_on_open();
+                    if let Some(ref p) = path
+                        && let Some(existing) = self
+                            .documents
+                            .entries
+                            .iter()
+                            .find(|e| e.path.as_ref() == Some(p))
+                    {
+                        let id = existing.tab_id;
+                        self.switch_to_tab(id);
+                    } else {
+                        let title = path
+                            .as_ref()
+                            .and_then(|p| p.file_name())
+                            .and_then(|f| f.to_str())
+                            .unwrap_or("Untitled");
+                        let is_untouched = self.documents.entries.len() == 1
+                            && self.documents.path.is_none()
+                            && !self.document_dirty()
+                            && self.buffer.text().is_empty();
+                        if is_untouched {
+                            let tab_id = self
+                                .documents
+                                .active_tab
+                                .unwrap_or_else(|| self.documents.tabs.open(title));
+                            self.documents.tabs.set_title(tab_id, title);
+                            self.documents.disk_snapshot = path.as_ref().map(|_| buffer.clone());
+                            self.documents.path = path;
+                            self.buffer = buffer;
+                            self.history = History::new();
+                            self.documents.saved_version = 0;
+                            self.cursors =
+                                MultiCursor::new(Selection::cursor(Position::document_start()));
+                            self.reset_goal_columns();
+                            self.mouse.selection_anchor = None;
+                            self.snippet_session = None;
+                            self.ime = ImeComposition::new();
+                            self.viewport.scroll_x = 0.0;
+                            self.viewport.scroll_y = 0.0;
+                            self.sync_active_document_to_entry();
+                            self.update_syntax_on_open();
+                        } else {
+                            self.sync_active_document_to_entry();
+                            let tab_id = self.documents.tabs.open(title);
+                            let entry = DocumentEntry::new(tab_id, path, buffer);
+                            self.documents.entries.push(entry);
+                            self.switch_to_tab(tab_id);
+                        }
+                    }
                 }
                 if close {
-                    if let Some(active) = self.documents.tabs.active() {
-                        let id = active.id;
-                        self.documents.tabs.close(id);
+                    if self.documents.tabs.tabs().len() > 1 {
+                        if let Some(active_id) = self.documents.active_tab {
+                            self.documents.tabs.close(active_id);
+                            if let Some(pos) = self
+                                .documents
+                                .entries
+                                .iter()
+                                .position(|e| e.tab_id == active_id)
+                            {
+                                let removed = self.documents.entries.remove(pos);
+                                self.documents.closed_entries.push(removed);
+                            }
+                            if let Some(new_active) = self.documents.tabs.active() {
+                                let new_id = new_active.id;
+                                self.documents.active_tab = None;
+                                self.switch_to_tab(new_id);
+                            }
+                        }
+                    } else {
+                        if let Some(active) = self.documents.tabs.active() {
+                            self.documents.tabs.close(active.id);
+                        }
+                        ctx.exit();
                     }
-                    ctx.exit();
                 } else if std::mem::take(&mut self.documents.close_when_idle) {
                     self.request_document(ctx, Request::Close);
                 }
@@ -251,132 +484,6 @@ impl App {
         gpu.window
             .set_title(&format!("{name}{dirty}{readonly} — Lux{status}"));
     }
-}
-
-fn save_snapshot(
-    snapshot: &Snapshot,
-    save_as: bool,
-    dialogs: &dyn FileDialogs,
-) -> Result<Option<(PathBuf, Buffer)>, String> {
-    if snapshot.buffer.is_huge_file_mode() {
-        return Err("Large file is read-only".into());
-    }
-    let path = if save_as || snapshot.path.is_none() {
-        dialogs.save_file(&FileDialogOptions {
-            title: Some("Save document".into()),
-            ..Default::default()
-        })
-    } else {
-        snapshot.path.clone()
-    };
-    let Some(path) = path else {
-        return Ok(None);
-    };
-    if snapshot.path.as_ref() == Some(&path)
-        && let Some(expected) = &snapshot.disk
-    {
-        let current = Buffer::open(&path)
-            .map_err(|e| format!("Cannot check {} before saving: {e}", path.display()))?;
-        if current.text() != expected.text() || current.encoding() != expected.encoding() {
-            return Err(
-                "File changed on disk; save to a different path to preserve both versions".into(),
-            );
-        }
-    }
-    snapshot
-        .buffer
-        .save(&path)
-        .map_err(|e| format!("Cannot save {}: {e}", path.display()))?;
-    if let Some(store) = recovery_store() {
-        let _ = store.clear(&path);
-    }
-    Ok(Some((path, snapshot.buffer.clone())))
-}
-
-fn execute(
-    request: Request,
-    snapshot: Snapshot,
-    dialogs: &dyn FileDialogs,
-) -> Result<Outcome, String> {
-    if let Request::Save { save_as } = request {
-        return Ok(match save_snapshot(&snapshot, save_as, dialogs)? {
-            Some(saved) => Outcome::Finished {
-                saved: Some(saved),
-                opened: None,
-                close: false,
-            },
-            None => Outcome::Cancelled,
-        });
-    }
-    let open_path = if let Request::Open(path) = &request {
-        let selected = path
-            .clone()
-            .or_else(|| dialogs.pick_file(&FileDialogOptions::default()));
-        let Some(path) = selected else {
-            return Ok(Outcome::Cancelled);
-        };
-        Some(path)
-    } else {
-        None
-    };
-    // Load before saving the old document: an invalid open must leave the
-    // old document and its on-disk baseline unchanged.
-    let mut opened = if let Some(path) = open_path {
-        let buffer = Buffer::open_with_policy(&path, HugeFilePolicy::default())
-            .map_err(|e| format!("Cannot open {}: {e}", path.display()))?;
-        Some((Some(path), buffer))
-    } else if matches!(request, Request::New) {
-        Some((
-            None,
-            Buffer::from_bytes(b"").expect("empty document decodes"),
-        ))
-    } else {
-        None
-    };
-    let mut saved = None;
-    if snapshot.dirty {
-        let name = snapshot
-            .path
-            .as_ref()
-            .map(|p| p.display().to_string())
-            .unwrap_or("Untitled".into());
-        match dialogs.confirm_save(&name) {
-            SaveDecision::Cancel => return Ok(Outcome::Cancelled),
-            SaveDecision::Discard => {}
-            SaveDecision::Save => {
-                saved = save_snapshot(&snapshot, false, dialogs)?;
-                if saved.is_none() {
-                    return Ok(Outcome::Cancelled);
-                }
-            }
-        }
-    }
-    // Reopening the document just saved (including a symlink alias) must
-    // display the saved snapshot, not the older pre-confirmation read.
-    if let (Some((saved_path, saved_buffer)), Some((Some(open_path), opened_buffer))) =
-        (&saved, &mut opened)
-        && let (Ok(saved_target), Ok(open_target)) = (
-            std::fs::canonicalize(saved_path),
-            std::fs::canonicalize(open_path),
-        )
-        && saved_target == open_target
-    {
-        *opened_buffer = saved_buffer.clone();
-    }
-    Ok(Outcome::Finished {
-        saved,
-        opened,
-        close: matches!(request, Request::Close),
-    })
-}
-
-fn recovery_store() -> Option<lux_workspace::session::RecoveryStore> {
-    let dir = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
-        .unwrap_or_else(std::env::temp_dir)
-        .join("lux");
-    Some(lux_workspace::session::RecoveryStore::new(dir))
 }
 
 impl App {

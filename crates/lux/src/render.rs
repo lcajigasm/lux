@@ -2,18 +2,16 @@
 //! Kept apart from `crate::app`'s event handling only to stay under the
 //! 600-line file limit — this is still `impl App`, just in its own file.
 
+mod paint;
+
 use std::time::Instant;
 
 use crate::presentation::Outcome;
 use dpi::{LogicalSize, PhysicalSize};
 use lux_platform::{PlatformContext, PlatformWindow, ScrollDelta, WindowAttributes};
-use lux_render::{
-    GlyphAtlas, GlyphInstance, GlyphKey, GpuContext, QuadInstance, QuadPipeline, Surface,
-    TextPipeline, TextRenderingMode,
-};
+use lux_render::{GpuContext, QuadInstance, QuadPipeline, Surface, TextPipeline};
 use lux_ui::Theme;
-use swash::FontRef;
-use wgpu::CurrentSurfaceTexture;
+use paint::{color, paint, push_glyph, syntax_color};
 
 use crate::app::{
     ATLAS_SIDE, App, BLINK_INTERVAL, FONT_SIZE, GpuWindow, LINE_HEIGHT, TEXT_LEFT_PADDING,
@@ -49,7 +47,7 @@ impl App {
         );
 
         self.viewport.width = size.width as f32;
-        self.viewport.height = size.height as f32;
+        self.viewport.height = (size.height as f32 - self.tab_bar_height()).max(1.0);
 
         let id = window.id();
         self.gpu_window = Some(GpuWindow {
@@ -67,6 +65,7 @@ impl App {
     pub(crate) fn resize(&mut self, size: PhysicalSize<u32>) {
         self.presentation
             .set_hidden(size.width == 0 || size.height == 0);
+        let tab_bar_height = self.tab_bar_height();
         let Some(gpu_window) = &mut self.gpu_window else {
             return;
         };
@@ -81,7 +80,7 @@ impl App {
             color(Theme::LUX_DARK.background),
         );
         self.viewport.width = size.width as f32;
-        self.viewport.height = size.height as f32;
+        self.viewport.height = (size.height as f32 - tab_bar_height).max(1.0);
         self.scheduler.invalidate_all();
         gpu_window.window.request_redraw();
     }
@@ -108,6 +107,11 @@ impl App {
         if !self.presentation.ready(Instant::now()) {
             return;
         }
+        let tab_bar_height = self.tab_bar_height();
+        let tab_width = self.tab_width();
+        let is_current_dirty = self.document_dirty();
+        let editor_top = tab_bar_height;
+
         let App {
             gpu_window,
             editor_view,
@@ -125,6 +129,7 @@ impl App {
             scale_factor,
             presentation,
             syntax,
+            documents,
             ..
         } = self;
         let Some(gpu_window) = gpu_window.as_mut() else {
@@ -142,7 +147,7 @@ impl App {
         let mut glyph_instances = Vec::new();
         let foreground = color(chrome.theme.foreground);
         for line in &frame.lines {
-            let y = line.index as f32 * line_height - viewport.scroll_y;
+            let y = editor_top + line.index as f32 * line_height - viewport.scroll_y;
             let line_start = buffer.line_start_byte(line.index).unwrap_or(0);
             let line_len = buffer.line_content(line.index).map_or(0, |c| c.len());
             let line_end = line_start + line_len;
@@ -180,15 +185,131 @@ impl App {
             }
         }
 
-        let mut quad_instances = vec![QuadInstance {
-            rect: [0.0, 0.0, viewport.width, viewport.height],
-            color: color(chrome.theme.background),
-        }];
+        let mut quad_instances = vec![
+            QuadInstance {
+                rect: [0.0, 0.0, viewport.width, tab_bar_height],
+                color: [0.055, 0.055, 0.075, 1.0],
+            },
+            QuadInstance {
+                rect: [0.0, tab_bar_height - stroke, viewport.width, stroke],
+                color: [0.15, 0.15, 0.20, 1.0],
+            },
+            QuadInstance {
+                rect: [0.0, editor_top, viewport.width, viewport.height],
+                color: color(chrome.theme.background),
+            },
+        ];
+
+        let tab_font_size = font_size * 0.82;
+        let family = editor_view.family().to_string();
+        let tab_style = lux_render::LineStyle {
+            family: &family,
+            font_size: tab_font_size,
+            ligatures: false,
+        };
+        let close_btn_w = crate::app::TAB_CLOSE_BTN_WIDTH * *scale_factor;
+        for (i, tab) in documents.tabs.tabs().iter().enumerate() {
+            let tab_x = i as f32 * tab_width;
+            let is_active = Some(tab.id) == documents.active_tab;
+            let tab_bg = if is_active {
+                color(chrome.theme.background)
+            } else {
+                [0.075, 0.075, 0.10, 1.0]
+            };
+            quad_instances.push(QuadInstance {
+                rect: [tab_x, 0.0, tab_width, tab_bar_height - stroke],
+                color: tab_bg,
+            });
+            if is_active {
+                quad_instances.push(QuadInstance {
+                    rect: [tab_x, 0.0, tab_width, 2.0 * stroke],
+                    color: color(chrome.theme.accent),
+                });
+            }
+            quad_instances.push(QuadInstance {
+                rect: [
+                    tab_x + tab_width - stroke,
+                    0.0,
+                    stroke,
+                    tab_bar_height - stroke,
+                ],
+                color: [0.15, 0.15, 0.20, 1.0],
+            });
+
+            let is_tab_dirty = if is_active {
+                is_current_dirty
+            } else {
+                documents
+                    .entries
+                    .iter()
+                    .find(|e| e.tab_id == tab.id)
+                    .is_some_and(|e| e.is_dirty())
+            };
+
+            let title_color = if is_active {
+                foreground
+            } else {
+                color(chrome.theme.muted)
+            };
+
+            let max_title_w = (tab_width - close_btn_w - 18.0 * stroke).max(0.0);
+            let layout = editor_view
+                .text_layout_mut()
+                .layout_line(&tab_style, &tab.title, &[]);
+            let title_y = (tab_bar_height - tab_font_size) * 0.5;
+            for cluster in layout.clusters() {
+                if cluster.x + 8.0 * stroke > max_title_w {
+                    break;
+                }
+                push_glyph(
+                    atlas,
+                    atlas_dirty,
+                    scale_cx,
+                    font,
+                    tab_font_size,
+                    &cluster,
+                    tab_x + 8.0 * stroke,
+                    title_y + layout.baseline(),
+                    title_color,
+                    &mut glyph_instances,
+                );
+            }
+
+            if is_tab_dirty {
+                let dot_size = 5.0 * stroke;
+                let dot_x = tab_x + tab_width - close_btn_w - dot_size - 2.0 * stroke;
+                let dot_y = (tab_bar_height - dot_size) * 0.5;
+                quad_instances.push(QuadInstance {
+                    rect: [dot_x, dot_y, dot_size, dot_size],
+                    color: color(chrome.theme.accent),
+                });
+            }
+
+            let close_layout = editor_view
+                .text_layout_mut()
+                .layout_line(&tab_style, "×", &[]);
+            let close_x = tab_x + tab_width - close_btn_w * 0.7;
+            for cluster in close_layout.clusters() {
+                push_glyph(
+                    atlas,
+                    atlas_dirty,
+                    scale_cx,
+                    font,
+                    tab_font_size,
+                    &cluster,
+                    close_x,
+                    title_y + close_layout.baseline(),
+                    color(chrome.theme.muted),
+                    &mut glyph_instances,
+                );
+            }
+        }
+
         for ruler_x in &frame.column_ruler_x {
             quad_instances.push(QuadInstance {
                 rect: [
                     text_left + ruler_x - viewport.scroll_x,
-                    0.0,
+                    editor_top,
                     stroke,
                     viewport.height,
                 ],
@@ -196,7 +317,7 @@ impl App {
             });
         }
         for line in &frame.lines {
-            let y = line.index as f32 * line_height - viewport.scroll_y;
+            let y = editor_top + line.index as f32 * line_height - viewport.scroll_y;
             for guide_x in &line.indent_guides {
                 quad_instances.push(QuadInstance {
                     rect: [
@@ -210,7 +331,7 @@ impl App {
             }
         }
         for selection in &frame.selections {
-            let y = selection.line as f32 * line_height - viewport.scroll_y;
+            let y = editor_top + selection.line as f32 * line_height - viewport.scroll_y;
             let width = (selection.x_end - selection.x_start).max(1.0);
             quad_instances.push(QuadInstance {
                 rect: [
@@ -226,7 +347,7 @@ impl App {
         let mut cursor_screen = None;
         for cursor_glyph in &frame.cursors {
             let x = text_left + cursor_glyph.x - viewport.scroll_x;
-            let y = cursor_glyph.line as f32 * line_height - viewport.scroll_y;
+            let y = editor_top + cursor_glyph.line as f32 * line_height - viewport.scroll_y;
             if cursor_glyph.primary {
                 cursor_screen = Some((x, y));
             }
@@ -314,175 +435,4 @@ impl App {
             ctx.request_wakeup(next_toggle);
         }
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn push_glyph(
-    atlas: &mut lux_render::GlyphAtlas,
-    atlas_dirty: &mut bool,
-    scale_cx: &mut swash::scale::ScaleContext,
-    font: FontRef,
-    font_size: f32,
-    cluster: &lux_render::ClusterGeometry,
-    origin_x: f32,
-    origin_y: f32,
-    color: [f32; 4],
-    out: &mut Vec<GlyphInstance>,
-) {
-    let Some(glyph_id) = cluster.glyph_id else {
-        return;
-    };
-    // TrueType/OpenType glyph indices are defined as 16-bit by the font
-    // format spec itself; `parley::Glyph::id` is a `u32` for API-level
-    // headroom, but no real font can produce a value this cast would
-    // truncate.
-    let key = GlyphKey::new(
-        font.key.value(),
-        glyph_id as u16,
-        font_size,
-        (origin_x + cluster.x).fract(),
-        TextRenderingMode::Subpixel,
-    );
-    let was_cached = atlas.is_cached(&key);
-    let Some(entry) = atlas.rasterize(scale_cx, font, key) else {
-        return; // no visible ink (e.g. a space) — nothing to draw
-    };
-    if !was_cached {
-        *atlas_dirty = true;
-    }
-    let side = ATLAS_SIDE as f32;
-    let uv = [
-        entry.atlas_x as f32 / side,
-        entry.atlas_y as f32 / side,
-        (entry.atlas_x + entry.width) as f32 / side,
-        (entry.atlas_y + entry.height) as f32 / side,
-    ];
-    out.push(GlyphInstance::new(
-        [
-            (origin_x + cluster.x).floor() + entry.left as f32,
-            origin_y.round() - entry.top as f32,
-            entry.width as f32,
-            entry.height as f32,
-        ],
-        uv,
-        color,
-        entry.kind,
-    ));
-}
-
-fn paint(
-    gpu_window: &mut GpuWindow,
-    quads: &[QuadInstance],
-    glyphs: &[GlyphInstance],
-    atlas: &GlyphAtlas,
-    background: [f32; 4],
-) -> Outcome {
-    let current = gpu_window.surface.acquire_frame();
-    let texture = match current {
-        CurrentSurfaceTexture::Success(t) | CurrentSurfaceTexture::Suboptimal(t) => t,
-        CurrentSurfaceTexture::Timeout => return Outcome::Retry,
-        CurrentSurfaceTexture::Occluded => return Outcome::Hidden,
-        CurrentSurfaceTexture::Outdated => {
-            gpu_window.surface.reconfigure(&gpu_window.gpu.device);
-            return Outcome::Retry;
-        }
-        CurrentSurfaceTexture::Lost => {
-            let size = gpu_window.window.inner_size();
-            let surface = match Surface::new(
-                &gpu_window.gpu.instance,
-                &gpu_window.gpu.adapter,
-                &gpu_window.gpu.device,
-                gpu_window.window,
-                size,
-            ) {
-                Ok(surface) => surface,
-                Err(error) => {
-                    eprintln!("Lux: cannot recreate rendering surface: {error}");
-                    return Outcome::Failed;
-                }
-            };
-            let format = surface.config().format;
-            gpu_window.surface = surface;
-            gpu_window.quads = QuadPipeline::new(&gpu_window.gpu.device, format);
-            gpu_window.text = TextPipeline::new(&gpu_window.gpu.device, format, ATLAS_SIDE);
-            gpu_window
-                .quads
-                .set_viewport_size(&gpu_window.gpu.queue, size.width, size.height);
-            gpu_window
-                .text
-                .set_globals(&gpu_window.gpu.queue, size.width, size.height, background);
-            gpu_window.text.upload_atlas(&gpu_window.gpu.queue, atlas);
-            return Outcome::Retry;
-        }
-        CurrentSurfaceTexture::Validation => {
-            eprintln!("Lux: surface acquisition failed validation");
-            return Outcome::Failed;
-        }
-    };
-    let view = texture
-        .texture
-        .create_view(&wgpu::TextureViewDescriptor::default());
-    let mut encoder = gpu_window
-        .gpu
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("lux frame"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        gpu_window.quads.draw(
-            &gpu_window.gpu.device,
-            &gpu_window.gpu.queue,
-            &mut pass,
-            quads,
-        );
-        gpu_window.text.draw(
-            &gpu_window.gpu.device,
-            &gpu_window.gpu.queue,
-            &mut pass,
-            glyphs,
-        );
-    }
-    gpu_window.window.pre_present_notify();
-    gpu_window.gpu.queue.submit(Some(encoder.finish()));
-    gpu_window.gpu.queue.present(texture);
-    Outcome::Presented
-}
-
-/// `Theme::Color`'s straight sRGB-space bytes, normalized to `0.0..=1.0` —
-/// matched consistently between the clear/background quad and the text
-/// pipeline's `background_color` uniform (what subpixel compositing mixes
-/// against), which is the only thing that actually has to agree; whether
-/// that number is *technically* linear or sRGB gamma doesn't change the
-/// internal consistency of that mix. A real gamma-correct pass is future
-/// polish, not a correctness bug this app hits today.
-fn color(c: lux_ui::Color) -> [f32; 4] {
-    [
-        c.r as f32 / 255.0,
-        c.g as f32 / 255.0,
-        c.b as f32 / 255.0,
-        c.a as f32 / 255.0,
-    ]
-}
-
-fn syntax_color(c: lux_syntax::theme::Color) -> [f32; 4] {
-    [
-        c.r as f32 / 255.0,
-        c.g as f32 / 255.0,
-        c.b as f32 / 255.0,
-        1.0,
-    ]
 }
