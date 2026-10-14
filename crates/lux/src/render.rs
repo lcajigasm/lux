@@ -2,101 +2,41 @@
 //! Kept apart from `crate::app`'s event handling only to stay under the
 //! 600-line file limit — this is still `impl App`, just in its own file.
 
+mod build;
+mod conflict;
+mod git;
+mod goto;
+mod language_picker;
+mod lsp;
+mod minimap;
+mod modals;
 mod paint;
+mod palette;
+mod plugin;
+mod project_picker;
+mod project_search;
+mod search;
+mod settings;
+mod sidebar;
+mod snippet_picker;
+mod split;
+mod status_bar;
+mod tab_bar;
+mod term;
+mod text;
+mod theme_picker;
+mod window;
 
 use std::time::Instant;
 
 use crate::presentation::Outcome;
-use dpi::{LogicalSize, PhysicalSize};
-use lux_platform::{PlatformContext, PlatformWindow, ScrollDelta, WindowAttributes};
-use lux_render::{GpuContext, QuadInstance, QuadPipeline, Surface, TextPipeline};
-use lux_ui::Theme;
-use paint::{color, paint, push_glyph, syntax_color};
+use lux_platform::PlatformContext;
+use lux_render::QuadInstance;
+use paint::{color, paint, push_glyph};
 
-use crate::app::{
-    ATLAS_SIDE, App, BLINK_INTERVAL, FONT_SIZE, GpuWindow, LINE_HEIGHT, TEXT_LEFT_PADDING,
-};
+use crate::app::{App, BLINK_INTERVAL, FONT_SIZE, LINE_HEIGHT, TEXT_LEFT_PADDING};
 
 impl App {
-    pub(crate) fn create_gpu_window(&mut self, ctx: &dyn PlatformContext) {
-        let window = ctx
-            .create_window(WindowAttributes {
-                title: "Lux".to_string(),
-                inner_size: Some(LogicalSize::new(1000.0, 700.0)),
-                ..Default::default()
-            })
-            .expect("failed to create the main window");
-        window.set_ime_allowed(true);
-        let window: &'static dyn PlatformWindow = Box::leak(window);
-
-        let size = window.inner_size();
-        self.set_display_scale(window.scale_factor());
-        let gpu = pollster::block_on(GpuContext::new(None))
-            .expect("a real GPU adapter must be available to run the Lux desktop app");
-        let surface = Surface::new(&gpu.instance, &gpu.adapter, &gpu.device, window, size)
-            .expect("failed to create the window's wgpu surface");
-        let format = surface.config().format;
-        let quads = QuadPipeline::new(&gpu.device, format);
-        let text = TextPipeline::new(&gpu.device, format, ATLAS_SIDE);
-        quads.set_viewport_size(&gpu.queue, size.width, size.height);
-        text.set_globals(
-            &gpu.queue,
-            size.width,
-            size.height,
-            color(Theme::LUX_DARK.background),
-        );
-
-        self.viewport.width = size.width as f32;
-        self.viewport.height = (size.height as f32 - self.tab_bar_height()).max(1.0);
-
-        let id = window.id();
-        self.gpu_window = Some(GpuWindow {
-            window,
-            id,
-            gpu,
-            surface,
-            quads,
-            text,
-        });
-        self.scheduler.invalidate_all();
-        window.request_redraw();
-    }
-
-    pub(crate) fn resize(&mut self, size: PhysicalSize<u32>) {
-        self.presentation
-            .set_hidden(size.width == 0 || size.height == 0);
-        let tab_bar_height = self.tab_bar_height();
-        let Some(gpu_window) = &mut self.gpu_window else {
-            return;
-        };
-        gpu_window.surface.resize(&gpu_window.gpu.device, size);
-        gpu_window
-            .quads
-            .set_viewport_size(&gpu_window.gpu.queue, size.width, size.height);
-        gpu_window.text.set_globals(
-            &gpu_window.gpu.queue,
-            size.width,
-            size.height,
-            color(Theme::LUX_DARK.background),
-        );
-        self.viewport.width = size.width as f32;
-        self.viewport.height = (size.height as f32 - tab_bar_height).max(1.0);
-        self.scheduler.invalidate_all();
-        gpu_window.window.request_redraw();
-    }
-
-    pub(crate) fn scroll(&mut self, delta: ScrollDelta) {
-        let dy = match delta {
-            ScrollDelta::Lines { y, .. } => y * LINE_HEIGHT * self.scale_factor,
-            ScrollDelta::Pixels(p) => p.y as f32,
-        };
-        self.viewport.scroll_y = (self.viewport.scroll_y - dy).max(0.0);
-        self.scheduler.invalidate_all();
-        if let Some(gpu_window) = &self.gpu_window {
-            gpu_window.window.request_redraw();
-        }
-    }
-
     /// Paints one real frame: shapes only the visible lines (virtualized,
     /// same as `EditorView`'s own tests verify), rasterizes every visible
     /// glyph through the real atlas, and draws the background, selection,
@@ -108,6 +48,7 @@ impl App {
             return;
         }
         let tab_bar_height = self.tab_bar_height();
+        let status_bar_height = self.status_bar_height();
         let tab_width = self.tab_width();
         let is_current_dirty = self.document_dirty();
         let editor_top = tab_bar_height;
@@ -122,14 +63,15 @@ impl App {
             scheduler,
             ime,
             start,
-            atlas,
-            atlas_dirty,
-            scale_cx,
+            atlas_state,
             chrome,
             scale_factor,
             presentation,
             syntax,
             documents,
+            ui,
+            fold_state,
+            bookmarks,
             ..
         } = self;
         let Some(gpu_window) = gpu_window.as_mut() else {
@@ -141,207 +83,147 @@ impl App {
         let stroke = *scale_factor;
 
         let elapsed = Instant::now().duration_since(*start);
-        let frame = editor_view.build_frame(buffer, cursors, viewport, elapsed);
-        let text_left = frame.gutter_width + TEXT_LEFT_PADDING * *scale_factor;
-
-        let mut glyph_instances = Vec::new();
-        let foreground = color(chrome.theme.foreground);
-        for line in &frame.lines {
-            let y = editor_top + line.index as f32 * line_height - viewport.scroll_y;
-            let line_start = buffer.line_start_byte(line.index).unwrap_or(0);
-            let line_len = buffer.line_content(line.index).map_or(0, |c| c.len());
-            let line_end = line_start + line_len;
-            let line_tokens = if let Some(syntax) = syntax.as_ref()
-                && let Some(doc) = &syntax.document
-            {
-                doc.highlight_range(&syntax.source, line_start..line_end)
-            } else {
-                Vec::new()
-            };
-
-            for cluster in line.layout.clusters() {
-                let abs_byte = line_start + cluster.byte_range.start;
-                let glyph_color = if let Some(syntax) = syntax.as_ref()
-                    && let Some(token) = line_tokens
-                        .iter()
-                        .find(|t| t.start_byte <= abs_byte && abs_byte < t.end_byte)
-                {
-                    syntax_color(syntax.theme.color_for_token(token))
-                } else {
-                    foreground
-                };
-                push_glyph(
-                    atlas,
-                    atlas_dirty,
-                    scale_cx,
-                    font,
-                    font_size,
-                    &cluster,
-                    text_left - viewport.scroll_x,
-                    y + line.layout.baseline(),
-                    glyph_color,
-                    &mut glyph_instances,
-                );
-            }
-        }
-
-        let mut quad_instances = vec![
-            QuadInstance {
-                rect: [0.0, 0.0, viewport.width, tab_bar_height],
-                color: [0.055, 0.055, 0.075, 1.0],
-            },
-            QuadInstance {
-                rect: [0.0, tab_bar_height - stroke, viewport.width, stroke],
-                color: [0.15, 0.15, 0.20, 1.0],
-            },
-            QuadInstance {
-                rect: [0.0, editor_top, viewport.width, viewport.height],
-                color: color(chrome.theme.background),
-            },
-        ];
-
-        let tab_font_size = font_size * 0.82;
-        let family = editor_view.family().to_string();
-        let tab_style = lux_render::LineStyle {
-            family: &family,
-            font_size: tab_font_size,
-            ligatures: false,
+        let frame = editor_view.build_frame(buffer, cursors, viewport, elapsed, Some(fold_state));
+        let is_df = ui.distraction_free.is_some();
+        let sidebar_width = if !is_df
+            && let Some(sidebar) = &ui.sidebar
+            && sidebar.visible
+            && sidebar.tree.is_some()
+        {
+            sidebar.width * *scale_factor
+        } else {
+            0.0
         };
-        let close_btn_w = crate::app::TAB_CLOSE_BTN_WIDTH * *scale_factor;
-        for (i, tab) in documents.tabs.tabs().iter().enumerate() {
-            let tab_x = i as f32 * tab_width;
-            let is_active = Some(tab.id) == documents.active_tab;
-            let tab_bg = if is_active {
-                color(chrome.theme.background)
-            } else {
-                [0.075, 0.075, 0.10, 1.0]
-            };
+        let window_width = sidebar_width + viewport.width;
+        let gutter_total_width = if is_df {
+            0.0
+        } else {
+            frame.gutter_width + 16.0 * *scale_factor
+        };
+        let text_left = if is_df {
+            let col_chars = ui
+                .distraction_free
+                .as_ref()
+                .map_or(80, |df| df.column_width_chars);
+            let char_width = editor_view.reference_width("0");
+            let content_width = char_width * col_chars as f32;
+            ((window_width - content_width) / 2.0).max(24.0 * *scale_factor)
+        } else {
+            sidebar_width + gutter_total_width + 6.0 * *scale_factor
+        };
+        let foreground = color(chrome.theme.foreground);
+
+        let mut quad_instances = Vec::new();
+        if tab_bar_height > 0.0 {
             quad_instances.push(QuadInstance {
-                rect: [tab_x, 0.0, tab_width, tab_bar_height - stroke],
-                color: tab_bg,
+                rect: [0.0, 0.0, window_width, tab_bar_height],
+                color: [0.055, 0.055, 0.075, 1.0],
             });
-            if is_active {
-                quad_instances.push(QuadInstance {
-                    rect: [tab_x, 0.0, tab_width, 2.0 * stroke],
-                    color: color(chrome.theme.accent),
-                });
-            }
             quad_instances.push(QuadInstance {
-                rect: [
-                    tab_x + tab_width - stroke,
-                    0.0,
-                    stroke,
-                    tab_bar_height - stroke,
-                ],
+                rect: [0.0, tab_bar_height - stroke, window_width, stroke],
                 color: [0.15, 0.15, 0.20, 1.0],
             });
-
-            let is_tab_dirty = if is_active {
-                is_current_dirty
-            } else {
-                documents
-                    .entries
-                    .iter()
-                    .find(|e| e.tab_id == tab.id)
-                    .is_some_and(|e| e.is_dirty())
-            };
-
-            let title_color = if is_active {
-                foreground
-            } else {
-                color(chrome.theme.muted)
-            };
-
-            let max_title_w = (tab_width - close_btn_w - 18.0 * stroke).max(0.0);
-            let layout = editor_view
-                .text_layout_mut()
-                .layout_line(&tab_style, &tab.title, &[]);
-            let title_y = (tab_bar_height - tab_font_size) * 0.5;
-            for cluster in layout.clusters() {
-                if cluster.x + 8.0 * stroke > max_title_w {
-                    break;
-                }
-                push_glyph(
-                    atlas,
-                    atlas_dirty,
-                    scale_cx,
-                    font,
-                    tab_font_size,
-                    &cluster,
-                    tab_x + 8.0 * stroke,
-                    title_y + layout.baseline(),
-                    title_color,
-                    &mut glyph_instances,
-                );
-            }
-
-            if is_tab_dirty {
-                let dot_size = 5.0 * stroke;
-                let dot_x = tab_x + tab_width - close_btn_w - dot_size - 2.0 * stroke;
-                let dot_y = (tab_bar_height - dot_size) * 0.5;
-                quad_instances.push(QuadInstance {
-                    rect: [dot_x, dot_y, dot_size, dot_size],
-                    color: color(chrome.theme.accent),
-                });
-            }
-
-            let close_layout = editor_view
-                .text_layout_mut()
-                .layout_line(&tab_style, "×", &[]);
-            let close_x = tab_x + tab_width - close_btn_w * 0.7;
-            for cluster in close_layout.clusters() {
-                push_glyph(
-                    atlas,
-                    atlas_dirty,
-                    scale_cx,
-                    font,
-                    tab_font_size,
-                    &cluster,
-                    close_x,
-                    title_y + close_layout.baseline(),
-                    color(chrome.theme.muted),
-                    &mut glyph_instances,
-                );
-            }
         }
-
-        for ruler_x in &frame.column_ruler_x {
+        quad_instances.push(QuadInstance {
+            rect: [sidebar_width, editor_top, viewport.width, viewport.height],
+            color: color(chrome.theme.background),
+        });
+        if gutter_total_width > 0.0 {
             quad_instances.push(QuadInstance {
                 rect: [
-                    text_left + ruler_x - viewport.scroll_x,
+                    sidebar_width,
+                    editor_top,
+                    gutter_total_width,
+                    viewport.height,
+                ],
+                color: [0.10, 0.10, 0.13, 1.0],
+            });
+            quad_instances.push(QuadInstance {
+                rect: [
+                    sidebar_width + gutter_total_width - stroke,
                     editor_top,
                     stroke,
                     viewport.height,
                 ],
-                color: color(chrome.theme.muted),
+                color: [0.18, 0.18, 0.22, 1.0],
             });
         }
-        for line in &frame.lines {
-            let y = editor_top + line.index as f32 * line_height - viewport.scroll_y;
-            for guide_x in &line.indent_guides {
-                quad_instances.push(QuadInstance {
-                    rect: [
-                        text_left + guide_x - viewport.scroll_x,
-                        y,
-                        stroke,
-                        line_height,
-                    ],
-                    color: color(chrome.theme.muted),
-                });
+
+        for cursor in &frame.cursors {
+            if cursor.primary {
+                let cur_y = editor_top + cursor.visual_row as f32 * line_height - viewport.scroll_y;
+                if cur_y >= editor_top && cur_y < editor_top + viewport.height {
+                    let h_x = if is_df {
+                        0.0
+                    } else {
+                        sidebar_width + gutter_total_width
+                    };
+                    let h_w = if is_df {
+                        window_width
+                    } else {
+                        viewport.width - gutter_total_width
+                    };
+                    quad_instances.push(QuadInstance {
+                        rect: [h_x, cur_y, h_w, line_height],
+                        color: [0.13, 0.13, 0.17, 0.6],
+                    });
+                }
             }
         }
-        for selection in &frame.selections {
-            let y = editor_top + selection.line as f32 * line_height - viewport.scroll_y;
-            let width = (selection.x_end - selection.x_start).max(1.0);
-            quad_instances.push(QuadInstance {
-                rect: [
-                    text_left + selection.x_start - viewport.scroll_x,
-                    y,
-                    width,
-                    line_height,
-                ],
-                color: color(chrome.theme.selection),
-            });
+
+        let mut glyph_instances = Vec::new();
+        text::render_text_lines(
+            &frame,
+            buffer,
+            syntax.as_ref(),
+            Some(bookmarks),
+            viewport,
+            editor_top,
+            line_height,
+            sidebar_width,
+            text_left,
+            stroke,
+            !is_df,
+            &chrome.theme,
+            atlas_state,
+            font,
+            font_size,
+            &mut quad_instances,
+            &mut glyph_instances,
+        );
+
+        if tab_bar_height > 0.0 {
+            tab_bar::render_tab_bar(
+                documents,
+                is_current_dirty,
+                sidebar_width,
+                tab_width,
+                tab_bar_height,
+                *scale_factor,
+                stroke,
+                font_size,
+                font,
+                editor_view,
+                &mut atlas_state.atlas,
+                &mut atlas_state.dirty,
+                &mut atlas_state.scale_cx,
+                &chrome.theme,
+                &mut quad_instances,
+                &mut glyph_instances,
+            );
+        }
+
+        if let Some(search_state) = &ui.search_bar {
+            search::render_search_matches(
+                search_state,
+                buffer,
+                editor_view,
+                viewport,
+                editor_top,
+                line_height,
+                TEXT_LEFT_PADDING * *scale_factor,
+                &mut quad_instances,
+            );
         }
 
         let mut cursor_screen = None;
@@ -374,9 +256,9 @@ impl App {
                 .layout_line(&style, &preedit_text, &[]);
             for cluster in layout.clusters() {
                 push_glyph(
-                    atlas,
-                    atlas_dirty,
-                    scale_cx,
+                    &mut atlas_state.atlas,
+                    &mut atlas_state.dirty,
+                    &mut atlas_state.scale_cx,
                     font,
                     font_size,
                     &cluster,
@@ -409,16 +291,242 @@ impl App {
             );
         }
 
-        if *atlas_dirty {
-            gpu_window.text.upload_atlas(&gpu_window.gpu.queue, atlas);
-            *atlas_dirty = false;
+        let window_height = viewport.height + tab_bar_height + status_bar_height;
+        let language_id = documents.language();
+
+        if let Some(search_state) = &mut ui.search_bar {
+            let search_bar_top = editor_top + viewport.height;
+            search::render_search_bar(
+                search_state,
+                viewport.width,
+                search_bar_top,
+                *scale_factor,
+                stroke,
+                font_size,
+                font,
+                editor_view,
+                &mut atlas_state.atlas,
+                &mut atlas_state.dirty,
+                &mut atlas_state.scale_cx,
+                &chrome.theme,
+                &mut quad_instances,
+                &mut glyph_instances,
+            );
+        }
+
+        if let Some(sidebar_state) = &mut ui.sidebar {
+            let search_bar_h = ui
+                .search_bar
+                .as_ref()
+                .map_or(0.0, |s| s.height(*scale_factor));
+            sidebar::render_sidebar(
+                sidebar_state,
+                sidebar_width,
+                tab_bar_height,
+                viewport.height + search_bar_h,
+                *scale_factor,
+                stroke,
+                font_size,
+                font,
+                editor_view,
+                &mut atlas_state.atlas,
+                &mut atlas_state.dirty,
+                &mut atlas_state.scale_cx,
+                &chrome.theme,
+                &mut quad_instances,
+                &mut glyph_instances,
+            );
+        }
+
+        if status_bar_height > 0.0 {
+            ui.status_bar.layout = status_bar::render_status_bar(
+                window_width,
+                window_height,
+                *scale_factor,
+                stroke,
+                font_size,
+                font,
+                editor_view,
+                &mut atlas_state.atlas,
+                &mut atlas_state.dirty,
+                &mut atlas_state.scale_cx,
+                &chrome.theme,
+                buffer,
+                cursors.primary().head,
+                language_id,
+                ui.macros.is_recording,
+                &mut quad_instances,
+                &mut glyph_instances,
+            );
+        } else {
+            ui.status_bar.layout = crate::status_bar::StatusBarLayout::default();
+        }
+
+        if !is_df {
+            let search_info = ui
+                .search_bar
+                .as_ref()
+                .map(|s| (s.search_bar.matches(), s.search_bar.current_index()));
+            minimap::render_minimap(
+                &ui.minimap,
+                buffer,
+                viewport,
+                window_width,
+                window_height,
+                tab_bar_height,
+                status_bar_height,
+                *scale_factor,
+                stroke,
+                line_height,
+                &chrome.theme,
+                Some(fold_state),
+                search_info,
+                &mut quad_instances,
+            );
+        }
+        modals::render_all_modals(
+            ui,
+            viewport,
+            window_width,
+            sidebar_width,
+            tab_bar_height,
+            *scale_factor,
+            stroke,
+            font_size,
+            font,
+            cursors,
+            &chrome.theme,
+            editor_view,
+            &mut atlas_state.atlas,
+            &mut atlas_state.dirty,
+            &mut atlas_state.scale_cx,
+            &mut quad_instances,
+            &mut glyph_instances,
+        );
+
+        git::render_git(
+            &mut ui.git,
+            &mut quad_instances,
+            &mut glyph_instances,
+            editor_view,
+            &mut atlas_state.atlas,
+            &mut atlas_state.dirty,
+            &mut atlas_state.scale_cx,
+            font,
+            sidebar_width,
+            frame.gutter_width,
+            viewport.width,
+            viewport.height,
+            editor_top,
+            line_height,
+            viewport.scroll_y,
+            *scale_factor,
+        );
+
+        if ui.split.is_active() {
+            split::render_split_layout(
+                &ui.split,
+                documents,
+                [sidebar_width, editor_top, viewport.width, viewport.height],
+                *scale_factor,
+                stroke,
+                font_size,
+                font,
+                editor_view,
+                &mut atlas_state.atlas,
+                &mut atlas_state.dirty,
+                &mut atlas_state.scale_cx,
+                &chrome.theme,
+                &mut quad_instances,
+                &mut glyph_instances,
+            );
+        }
+
+        let (cx, cy) = cursor_screen.unwrap_or((text_left, editor_top));
+        lsp::render_lsp(
+            &mut ui.lsp,
+            &mut quad_instances,
+            &mut glyph_instances,
+            editor_view,
+            &mut atlas_state.atlas,
+            &mut atlas_state.dirty,
+            &mut atlas_state.scale_cx,
+            font,
+            sidebar_width,
+            text_left,
+            viewport.width,
+            viewport.height,
+            editor_top,
+            line_height,
+            viewport.scroll_x,
+            viewport.scroll_y,
+            *scale_factor,
+            cx,
+            cy,
+        );
+
+        term::render_term(
+            &mut ui.term,
+            &mut quad_instances,
+            &mut glyph_instances,
+            editor_view,
+            &mut atlas_state.atlas,
+            &mut atlas_state.dirty,
+            &mut atlas_state.scale_cx,
+            font,
+            window_width,
+            gpu_window.window.inner_size().height as f32,
+            status_bar_height,
+            *scale_factor,
+            stroke,
+        );
+
+        plugin::render_plugin_modal(
+            &ui.plugin,
+            &mut quad_instances,
+            &mut glyph_instances,
+            editor_view,
+            &mut atlas_state.atlas,
+            &mut atlas_state.dirty,
+            &mut atlas_state.scale_cx,
+            font,
+            window_width,
+            gpu_window.window.inner_size().height as f32,
+            *scale_factor,
+            stroke,
+        );
+
+        if let Some(panel) = &ui.settings.panel {
+            settings::render_settings_panel(
+                panel,
+                &mut quad_instances,
+                &mut glyph_instances,
+                editor_view,
+                &mut atlas_state.atlas,
+                &mut atlas_state.dirty,
+                &mut atlas_state.scale_cx,
+                font,
+                window_width,
+                gpu_window.window.inner_size().height as f32,
+                tab_bar_height,
+                *scale_factor,
+                stroke,
+                &chrome.theme,
+            );
+        }
+
+        if atlas_state.dirty {
+            gpu_window
+                .text
+                .upload_atlas(&gpu_window.gpu.queue, &atlas_state.atlas);
+            atlas_state.dirty = false;
         }
 
         let outcome = paint(
             gpu_window,
             &quad_instances,
             &glyph_instances,
-            atlas,
+            &atlas_state.atlas,
             color(chrome.theme.background),
         );
         if let Some(at) = presentation.finish(outcome, scheduler, Instant::now()) {

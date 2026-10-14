@@ -20,6 +20,7 @@ pub struct SearchBar {
     query: Query,
     matches: Vec<Selection>,
     current: Option<usize>,
+    scope: Option<std::ops::Range<usize>>,
 }
 
 impl Default for SearchBar {
@@ -28,6 +29,7 @@ impl Default for SearchBar {
             query: Query::new(""),
             matches: Vec::new(),
             current: None,
+            scope: None,
         }
     }
 }
@@ -39,6 +41,21 @@ impl SearchBar {
 
     pub fn query(&self) -> &Query {
         &self.query
+    }
+
+    /// The optional search scope restricting matches to a character range.
+    pub fn scope(&self) -> Option<&std::ops::Range<usize>> {
+        self.scope.as_ref()
+    }
+
+    /// Sets or clears the search scope and refreshes matches against `buffer`.
+    pub fn set_scope(
+        &mut self,
+        buffer: &Buffer,
+        scope: Option<std::ops::Range<usize>>,
+    ) -> Result<(), QueryError> {
+        self.scope = scope;
+        self.refresh(buffer)
     }
 
     /// Every match of the current query, in document order — the set to
@@ -58,24 +75,41 @@ impl SearchBar {
     }
 
     /// Sets a new query and recomputes matches against `buffer`, starting
-    /// at the first match. On an invalid regex, returns the error and
-    /// leaves the previous query/matches untouched — typing an
-    /// as-yet-incomplete pattern (e.g. `"foo("`) shouldn't blank out the
-    /// last good result set.
+    /// at the first match.
     pub fn set_query(&mut self, buffer: &Buffer, query: Query) -> Result<(), QueryError> {
-        let matches = find_replace::find_all(buffer, &query)?;
+        self.set_query_scoped(buffer, query, self.scope.clone())
+    }
+
+    /// Sets a new query and explicit scope, recomputing matches against `buffer`.
+    pub fn set_query_scoped(
+        &mut self,
+        buffer: &Buffer,
+        query: Query,
+        scope: Option<std::ops::Range<usize>>,
+    ) -> Result<(), QueryError> {
+        let mut matches = find_replace::find_all(buffer, &query)?;
+        if let Some(ref range) = scope {
+            matches.retain(|m| {
+                let char_r = m.char_range();
+                char_r.start >= range.start && char_r.end <= range.end
+            });
+        }
         self.current = if matches.is_empty() { None } else { Some(0) };
         self.matches = matches;
         self.query = query;
+        self.scope = scope;
         Ok(())
     }
 
-    /// Recomputes matches for the current query against `buffer` — call
-    /// after any edit that isn't `replace_current`/`replace_all` (which
-    /// already do this) so highlights stay in sync. Keeps pointing at the
-    /// same index where possible, clamped to the new match count.
+    /// Recomputes matches for the current query against `buffer`.
     pub fn refresh(&mut self, buffer: &Buffer) -> Result<(), QueryError> {
-        let matches = find_replace::find_all(buffer, &self.query)?;
+        let mut matches = find_replace::find_all(buffer, &self.query)?;
+        if let Some(ref range) = self.scope {
+            matches.retain(|m| {
+                let char_r = m.char_range();
+                char_r.start >= range.start && char_r.end <= range.end
+            });
+        }
         self.current = if matches.is_empty() {
             None
         } else {
@@ -109,12 +143,7 @@ impl SearchBar {
         Some(self.matches[i])
     }
 
-    /// Replaces the current match, then refreshes. Since the replaced
-    /// occurrence drops out of the recomputed match list, every later
-    /// match shifts down one index — leaving `current`'s index unchanged
-    /// after the refresh naturally lands on what was the *next* match, so
-    /// repeated calls step through the buffer without extra bookkeeping.
-    /// `Ok(None)` if there's no current match to replace.
+    /// Replaces the current match, then refreshes.
     pub fn replace_current(
         &mut self,
         buffer: &mut Buffer,
@@ -130,14 +159,17 @@ impl SearchBar {
     }
 
     /// Replaces every match as one atomic, undoable transaction, then
-    /// refreshes (typically leaving no matches, unless `replacement`
-    /// itself matches the query).
+    /// refreshes.
     pub fn replace_all(
         &mut self,
         buffer: &mut Buffer,
         replacement: &str,
     ) -> Result<Transaction, QueryError> {
-        let transaction = find_replace::replace_all(buffer, &self.query, replacement)?;
+        let transaction = if self.scope.is_some() {
+            find_replace::replace_matches(buffer, &self.query, &self.matches, replacement)?
+        } else {
+            find_replace::replace_all(buffer, &self.query, replacement)?
+        };
         self.refresh(buffer)?;
         Ok(transaction)
     }
@@ -279,5 +311,19 @@ mod tests {
         assert_eq!(buffer.text(), "dog bat dog");
         assert!(bar.matches().is_empty());
         assert_eq!(bar.current(), None);
+    }
+
+    #[test]
+    fn scoped_search_and_replace() {
+        let mut buffer = Buffer::from_bytes(b"cat cat cat cat").unwrap();
+        let mut bar = SearchBar::new();
+        // Restrict scope to characters 4..12 ("cat cat ")
+        bar.set_query_scoped(&buffer, Query::new("cat"), Some(4..12))
+            .unwrap();
+        assert_eq!(bar.matches().len(), 2);
+        assert_eq!(ranges(&bar), vec![4..7, 8..11]);
+
+        bar.replace_all(&mut buffer, "dog").unwrap();
+        assert_eq!(buffer.text(), "cat dog dog cat");
     }
 }

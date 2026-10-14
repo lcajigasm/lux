@@ -49,8 +49,26 @@ impl App {
                 }
                 ArrowLeft => movement::move_char_left(&self.buffer, pos),
                 ArrowRight => movement::move_char_right(&self.buffer, pos),
-                ArrowUp => movement::move_line_up(&self.buffer, pos, goal),
-                ArrowDown => movement::move_line_down(&self.buffer, pos, goal),
+                ArrowUp => {
+                    let target = movement::move_line_up(&self.buffer, pos, goal);
+                    if self.fold_state.is_line_hidden(target.line) {
+                        let visible = self.fold_state.prev_visible_line(pos.line);
+                        movement::position_at_line_column(&self.buffer, visible, goal)
+                    } else {
+                        target
+                    }
+                }
+                ArrowDown => {
+                    let target = movement::move_line_down(&self.buffer, pos, goal);
+                    if self.fold_state.is_line_hidden(target.line) {
+                        let visible = self
+                            .fold_state
+                            .next_visible_line(pos.line, self.buffer.len_lines());
+                        movement::position_at_line_column(&self.buffer, visible, goal)
+                    } else {
+                        target
+                    }
+                }
                 PageUp => movement::move_page_up(&self.buffer, pos, pages, goal),
                 PageDown => movement::move_page_down(&self.buffer, pos, pages, goal),
                 Home => movement::line_start(&self.buffer, pos),
@@ -73,4 +91,39 @@ impl App {
         self.reveal_primary_cursor();
         true
     }
+}
+
+pub(super) fn key_event_to_chord(
+    event: &lux_platform::event::KeyEvent,
+    modifiers: &lux_platform::Modifiers,
+) -> Option<lux_config::Chord> {
+    let key = match &event.key {
+        lux_platform::Key::Character(s) => s.to_lowercase(),
+        lux_platform::Key::Named(named) => match named {
+            NamedKey::Enter => "enter".to_string(),
+            NamedKey::Tab => "tab".to_string(),
+            NamedKey::Space => "space".to_string(),
+            NamedKey::Backspace => "backspace".to_string(),
+            NamedKey::Delete => "delete".to_string(),
+            NamedKey::ArrowUp => "up".to_string(),
+            NamedKey::ArrowDown => "down".to_string(),
+            NamedKey::ArrowLeft => "left".to_string(),
+            NamedKey::ArrowRight => "right".to_string(),
+            NamedKey::Home => "home".to_string(),
+            NamedKey::End => "end".to_string(),
+            NamedKey::PageUp => "pageup".to_string(),
+            NamedKey::PageDown => "pagedown".to_string(),
+            NamedKey::Escape => "escape".to_string(),
+            NamedKey::F(n) => format!("f{n}"),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some(lux_config::Chord {
+        ctrl: modifiers.control,
+        alt: modifiers.alt,
+        shift: modifiers.shift,
+        cmd: modifiers.meta,
+        key,
+    })
 }

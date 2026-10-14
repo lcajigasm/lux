@@ -434,3 +434,94 @@ fn mouse_and_keyboard_tab_interactions() {
     assert_eq!(app.documents.tabs.tabs().len(), 2);
     assert_eq!(app.buffer.text(), "tab two");
 }
+
+#[test]
+fn tab_strip_2_quick_selection_and_context_menu_ops() {
+    let dir = tempfile::tempdir().unwrap();
+    let file1 = dir.path().join("a.txt");
+    let file2 = dir.path().join("b.txt");
+    let file3 = dir.path().join("c.txt");
+    std::fs::write(&file1, "content A").unwrap();
+    std::fs::write(&file2, "content B").unwrap();
+    std::fs::write(&file3, "content C").unwrap();
+
+    let ctx = Context::new(None, None, SaveDecision::Discard);
+    let mut app = app();
+    app.viewport.width = 1000.0;
+
+    app.request_document(&ctx, Request::Open(Some(file1)));
+    ctx.complete(&mut app);
+    let tab1_id = app.documents.active_tab.unwrap();
+
+    app.request_document(&ctx, Request::Open(Some(file2)));
+    ctx.complete(&mut app);
+    let tab2_id = app.documents.active_tab.unwrap();
+
+    app.request_document(&ctx, Request::Open(Some(file3)));
+    ctx.complete(&mut app);
+    let tab3_id = app.documents.active_tab.unwrap();
+    assert_eq!(app.documents.tabs.tabs().len(), 3);
+
+    // Cmd+1 switches to tab 1
+    app.modifiers.meta = true;
+    app.modifiers.shift = false;
+    let key1 = lux_platform::event::KeyEvent {
+        state: ElementState::Pressed,
+        key: Key::Character("1".into()),
+        text: None,
+        repeat: false,
+    };
+    assert!(app.document_key(&ctx, &key1));
+    assert_eq!(app.documents.active_tab, Some(tab1_id));
+    assert_eq!(app.buffer.text(), "content A");
+
+    // Cmd+9 switches to the last tab (tab 3)
+    let key9 = lux_platform::event::KeyEvent {
+        state: ElementState::Pressed,
+        key: Key::Character("9".into()),
+        text: None,
+        repeat: false,
+    };
+    assert!(app.document_key(&ctx, &key9));
+    assert_eq!(app.documents.active_tab, Some(tab3_id));
+    assert_eq!(app.buffer.text(), "content C");
+
+    // Right click on tab 2 opens context menu
+    let tab_w = app.tab_width();
+    app.mouse.position = dpi::PhysicalPosition::new((tab_w + 10.0) as f64, 10.0);
+    assert!(app.handle_mouse_click_on_chrome(&ctx, MouseButton::Right));
+    assert!(app.documents.tab_context_menu.is_some());
+    let menu = app.documents.tab_context_menu.as_ref().unwrap();
+    assert_eq!(menu.tab_id, tab2_id);
+
+    // Pin tab 2
+    app.toggle_pin_tab(tab2_id);
+    assert!(
+        app.documents
+            .tabs
+            .tabs()
+            .iter()
+            .find(|t| t.id == tab2_id)
+            .unwrap()
+            .pinned
+    );
+    app.toggle_pin_tab(tab2_id);
+    assert!(
+        !app.documents
+            .tabs
+            .tabs()
+            .iter()
+            .find(|t| t.id == tab2_id)
+            .unwrap()
+            .pinned
+    );
+
+    // Reorder tab 1 to position 2
+    assert!(app.reorder_tab(tab1_id, 2));
+    assert_eq!(app.documents.tabs.tabs()[2].id, tab1_id);
+
+    // Close others from tab 2 closes tab 1 and tab 3
+    app.close_other_tabs(&ctx, tab2_id);
+    assert_eq!(app.documents.tabs.tabs().len(), 1);
+    assert_eq!(app.documents.tabs.tabs()[0].id, tab2_id);
+}

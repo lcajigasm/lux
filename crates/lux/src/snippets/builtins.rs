@@ -1,0 +1,341 @@
+//! Built-in snippets for major languages in Sublime Text parity.
+
+use super::parser::RawSnippet;
+
+/// Returns all built-in snippets packaged with Lux.
+pub fn default_snippets() -> Vec<RawSnippet> {
+    vec![
+        // Universal
+        s(
+            "Lorem Ipsum",
+            "lorem",
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.$0",
+            None,
+            "Insert Lorem Ipsum placeholder text",
+        ),
+        // Rust
+        s(
+            "Function",
+            "fn",
+            "fn ${1:name}($2) {\n\t$0\n}",
+            Some("source.rust"),
+            "Function definition",
+        ),
+        s(
+            "Function returning Result",
+            "fnr",
+            "fn ${1:name}($2) -> ${3:Result<(), ()>} {\n\t$0\n}",
+            Some("source.rust"),
+            "Function returning Result",
+        ),
+        s(
+            "Struct",
+            "struct",
+            "struct ${1:Name} {\n\t$0\n}",
+            Some("source.rust"),
+            "Struct definition",
+        ),
+        s(
+            "Impl block",
+            "impl",
+            "impl ${1:Name} {\n\t$0\n}",
+            Some("source.rust"),
+            "Impl block definition",
+        ),
+        s(
+            "Trait",
+            "trait",
+            "trait ${1:Trait} {\n\t$0\n}",
+            Some("source.rust"),
+            "Trait definition",
+        ),
+        s(
+            "Enum",
+            "enum",
+            "enum ${1:Name} {\n\t$0\n}",
+            Some("source.rust"),
+            "Enum definition",
+        ),
+        s(
+            "Let binding",
+            "let",
+            "let ${1:var} = ${2:value};$0",
+            Some("source.rust"),
+            "Let variable binding",
+        ),
+        s(
+            "Let mut binding",
+            "letm",
+            "let mut ${1:var} = ${2:value};$0",
+            Some("source.rust"),
+            "Mutable let variable binding",
+        ),
+        s(
+            "For in loop",
+            "for",
+            "for ${1:item} in ${2:iter} {\n\t$0\n}",
+            Some("source.rust"),
+            "For in loop",
+        ),
+        s(
+            "If statement",
+            "if",
+            "if ${1:condition} {\n\t$0\n}",
+            Some("source.rust"),
+            "If statement",
+        ),
+        s(
+            "Match expression",
+            "match",
+            "match ${1:expr} {\n\t$0\n}",
+            Some("source.rust"),
+            "Match expression",
+        ),
+        s(
+            "Println macro",
+            "println",
+            "println!(\"${1:{}}\", ${2:val});$0",
+            Some("source.rust"),
+            "Print line to standard output",
+        ),
+        s(
+            "Unit test",
+            "test",
+            "#[test]\nfn ${1:test_name}() {\n\t$0\n}",
+            Some("source.rust"),
+            "Unit test function",
+        ),
+        // Python
+        s(
+            "Function definition",
+            "def",
+            "def ${1:name}($2):\n\t$0",
+            Some("source.python"),
+            "Function definition",
+        ),
+        s(
+            "Class definition",
+            "class",
+            "class ${1:ClassName}:\n\tdef __init__(self$2):\n\t\t$0",
+            Some("source.python"),
+            "Class definition with __init__",
+        ),
+        s(
+            "If condition",
+            "if",
+            "if ${1:condition}:\n\t$0",
+            Some("source.python"),
+            "If statement",
+        ),
+        s(
+            "For loop",
+            "for",
+            "for ${1:item} in ${2:items}:\n\t$0",
+            Some("source.python"),
+            "For in loop",
+        ),
+        s(
+            "While loop",
+            "while",
+            "while ${1:condition}:\n\t$0",
+            Some("source.python"),
+            "While loop",
+        ),
+        s(
+            "Try Except",
+            "try",
+            "try:\n\t$1\nexcept ${2:Exception} as ${3:e}:\n\t$0",
+            Some("source.python"),
+            "Try except block",
+        ),
+        s(
+            "Main block",
+            "main",
+            "if __name__ == \"__main__\":\n\t${1:main()}$0",
+            Some("source.python"),
+            "if __name__ == '__main__' guard",
+        ),
+        s(
+            "Print",
+            "print",
+            "print(${1:message})$0",
+            Some("source.python"),
+            "Print to standard output",
+        ),
+        // JavaScript & TypeScript
+        s(
+            "Function declaration",
+            "fn",
+            "function ${1:name}($2) {\n\t$0\n}",
+            Some("source.js, source.ts, source.jsx, source.tsx"),
+            "Function declaration",
+        ),
+        s(
+            "Arrow function",
+            "afn",
+            "const ${1:name} = ($2) => {\n\t$0\n};",
+            Some("source.js, source.ts, source.jsx, source.tsx"),
+            "Arrow function expression",
+        ),
+        s(
+            "Console log",
+            "clg",
+            "console.log(${1:value});$0",
+            Some("source.js, source.ts, source.jsx, source.tsx"),
+            "Console log statement",
+        ),
+        s(
+            "If statement",
+            "if",
+            "if (${1:condition}) {\n\t$0\n}",
+            Some("source.js, source.ts, source.jsx, source.tsx"),
+            "If statement",
+        ),
+        s(
+            "For loop",
+            "for",
+            "for (let ${1:i} = 0; ${1:i} < ${2:array}.length; ${1:i}++) {\n\t$0\n}",
+            Some("source.js, source.ts, source.jsx, source.tsx"),
+            "Standard for loop",
+        ),
+        s(
+            "Import declaration",
+            "import",
+            "import { $1 } from \"${2:module}\";$0",
+            Some("source.js, source.ts, source.jsx, source.tsx"),
+            "Import declaration",
+        ),
+        s(
+            "Class declaration",
+            "class",
+            "class ${1:Name} {\n\tconstructor($2) {\n\t\t$0\n\t}\n}",
+            Some("source.js, source.ts, source.jsx, source.tsx"),
+            "Class declaration",
+        ),
+        // HTML
+        s(
+            "HTML5 template",
+            "html",
+            "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\t<meta charset=\"UTF-8\">\n\t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n\t<title>${1:Document}</title>\n</head>\n<body>\n\t$0\n</body>\n</html>",
+            Some("text.html"),
+            "HTML5 document boilerplate",
+        ),
+        s(
+            "Div container",
+            "div",
+            "<div class=\"${1:container}\">\n\t$0\n</div>",
+            Some("text.html"),
+            "Div with class",
+        ),
+        s(
+            "Anchor link",
+            "a",
+            "<a href=\"${1:url}\">${2:link}</a>$0",
+            Some("text.html"),
+            "Anchor link element",
+        ),
+        s(
+            "Image tag",
+            "img",
+            "<img src=\"${1:source}\" alt=\"${2:description}\">$0",
+            Some("text.html"),
+            "Image element",
+        ),
+        s(
+            "Script tag",
+            "script",
+            "<script src=\"${1:main.js}\"></script>$0",
+            Some("text.html"),
+            "Script include element",
+        ),
+        s(
+            "Stylesheet link",
+            "link",
+            "<link rel=\"stylesheet\" href=\"${1:style.css}\">$0",
+            Some("text.html"),
+            "Stylesheet link element",
+        ),
+        // Go
+        s(
+            "Go function",
+            "func",
+            "func ${1:name}($2) ${3:error} {\n\t$0\n}",
+            Some("source.go"),
+            "Function definition",
+        ),
+        s(
+            "Go struct",
+            "struct",
+            "type ${1:Name} struct {\n\t$0\n}",
+            Some("source.go"),
+            "Struct definition",
+        ),
+        s(
+            "Go if error check",
+            "iferr",
+            "if err != nil {\n\treturn ${1:err}\n}$0",
+            Some("source.go"),
+            "If error check",
+        ),
+        s(
+            "Go main package",
+            "main",
+            "package main\n\nfunc main() {\n\t$0\n}",
+            Some("source.go"),
+            "Main package and entrypoint",
+        ),
+        // C / C++
+        s(
+            "C main function",
+            "main",
+            "int main(int argc, char *argv[]) {\n\t$0\n\treturn 0;\n}",
+            Some("source.c, source.cpp, source.c++"),
+            "Main function entrypoint",
+        ),
+        s(
+            "Include header",
+            "inc",
+            "#include <${1:stdio.h}>$0",
+            Some("source.c, source.cpp, source.c++"),
+            "Include header",
+        ),
+        // Markdown
+        s(
+            "Markdown link",
+            "link",
+            "[${1:text}](${2:url})$0",
+            Some("text.markdown, text.html.markdown"),
+            "Hyperlink",
+        ),
+        s(
+            "Markdown image",
+            "img",
+            "![${1:alt}](${2:url})$0",
+            Some("text.markdown, text.html.markdown"),
+            "Image link",
+        ),
+        s(
+            "Fenced code block",
+            "code",
+            "```${1:rust}\n$0\n```",
+            Some("text.markdown, text.html.markdown"),
+            "Fenced code block",
+        ),
+    ]
+}
+
+fn s(
+    name: &str,
+    trigger: &str,
+    content: &str,
+    scope: Option<&str>,
+    description: &str,
+) -> RawSnippet {
+    RawSnippet {
+        name: name.to_string(),
+        trigger: trigger.to_string(),
+        content: content.to_string(),
+        scope: scope.map(|s| s.to_string()),
+        description: Some(description.to_string()),
+    }
+}

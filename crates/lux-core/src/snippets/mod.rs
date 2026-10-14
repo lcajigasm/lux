@@ -26,6 +26,7 @@ struct TabstopGroup {
 pub struct SnippetSession {
     tabstops: Vec<TabstopGroup>,
     current: usize,
+    initial_selection: bool,
 }
 
 /// Inserts `template` (parsed for `$1`/`${1:default}`/`$0`/mirror syntax)
@@ -51,6 +52,7 @@ pub fn insert(buffer: &mut Buffer, at: usize, template: &str) -> (Edit, SnippetS
         SnippetSession {
             tabstops,
             current: 0,
+            initial_selection: true,
         },
     )
 }
@@ -78,6 +80,26 @@ impl SnippetSession {
         self.current + 1 >= self.tabstops.len()
     }
 
+    /// Returns true if this tab stop was just entered and its default text
+    /// (if any) is currently selected.
+    pub fn has_initial_selection(&self) -> bool {
+        self.initial_selection
+    }
+
+    /// Clears the initial selection state.
+    pub fn clear_initial_selection(&mut self) {
+        self.initial_selection = false;
+    }
+
+    /// Returns the character range of the active tab stop's primary occurrence.
+    pub fn current_range(&self) -> Range<usize> {
+        if self.current < self.tabstops.len() && !self.tabstops[self.current].ranges.is_empty() {
+            self.tabstops[self.current].ranges[0].clone()
+        } else {
+            0..0
+        }
+    }
+
     /// Moves to the next tab stop (`Tab`). `None` if already on the last
     /// one — the caller should exit snippet mode rather than call this
     /// again.
@@ -86,6 +108,7 @@ impl SnippetSession {
             return None;
         }
         self.current += 1;
+        self.initial_selection = true;
         Some(self.current_selection(buffer))
     }
 
@@ -96,7 +119,90 @@ impl SnippetSession {
             return None;
         }
         self.current -= 1;
+        self.initial_selection = true;
         Some(self.current_selection(buffer))
+    }
+
+    /// Handles typing or pasting text inside the current tab stop.
+    /// Replaces the default on the first edit, then appends/inserts into the
+    /// active placeholder, updating all mirrors in the buffer in real time.
+    pub fn handle_text_input(
+        &mut self,
+        buffer: &mut Buffer,
+        cursor_char: usize,
+        text: &str,
+    ) -> (Vec<Edit>, Selection) {
+        if self.initial_selection {
+            self.initial_selection = false;
+            let edits = self.update_current(buffer, text);
+            let range = self.current_range();
+            let new_cursor_pos = range.start + text.chars().count();
+            let sel = Selection::cursor(Position::from_char(buffer, new_cursor_pos));
+            (edits, sel)
+        } else {
+            let range = self.current_range();
+            let current_content = buffer.text_range(range.start..range.end);
+            let total_chars = current_content.chars().count();
+            let rel_offset = cursor_char.saturating_sub(range.start).min(total_chars);
+
+            let mut new_text = String::new();
+            for (idx, ch) in current_content.chars().enumerate() {
+                if idx == rel_offset {
+                    new_text.push_str(text);
+                }
+                new_text.push(ch);
+            }
+            if rel_offset == total_chars {
+                new_text.push_str(text);
+            }
+
+            let edits = self.update_current(buffer, &new_text);
+            let range = self.current_range();
+            let new_cursor_pos = range.start + rel_offset + text.chars().count();
+            let sel = Selection::cursor(Position::from_char(buffer, new_cursor_pos));
+            (edits, sel)
+        }
+    }
+
+    /// Handles Backspace inside the current tab stop.
+    /// If default text was selected, clears it to empty `""`.
+    /// Otherwise deletes the character before `cursor_char`, updating mirrors in real time.
+    pub fn handle_backspace(
+        &mut self,
+        buffer: &mut Buffer,
+        cursor_char: usize,
+    ) -> Option<(Vec<Edit>, Selection)> {
+        if self.initial_selection {
+            self.initial_selection = false;
+            let edits = self.update_current(buffer, "");
+            let range = self.current_range();
+            let sel = Selection::cursor(Position::from_char(buffer, range.start));
+            Some((edits, sel))
+        } else {
+            let range = self.current_range();
+            if cursor_char <= range.start {
+                return None;
+            }
+            let current_content = buffer.text_range(range.start..range.end);
+            let total_chars = current_content.chars().count();
+            let rel_offset = cursor_char.saturating_sub(range.start).min(total_chars);
+            if rel_offset == 0 {
+                return None;
+            }
+
+            let mut new_text = String::new();
+            for (idx, ch) in current_content.chars().enumerate() {
+                if idx != rel_offset - 1 {
+                    new_text.push(ch);
+                }
+            }
+
+            let edits = self.update_current(buffer, &new_text);
+            let range = self.current_range();
+            let new_cursor_pos = range.start + rel_offset - 1;
+            let sel = Selection::cursor(Position::from_char(buffer, new_cursor_pos));
+            Some((edits, sel))
+        }
     }
 
     /// Replaces the current tab stop's content with `new_text` — in every
@@ -253,5 +359,53 @@ mod tests {
         assert_eq!(buffer.text(), "x then y");
         let sel = session.next(&buffer).unwrap();
         assert_eq!(buffer.text_range(sel.char_range()), "y");
+    }
+
+    #[test]
+    fn interactive_typing_character_by_character_and_backspace_with_mirrors() {
+        let mut buffer = Buffer::from_bytes(b"").unwrap();
+        let (_, mut session) = insert(&mut buffer, 0, "fn ${1:name}() -> $1 {\n\t$0\n}");
+        assert_eq!(buffer.text(), "fn name() -> name {\n\t\n}");
+        assert!(session.has_initial_selection());
+
+        // First character replaces initial default "name" -> "c"
+        let (_, sel) = session.handle_text_input(&mut buffer, 7, "c");
+        assert_eq!(buffer.text(), "fn c() -> c {\n\t\n}");
+        assert_eq!(sel.head.char, 4); // right after "c"
+        assert!(!session.has_initial_selection());
+
+        // Second character appends -> "ca"
+        let (_, sel) = session.handle_text_input(&mut buffer, 4, "a");
+        assert_eq!(buffer.text(), "fn ca() -> ca {\n\t\n}");
+        assert_eq!(sel.head.char, 5);
+
+        // Third character appends -> "cal"
+        let (_, sel) = session.handle_text_input(&mut buffer, 5, "l");
+        assert_eq!(buffer.text(), "fn cal() -> cal {\n\t\n}");
+        assert_eq!(sel.head.char, 6);
+
+        // Backspace deletes "l" -> "ca"
+        let res = session.handle_backspace(&mut buffer, 6);
+        assert!(res.is_some());
+        let (_, sel) = res.unwrap();
+        assert_eq!(buffer.text(), "fn ca() -> ca {\n\t\n}");
+        assert_eq!(sel.head.char, 5);
+
+        // Advance to next tabstop ($0)
+        let next_sel = session.next(&buffer).unwrap();
+        assert_eq!(buffer.text_range(next_sel.char_range()), "");
+        assert!(session.is_on_last());
+    }
+
+    #[test]
+    fn backspace_on_initial_selection_clears_tabstop() {
+        let mut buffer = Buffer::from_bytes(b"").unwrap();
+        let (_, mut session) = insert(&mut buffer, 0, "let ${1:val} = $1;");
+        assert!(session.has_initial_selection());
+
+        let res = session.handle_backspace(&mut buffer, 7);
+        assert!(res.is_some());
+        assert_eq!(buffer.text(), "let  = ;");
+        assert!(!session.has_initial_selection());
     }
 }

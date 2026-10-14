@@ -36,6 +36,7 @@ pub struct EditorViewMetrics {
     pub line_height: f32,
     pub font_size: f32,
     pub ligatures: bool,
+    pub word_wrap: bool,
     /// Character columns to draw a vertical ruler at (e.g. `[80, 100]`).
     pub column_rulers: Vec<usize>,
     pub blink_interval: Duration,
@@ -46,7 +47,11 @@ pub struct EditorViewMetrics {
 /// the vertical indent-guide x-positions that apply to it.
 pub struct VisibleLine {
     pub index: usize,
+    pub visual_index: usize,
+    pub is_folded: bool,
+    pub is_foldable: bool,
     pub number: String,
+    pub number_layout: LineLayout,
     pub layout: LineLayout,
     pub indent_guides: Vec<f32>,
 }
@@ -55,6 +60,7 @@ pub struct VisibleLine {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct CursorGlyph {
     pub line: usize,
+    pub visual_row: usize,
     pub x: f32,
     pub visible: bool,
     pub primary: bool,
@@ -64,6 +70,7 @@ pub struct CursorGlyph {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct SelectionRect {
     pub line: usize,
+    pub visual_row: usize,
     pub x_start: f32,
     pub x_end: f32,
 }
@@ -76,6 +83,7 @@ pub struct EditorViewFrame {
     pub cursors: Vec<CursorGlyph>,
     pub selections: Vec<SelectionRect>,
     pub column_ruler_x: Vec<f32>,
+    pub matching_brackets: Vec<SelectionRect>,
 }
 
 /// Owns the shaping context and font selection; long-lived, reused across
@@ -94,6 +102,16 @@ impl EditorView {
         assert!(line_height.is_finite() && line_height > 0.0);
         self.metrics.font_size = font_size;
         self.metrics.line_height = line_height;
+    }
+
+    /// Read the active view metrics.
+    pub fn metrics(&self) -> &EditorViewMetrics {
+        &self.metrics
+    }
+
+    /// Mutably access the active view metrics.
+    pub fn metrics_mut(&mut self) -> &mut EditorViewMetrics {
+        &mut self.metrics
     }
     /// Registers `font_bytes` (see `lux_render::TextLayoutContext` — no
     /// system font discovery, by design) and returns `None` if they don't
@@ -149,9 +167,11 @@ impl EditorView {
         cursors: &MultiCursor,
         viewport: &Viewport,
         elapsed: Duration,
+        folds: Option<&lux_core::folding::FoldState>,
     ) -> EditorViewFrame {
         let total_lines = buffer.len_lines();
-        let visible_line_range = visible_range(viewport, self.metrics.line_height, total_lines);
+        let total_visual = folds.map_or(total_lines, |f| f.total_visual_lines(total_lines));
+        let visible_line_range = visible_range(viewport, self.metrics.line_height, total_visual);
         let gutter_digits = total_lines.max(1).to_string().len();
         let gutter_width = self.reference_width("0".repeat(gutter_digits).as_str());
         let column_ruler_x = self.column_ruler_x();
@@ -160,18 +180,36 @@ impl EditorView {
         let indent = buffer.indent();
 
         let mut lines = Vec::with_capacity(visible_line_range.len());
-        for line_idx in visible_line_range.clone() {
+        for visual_idx in visible_line_range.clone() {
+            let line_idx = folds.map_or(visual_idx, |f| {
+                f.visual_to_buffer_line(visual_idx, total_lines)
+            });
+            let is_folded = folds.is_some_and(|f| f.is_line_folded(line_idx));
+            let is_foldable = folds.is_some_and(|f| f.is_line_foldable(line_idx));
             let content = buffer
                 .line_content(line_idx)
                 .expect("visible line is in range");
             let line_text = content.as_str();
             let style =
                 Self::line_style(&self.family, self.metrics.font_size, self.metrics.ligatures);
-            let layout = self.text_layout.layout_line(&style, line_text, &[]);
+            let max_w = if self.metrics.word_wrap {
+                Some((viewport.width - gutter_width).max(50.0))
+            } else {
+                None
+            };
+            let layout = self
+                .text_layout
+                .layout_line_wrapped(&style, line_text, max_w, &[]);
             let indent_guides = indent_guide_x(&layout, line_text, indent);
+            let number = format!("{:>gutter_digits$}", line_idx + 1);
+            let number_layout = self.text_layout.layout_line(&style, &number, &[]);
             lines.push(VisibleLine {
                 index: line_idx,
-                number: format!("{:>gutter_digits$}", line_idx + 1),
+                visual_index: visual_idx,
+                is_folded,
+                is_foldable,
+                number,
+                number_layout,
                 layout,
                 indent_guides,
             });
@@ -182,13 +220,14 @@ impl EditorView {
         let primary = cursors.primary();
         for selection in cursors.cursors() {
             let pos = selection.head;
-            if let Some(line) = visible_line(&lines, &visible_line_range, pos.line) {
+            if let Some(line) = lines.iter().find(|l| l.index == pos.line) {
                 let line_start = buffer
                     .line_start_byte(pos.line)
                     .expect("visible line is in range");
                 let x = x_for_byte(&line.layout, pos.byte - line_start);
                 cursor_glyphs.push(CursorGlyph {
                     line: pos.line,
+                    visual_row: line.visual_index,
                     x,
                     visible: blink_visible,
                     primary: *selection == primary,
@@ -198,30 +237,66 @@ impl EditorView {
                 continue;
             }
             let (start, end) = selection.ordered();
-            let first = start.line.max(visible_line_range.start);
-            let last = end.line.saturating_add(1).min(visible_line_range.end);
-            for line_idx in first..last {
-                let Some(line) = visible_line(&lines, &visible_line_range, line_idx) else {
-                    continue;
-                };
-                let line_start = buffer
-                    .line_start_byte(line_idx)
-                    .expect("visible line is in range");
-                let x_start = if line_idx == start.line {
-                    x_for_byte(&line.layout, start.byte - line_start)
-                } else {
-                    0.0
-                };
-                let x_end = if line_idx == end.line {
-                    x_for_byte(&line.layout, end.byte - line_start)
-                } else {
-                    line.layout.width()
-                };
-                selection_rects.push(SelectionRect {
-                    line: line_idx,
-                    x_start,
-                    x_end,
-                });
+            for line in &lines {
+                if line.index >= start.line && line.index <= end.line {
+                    let line_start = buffer
+                        .line_start_byte(line.index)
+                        .expect("visible line is in range");
+                    let x_start = if line.index == start.line {
+                        x_for_byte(&line.layout, start.byte - line_start)
+                    } else {
+                        0.0
+                    };
+                    let x_end = if line.index == end.line {
+                        x_for_byte(&line.layout, end.byte - line_start)
+                    } else {
+                        line.layout.width()
+                    };
+                    selection_rects.push(SelectionRect {
+                        line: line.index,
+                        visual_row: line.visual_index,
+                        x_start,
+                        x_end,
+                    });
+                }
+            }
+        }
+
+        let mut matching_brackets = Vec::new();
+        let head = primary.head;
+        if let Some(match_pos) = lux_core::movement::matching_bracket(buffer, head) {
+            let touching_pos = if head.char < buffer.len_chars()
+                && matches!(
+                    buffer.char_at(head.char),
+                    Some('(' | ')' | '[' | ']' | '{' | '}')
+                ) {
+                Position::from_char(buffer, head.char)
+            } else if head.char > 0
+                && matches!(
+                    buffer.char_at(head.char - 1),
+                    Some('(' | ')' | '[' | ']' | '{' | '}')
+                )
+            {
+                Position::from_char(buffer, head.char - 1)
+            } else {
+                head
+            };
+
+            for pos in [touching_pos, match_pos] {
+                if let Some(line) = lines.iter().find(|l| l.index == pos.line) {
+                    let line_start = buffer
+                        .line_start_byte(line.index)
+                        .expect("visible line is in range");
+                    let next_pos = pos.next_grapheme(buffer);
+                    let x_start = x_for_byte(&line.layout, pos.byte - line_start);
+                    let x_end = x_for_byte(&line.layout, next_pos.byte - line_start);
+                    matching_brackets.push(SelectionRect {
+                        line: line.index,
+                        visual_row: line.visual_index,
+                        x_start,
+                        x_end,
+                    });
+                }
             }
         }
 
@@ -232,6 +307,7 @@ impl EditorView {
             cursors: cursor_glyphs,
             selections: selection_rects,
             column_ruler_x,
+            matching_brackets,
         }
     }
 
@@ -245,13 +321,21 @@ impl EditorView {
         x: f32,
         y: f32,
         left_padding: f32,
+        folds: Option<&lux_core::folding::FoldState>,
     ) -> Position {
-        let last_line = buffer.len_lines().saturating_sub(1);
-        let line = (((y.max(0.0) + viewport.scroll_y) / self.metrics.line_height.max(1.0)).floor()
-            as usize)
-            .min(last_line);
+        let total_buffer_lines = buffer.len_lines();
+        let total_visual_lines = folds.map_or(total_buffer_lines, |f| {
+            f.total_visual_lines(total_buffer_lines)
+        });
+        let last_visual = total_visual_lines.saturating_sub(1);
+        let visual_line = (((y.max(0.0) + viewport.scroll_y) / self.metrics.line_height.max(1.0))
+            .floor() as usize)
+            .min(last_visual);
+        let line = folds.map_or(visual_line, |f| {
+            f.visual_to_buffer_line(visual_line, total_buffer_lines)
+        });
         let content = buffer.line_content(line).unwrap_or_default();
-        let digits = buffer.len_lines().max(1).to_string().len();
+        let digits = total_buffer_lines.max(1).to_string().len();
         let gutter_width = self.reference_width(&"0".repeat(digits));
         let text_x = (x + viewport.scroll_x - gutter_width - left_padding).max(0.0);
         let style = Self::line_style(&self.family, self.metrics.font_size, self.metrics.ligatures);
@@ -312,7 +396,7 @@ impl EditorView {
     /// The width of laying out `text` in this view's font/size, ligatures
     /// off — used for the gutter and column rulers, neither of which is
     /// program text that should ever ligate.
-    fn reference_width(&mut self, text: &str) -> f32 {
+    pub fn reference_width(&mut self, text: &str) -> f32 {
         let style = Self::line_style(&self.family, self.metrics.font_size, false);
         self.text_layout.layout_line(&style, text, &[]).width()
     }
@@ -338,17 +422,6 @@ impl EditorView {
             })
             .collect()
     }
-}
-
-fn visible_line<'a>(
-    lines: &'a [VisibleLine],
-    visible_line_range: &Range<usize>,
-    line_idx: usize,
-) -> Option<&'a VisibleLine> {
-    if !visible_line_range.contains(&line_idx) {
-        return None;
-    }
-    lines.get(line_idx - visible_line_range.start)
 }
 
 /// The first and last (exclusive) line indices intersecting `viewport`,

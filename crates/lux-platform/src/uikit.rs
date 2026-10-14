@@ -8,18 +8,36 @@ pub fn available() -> bool {
 #[cfg(target_os = "ios")]
 mod ffi {
     use std::ffi::{CStr, c_char};
+    use std::sync::Mutex;
+
+    static PENDING_INPUT: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
     #[unsafe(no_mangle)]
     pub extern "C" fn lux_ios_insert_text(ptr: *const c_char) {
         if ptr.is_null() {
             return;
         }
-        let _ = unsafe { CStr::from_ptr(ptr) }.to_str();
-        // IME text lands here from `LuxViewController.insertText`.
+        if let Ok(s) = unsafe { CStr::from_ptr(ptr) }.to_str() {
+            if let Ok(mut pending) = PENDING_INPUT.lock() {
+                pending.push(s.to_string());
+            }
+        }
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn lux_ios_delete_backward() {}
+    pub extern "C" fn lux_ios_delete_backward() {
+        if let Ok(mut pending) = PENDING_INPUT.lock() {
+            pending.push("\x08".to_string());
+        }
+    }
+
+    pub fn drain_input() -> Vec<String> {
+        if let Ok(mut pending) = PENDING_INPUT.lock() {
+            std::mem::take(&mut *pending)
+        } else {
+            Vec::new()
+        }
+    }
 }
 
 #[cfg(test)]

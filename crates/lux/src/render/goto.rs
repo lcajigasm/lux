@@ -1,0 +1,236 @@
+//! Rendering logic for the floating Goto Anything overlay (G09 / ST07).
+
+use swash::FontRef;
+use swash::scale::ScaleContext;
+
+use crate::goto::{GotoItemKind, GotoState};
+use crate::render::paint::{color, push_glyph};
+use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
+use lux_ui::editor_view::EditorView;
+
+const MAX_VISIBLE_RESULTS: usize = 8;
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn render_goto(
+    goto: &GotoState,
+    viewport_width: f32,
+    tab_bar_height: f32,
+    scale_factor: f32,
+    stroke: f32,
+    font_size: f32,
+    font: FontRef<'static>,
+    editor_view: &mut EditorView,
+    atlas: &mut GlyphAtlas,
+    atlas_dirty: &mut bool,
+    scale_cx: &mut ScaleContext,
+    theme: &lux_ui::Theme,
+    quad_instances: &mut Vec<QuadInstance>,
+    glyph_instances: &mut Vec<GlyphInstance>,
+) {
+    let width = (viewport_width * 0.58).clamp(380.0 * scale_factor, 660.0 * scale_factor);
+    let left = (viewport_width - width) * 0.5;
+    let top = tab_bar_height + 12.0 * scale_factor;
+    let input_height = 34.0 * scale_factor;
+    let row_height = 26.0 * scale_factor;
+
+    let visible_count = goto.items.len().min(MAX_VISIBLE_RESULTS);
+    let total_height = input_height + (visible_count as f32 * row_height) + 4.0 * stroke;
+
+    let modal_font_size = font_size * 0.82;
+    let family = editor_view.family().to_string();
+    let style = lux_render::LineStyle {
+        family: &family,
+        font_size: modal_font_size,
+        ligatures: false,
+    };
+
+    let foreground = color(theme.foreground);
+    let muted = color(theme.muted);
+
+    // 1. Overlay main background
+    quad_instances.push(QuadInstance {
+        rect: [left, top, width, total_height],
+        color: [0.09, 0.09, 0.12, 0.98],
+    });
+
+    // 2. Outer border
+    let border_color = [0.25, 0.25, 0.32, 1.0];
+    quad_instances.push(QuadInstance {
+        rect: [left, top, width, stroke],
+        color: border_color,
+    });
+    quad_instances.push(QuadInstance {
+        rect: [left, top + total_height - stroke, width, stroke],
+        color: border_color,
+    });
+    quad_instances.push(QuadInstance {
+        rect: [left, top, stroke, total_height],
+        color: border_color,
+    });
+    quad_instances.push(QuadInstance {
+        rect: [left + width - stroke, top, stroke, total_height],
+        color: border_color,
+    });
+
+    // 3. Input background & separator
+    quad_instances.push(QuadInstance {
+        rect: [
+            left + stroke,
+            top + stroke,
+            width - 2.0 * stroke,
+            input_height,
+        ],
+        color: [0.065, 0.065, 0.085, 1.0],
+    });
+    quad_instances.push(QuadInstance {
+        rect: [left, top + input_height + stroke, width, stroke],
+        color: [0.18, 0.18, 0.22, 1.0],
+    });
+
+    // 4. Input text & caret
+    let input_baseline = (input_height - modal_font_size) * 0.5;
+    let text_x = left + 12.0 * scale_factor;
+    let text_y = top + stroke + input_baseline;
+
+    let (display_text, text_color) = if goto.query.is_empty() {
+        let placeholder = if goto.mode == crate::goto::GotoMode::ProjectSymbols {
+            "Goto Symbol in Project..."
+        } else {
+            "Goto Anything (type filename, :line, @symbol, #term)..."
+        };
+        (placeholder, muted)
+    } else {
+        (goto.query.as_str(), foreground)
+    };
+
+    let input_line = editor_view
+        .text_layout_mut()
+        .layout_line(&style, display_text, &[]);
+    for cluster in input_line.clusters() {
+        push_glyph(
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            font,
+            modal_font_size,
+            &cluster,
+            text_x,
+            text_y + input_line.baseline(),
+            text_color,
+            glyph_instances,
+        );
+    }
+
+    if !goto.query.is_empty() {
+        let caret_x = text_x + input_line.width() + 2.0 * stroke;
+        quad_instances.push(QuadInstance {
+            rect: [
+                caret_x,
+                top + stroke + (input_height - modal_font_size) * 0.5,
+                2.0 * stroke,
+                modal_font_size,
+            ],
+            color: color(theme.accent),
+        });
+    }
+
+    // 5. Result rows
+    let rows_top = top + input_height + 2.0 * stroke;
+    let row_baseline = (row_height - modal_font_size) * 0.5;
+
+    for (i, item) in goto.items.iter().take(visible_count).enumerate() {
+        let row_y = rows_top + i as f32 * row_height;
+        let is_selected = i == goto.selected_index;
+
+        if is_selected {
+            quad_instances.push(QuadInstance {
+                rect: [left + stroke, row_y, width - 2.0 * stroke, row_height],
+                color: [0.18, 0.22, 0.32, 1.0],
+            });
+            quad_instances.push(QuadInstance {
+                rect: [left + stroke, row_y, 3.0 * stroke, row_height],
+                color: color(theme.accent),
+            });
+        }
+
+        let mut offset_x = left + 14.0 * scale_factor;
+
+        // Render badge for symbols
+        if let GotoItemKind::Symbol { kind_badge, .. } = &item.kind {
+            let badge_bg = match *kind_badge {
+                "fn" | "method" => [0.20, 0.35, 0.55, 0.85],
+                "struct" | "class" => [0.45, 0.30, 0.55, 0.85],
+                "trait" | "interface" => [0.25, 0.45, 0.35, 0.85],
+                _ => [0.30, 0.30, 0.35, 0.85],
+            };
+            let badge_layout = editor_view
+                .text_layout_mut()
+                .layout_line(&style, kind_badge, &[]);
+            let badge_w = badge_layout.width() + 8.0 * scale_factor;
+            let badge_h = 16.0 * scale_factor;
+            let badge_y = row_y + (row_height - badge_h) * 0.5;
+            quad_instances.push(QuadInstance {
+                rect: [offset_x, badge_y, badge_w, badge_h],
+                color: badge_bg,
+            });
+            for cluster in badge_layout.clusters() {
+                push_glyph(
+                    atlas,
+                    atlas_dirty,
+                    scale_cx,
+                    font,
+                    modal_font_size * 0.85,
+                    &cluster,
+                    offset_x + 4.0 * scale_factor,
+                    badge_y + (badge_h - modal_font_size * 0.85) * 0.5 + badge_layout.baseline(),
+                    [1.0, 1.0, 1.0, 1.0],
+                    glyph_instances,
+                );
+            }
+            offset_x += badge_w + 6.0 * scale_factor;
+        }
+
+        // Render main label
+        let label_line = editor_view
+            .text_layout_mut()
+            .layout_line(&style, &item.label, &[]);
+        let label_color = if is_selected { foreground } else { muted };
+
+        for cluster in label_line.clusters() {
+            push_glyph(
+                atlas,
+                atlas_dirty,
+                scale_cx,
+                font,
+                modal_font_size,
+                &cluster,
+                offset_x,
+                row_y + row_baseline + label_line.baseline(),
+                label_color,
+                glyph_instances,
+            );
+        }
+
+        // Detail badge on right edge (e.g. ":line 42")
+        if !item.detail.is_empty() {
+            let detail_line = editor_view
+                .text_layout_mut()
+                .layout_line(&style, &item.detail, &[]);
+            let detail_x = left + width - detail_line.width() - 14.0 * scale_factor;
+            for cluster in detail_line.clusters() {
+                push_glyph(
+                    atlas,
+                    atlas_dirty,
+                    scale_cx,
+                    font,
+                    modal_font_size * 0.88,
+                    &cluster,
+                    detail_x,
+                    row_y + row_baseline + detail_line.baseline(),
+                    color(theme.accent),
+                    glyph_instances,
+                );
+            }
+        }
+    }
+}

@@ -19,7 +19,9 @@ pub mod surfaces;
 pub mod tabs;
 pub mod theme;
 
-pub use accessibility::build_tree as build_accessibility_tree;
+pub use accessibility::{
+    AccessibilityContext, build_full_window_tree, build_tree as build_accessibility_tree,
+};
 pub use chrome::Chrome;
 pub use editor_view::{
     CursorGlyph, EditorView, EditorViewFrame, EditorViewMetrics, SelectionRect, Viewport,

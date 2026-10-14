@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 mod io;
+mod save_ops;
+pub(crate) mod tab_ops;
 
 use io::{Outcome, Snapshot, execute, recovery_store};
 use lux_core::{
@@ -43,6 +45,43 @@ pub(crate) struct DocumentEntry {
     pub(crate) scroll_x: f32,
     pub(crate) scroll_y: f32,
     pub(crate) snippet_session: Option<lux_core::snippets::SnippetSession>,
+    pub(crate) language: Option<lux_syntax::LanguageId>,
+    pub(crate) fold_state: lux_core::folding::FoldState,
+    pub(crate) bookmarks: lux_core::bookmarks::BookmarkState,
+}
+
+pub(crate) fn detect_language(
+    path: Option<&std::path::Path>,
+    buffer: &Buffer,
+) -> Option<lux_syntax::LanguageId> {
+    if let Some(path) = path {
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            match name {
+                "Makefile" | "makefile" | "Dockerfile" | "dockerfile" | ".gitignore" => {
+                    return Some(lux_syntax::LanguageId::Bash);
+                }
+                "Cargo.toml" => return Some(lux_syntax::LanguageId::Toml),
+                _ => {}
+            }
+        }
+        if let Some(lang) = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .and_then(lux_syntax::LanguageId::from_extension)
+        {
+            return Some(lang);
+        }
+    }
+    if let Some(line) = buffer.line_content(0).filter(|l| l.starts_with("#!")) {
+        if line.contains("python") {
+            return Some(lux_syntax::LanguageId::Python);
+        } else if line.contains("bash") || line.contains("sh") || line.contains("zsh") {
+            return Some(lux_syntax::LanguageId::Bash);
+        } else if line.contains("node") || line.contains("deno") {
+            return Some(lux_syntax::LanguageId::JavaScript);
+        }
+    }
+    None
 }
 
 impl DocumentEntry {
@@ -52,10 +91,12 @@ impl DocumentEntry {
 
     pub(crate) fn new(tab_id: TabId, path: Option<PathBuf>, buffer: Buffer) -> Self {
         let disk_snapshot = path.as_ref().map(|_| buffer.clone());
+        let language = detect_language(path.as_deref(), &buffer);
         Self {
             tab_id,
             path,
             disk_snapshot,
+            language,
             buffer,
             cursors: MultiCursor::new(Selection::cursor(Position::document_start())),
             goal_columns: vec![0],
@@ -64,6 +105,8 @@ impl DocumentEntry {
             scroll_x: 0.0,
             scroll_y: 0.0,
             snippet_session: None,
+            fold_state: lux_core::folding::FoldState::new(),
+            bookmarks: lux_core::bookmarks::BookmarkState::new(),
         }
     }
 }
@@ -82,6 +125,7 @@ pub(crate) struct Documents {
     pub(crate) message: Option<String>,
     close_when_idle: bool,
     pub(crate) initial_path: Option<PathBuf>,
+    pub(crate) tab_context_menu: Option<tab_ops::TabContextMenu>,
 }
 
 impl Default for Documents {
@@ -105,6 +149,31 @@ impl Default for Documents {
             message: None,
             close_when_idle: false,
             initial_path: None,
+            tab_context_menu: None,
+        }
+    }
+}
+
+impl Documents {
+    pub(crate) fn active_entry(&self) -> Option<&DocumentEntry> {
+        let active_id = self.active_tab?;
+        self.entries.iter().find(|e| e.tab_id == active_id)
+    }
+
+    pub(crate) fn language(&self) -> Option<lux_syntax::LanguageId> {
+        self.entries
+            .iter()
+            .find(|e| Some(e.tab_id) == self.active_tab)
+            .and_then(|e| e.language)
+    }
+
+    pub(crate) fn set_language(&mut self, language: Option<lux_syntax::LanguageId>) {
+        if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|e| Some(e.tab_id) == self.active_tab)
+        {
+            entry.language = language;
         }
     }
 }
@@ -138,6 +207,12 @@ impl App {
             }
             return true;
         }
+        if event.key == Key::Named(NamedKey::Escape)
+            && self.documents.tab_context_menu.take().is_some()
+        {
+            self.scheduler.invalidate_all();
+            return true;
+        }
         if !command {
             return false;
         }
@@ -146,6 +221,15 @@ impl App {
         };
         if self.modifiers.shift && key.eq_ignore_ascii_case("t") {
             return self.reopen_last_closed_tab();
+        }
+        if let Some(digit) = key.chars().next().and_then(|c| c.to_digit(10))
+            && (1..=9).contains(&digit)
+        {
+            if digit == 9 {
+                return self.switch_to_last_tab();
+            } else {
+                return self.switch_to_tab_index((digit - 1) as usize);
+            }
         }
         let request = match key.to_lowercase().as_str() {
             "o" => Request::Open(None),
@@ -161,24 +245,25 @@ impl App {
     }
 
     pub(crate) fn sync_active_document_to_entry(&mut self) {
-        if let Some(active_id) = self.documents.active_tab {
-            if let Some(entry) = self
+        if let Some(active_id) = self.documents.active_tab
+            && let Some(entry) = self
                 .documents
                 .entries
                 .iter_mut()
                 .find(|e| e.tab_id == active_id)
-            {
-                entry.path = self.documents.path.clone();
-                entry.buffer = self.buffer.clone();
-                entry.cursors = self.cursors.clone();
-                entry.goal_columns = self.goal_columns.clone();
-                entry.history = self.history.clone();
-                entry.saved_version = self.documents.saved_version;
-                entry.disk_snapshot = self.documents.disk_snapshot.clone();
-                entry.scroll_x = self.viewport.scroll_x;
-                entry.scroll_y = self.viewport.scroll_y;
-                entry.snippet_session = self.snippet_session.clone();
-            }
+        {
+            entry.path = self.documents.path.clone();
+            entry.buffer = self.buffer.clone();
+            entry.cursors = self.cursors.clone();
+            entry.goal_columns = self.goal_columns.clone();
+            entry.history = self.history.clone();
+            entry.saved_version = self.documents.saved_version;
+            entry.disk_snapshot = self.documents.disk_snapshot.clone();
+            entry.scroll_x = self.viewport.scroll_x;
+            entry.scroll_y = self.viewport.scroll_y;
+            entry.snippet_session = self.snippet_session.clone();
+            entry.fold_state = self.fold_state.clone();
+            entry.bookmarks = self.bookmarks.clone();
         }
     }
 
@@ -208,56 +293,26 @@ impl App {
         self.viewport.scroll_x = entry.scroll_x;
         self.viewport.scroll_y = entry.scroll_y;
         self.snippet_session = entry.snippet_session;
+        self.fold_state = entry.fold_state;
+        self.bookmarks = entry.bookmarks;
         self.mouse.selection_anchor = None;
         self.ime = ImeComposition::new();
         self.reset_goal_columns();
         self.update_syntax_on_open();
         self.update_document_title();
-        self.refresh_accessibility();
+        let tab_title = self
+            .documents
+            .path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "Untitled".into());
+        crate::accessibility::announce(self, format!("Switched to tab {tab_title}"));
+        crate::git::refresh_git_state(self);
         self.scheduler.invalidate_all();
         if let Some(gpu) = &self.gpu_window {
             gpu.window.request_redraw();
         }
         true
-    }
-
-    pub(crate) fn cycle_tab(&mut self, forward: bool) -> bool {
-        let tabs = self.documents.tabs.tabs();
-        if tabs.len() <= 1 {
-            return false;
-        }
-        let Some(pos) = tabs
-            .iter()
-            .position(|t| Some(t.id) == self.documents.active_tab)
-        else {
-            return false;
-        };
-        let next = if forward {
-            (pos + 1) % tabs.len()
-        } else {
-            (pos + tabs.len() - 1) % tabs.len()
-        };
-        self.switch_to_tab(tabs[next].id)
-    }
-
-    pub(crate) fn switch_to_next_tab(&mut self) -> bool {
-        self.cycle_tab(true)
-    }
-
-    pub(crate) fn switch_to_prev_tab(&mut self) -> bool {
-        self.cycle_tab(false)
-    }
-
-    pub(crate) fn reopen_last_closed_tab(&mut self) -> bool {
-        let Some(reopened_id) = self.documents.tabs.reopen_last_closed() else {
-            return false;
-        };
-        let Some(mut entry) = self.documents.closed_entries.pop() else {
-            return false;
-        };
-        entry.tab_id = reopened_id;
-        self.documents.entries.push(entry);
-        self.switch_to_tab(reopened_id)
     }
 
     pub(crate) fn close_tab(&mut self, ctx: &dyn PlatformContext, target_id: TabId) {
@@ -298,6 +353,9 @@ impl App {
                 self.documents.close_when_idle = true;
             }
             return;
+        }
+        if matches!(request, Request::Save { .. }) {
+            self.apply_on_save_transforms();
         }
         let snapshot = Snapshot {
             buffer: self.buffer.clone(),
@@ -356,6 +414,7 @@ impl App {
                     if let Some(store) = recovery_store() {
                         let _ = store.clear(&path);
                     }
+                    self.ui.session.mark_clean(&path);
                     self.documents.path = Some(path.clone());
                     self.documents.disk_snapshot = Some(snapshot);
                     self.documents.saved_version = pending.version;
@@ -368,6 +427,10 @@ impl App {
                     }
                     self.sync_active_document_to_entry();
                     self.update_syntax_on_open();
+                    crate::git::refresh_git_state(self);
+                    if let Some(path) = self.documents.path.clone() {
+                        crate::lsp::sync_document_save(self, &path);
+                    }
                 }
                 if let Some((path, buffer)) = opened {
                     if let Some(ref p) = path
@@ -410,6 +473,7 @@ impl App {
                             self.viewport.scroll_y = 0.0;
                             self.sync_active_document_to_entry();
                             self.update_syntax_on_open();
+                            crate::git::refresh_git_state(self);
                         } else {
                             self.sync_active_document_to_entry();
                             let tab_id = self.documents.tabs.open(title);
@@ -417,6 +481,10 @@ impl App {
                             self.documents.entries.push(entry);
                             self.switch_to_tab(tab_id);
                         }
+                    }
+                    if let Some(doc_path) = self.documents.path.clone() {
+                        let text = self.buffer.text();
+                        crate::lsp::sync_document_open(self, ctx, &doc_path, &text);
                     }
                 }
                 if close {
@@ -486,27 +554,7 @@ impl App {
     }
 }
 
-impl App {
-    pub(crate) fn save_recovery_snapshot(&self) {
-        if self.document_dirty()
-            && let Some(path) = &self.documents.path
-            && !self.buffer.is_huge_file_mode()
-            && let Some(store) = recovery_store()
-        {
-            let _ = store.save(path, &self.buffer.text());
-        }
-    }
-
-    pub(crate) fn recoverable_documents() -> Vec<PathBuf> {
-        if let Some(store) = recovery_store()
-            && let Ok(recoverable) = store.recoverable()
-        {
-            recoverable.into_iter().map(|s| s.path).collect()
-        } else {
-            Vec::new()
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod whitespace_tests;

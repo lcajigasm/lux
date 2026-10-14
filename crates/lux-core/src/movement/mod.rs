@@ -16,7 +16,7 @@ mod paragraph;
 mod word;
 
 pub use bracket::matching_bracket;
-pub use line::{line_end, line_start, move_line_down, move_line_up};
+pub use line::{line_end, line_start, move_line_down, move_line_up, position_at_line_column};
 pub use page::{move_page_down, move_page_up};
 pub use paragraph::{move_paragraph_next, move_paragraph_prev};
 pub use word::{move_word_left, move_word_right};

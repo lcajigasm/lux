@@ -27,3 +27,8 @@ for license in LICENSE*; do
   cp "$license" "$dest/share/doc/"
 done
 echo "packed $dest (unsigned)"
+
+# On macOS, also produce native application bundle and DMG disk image
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  ./scripts/package-macos.sh "$(dirname "$dest")" "Lux.dmg"
+fi

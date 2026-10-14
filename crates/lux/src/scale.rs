@@ -32,14 +32,22 @@ mod tests {
         app.viewport.scroll_y = LINE_HEIGHT * 10.0;
         app.viewport.scroll_x = 7.0;
         app.viewport.height = LINE_HEIGHT * 4.0;
-        let first =
-            app.editor_view
-                .build_frame(&app.buffer, &app.cursors, &app.viewport, Duration::ZERO);
+        let first = app.editor_view.build_frame(
+            &app.buffer,
+            &app.cursors,
+            &app.viewport,
+            Duration::ZERO,
+            Some(&app.fold_state),
+        );
         app.set_display_scale(2.0);
         app.viewport.height *= 2.0;
-        let retina =
-            app.editor_view
-                .build_frame(&app.buffer, &app.cursors, &app.viewport, Duration::ZERO);
+        let retina = app.editor_view.build_frame(
+            &app.buffer,
+            &app.cursors,
+            &app.viewport,
+            Duration::ZERO,
+            Some(&app.fold_state),
+        );
         assert_eq!(first.visible_line_range, retina.visible_line_range);
         assert!((first.lines[0].layout.width() * 2.0 - retina.lines[0].layout.width()).abs() < 0.1);
         assert_eq!(app.viewport.scroll_x, 14.0);
@@ -70,9 +78,13 @@ mod tests {
         });
         assert_eq!(app.cursors.primary().head.line, 3);
         assert_eq!(app.cursors.primary().anchor.line, 0);
-        let frame =
-            app.editor_view
-                .build_frame(&app.buffer, &app.cursors, &app.viewport, Duration::ZERO);
+        let frame = app.editor_view.build_frame(
+            &app.buffer,
+            &app.cursors,
+            &app.viewport,
+            Duration::ZERO,
+            Some(&app.fold_state),
+        );
         assert!(
             frame
                 .cursors

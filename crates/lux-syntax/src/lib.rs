@@ -12,7 +12,13 @@ use tree_sitter::{InputEdit, Language, Parser, Query, QueryCursor, StreamingIter
 pub mod brackets;
 pub mod folding;
 pub mod indent_rules;
+pub mod symbols;
 pub mod theme;
+
+pub use symbols::{
+    DocumentSymbol, SymbolKind, document_symbols, extract_fallback_symbols,
+    extract_symbols_from_source,
+};
 
 /// One highlighted span: a byte range plus the highlight query capture name
 /// that matched it (e.g. `"keyword"`, `"function"`, `"string"`).
@@ -252,7 +258,7 @@ impl Document {
 
     /// This document's language, for modules that need per-grammar
     /// configuration (`indent_rules`).
-    pub(crate) fn language(&self) -> LanguageId {
+    pub fn language(&self) -> LanguageId {
         self.language
     }
 }

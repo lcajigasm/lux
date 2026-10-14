@@ -125,12 +125,24 @@ impl Buffer {
         self.eol
     }
 
+    pub fn set_eol(&mut self, eol: Eol) {
+        self.eol = eol;
+    }
+
     pub fn indent(&self) -> Indent {
         self.indent
     }
 
+    pub fn set_indent(&mut self, indent: Indent) {
+        self.indent = indent;
+    }
+
     pub fn encoding(&self) -> Encoding {
         self.encoding
+    }
+
+    pub fn set_encoding(&mut self, encoding: Encoding) {
+        self.encoding = encoding;
     }
 
     pub fn len_lines(&self) -> usize {
@@ -144,6 +156,16 @@ impl Buffer {
     /// The text in `char_range`.
     pub fn text_range(&self, char_range: Range<usize>) -> String {
         self.rope.slice(char_range).to_string()
+    }
+
+    /// The character at `char_idx`, if within bounds.
+    #[must_use]
+    pub fn char_at(&self, char_idx: usize) -> Option<char> {
+        if char_idx < self.rope.len_chars() {
+            Some(self.rope.char(char_idx))
+        } else {
+            None
+        }
     }
 
     /// Inserts `text` at `char_idx`. The fundamental invertible primitive
@@ -364,5 +386,22 @@ mod tests {
         assert_eq!(saved_bytes, original_bytes);
 
         fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn buffer_setters_mutate_properties() {
+        let mut buffer = Buffer::from_bytes(b"hello\n").unwrap();
+        assert_eq!(buffer.eol(), Eol::Lf);
+        buffer.set_eol(Eol::Crlf);
+        assert_eq!(buffer.eol(), Eol::Crlf);
+
+        buffer.set_indent(Indent {
+            style: IndentStyle::Tabs,
+            width: 1,
+        });
+        assert_eq!(buffer.indent().style, IndentStyle::Tabs);
+
+        buffer.set_encoding(Encoding::Latin1);
+        assert_eq!(buffer.encoding(), Encoding::Latin1);
     }
 }

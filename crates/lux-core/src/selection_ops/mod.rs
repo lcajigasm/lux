@@ -6,11 +6,15 @@
 //! `edit_ops`'s job).
 
 mod box_select;
+mod line;
 mod occurrence;
+mod scope;
 mod split;
 mod word;
 
-pub use box_select::box_select;
+pub use box_select::{box_select, position_at_column};
+pub use line::expand_to_line;
 pub use occurrence::{select_all_occurrences, select_next_occurrence, skip_current_occurrence};
+pub use scope::{expand_to_scope, expand_to_tag};
 pub use split::split_into_lines;
 pub use word::expand_to_word;

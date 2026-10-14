@@ -171,6 +171,17 @@ impl TextLayoutContext {
         text: &str,
         ligature_overrides: &[(Range<usize>, bool)],
     ) -> LineLayout {
+        self.layout_line_wrapped(style, text, None, ligature_overrides)
+    }
+
+    /// Lays out one line with optional max advance for soft word wrap.
+    pub fn layout_line_wrapped(
+        &mut self,
+        style: &LineStyle,
+        text: &str,
+        max_width: Option<f32>,
+        ligature_overrides: &[(Range<usize>, bool)],
+    ) -> LineLayout {
         let mut builder =
             self.layout_context
                 .ranged_builder(&mut self.font_context, text, 1.0, true);
@@ -181,7 +192,7 @@ impl TextLayoutContext {
             builder.push(ligature_feature_property(*enabled), range.clone());
         }
         let mut layout: Layout<NoBrush> = builder.build(text);
-        layout.break_all_lines(None);
+        layout.break_all_lines(max_width);
         layout.align(Alignment::Start, AlignmentOptions::default());
         LineLayout { layout }
     }
@@ -360,5 +371,20 @@ mod tests {
             ids.len(),
             "expected 4 distinct glyph ids, got {ids:?}"
         );
+    }
+
+    #[test]
+    fn soft_word_wrap_breaks_line_at_max_width() {
+        let (mut cx, family) = context_with_ahem();
+        let style = LineStyle {
+            family: &family,
+            font_size: 20.0,
+            ligatures: false,
+        };
+        // Each char in Ahem is 20px wide. 10 chars = 200px.
+        // Wrapping at 70px should break it into multiple visual lines in parley.
+        let unwrapped = cx.layout_line_wrapped(&style, "aaaa aaaa aaaa", None, &[]);
+        let wrapped = cx.layout_line_wrapped(&style, "aaaa aaaa aaaa", Some(70.0), &[]);
+        assert!(wrapped.layout.len() > unwrapped.layout.len());
     }
 }

@@ -12,7 +12,7 @@ mod vt;
 pub use alacritty_terminal::event::Event;
 pub use links::{SourceLocation, detect_links};
 pub use portable_pty::{CommandBuilder, ExitStatus, PtySize};
-pub use pty::{Pty, PtyError};
+pub use pty::{Pty, PtyError, TerminalCell};
 pub use scrollback::{
     Column, Line, Match, Point, RegexSearch, Scroll, ScrollbackPosition, SearchDirection,
     SelectionType,

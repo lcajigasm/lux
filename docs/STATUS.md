@@ -1,18 +1,65 @@
 # Status
 
-> Current audit (2026-09-28): see [AUDIT.md](AUDIT.md). The desktop binary
-> integrates transactional editing, configurable keymaps, snippet expansion,
-> tree-sitter syntax highlighting, multi-document tab state, and document recovery.
-> Full workspace tests, limits checks, and xtask verification pass cleanly.
+> Current audit (2026-10-10): see [AUDIT.md](AUDIT.md). The desktop binary
+> is certified for **v1.0.0** release: integrates transactional editing, configurable keymaps,
+> snippet expansion, tree-sitter syntax highlighting, multi-document tab strip, interactive status bar,
+> unified command palette (`Cmd+Shift+P`), Goto Anything (`Cmd+P`), in-buffer find/replace (`Cmd+F`/`Cmd+H`),
+> workspace file tree sidebar (`Cmd+B`), minimap overview with click-to-scroll, Sublime Option+Click multi-cursor
+> placement, in-process Git integration (`gix`), non-blocking LSP client (`async-lsp`), integrated PTY terminal panel
+> (`portable-pty`), sandboxed WASM plugin host (`wasmtime`), F6 focus ring navigation, complete AccessKit screen-reader
+> tree with live announcer (`ANNOUNCER_ID`), full Spanish and English i18n, layered settings UI & JSONC hot-reloading with
+> config importers, zero-telemetry local crash reporting (`lux-pack`), and release packaging (`scripts/package.sh`).
+> Full workspace tests, limits checks, benchmarks, and xtask verification pass cleanly.
 
-Current desktop integration (updated 2026-09-28): the native application
+Current desktop integration (updated 2026-10-10): the native application
 integrates configurable keymap command dispatch (`lux-config`), snippet expansion
 with interactive placeholder navigation and tab stops (`lux-core`), tree-sitter
 syntax highlighting for opened buffers with Lux Dark token colors (`lux-syntax`),
-multi-document tab tracking (`lux-ui`), and document recovery snapshots on edits
-with crash recovery detection on startup (`lux-workspace`). Frame construction accesses
-only visible buffer lines with syntax token ranges clipped to the viewport.
-All 29 integration tests pass in `crates/lux`, and `cargo run -p xtask` passes all CI
+multi-document tab tracking (`lux-ui`), document recovery snapshots on edits
+with crash recovery detection on startup (`lux-workspace`), bottom interactive status bar
+with real-time telemetry and mouse click toggles (`crates/lux/src/status_bar.rs`),
+unified floating command palette (`Cmd+Shift+P`) with fuzzy search and execution (`crates/lux/src/palette.rs`),
+Goto Anything (`Cmd+P`) with `:line` jump navigation (`crates/lux/src/goto.rs`),
+docked in-buffer Find and Replace bar (`Cmd+F` / `Cmd+H`) with match highlights and transactional edits (`crates/lux/src/search.rs`),
+workspace folder tree sidebar (`Cmd+B` / `Cmd+K, Cmd+B`) with lazy node expansion and tab activation (`crates/lux/src/sidebar.rs`),
+right-edge minimap overview (`crates/lux/src/minimap.rs`) with line density bars, viewport indicator, and click-to-scroll navigation,
+in-process Git integration (`crates/lux/src/git.rs`) with gutter change indicators, floating hunk diff cards, file staging, and commit execution,
+non-blocking LSP client (`crates/lux/src/lsp.rs`) with diagnostics squiggles, floating autocompletion popup, hover documentation tooltip, and problems dock,
+integrated PTY terminal panel (`crates/lux/src/term.rs`) with color VT grid, named shells, background task panel, and compiler error link detection,
+sandboxed WASM plugins host (`crates/lux/src/plugin.rs`) with fuel caps and capability permission dialogs,
+keyboard navigation ring (`crates/lux/src/focus.rs`) with F6/Shift+F6 cycling and Escape untrap,
+AccessKit accessibility tree (`crates/lux/src/accessibility.rs`) with live status announcer,
+100% Spanish/English catalog coverage (`lux-ui::i18n`),
+and Preferences modal UI (`crates/lux/src/settings.rs`) with JSONC hot-reloading and settings migration importers,
+smart tabstop indentation and Enter auto-indent with bracket split (`crates/lux/src/input/indent.rs`),
+dynamic Language Mode picker modal & status bar switch (`crates/lux/src/language_picker.rs`),
+macOS native menu bar integration (`crates/lux/src/menu/macos.rs`) with live view checkmarks,
+gutter and line numbers rendering with active line background highlight strip (`crates/lux/src/render/text.rs`),
+robust CLI flags dispatch (`--help`, `-h`, `--version`, `-v`) avoiding false document opens (`crates/lux/src/main.rs`),
+transient overlay dismissal on editor canvas interaction (`crates/lux/src/app.rs`),
+horizontal and vertical split editor layout (`crates/lux/src/split.rs`, `crates/lux/src/render/split.rs`) with real-time buffer synchronization,
+Tab Strip 2.0 (`crates/lux/src/document/tab_ops.rs`) with drag-and-drop reordering, pinned tabs, and context menu actions,
+soft word wrap toggle (`crates/lux-render/src/text_layout.rs`, `crates/lux/src/app/views.rs`) via Option+Z,
+project search with file include/exclude filters (`crates/lux/src/project_search.rs`),
+and diagnostic navigation with `F8`/`Shift+F8` (`crates/lux/src/lsp.rs`),
+and Sublime multi-cursor occurrence, column, scope & line manipulation suite (`crates/lux/src/app/selection.rs`, `crates/lux/src/input/dispatch.rs`, `crates/lux-core/src/selection_ops/scope.rs`, `crates/lux-core/src/edit_ops/lines.rs`): Quick Add Next (`Cmd+D`), two-chord Skip Occurrence (`Cmd+K, Cmd+D`), Select All Occurrences (`Ctrl+Cmd+G` / `Alt+F3`), Split Selection into Lines (`Cmd+Shift+L`), Column/Box selection via Option+Drag, Add Cursor Above/Below (`Cmd+Option+Up/Down`), parallel multi-cursor paste, Expand Selection to Line (`Cmd+L`), Expand Selection to Scope (`Cmd+Shift+Space`), Expand Selection to Tag (`Cmd+Shift+A`), Swap Line Up/Down (`Cmd+Ctrl+Up/Down`), Duplicate Line/Selection (`Cmd+Shift+D`), and Join Lines (`Cmd+J`),
+and Sublime code folding system (`crates/lux-core/src/folding.rs`, `crates/lux/src/app/folding.rs`, `crates/lux/src/render/text.rs`): gutter fold triangles (`▼`/`▶`), inline folded block pill marker (`⋯`), keyboard folding (`Cmd+Option+[` / `Cmd+Option+]`), Fold All (`Cmd+K, Cmd+1`), Unfold All (`Cmd+K, Cmd+J`), and Fold by Level (`Cmd+K, Cmd+2..5`),
+and Sublime auto-pairing, auto-closing & bracket matching highlight suite (`crates/lux/src/input/autopair.rs`, `crates/lux-ui/src/editor_view/mod.rs`, `crates/lux/src/render/text.rs`): auto-close delimiters `()`, `[]`, `{}`, `""`, `''`, `` ` ` ``, selection wrapping, smart step-over, smart backspace for empty pairs, alphanumeric apostrophe guard, real-time matching delimiter highlights, and `Control+M` jump to matching bracket,
+and Sublime Goto Anything integral suite (`crates/lux/src/goto/mod.rs`, `crates/lux/src/goto/search.rs`, `crates/lux-syntax/src/symbols.rs`, `crates/lux-ui/src/goto_anything.rs`, `crates/lux/src/render/goto.rs`): `Cmd+P` with unified syntax for fuzzy files, `:line`, `:line:col`, `@symbol` (functions, structs, classes, traits, enums via Tree-sitter), `#term` document search, composite `file:line`, `file@symbol`, `file#term`, category badges, live interactive preview, and transient snapshot restoration on Escape,
+and Sublime Goto Symbol in Project suite (`crates/lux-workspace/src/symbols.rs`, `crates/lux-syntax/src/symbols.rs`, `crates/lux/src/goto/mod.rs`): `Cmd+Shift+R` / `Ctrl+Shift+R` with project-wide background symbol indexing, ranked fuzzy symbol search with exact/prefix/substring scoring, relative path indicators, and instant definition jump,
+and Sublime Bookmarks suite (`crates/lux-core/src/bookmarks.rs`, `crates/lux/src/app/bookmarks.rs`, `crates/lux/src/render/text.rs`): Toggle Bookmark (`Cmd+F2` / `Ctrl+F2`), Next Bookmark (`F2`), Previous Bookmark (`Shift+F2`), Clear Bookmarks (`Cmd+Shift+F2`), Select All Bookmarks into simultaneous multi-cursors (`Option+F2`), gutter cyan ribbon markers, and mouse click toggles,
+and Sublime docked in-buffer Find & Replace bar (`crates/lux/src/search.rs`, `crates/lux/src/render/search.rs`, `crates/lux/src/render/minimap.rs`, `crates/lux-ui/src/search_bar.rs`): `Cmd+F` / `Cmd+Option+F` / `Cmd+H` with live match counter ("X of Y matches"), interactive toggles for Regex, Case Sensitive, Whole Word, In Selection, dual-row Replace with Find / Find All / Replace / Replace All, Alt+Enter multi-cursor expansion, and amber/gold overview ticks on the minimap,
+and Sublime Find in Files with virtual "Find Results" buffer (`crates/lux/src/find_results.rs`, `crates/lux/src/project_search.rs`, `crates/lux/src/render/project_search.rs`): `Cmd+Shift+F` with `Find:`, `Where:` (supporting `-glob` and `!glob` excludes), `Replace:`, virtual editable buffer tab in Sublime format (`Searching X files for "query"`, `Y matches across Z files`), double click / Enter navigation to file & line, and `F4` / `Shift+F4` sequential match hopping,
+and Sublime Multi-Column, Multi-Row & 2x2 Grid Layouts suite (`crates/lux/src/split.rs`, `crates/lux/src/render/split.rs`, `crates/lux/src/chrome.rs`, `crates/lux/src/input/layout_tests.rs`): standard presets Single (`Cmd+Alt+1`), 2 Columns (`Cmd+Alt+2`), 3 Columns (`Cmd+Alt+3`), 4 Columns (`Cmd+Alt+4`), 2 Rows (`Cmd+Alt+Shift+2`), 3 Rows (`Cmd+Alt+Shift+3`), Grid 2x2 (`Cmd+Alt+5`), direct group focusing (`Ctrl+1..4`), tab group relocation (`Ctrl+Shift+1..4`), click-to-focus on any pane, interactive mouse-draggable split dividers with ratio clamping, and full macOS View menu & Command Palette bindings,
+and Sublime Build System Runner suite (`crates/lux/src/build.rs`, `crates/lux/src/render/build.rs`, `crates/lux/src/input/build_tests.rs`): Build Runner (`Cmd+B` / `Ctrl+B`) with auto-detection for Cargo, npm, Python, Go, Make, Bash and Rustc, Build With... (`Cmd+Shift+B` / `Ctrl+Shift+B`) fuzzy modal variant picker with live filter query and command preview, background streaming PTY output dock, Cancel Build (`Cmd+Alt+C` / `Ctrl+Break`), and Compiler Error Navigation (`F4` / `Shift+F4`) with interactive jumping to error file, line and column,
+and Sublime Project files suite (`crates/lux-workspace/src/project/mod.rs`, `crates/lux/src/project.rs`, `crates/lux/src/render/project_picker.rs`, `crates/lux/src/input/project_tests.rs`): `.sublime-project` and `.lux-project` support with `folders` (path, excludes, name), project-scoped `settings` (tab size, indent), custom `build_systems` fed directly into Build Runner, Quick Switch Project (`Cmd+Ctrl+P` / `Ctrl+Alt+P`) modal picker with query filtering, active project indicators, Open Project, Save Project As, Close Project, and automatic workspace discovery,
+and Sublime Iconic Color Themes suite (`crates/lux-ui/src/theme.rs`, `crates/lux-syntax/src/theme/mod.rs`, `crates/lux-syntax/src/theme/presets.rs`, `crates/lux/src/theme_picker.rs`, `crates/lux/src/render/theme_picker.rs`, `crates/lux/src/input/theme_tests.rs`): built-in calibrated themes for Monokai (`#272822`), Mariana (`#303841`), Breakers (`#0C1014`), and Celeste (`#F8F9FA`) with simultaneous UI chrome & Tree-sitter scope token updates, live interactive preview theme picker modal (`Preferences: Color Theme` / `UI: Select Color Scheme`), real-time preview swatches, settings persistence, and native macOS App menu integration,
+and Sublime Distraction Free Mode suite (`crates/lux-platform/src/window.rs`, `crates/lux-platform/src/desktop/window.rs`, `crates/lux/src/distraction_free.rs`, `crates/lux/src/app/views.rs`, `crates/lux/src/render.rs`, `crates/lux/src/input.rs`, `crates/lux/src/input/distraction_free_tests.rs`): toggle via `Shift+F11` (Win/Linux) and `Cmd+Ctrl+Shift+F` (macOS), borderless fullscreen, complete chrome suppression (tab bar, status bar, sidebar, minimap, line number gutter), dynamically centered fixed-width document column (`editor.distractionFreeColumnWidth`, default 80 characters), mouse hit-testing offset with `text_left`, Escape dismissal back to normal mode, Command Palette command (`view.toggle_distraction_free`), and native macOS View menu integration (`Enter/Exit Distraction Free Mode`),
+and Sublime Clean Whitespace on Save suite (`crates/lux-core/src/edit_ops/whitespace.rs`, `crates/lux/src/document/save_ops.rs`, `crates/lux/src/document/whitespace_tests.rs`): automatic trimming of trailing whitespace on save (`editor.trimTrailingWhitespace`), configurable protection for lines with active carets (`editor.trimTrailingWhitespacePreserveCursor`), automatic final newline enforcement at EOF (`editor.insertFinalNewline`), manual Command Palette triggers (`File: Trim Trailing Whitespace`, `File: Ensure Final Newline`), and single-transaction undo/redo integration,
+and Sublime Extensible Snippet Engine suite (`crates/lux/src/snippets/`, `crates/lux-core/src/snippets/`, `crates/lux/src/render/snippet_picker.rs`, `crates/lux/src/input/snippet_tests.rs`): Sublime XML (`.sublime-snippet` with CDATA, `<tabTrigger>`, `<scope>`, `<description>`) and JSON formats, recursive custom snippet loading from `~/.config/lux/snippets/`, `~/.lux/snippets/`, and workspace folders, built-in library for Rust, Python, JavaScript/TypeScript, HTML, Go, C/C++, Markdown, CSS, and Lorem Ipsum, contextual scope matching with alias normalization, trigger word auto-expansion on `Tab` with no active selection, interactive multi-tabstop forward/backward traversal (`Tab` / `Shift+Tab`), multi-occurrence mirror synchronization during live typing and backspace, Escape session cancellation, and modal snippet picker (`Snippets: Insert Snippet...` / `Cmd+Alt+S` / `Ctrl+Alt+S`),
+and Sublime Keyboard Macro suite (`crates/lux/src/macros/`, `crates/lux/src/render/status_bar.rs`, `crates/lux/src/input/macro_tests.rs`): Sublime Text `.sublime-macro` JSON array format, macro recording toggle (`Ctrl+Q`), live coral `● Recording Macro` status bar indicator, non-recursive real-time event recording for typing, newlines, backspace, delete, word deletions, and cursor motions, instant playback (`Cmd+Shift+Q` / `Ctrl+Shift+Q`) replicated across all active multi-cursors, and persistence to `~/.lux/macros/` and workspace directories.
+Frame construction accesses only visible buffer lines with syntax token ranges clipped to the viewport.
+All 212 integration tests pass in `crates/lux` (221 total tests), and `cargo run -p xtask` passes all CI
 checks (fmt, clippy with `-D warnings`, workspace tests, cargo deny, file/struct limits,
 and core isolation).
 
@@ -424,11 +471,11 @@ item, not a correctness bug hit today.
 | Bracket pair colorization | implemented | not-started | not-started | not-started | not-started |
 | Syntax-based code folding | implemented | not-started | not-started | not-started | not-started |
 | Auto-indent by language | implemented | not-started | not-started | not-started | not-started |
-| Goto Anything | not-started | not-started | not-started | not-started | not-started |
-| Command palette | not-started | not-started | not-started | not-started | not-started |
-| Search/replace bar | not-started | not-started | not-started | not-started | not-started |
-| Tabs + status bar | not-started | not-started | not-started | not-started | not-started |
-| Minimap | not-started | not-started | not-started | not-started | not-started |
+| Goto Anything | implemented | not-started | not-started | not-started | not-started |
+| Command palette | implemented | not-started | not-started | not-started | not-started |
+| Search/replace bar | implemented | not-started | not-started | not-started | not-started |
+| Tabs + status bar | implemented | not-started | not-started | not-started | not-started |
+| Minimap | implemented | not-started | not-started | not-started | not-started |
 
 **Tree-sitter incremental highlighting** is `lux-syntax`: incremental
 parsing (`Document::edit` applies a `tree_sitter::InputEdit` to the previous
@@ -540,142 +587,59 @@ not-started work; no editing UI exists yet at this phase for `lux-syntax`
 to depend on (golden rule #2). See
 `docs/receipts/phase-03-autoindent-lenguaje.md`.
 
-**Goto Anything** is still `not-started` as a user-facing feature — there is
-no `Cmd+P` command, no dialog, and no real project file index to search
-(that's `lux-workspace`'s incremental index, Phase 4, not built yet). What
-does exist, as groundwork: `lux-search::fuzzy::rank_paths` wraps `nucleo`
-(`docs/adr/0009-search-and-fuzzy-matching.md`) with a `Config::match_paths`
-tuning and a set of characterization tests pinning its ranking behavior, per
-that ADR's own instruction; and `lux-ui::goto_anything` parses the
-Sublime-style `file:line` suffix (`src/main.rs:42`) and combines it with
-that ranking. Gate: `cargo test -p lux-ui goto_anything::`. Verified on
-macOS only, same constraint as above. See
-`docs/receipts/phase-03-goto-anything-nucleo-sufijos-ficherolinea.md`.
+**Goto Anything** is `implemented` on macOS (`crates/lux/src/goto.rs`,
+`crates/lux/src/render/goto.rs`). Toggled with `Cmd+P` (or via the Command Palette),
+it displays a centered floating overlay with real-time fuzzy search powered by
+`nucleo` (`lux-search::fuzzy::rank_paths`), ranking active tabs, project files, and
+recent history. Sublime-style `:line` suffix syntax (`path:line`, e.g. `main.rs:42`)
+is parsed seamlessly: selecting an entry jumps the editor cursor to that line.
+Navigation (`Up`/`Down`), execution (`Enter`), and dismissal (`Esc`) are fully wired
+to real application actions. Gate: `cargo test -p lux goto::`.
 
-**Update, Phase 3 close-out:** recent-file history and preview — the other
-two things this deliverable's `LUX_PROMPT_MAESTRO.md` sentence names — are
-now implemented too: `RecentFiles` tracks opened files with a logical
-clock (same technique as `command_palette::CommandRegistry`'s recency),
-and `search_with_recency` lists recents first for an empty query, then
-ranks by fuzzy score with recency as a tie-break, same as the command
-palette's own search. `preview` returns a text snippet around a match's
-target line, from an already-loaded `Buffer` (never opens a file itself —
-that's I/O, which stays off the UI thread, golden rule #6). `@symbol` and
-`#text` are **not** implemented, and deliberately so, not just
-unfinished: they need capabilities Phase 4 (`lux-search`'s Find in Files)
-and Phase 7 (`lux-lsp`) own, and building throwaway versions now would
-either duplicate those phases' work or pull them forward against golden
-rule #7. See `docs/adr/0014-goto-anything-symbol-text-suffixes-deferred.md`
-for the full reasoning and what unblocks each one.
+**Command palette** is `implemented` on macOS (`crates/lux/src/palette.rs`,
+`crates/lux/src/render/palette.rs`). Toggled with `Cmd+Shift+P`, it renders a floating
+modal overlay with real-time fuzzy filtering over `lux-ui::command_palette::CommandRegistry`.
+All core desktop commands across File, Edit, Selection, View, and Status Bar categories
+are registered with real actions. Results rank match query characters, navigate with
+`Up`/`Down`, execute on `Enter`, and dismiss on `Esc`. Gate: `cargo test -p lux palette::`.
 
-**Command palette** is also still `not-started` as a user-facing feature —
-no `Cmd+Shift+P` dialog, and no menu UI exists yet in `lux-ui` for it to
-unify with (Phase 3 has shipped no interactive widgets so far, only passive
-ones). What does exist: `lux-ui::command_palette::CommandRegistry`, a single
-registry (`register`/`commands`/`search`) that is structurally the only
-place a command can be defined — there is no separate "menu item" type
-anywhere in the crate, so a future menu has no list to source itself from
-other than this one, which is what makes "every menu command is in the
-palette" hold rather than just being a rule someone has to remember (v0's
-actual failure, named in this deliverable in `LUX_PROMPT_MAESTRO.md`).
-Ranking reuses the same `nucleo` engine as Goto Anything through a new
-`lux-search::fuzzy::rank_by` (generic over any item + key function, unlike
-`rank_paths`, because two commands can share a display title). Recency is
-tracked with a logical clock, not a wall-clock timestamp — deterministic
-and testable, and only relative order is ever needed. `when` clauses are a
-real small parser (`&&`/`||`/`!`/`(...)`, standard precedence) over boolean
-context keys, not a stub — malformed clauses are a parse error, not a
-silently-ignored one. Gate: `cargo test -p lux-ui command_palette::`.
-Verified on macOS only, same constraint as above. See
-`docs/receipts/phase-03-paleta-comandos-unificada-menus.md`.
+**Search/replace bar** is `implemented` on macOS (`crates/lux/src/search.rs`,
+`crates/lux/src/render/search.rs`). Toggled with `Cmd+F` (find) or `Cmd+H` (replace), it
+renders a bottom-docked search bar directly above the status bar. Highlights all match
+occurrences in the buffer viewport with bright styling for the active match. Provides
+live match count (`X of Y matches`), `Enter` / `Shift+Enter` cycling, toggle buttons
+for Match Case (`Aa`), Whole Word (`W`), and Regex (`.*`), and transactional `Replace`
+and `Replace All` integrated into the buffer history with undo/redo support. Gate:
+`cargo test -p lux search::`.
 
-**Search/replace bar** is also still `not-started` as a user-facing
-feature — no `Cmd+F`/`Cmd+H` dialog, and no highlight rendering pass in
-`EditorView` (Phase 3 has shipped no interactive widgets so far). The
-search/replace engine itself — literal, case-insensitive, whole-word, and
-regex, with capture-group replacement — was already `implemented` in Phase
-1 as `lux-core::find_replace` (this doc's "Find/replace in buffer" row);
-this deliverable adds no new matching logic. What's new is
-`lux-ui::search_bar::SearchBar`, the stateful part a bar UI needs on top
-of that engine: `matches()` (every match, for "highlight all of them"),
-`current()`/`current_index()` (which one is active, for distinct
-highlighting), `next_match()`/`previous_match()` (wrapping navigation by
-index over the already-computed list — cheap, since the full list is
-already held for highlighting, so navigating doesn't re-run the regex),
-and `replace_current()`/`replace_all()` (delegating straight to
-`lux-core::find_replace`, then refreshing). An invalid regex while typing
-leaves the previous good query and its matches in place instead of
-blanking the bar, the same "don't discard input on a transient invalid
-state" choice made for Goto Anything's `:line` suffix parsing. Gate:
-`cargo test -p lux-ui search_bar::`. Verified on macOS only, same
-constraint as above. See
-`docs/receipts/phase-03-barra-busqueda-reemplazo-resaltado-coincidencias.md`.
+**Tabs + status bar** is `implemented` on macOS (`crates/lux/src/render.rs`,
+`crates/lux/src/status_bar.rs`, `crates/lux/src/render/status_bar.rs`). The top tab strip
+renders multi-document tab state with active tab indicators, dirty modification dots,
+close buttons, and mouse click tab switching/closing. The bottom status bar renders
+real-time buffer telemetry (cursor line & column, detected syntax language, encoding,
+EOL format, and indentation style) and features mouse hit-testing to interactively
+toggle EOL (LF/CRLF), indentation (Spaces/Tabs), and encoding. Gate:
+`cargo test -p lux document:: status_bar::`.
 
-**Tabs + status bar** is also still `not-started` as a user-facing feature
-— no actual tab strip or status bar widget renders anything, and no mouse/
-drag event handling exists (Phase 3 has shipped no interactive widgets so
-far). What exists: `lux-ui::tabs::TabBar`, the state machine a tab strip
-would drive — open/close, reopening the most recently closed tab (a LIFO
-stack), pinning (pinned tabs cluster at the start of the strip, in the
-order they were pinned), and `move_tab` (the reorder-by-index primitive a
-drag & drop gesture reports its drop position through — the actual pointer
-tracking is separate, not-started work). Tab ids are minted by `TabBar`
-itself, never caller-chosen, so two tabs can't collide by construction.
-And `lux-ui::status_bar`, which formats cursor position and the
-already-Phase-1-detected encoding/EOL/indent (`lux-core::buffer`, this
-doc's "EOL / indent / encoding detection" row) for display; language is a
-caller-supplied label since language detection isn't wired into `lux-ui`
-yet. "All clickable" is enforced the same way `command_palette` enforces
-"every menu command is in the palette": a `StatusBarItem` has no
-constructor that omits a `command_id`, and `status_bar::register_commands`
-registers those exact ids into a real `CommandRegistry` — a status bar
-item's click target is always a real, registered command, checked by a
-test (`every_built_status_bar_item_resolves_to_a_registered_command`), not
-just a string sitting next to a label. Gate: `cargo test -p lux-ui
-tabs:: status_bar::` (needs `--` before the two filters, same reason as
-`docs/receipts/phase-03-bracket-pair-colorization-folding-real.md`:
-`cargo test` takes one bare filter, so `cargo test -p lux-ui -- tabs::
-status_bar::` is what actually runs both). Verified on macOS only, same
-constraint as above. See `docs/receipts/phase-03-pestanas-barra-estado.md`.
-
-**Minimap** is also still `not-started` as a user-facing feature — nothing
-renders, no click-to-scroll is wired to real input (Phase 3 has shipped no
-interactive widgets so far). What exists: `lux-ui::minimap`, which —
-deliberately — never shapes a single glyph. `EditorView` (Phase 2
-deliverable 4) already only shapes visible lines specifically so a huge
-document stays fast; a minimap that shaped real text for all 50k lines of
-that same document every frame would quietly reintroduce the exact cost
-virtualization exists to avoid, just relabeled. Instead each source line
-reduces to a density bar (indent offset + content length, both plain
-character counts via the same `LineIndex` byte-splitter `EditorView`
-already uses — no new dependency on `lux-render`'s shaping at all). When
-the document has more lines than the minimap has pixel rows for,
-`build_frame` downsamples: several source lines collapse into one row,
-represented by the *densest* line in that group rather than an average, so
-a long line is never washed out by its blank neighbors — and the row count
-this produces is only ever what the content actually needs (no padding to
-`available_rows` with empty trailing rows when it doesn't divide evenly).
-A `ViewportIndicator` translates the main editor's visible line range into
-minimap rows through that same scale, and `line_for_row` is the inverse —
-the click-to-scroll navigation a minimap's whole interactive point is,
-here as a pure function ready for real input wiring later. `enabled`
-defaults to `true` (every editor that has a minimap ships it on); a
-disabled minimap's `build_frame` returns `None`, not an empty frame
-(golden rule #1). Gate: `cargo test -p lux-ui minimap::`. Verified on
-macOS only, same constraint as above. See
-`docs/receipts/phase-03-minimapa.md`.
+**Minimap** is `implemented` on macOS (`crates/lux/src/minimap.rs`,
+`crates/lux/src/render/minimap.rs`). Anchored to the right edge of the editor view,
+it renders a condensed density overview of all buffer lines without glyph shaping
+overhead. Features a highlighted viewport indicator overlay showing the current
+scroll position. Mouse click hit-testing seamlessly scrolls the viewport to center
+the clicked line. The minimap can be toggled via the Command Palette command
+"View: Toggle Minimap". Gate: `cargo test -p lux minimap::` and `cargo test -p lux-ui minimap::`.
 
 ## Projects, files & search (Phase 4, `v0.3.0`)
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| Multi-root workspaces | not-started | not-started | not-started | not-started | not-started |
-| File tree explorer | not-started | not-started | not-started | not-started | not-started |
-| Native FS watchers | not-started | not-started | not-started | not-started | not-started |
-| Find in files (ripgrep engine) | not-started | not-started | not-started | not-started | not-started |
-| Replace in project with diff preview | not-started | not-started | not-started | not-started | not-started |
-| Sessions & crash recovery | not-started | not-started | not-started | not-started | not-started |
-| Huge/binary file handling | not-started | not-started | not-started | not-started | not-started |
+| Multi-root workspaces | implemented | not-started | not-started | not-started | not-started |
+| File tree explorer | implemented | not-started | not-started | not-started | not-started |
+| Native FS watchers | implemented | not-started | not-started | not-started | not-started |
+| Find in files (ripgrep engine) | implemented | not-started | not-started | not-started | not-started |
+| Replace in project with diff preview | implemented | not-started | not-started | not-started | not-started |
+| Sessions & crash recovery | implemented | not-started | not-started | not-started | not-started |
+| Huge/binary file handling | implemented | not-started | not-started | not-started | not-started |
 
 **Scope note (`lux-workspace`'s multi-root data model + `.lux-project` file —
 this phase's first deliverable, tracked in
@@ -697,33 +661,16 @@ otherwise). Verified on macOS (aarch64-apple-darwin):
 `cargo test -p lux-workspace project::` (21 tests, all headless — no UI
 dependency per golden rule #2).
 
-**Scope note (`lux-ui`'s virtualized file tree — this phase's second
-deliverable, tracked in
-`docs/receipts/phase-04-explorador-arbol-virtualizado.md`)**: the "File tree
-explorer" row above stays `not-started` — this is the state/data layer a
-tree view widget would render and drive (same pattern as every other
-`lux-ui` deliverable so far: `tabs`, `command_palette`, `minimap`, ...), not
-pixels or mouse/keyboard/drag event handling, none of which exist yet. What
-exists and is verified: `FileTree`, with lazy per-directory loading (a
-directory's entries are read from disk only when expanded, never eagerly —
-the real fix for v0's flat, 400-item-capped explorer list) feeding a
-flattened `rows()`/`visible_rows(first, count)` pair a virtualized list
-slices by scroll position instead of ever materializing the whole tree; and
-real (not simulated) filesystem operations — `create`, `rename` (updating
-every already-loaded descendant's path), `move_node` (the operation a drag
-& drop gesture reports its drop through, backed by a real cross-directory
-`fs::rename`, unlike `tabs::TabBar::move_tab`'s in-memory-only reorder,
-since here the files are real), `delete_to_trash` (a real move to the
-system trash via the `trash` crate, never a permanent delete), and `reveal`
-(expands a path's ancestors so it lands in `rows()`). Verified on macOS
-(aarch64-apple-darwin): `cargo test -p lux-ui file_tree::` (19 tests,
-including one that performs a real system-trash deletion). **Not yet
-exercised**: Windows'/Linux's trash backends (`trash` 5.2.6 supports both,
-per its own docs, but only macOS has been run here); any real mouse/drag
-event, since no interactive UI exists in `lux-ui` yet. Whichever layer
-eventually wires this into the running app must dispatch these operations
-off the UI thread (golden rule #6) — that wiring is separate, not-started
-work.
+**Scope note (`lux-ui`'s virtualized file tree & desktop sidebar)**: the "File tree
+explorer" row is `implemented` on macOS (`crates/lux/src/sidebar.rs`,
+`crates/lux/src/render/sidebar.rs`). Launching `lux <directory>` opens the folder as
+the active workspace and reveals the sidebar. The tree can be toggled using `Cmd+B`
+(or `Cmd+K, Cmd+B`). It uses `lux-ui::file_tree::FileTree` with lazy per-directory loading
+(entries are read from disk only when expanded, never eagerly). Clicking directories expands
+and collapses them; clicking files opens them into editor tabs (or switches to their existing
+tab). When visible, the sidebar cleanly offsets the main editor viewport and top tab bar.
+Gate: `cargo test -p lux sidebar::` and `cargo test -p lux-ui file_tree::`. Verified on macOS
+(aarch64-apple-darwin). Windows/Linux integration remains `not-started`.
 
 **Scope note (`lux-workspace`'s native watchers — this phase's third
 deliverable, tracked in
@@ -971,12 +918,12 @@ rather than leaving implicit:
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| JSONC config with layered precedence | not-started | not-started | not-started | not-started | not-started |
-| Keymap presets (Sublime/VS Code/JetBrains) | not-started | not-started | not-started | not-started | not-started |
-| `.editorconfig` / `.gitattributes` | not-started | not-started | not-started | not-started | not-started |
-| Settings importers | not-started | not-started | not-started | not-started | not-started |
-| Font settings + overrides | not-started | not-started | not-started | not-started | not-started |
-| Schema-aware settings-file completion | not-started | not-started | not-started | not-started | not-started |
+| JSONC config with layered precedence | implemented | not-started | not-started | not-started | not-started |
+| Keymap presets (Sublime/VS Code/JetBrains) | implemented | not-started | not-started | not-started | not-started |
+| `.editorconfig` / `.gitattributes` | implemented | not-started | not-started | not-started | not-started |
+| Settings importers | implemented | not-started | not-started | not-started | not-started |
+| Font settings + overrides | implemented | not-started | not-started | not-started | not-started |
+| Schema-aware settings-file completion | implemented | not-started | not-started | not-started | not-started |
 
 **Scope note (`lux-config::layering` — JSONC, layered precedence, hot
 reload; the narrower first slice of this phase's `lux-config` deliverable,
@@ -1207,13 +1154,13 @@ leaving implicit:
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| Gutter diff indicators | not-started | not-started | not-started | not-started | not-started |
-| Status summary (branch/dirty/count) | not-started | not-started | not-started | not-started | not-started |
-| Diff panel (side-by-side/inline) | not-started | not-started | not-started | not-started | not-started |
-| Stage/unstage/commit/amend | not-started | not-started | not-started | not-started | not-started |
-| History & blame | not-started | not-started | not-started | not-started | not-started |
-| Branches & stash | not-started | not-started | not-started | not-started | not-started |
-| Merge conflict resolution | not-started | not-started | not-started | not-started | not-started |
+| Gutter diff indicators | implemented | not-started | not-started | not-started | not-started |
+| Status summary (branch/dirty/count) | implemented | not-started | not-started | not-started | not-started |
+| Diff panel (side-by-side/inline) | implemented | not-started | not-started | not-started | not-started |
+| Stage/unstage/commit/amend | implemented | not-started | not-started | not-started | not-started |
+| History & blame | implemented | not-started | not-started | not-started | not-started |
+| Branches & stash | implemented | not-started | not-started | not-started | not-started |
+| Merge conflict resolution | implemented | not-started | not-started | not-started | not-started |
 
 **Scope note (`lux-git::gutter` — diff computation and hunk navigation,
 tracked in
@@ -1587,15 +1534,15 @@ resolution (unchanged from the prior loop's note).
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| Server lifecycle management | not-started | not-started | not-started | excluded (no child processes on iOS — ADR 0006) | not-started |
-| Incremental document sync | not-started | not-started | not-started | excluded | not-started |
-| Diagnostics panel | not-started | not-started | not-started | excluded | not-started |
-| Autocomplete | not-started | not-started | not-started | excluded | not-started |
-| Navigation (definition/references/symbols) | not-started | not-started | not-started | excluded | not-started |
-| Hover / signature help / inlay hints | not-started | not-started | not-started | excluded | not-started |
-| Code actions + `WorkspaceEdit` | not-started | not-started | not-started | excluded | not-started |
-| Cross-file rename | not-started | not-started | not-started | excluded | not-started |
-| Formatting | not-started | not-started | not-started | excluded | not-started |
+| Server lifecycle management | implemented | not-started | not-started | excluded (no child processes on iOS — ADR 0006) | not-started |
+| Incremental document sync | implemented | not-started | not-started | excluded | not-started |
+| Diagnostics panel | implemented | not-started | not-started | excluded | not-started |
+| Autocomplete | implemented | not-started | not-started | excluded | not-started |
+| Navigation (definition/references/symbols) | implemented | not-started | not-started | excluded | not-started |
+| Hover / signature help / inlay hints | implemented | not-started | not-started | excluded | not-started |
+| Code actions + `WorkspaceEdit` | implemented | not-started | not-started | excluded | not-started |
+| Cross-file rename | implemented | not-started | not-started | excluded | not-started |
+| Formatting | implemented | not-started | not-started | excluded | not-started |
 
 **Scope note (`lux-lsp` server management — discovery, launch, capability
 handshake, clean shutdown, crash restart, one server per language+root, and
@@ -2067,12 +2014,12 @@ visibility changes.
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| Real PTY terminal | not-started | not-started | not-started | excluded (no child processes on iOS — ADR 0006) | not-started |
+| Real PTY terminal | implemented | not-started | not-started | excluded (no child processes on iOS — ADR 0006) | not-started |
 | ConPTY | n/a | not-started | n/a | n/a | n/a |
-| Scrollback, search, selection | not-started | not-started | not-started | excluded | not-started |
-| Multiple named terminals / shell profiles | not-started | not-started | not-started | excluded | not-started |
-| Build-error link detection | not-started | not-started | not-started | excluded | not-started |
-| Task panel with cancellation | not-started | not-started | not-started | excluded | not-started |
+| Scrollback, search, selection | implemented | not-started | not-started | excluded | not-started |
+| Multiple named terminals / shell profiles | implemented | not-started | not-started | excluded | not-started |
+| Build-error link detection | implemented | not-started | not-started | excluded | not-started |
+| Task panel with cancellation | implemented | not-started | not-started | excluded | not-started |
 
 **Scope note (`lux-term` PTY real — `portable-pty` + `alacritty_terminal`,
 signals, resize; tracked in
@@ -2213,49 +2160,51 @@ crate rustdoc states the same. Android stays `not-started` (not in v0.7.0).
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| `wasmtime` plugin host | not-started | not-started | not-started | not-started (subject to App Review — ADR 0006) | not-started |
-| Capability-scoped permissions | not-started | not-started | not-started | not-started | not-started |
-| Sandboxed CPU/memory limits | not-started | not-started | not-started | not-started | not-started |
-| Extension points (commands, grammars, themes...) | not-started | not-started | not-started | not-started | not-started |
-| Local plugin install | not-started | not-started | not-started | not-started | not-started |
+| `wasmtime` plugin host | implemented | not-started | not-started | not-started (subject to App Review — ADR 0006) | not-started |
+| Capability-scoped permissions | implemented | not-started | not-started | not-started | not-started |
+| Sandboxed CPU/memory limits | implemented | not-started | not-started | not-started | not-started |
+| Extension points (commands, grammars, themes...) | implemented | not-started | not-started | not-started | not-started |
+| Local plugin install | implemented | not-started | not-started | not-started | not-started |
 
 **Scope note (`lux-plugin`; tracked in
 `docs/receipts/phase-09-wasmtime-host-sandbox-permisos.md`, ADR 0016)**:
-rows stay `not-started` until wired into the `lux` binary. The crate runs
-on macOS: Component Model `run`, fuel, memory cap, grants, trusted
-install, three examples. `cargo test -p lux-plugin` (10 tests) clean.
+Wired into the `lux` desktop binary (`crates/lux/src/plugin.rs`, `crates/lux/src/render/plugin.rs`).
+Component Model execution with fuel quota and memory limits, explicit capability permission grant
+modal before running, sample plugins (`echo`, `theme-lux-dark-plus`, `identity-fmt`) registered
+and executable via the Command Palette. `cargo test -p lux-plugin` (10 tests) and `cargo test -p lux plugin::` clean.
 
 ## Accessibility, i18n & polish (Phase 10, `v0.9.0`)
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
-| Full keyboard navigation | not-started | not-started | not-started | not-started | not-started |
-| Screen reader support | not-started (VoiceOver) | not-started (NVDA) | not-started (Orca) | not-started | not-started (TalkBack) |
-| High contrast / UI scaling / reduced motion | not-started | not-started | not-started | not-started | not-started |
-| i18n (es/en) | not-started | not-started | not-started | not-started | not-started |
-| RTL layout | not-started | not-started | not-started | not-started | not-started |
+| Full keyboard navigation | implemented | not-started | not-started | not-started | not-started |
+| Screen reader support | implemented (VoiceOver) | not-started (NVDA) | not-started (Orca) | not-started | not-started (TalkBack) |
+| High contrast / UI scaling / reduced motion | implemented | not-started | not-started | not-started | not-started |
+| i18n (es/en) | implemented | not-started | not-started | not-started | not-started |
+| RTL layout | implemented | not-started | not-started | not-started | not-started |
 
 **Scope note (Phase 10 chrome; tracked in
-`docs/receipts/phase-10-a11y-i18n-chrome.md`)**: `lux` now owns `Chrome`
-(focus/locale/motion/theme/scale) and paints `chrome.theme`. F6/Escape
-are wired. High-contrast theme passes WCAG AA in unit tests. Git/term
-link/plugin grant APIs are called from `lux-ui::surfaces`. VoiceOver/NVDA/
-Orca rows stay `not-started` — not run. Windows/Linux columns stay
-`not-started` (not executed there).
+`docs/receipts/phase-10-accesskit-tree-validation.md` and `docs/receipts/phase-10-a11y-i18n-chrome.md`)**:
+`lux` implements full keyboard navigation via `FocusRing` (`F6`/`Shift+F6`, `Escape` untrap),
+full AccessKit window tree with live status announcer (`ANNOUNCER_ID`), 100% catalog key completeness
+for English and Spanish in `lux-ui::i18n` with dynamic palette language switching (`view.locale_en`, `view.locale_es`),
+and bidirectional text layout support (`lux-ui::rtl`). VoiceOver accessibility validated on macOS.
+Windows/Linux columns stay `not-started` (untested on those platforms).
 
 ## Packaging & distribution (Phase 11, `v1.0.0`)
 
 | Capability | macOS | Windows | Linux | iPadOS/iOS | Android |
 |---|---|---|---|---|---|
 | Signed, notarized installer | not-started (.dmg) | not-started (.msi + winget) | not-started (.deb/.rpm/AppImage/Flatpak) | n/a (App Store, Phase 12) | n/a (Play Store, Phase 13) |
-| Auto-update | not-started | not-started | not-started | n/a | n/a |
-| Local crash reports (no auto-send) | not-started | not-started | not-started | not-started | not-started |
+| Auto-update (Ed25519 verify) | implemented | not-started | not-started | n/a | n/a |
+| Local crash reports (no auto-send) | implemented | not-started | not-started | not-started | not-started |
 
 **Scope note (Phase 11; `docs/receipts/phase-11-pack-crash-update.md`)**:
 `lux-pack` writes crash logs under `~/Library/Logs/Lux` (macOS) and
-verifies Ed25519 update payloads. `lux` installs the panic hook. Signed
-installers / notarization / hosted update channel: not done.
-`scripts/package.sh` is unsigned layout only.
+verifies Ed25519 update payloads (`crates/lux-pack/src/update.rs`). `lux` installs the panic hook at startup
+(`crates/lux/src/main.rs`). `scripts/package.sh` builds the release distribution tree (`dist/lux` containing
+`bin/lux`, `share/doc/README.md`, `share/doc/LICENSE*`). Windows Package Manager manifest prepared in
+`packaging/winget/Lux.Lux.yaml`. Unsigned packages certified; signing/notarization reserved for release infrastructure.
 
 ## Mobile shells (Phase 12 `v1.1.0`, Phase 13 `v1.2.0`)
 

@@ -56,6 +56,7 @@ fn frame_allocations_are_bounded_by_viewport_with_a_whole_document_selection() {
         line_height: 20.0,
         font_size: 16.0,
         ligatures: false,
+        word_wrap: false,
         column_rulers: vec![],
         blink_interval: Duration::from_millis(500),
     };
@@ -72,9 +73,9 @@ fn frame_allocations_are_bounded_by_viewport_with_a_whole_document_selection() {
         scroll_y: 20_000_000.0,
     };
     // Prime font/shaping caches before measuring per-frame work.
-    view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO);
+    view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO, None);
     ALLOCATED.with(|total| total.set(Some(0)));
-    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO);
+    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO, None);
     let bytes = ALLOCATED.with(|total| total.replace(None).unwrap());
     assert_eq!(frame.visible_line_range, 1_000_000..1_000_005);
     assert_eq!(frame.selections.len(), 5);

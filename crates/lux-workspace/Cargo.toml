@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 ignore = "0.4.31"
+lux-syntax = { path = "../lux-syntax", version = "1.0.0" }
 notify = "8.2.0"
 notify-debouncer-full = "0.7.0"
 serde = { version = "1.0.229", features = ["derive"] }

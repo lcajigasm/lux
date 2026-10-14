@@ -10,17 +10,31 @@ publish.workspace = true
 [dependencies]
 accesskit = "0.24.1"
 dpi = "0.1.2"
-lux-core = { path = "../lux-core", version = "0.0.0" }
-lux-platform = { path = "../lux-platform", version = "0.0.0" }
-lux-render = { path = "../lux-render", version = "0.0.0" }
-lux-ui = { path = "../lux-ui", version = "0.0.0" }
-lux-pack = { path = "../lux-pack", version = "0.0.0" }
-lux-config = { path = "../lux-config", version = "0.0.0" }
-lux-syntax = { path = "../lux-syntax", version = "0.0.0" }
-lux-workspace = { path = "../lux-workspace", version = "0.0.0" }
+lux-core = { path = "../lux-core", version = "1.0.0" }
+lux-platform = { path = "../lux-platform", version = "1.0.0" }
+lux-render = { path = "../lux-render", version = "1.0.0" }
+lux-ui = { path = "../lux-ui", version = "1.0.0" }
+lux-pack = { path = "../lux-pack", version = "1.0.0" }
+lux-config = { path = "../lux-config", version = "1.0.0" }
+lux-syntax = { path = "../lux-syntax", version = "1.0.0" }
+lux-search = { path = "../lux-search", version = "1.0.0" }
+lux-workspace = { path = "../lux-workspace", version = "1.0.0" }
+lux-git = { path = "../lux-git", version = "1.0.0" }
+lux-lsp = { path = "../lux-lsp", version = "1.0.0" }
+lux-term = { path = "../lux-term", version = "1.0.0" }
+lux-plugin = { path = "../lux-plugin", version = "1.0.0" }
 pollster = "1.0.1"
+regex = "1.13.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 swash = "0.2.10"
 wgpu = "30.0.0"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.4"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSString"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSMenu", "NSMenuItem", "NSApplication", "NSCell"] }
+

@@ -11,7 +11,7 @@ use crate::selection::Selection;
 /// line). Reuses `Position::next_grapheme` — the same cluster-aware
 /// stepping used everywhere else — instead of a byte/char count, so a wide
 /// grapheme cluster still counts as one column.
-fn position_at_column(buffer: &Buffer, line: usize, column: usize) -> Position {
+pub fn position_at_column(buffer: &Buffer, line: usize, column: usize) -> Position {
     let rope = buffer.rope();
     if line >= rope.len_lines() {
         return Position::document_end(buffer);

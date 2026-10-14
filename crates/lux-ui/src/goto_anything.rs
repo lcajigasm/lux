@@ -22,45 +22,101 @@ use lux_core::buffer::Buffer;
 use lux_search::fuzzy::rank_paths;
 use std::collections::HashMap;
 
-/// A parsed Goto Anything query: the fuzzy text plus an optional
-/// Sublime-style `:line` suffix (`file.rs:42`). A suffix only counts as a
-/// line number if it parses as a positive integer — anything else (a
-/// trailing `:`, `:0`, `:abc`) is left as part of the fuzzy text so partial
-/// typing degrades gracefully instead of losing input.
+/// A parsed Goto Anything query: the fuzzy text plus optional
+/// Sublime-style `:line`, `:line:col`, `@symbol`, or `#term` suffix/prefix.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Query {
     pub text: String,
     pub line: Option<u32>,
+    pub col: Option<u32>,
+    pub symbol: Option<String>,
+    pub term: Option<String>,
 }
 
 impl Query {
     pub fn parse(raw: &str) -> Self {
-        if let Some((file_part, line_part)) = raw.rsplit_once(':')
-            && let Ok(line @ 1..) = line_part.parse::<u32>()
-        {
+        // 1. Symbol mode: "@symbol" or "file@symbol"
+        if let Some((file_part, sym_part)) = raw.split_once('@') {
             return Query {
                 text: file_part.to_string(),
-                line: Some(line),
+                line: None,
+                col: None,
+                symbol: Some(sym_part.to_string()),
+                term: None,
             };
         }
+
+        // 2. Term search mode: "#term" or "file#term"
+        if let Some((file_part, term_part)) = raw.split_once('#') {
+            return Query {
+                text: file_part.to_string(),
+                line: None,
+                col: None,
+                symbol: None,
+                term: Some(term_part.to_string()),
+            };
+        }
+
+        // 3. Line mode: ":line", ":line:col", "file:line", "file:line:col"
+        if let Some(colon_idx) = raw.find(':') {
+            let file_part = &raw[..colon_idx];
+            let after_colon = &raw[colon_idx + 1..];
+
+            if let Some((line_part, col_part)) = after_colon.split_once(':')
+                && let Ok(line @ 1..) = line_part.parse::<u32>()
+                && let Ok(col @ 1..) = col_part.parse::<u32>()
+            {
+                return Query {
+                    text: file_part.to_string(),
+                    line: Some(line),
+                    col: Some(col),
+                    symbol: None,
+                    term: None,
+                };
+            }
+
+            if let Ok(line @ 1..) = after_colon.parse::<u32>() {
+                return Query {
+                    text: file_part.to_string(),
+                    line: Some(line),
+                    col: None,
+                    symbol: None,
+                    term: None,
+                };
+            }
+
+            if colon_idx == 0 && after_colon.is_empty() {
+                return Query {
+                    text: String::new(),
+                    line: None,
+                    col: None,
+                    symbol: None,
+                    term: None,
+                };
+            }
+        }
+
         Query {
             text: raw.to_string(),
             line: None,
+            col: None,
+            symbol: None,
+            term: None,
         }
     }
 }
 
 /// One ranked Goto Anything result: a candidate path, its fuzzy score, and
-/// the line to jump to (if the query had a `:line` suffix).
+/// the line/col to jump to (if the query had a `:line` or `:line:col` suffix).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Match<'a> {
     pub path: &'a str,
     pub score: u32,
     pub line: Option<u32>,
+    pub col: Option<u32>,
 }
 
-/// Parses `raw_query`'s `file:line` suffix, then fuzzy-ranks `candidates`
-/// against the remaining text.
+/// Parses `raw_query`'s suffix, then fuzzy-ranks `candidates` against the remaining text.
 pub fn search<'a>(
     raw_query: &str,
     candidates: impl IntoIterator<Item = &'a str>,
@@ -72,6 +128,7 @@ pub fn search<'a>(
             path,
             score,
             line: query.line,
+            col: query.col,
         })
         .collect()
 }
@@ -81,7 +138,7 @@ pub fn search<'a>(
 /// deterministic and testable), the same technique
 /// `command_palette::CommandRegistry` uses for command recency. The
 /// "historial de recientes" this deliverable names.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct RecentFiles {
     last_opened: HashMap<String, u64>,
     clock: u64,
@@ -125,6 +182,7 @@ pub fn search_with_recency<'a>(
                 path,
                 score: 0,
                 line: query.line,
+                col: query.col,
             })
             .collect();
     }
@@ -166,7 +224,7 @@ mod tests {
             Query::parse("main.rs"),
             Query {
                 text: "main.rs".to_string(),
-                line: None
+                ..Default::default()
             }
         );
     }
@@ -177,7 +235,69 @@ mod tests {
             Query::parse("src/main.rs:42"),
             Query {
                 text: "src/main.rs".to_string(),
-                line: Some(42)
+                line: Some(42),
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_file_line_col_suffix() {
+        assert_eq!(
+            Query::parse("src/main.rs:42:15"),
+            Query {
+                text: "src/main.rs".to_string(),
+                line: Some(42),
+                col: Some(15),
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_symbol_mode() {
+        assert_eq!(
+            Query::parse("@"),
+            Query {
+                text: String::new(),
+                symbol: Some(String::new()),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            Query::parse("@build_frame"),
+            Query {
+                text: String::new(),
+                symbol: Some("build_frame".to_string()),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            Query::parse("main.rs@build_frame"),
+            Query {
+                text: "main.rs".to_string(),
+                symbol: Some("build_frame".to_string()),
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_term_mode() {
+        assert_eq!(
+            Query::parse("#render"),
+            Query {
+                text: String::new(),
+                term: Some("render".to_string()),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            Query::parse("main.rs#render"),
+            Query {
+                text: "main.rs".to_string(),
+                term: Some("render".to_string()),
+                ..Default::default()
             }
         );
     }
@@ -191,7 +311,7 @@ mod tests {
             Query::parse("main.rs:0"),
             Query {
                 text: "main.rs:0".to_string(),
-                line: None
+                ..Default::default()
             }
         );
     }
@@ -202,7 +322,7 @@ mod tests {
             Query::parse("main.rs:bar"),
             Query {
                 text: "main.rs:bar".to_string(),
-                line: None
+                ..Default::default()
             }
         );
     }
@@ -215,7 +335,7 @@ mod tests {
             Query::parse("main.rs:"),
             Query {
                 text: "main.rs:".to_string(),
-                line: None
+                ..Default::default()
             }
         );
     }
@@ -226,7 +346,17 @@ mod tests {
             Query::parse(":42"),
             Query {
                 text: String::new(),
-                line: Some(42)
+                line: Some(42),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            Query::parse(":42:15"),
+            Query {
+                text: String::new(),
+                line: Some(42),
+                col: Some(15),
+                ..Default::default()
             }
         );
     }
@@ -251,7 +381,8 @@ mod tests {
             vec![Match {
                 path: "src/lib.rs",
                 score: results[0].score,
-                line: None
+                line: None,
+                col: None,
             }]
         );
     }
@@ -265,12 +396,14 @@ mod tests {
                 Match {
                     path: "b.rs",
                     score: 0,
-                    line: Some(7)
+                    line: Some(7),
+                    col: None,
                 },
                 Match {
                     path: "a.rs",
                     score: 0,
-                    line: Some(7)
+                    line: Some(7),
+                    col: None,
                 },
             ]
         );

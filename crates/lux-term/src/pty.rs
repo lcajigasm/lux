@@ -31,6 +31,74 @@ pub enum PtyError {
     Io(#[from] io::Error),
 }
 
+/// A rendered cell in the terminal grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalCell {
+    pub c: char,
+    pub fg: Option<[u8; 3]>,
+    pub bg: Option<[u8; 3]>,
+    pub bold: bool,
+    pub underline: bool,
+}
+
+fn ansi_color_to_rgb(color: alacritty_terminal::vte::ansi::Color) -> Option<[u8; 3]> {
+    use alacritty_terminal::vte::ansi::{Color, NamedColor};
+    match color {
+        Color::Spec(rgb) => Some([rgb.r, rgb.g, rgb.b]),
+        Color::Named(named) => match named {
+            NamedColor::Black => Some([20, 20, 20]),
+            NamedColor::Red => Some([235, 87, 87]),
+            NamedColor::Green => Some([39, 174, 96]),
+            NamedColor::Yellow => Some([242, 201, 76]),
+            NamedColor::Blue => Some([47, 128, 237]),
+            NamedColor::Magenta => Some([155, 81, 224]),
+            NamedColor::Cyan => Some([86, 204, 242]),
+            NamedColor::White => Some([224, 224, 224]),
+            NamedColor::BrightBlack => Some([79, 79, 79]),
+            NamedColor::BrightRed => Some([255, 107, 107]),
+            NamedColor::BrightGreen => Some([60, 210, 120]),
+            NamedColor::BrightYellow => Some([255, 220, 90]),
+            NamedColor::BrightBlue => Some([70, 150, 255]),
+            NamedColor::BrightMagenta => Some([180, 100, 255]),
+            NamedColor::BrightCyan => Some([100, 220, 255]),
+            NamedColor::BrightWhite => Some([255, 255, 255]),
+            _ => None,
+        },
+        Color::Indexed(idx) => {
+            if idx < 16 {
+                let named = match idx {
+                    0 => NamedColor::Black,
+                    1 => NamedColor::Red,
+                    2 => NamedColor::Green,
+                    3 => NamedColor::Yellow,
+                    4 => NamedColor::Blue,
+                    5 => NamedColor::Magenta,
+                    6 => NamedColor::Cyan,
+                    7 => NamedColor::White,
+                    8 => NamedColor::BrightBlack,
+                    9 => NamedColor::BrightRed,
+                    10 => NamedColor::BrightGreen,
+                    11 => NamedColor::BrightYellow,
+                    12 => NamedColor::BrightBlue,
+                    13 => NamedColor::BrightMagenta,
+                    14 => NamedColor::BrightCyan,
+                    _ => NamedColor::BrightWhite,
+                };
+                ansi_color_to_rgb(Color::Named(named))
+            } else if idx < 232 {
+                let id = idx - 16;
+                let r = (id / 36) * 51;
+                let g = ((id % 36) / 6) * 51;
+                let b = (id % 6) * 51;
+                Some([r, g, b])
+            } else {
+                let v = (idx - 232) * 10 + 8;
+                Some([v, v, v])
+            }
+        }
+    }
+}
+
 struct GridSize {
     rows: usize,
     cols: usize,
@@ -215,6 +283,50 @@ impl Pty {
     pub fn size(&self) -> (usize, usize) {
         let term = self.term.lock();
         (term.grid().screen_lines(), term.grid().columns())
+    }
+
+    /// The current cursor position (row, col) relative to visible screen.
+    pub fn cursor_position(&self) -> (usize, usize) {
+        let term = self.term.lock();
+        let grid = term.grid();
+        let top = -(grid.display_offset() as i32);
+        let row = (grid.cursor.point.line.0 - top).max(0) as usize;
+        let col = grid.cursor.point.column.0;
+        (row, col)
+    }
+
+    /// Visible terminal cells with text, colors, and font styles.
+    pub fn visible_cells(&self) -> Vec<Vec<TerminalCell>> {
+        let term = self.term.lock();
+        let grid = term.grid();
+        let top = -(grid.display_offset() as i32);
+        let mut rows = Vec::with_capacity(grid.screen_lines());
+        for row in 0..grid.screen_lines() {
+            let mut line = Vec::with_capacity(grid.columns());
+            for cell in &grid[Line(top + row as i32)] {
+                let mut fg = ansi_color_to_rgb(cell.fg);
+                let mut bg = ansi_color_to_rgb(cell.bg);
+                if cell
+                    .flags
+                    .contains(alacritty_terminal::term::cell::Flags::INVERSE)
+                {
+                    std::mem::swap(&mut fg, &mut bg);
+                }
+                line.push(TerminalCell {
+                    c: cell.c,
+                    fg,
+                    bg,
+                    bold: cell
+                        .flags
+                        .contains(alacritty_terminal::term::cell::Flags::BOLD),
+                    underline: cell
+                        .flags
+                        .contains(alacritty_terminal::term::cell::Flags::UNDERLINE),
+                });
+            }
+            rows.push(line);
+        }
+        rows
     }
 
     /// The child's process id, if the platform exposes one.

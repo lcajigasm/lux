@@ -10,7 +10,7 @@ use crate::position::Position;
 /// `selection_ops::box_select` uses for the same reason (grapheme-cluster
 /// columns, not byte/char counts), reimplemented here rather than shared
 /// since the two live in unrelated deliverables.
-pub(crate) fn position_at_line_column(buffer: &Buffer, line: usize, column: usize) -> Position {
+pub fn position_at_line_column(buffer: &Buffer, line: usize, column: usize) -> Position {
     let rope = buffer.rope();
     if line >= rope.len_lines() {
         return Position::document_end(buffer);

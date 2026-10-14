@@ -78,6 +78,7 @@ pub fn build_frame(
     buffer: &Buffer,
     visible_line_range: Range<usize>,
     available_rows: usize,
+    folds: Option<&lux_core::folding::FoldState>,
 ) -> Option<MinimapFrame> {
     if !minimap.enabled {
         return None;
@@ -85,17 +86,32 @@ pub fn build_frame(
     let text = buffer.text();
     let index = LineIndex::build(&text);
     let total_lines = index.len();
-    let per_row = lines_per_row(total_lines, available_rows);
+    let total_visual = folds.map_or(total_lines, |f| f.total_visual_lines(total_lines));
+    let per_row = lines_per_row(total_visual, available_rows);
 
-    let rows = (0..row_count(total_lines, available_rows))
-        .map(|row| densest_row(&index, &text, row, per_row))
+    let rows = (0..row_count(total_visual, available_rows))
+        .map(|row| {
+            densest_row(
+                &index,
+                &text,
+                row,
+                per_row,
+                total_visual,
+                total_lines,
+                folds,
+            )
+        })
         .collect();
 
     let viewport_rows = if visible_line_range.is_empty() {
         0..0
     } else {
-        let first_row = row_for_line(total_lines, available_rows, visible_line_range.start);
-        let last_row = row_for_line(total_lines, available_rows, visible_line_range.end - 1);
+        let first_row = row_for_line(total_visual, available_rows, visible_line_range.start);
+        let last_row = row_for_line(
+            total_visual,
+            available_rows,
+            (visible_line_range.end.saturating_sub(1)).min(total_visual.saturating_sub(1)),
+        );
         first_row..last_row + 1
     };
 
@@ -118,6 +134,19 @@ pub fn line_for_row(total_lines: usize, available_rows: usize, row: usize) -> us
     line_range_for_row(total_lines, available_rows, row)
         .start
         .min(total_lines - 1)
+}
+
+pub fn line_for_row_with_folds(
+    total_lines: usize,
+    available_rows: usize,
+    row: usize,
+    folds: Option<&lux_core::folding::FoldState>,
+) -> usize {
+    let total_visual = folds.map_or(total_lines, |f| f.total_visual_lines(total_lines));
+    let visual_line = line_for_row(total_visual, available_rows, row);
+    folds.map_or(visual_line, |f| {
+        f.visual_to_buffer_line(visual_line, total_lines)
+    })
 }
 
 /// How many source lines each minimap row represents: 1 when the document
@@ -145,19 +174,43 @@ fn line_range_for_row(total_lines: usize, available_rows: usize, row: usize) -> 
     start..end
 }
 
-fn row_for_line(total_lines: usize, available_rows: usize, line: usize) -> usize {
+pub fn row_for_line(total_lines: usize, available_rows: usize, line: usize) -> usize {
     line / lines_per_row(total_lines, available_rows)
 }
 
-fn densest_row(index: &LineIndex, text: &str, row: usize, per_row: usize) -> MinimapRow {
-    let start = row * per_row;
-    let end = (start + per_row).min(index.len());
+pub fn row_for_buffer_line(
+    total_lines: usize,
+    available_rows: usize,
+    buffer_line: usize,
+    folds: Option<&lux_core::folding::FoldState>,
+) -> Option<usize> {
+    let total_visual = folds.map_or(total_lines, |f| f.total_visual_lines(total_lines));
+    let visual_line = match folds {
+        Some(f) => f.buffer_to_visual_line(buffer_line)?,
+        None => buffer_line,
+    };
+    Some(row_for_line(total_visual, available_rows, visual_line))
+}
+
+fn densest_row(
+    index: &LineIndex,
+    text: &str,
+    row: usize,
+    per_row: usize,
+    total_visual: usize,
+    total_lines: usize,
+    folds: Option<&lux_core::folding::FoldState>,
+) -> MinimapRow {
+    let start_v = row * per_row;
+    let end_v = (start_v + per_row).min(total_visual);
+    let first_buf = folds.map_or(start_v, |f| f.visual_to_buffer_line(start_v, total_lines));
     let mut best = MinimapRow {
-        line: start,
+        line: first_buf,
         indent_columns: 0,
         content_columns: 0,
     };
-    for line in start..end {
+    for v in start_v..end_v {
+        let line = folds.map_or(v, |f| f.visual_to_buffer_line(v, total_lines));
         let line_text = &text[index.line_byte_range(text, line)];
         let leading = line_text
             .chars()
@@ -197,14 +250,14 @@ mod tests {
     fn build_frame_returns_none_when_disabled() {
         let buffer = Buffer::from_bytes(b"a\nb\n").unwrap();
         let minimap = Minimap { enabled: false };
-        assert_eq!(build_frame(&minimap, &buffer, 0..2, 100), None);
+        assert_eq!(build_frame(&minimap, &buffer, 0..2, 100, None), None);
     }
 
     #[test]
     fn build_frame_is_one_to_one_when_the_document_fits() {
         let buffer = Buffer::from_bytes(b"one\n  two\nthree\n").unwrap();
         let minimap = Minimap::new();
-        let frame = build_frame(&minimap, &buffer, 0..4, 100).unwrap();
+        let frame = build_frame(&minimap, &buffer, 0..4, 100, None).unwrap();
         // "one\n  two\nthree\n" is 4 lines (ropey counts the trailing
         // newline as one more, empty line — same convention as LineIndex).
         assert_eq!(frame.rows.len(), 4);
@@ -240,7 +293,7 @@ mod tests {
         // 0-1 ("a" and "much longer line"); the longer one should win.
         let buffer = Buffer::from_bytes(b"a\nmuch longer line\nb\nc\nd\ne\n").unwrap();
         let minimap = Minimap::new();
-        let frame = build_frame(&minimap, &buffer, 0..1, 3).unwrap();
+        let frame = build_frame(&minimap, &buffer, 0..1, 3, None).unwrap();
         assert_eq!(frame.rows.len(), 3);
         assert_eq!(frame.rows[0].line, 1);
         assert_eq!(frame.rows[0].content_columns, "much longer line".len());
@@ -252,7 +305,7 @@ mod tests {
         // rows exactly (2, 2, 1) — no row is ever empty.
         let buffer = Buffer::from_bytes(b"1\n2\n3\n4\n5").unwrap();
         let minimap = Minimap::new();
-        let frame = build_frame(&minimap, &buffer, 0..1, 3).unwrap();
+        let frame = build_frame(&minimap, &buffer, 0..1, 3, None).unwrap();
         assert_eq!(frame.rows.len(), 3);
 
         // And when the document is smaller than the rows on offer, only as
@@ -260,7 +313,7 @@ mod tests {
         // ("1\n2\n" is 3 lines, not 2: a trailing newline always yields one
         // more, empty final line — see `LineIndex`'s own doc comment.)
         let small = Buffer::from_bytes(b"1\n2\n").unwrap();
-        let frame = build_frame(&minimap, &small, 0..1, 100).unwrap();
+        let frame = build_frame(&minimap, &small, 0..1, 100, None).unwrap();
         assert_eq!(frame.rows.len(), 3);
     }
 
@@ -268,7 +321,7 @@ mod tests {
     fn viewport_indicator_matches_the_one_to_one_visible_range() {
         let buffer = Buffer::from_bytes(b"1\n2\n3\n4\n5").unwrap();
         let minimap = Minimap::new();
-        let frame = build_frame(&minimap, &buffer, 1..3, 100).unwrap();
+        let frame = build_frame(&minimap, &buffer, 1..3, 100, None).unwrap();
         assert_eq!(frame.viewport.rows, 1..3);
     }
 
@@ -278,7 +331,7 @@ mod tests {
         // fall in rows 2 and 3.
         let buffer = Buffer::from_bytes(b"0\n1\n2\n3\n4\n5\n6\n7\n8\n9").unwrap();
         let minimap = Minimap::new();
-        let frame = build_frame(&minimap, &buffer, 4..6, 5).unwrap();
+        let frame = build_frame(&minimap, &buffer, 4..6, 5, None).unwrap();
         assert_eq!(frame.viewport.rows, 2..3);
     }
 
@@ -286,7 +339,7 @@ mod tests {
     fn viewport_indicator_is_empty_for_an_empty_visible_range() {
         let buffer = Buffer::from_bytes(b"a\nb\n").unwrap();
         let minimap = Minimap::new();
-        let frame = build_frame(&minimap, &buffer, 0..0, 100).unwrap();
+        let frame = build_frame(&minimap, &buffer, 0..0, 100, None).unwrap();
         assert_eq!(frame.viewport.rows, 0..0);
     }
 
@@ -305,8 +358,23 @@ mod tests {
     fn empty_document_is_a_single_empty_row() {
         let buffer = Buffer::from_bytes(b"").unwrap();
         let minimap = Minimap::new();
-        let frame = build_frame(&minimap, &buffer, 0..1, 100).unwrap();
+        let frame = build_frame(&minimap, &buffer, 0..1, 100, None).unwrap();
         assert_eq!(frame.rows.len(), 1);
         assert_eq!(frame.rows[0].content_columns, 0);
+    }
+
+    #[test]
+    fn build_frame_skips_folded_lines() {
+        let buffer = Buffer::from_bytes(b"header\nhidden 1\nhidden 2\ntail\n").unwrap();
+        let minimap = Minimap::new();
+        let mut folds = lux_core::folding::FoldState::new();
+        folds.set_foldable_ranges(vec![lux_core::folding::FoldRange::new(0, 2)]);
+        folds.fold(0);
+
+        let frame = build_frame(&minimap, &buffer, 0..2, 100, Some(&folds)).unwrap();
+        // 5 total lines originally, lines 1..=2 hidden -> 3 visual lines: header, tail, trailing empty
+        assert_eq!(frame.rows.len(), 3);
+        assert_eq!(frame.rows[0].line, 0);
+        assert_eq!(frame.rows[1].line, 3);
     }
 }

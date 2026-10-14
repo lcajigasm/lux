@@ -2,8 +2,9 @@
 //! Escape returns to the editor. No trap: every panel is reachable and
 //! the editor is always one step away.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FocusTarget {
+    #[default]
     Editor,
     CommandPalette,
     Search,
@@ -57,6 +58,40 @@ impl FocusRing {
         self.current = 0;
         FocusTarget::Editor
     }
+
+    pub fn set_focus(&mut self, target: FocusTarget) {
+        if let Some(idx) = ORDER.iter().position(|&t| t == target) {
+            self.current = idx;
+        }
+    }
+
+    pub fn is_focused(&self, target: FocusTarget) -> bool {
+        self.current() == target
+    }
+
+    pub fn focus_next_visible(&mut self, is_visible: impl Fn(FocusTarget) -> bool) -> FocusTarget {
+        let initial = self.current;
+        for step in 1..=ORDER.len() {
+            let candidate = (initial + step) % ORDER.len();
+            if is_visible(ORDER[candidate]) {
+                self.current = candidate;
+                return self.current();
+            }
+        }
+        self.current()
+    }
+
+    pub fn focus_prev_visible(&mut self, is_visible: impl Fn(FocusTarget) -> bool) -> FocusTarget {
+        let initial = self.current;
+        for step in 1..=ORDER.len() {
+            let candidate = (initial + ORDER.len() * 2 - step) % ORDER.len();
+            if is_visible(ORDER[candidate]) {
+                self.current = candidate;
+                return self.current();
+            }
+        }
+        self.current()
+    }
 }
 
 #[cfg(test)]
@@ -76,5 +111,36 @@ mod tests {
         ring.focus_next();
         assert_ne!(ring.current(), FocusTarget::Editor);
         assert_eq!(ring.escape_to_editor(), FocusTarget::Editor);
+    }
+
+    #[test]
+    fn f6_skips_hidden_panels() {
+        let mut ring = FocusRing::new();
+        // Only Editor, FileTree, Terminal are visible
+        let visible = |t| {
+            matches!(
+                t,
+                FocusTarget::Editor | FocusTarget::FileTree | FocusTarget::Terminal
+            )
+        };
+
+        assert_eq!(ring.current(), FocusTarget::Editor);
+        assert_eq!(ring.focus_next_visible(visible), FocusTarget::FileTree);
+        assert_eq!(ring.focus_next_visible(visible), FocusTarget::Terminal);
+        assert_eq!(ring.focus_next_visible(visible), FocusTarget::Editor);
+
+        // Backward
+        assert_eq!(ring.focus_prev_visible(visible), FocusTarget::Terminal);
+        assert_eq!(ring.focus_prev_visible(visible), FocusTarget::FileTree);
+        assert_eq!(ring.focus_prev_visible(visible), FocusTarget::Editor);
+    }
+
+    #[test]
+    fn set_focus_and_is_focused() {
+        let mut ring = FocusRing::new();
+        assert!(ring.is_focused(FocusTarget::Editor));
+        ring.set_focus(FocusTarget::Terminal);
+        assert!(ring.is_focused(FocusTarget::Terminal));
+        assert_eq!(ring.current(), FocusTarget::Terminal);
     }
 }

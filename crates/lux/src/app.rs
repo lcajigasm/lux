@@ -13,9 +13,9 @@ use lux_core::position::Position;
 use lux_core::selection::Selection;
 use lux_platform::{
     ElementState, Ime, ImeComposition, ImeUpdate, Modifiers, MouseButton, PlatformContext,
-    PlatformEvent, PlatformEventHandler, PlatformWindow, WindowId,
+    PlatformEvent, PlatformEventHandler, WindowId,
 };
-use lux_render::{GlyphAtlas, GpuContext, QuadPipeline, RepaintScheduler, Surface, TextPipeline};
+use lux_render::{GlyphAtlas, RepaintScheduler};
 use lux_ui::Chrome;
 use lux_ui::editor_view::{EditorView, EditorViewMetrics, Viewport};
 use swash::FontRef;
@@ -34,35 +34,19 @@ pub(crate) const TAB_MIN_WIDTH: f32 = 120.0;
 pub(crate) const TAB_MAX_WIDTH: f32 = 200.0;
 pub(crate) const TAB_CLOSE_BTN_WIDTH: f32 = 24.0;
 
-/// Everything that needs a live GPU device/surface/window — created once,
-/// in `resumed`, and gone if the app is ever suspended (desktop never
-/// actually calls `surfaces_lost` today, but the type still models the real
-/// lifecycle `lux-platform`'s trait documents).
-pub(crate) struct GpuWindow {
-    pub(crate) window: &'static dyn PlatformWindow,
-    pub(crate) id: WindowId,
-    pub(crate) gpu: GpuContext,
-    pub(crate) surface: Surface<'static>,
-    pub(crate) quads: QuadPipeline,
-    pub(crate) text: TextPipeline,
-}
-
-pub(crate) struct MouseState {
-    pub(crate) position: dpi::PhysicalPosition<f64>,
-    pub(crate) selection_anchor: Option<Position>,
-}
-
-pub(crate) struct SyntaxState {
-    pub(crate) document: Option<lux_syntax::Document>,
-    pub(crate) source: String,
-    pub(crate) theme: &'static lux_syntax::theme::SyntaxTheme,
-}
+mod bookmarks;
+mod folding;
+mod selection;
+mod types;
+mod views;
+pub(crate) use types::{AtlasState, GpuWindow, MouseState, SyntaxState};
 
 pub(crate) struct App {
     pub(crate) scale_factor: f32,
     pub(crate) presentation: crate::presentation::Presentation,
     pub(crate) documents: crate::document::Documents,
     pub(crate) editor_view: EditorView,
+    pub(crate) fold_state: lux_core::folding::FoldState,
     /// Built exactly once from leaked, process-lifetime font bytes and
     /// reused for every frame. The swash font key is a global
     /// per-call-incrementing counter, not derived from the font's content
@@ -84,14 +68,14 @@ pub(crate) struct App {
     pub(crate) scheduler: RepaintScheduler,
     pub(crate) ime: ImeComposition,
     pub(crate) start: Instant,
-    pub(crate) atlas: GlyphAtlas,
-    pub(crate) atlas_dirty: bool,
-    pub(crate) scale_cx: ScaleContext,
+    pub(crate) atlas_state: AtlasState,
     pub(crate) gpu_window: Option<GpuWindow>,
     pub(crate) chrome: Chrome,
     pub(crate) keymap: lux_config::Keymap,
     pub(crate) snippet_session: Option<lux_core::snippets::SnippetSession>,
     pub(crate) syntax: Option<SyntaxState>,
+    pub(crate) ui: crate::ui::UiOverlays,
+    pub(crate) bookmarks: lux_core::bookmarks::BookmarkState,
 }
 
 impl App {
@@ -109,6 +93,7 @@ impl App {
             line_height: LINE_HEIGHT,
             font_size: FONT_SIZE,
             ligatures: true,
+            word_wrap: false,
             column_rulers: vec![80],
             blink_interval: BLINK_INTERVAL,
         };
@@ -134,6 +119,8 @@ impl App {
             presentation: Default::default(),
             documents,
             editor_view,
+            fold_state: lux_core::folding::FoldState::new(),
+            bookmarks: lux_core::bookmarks::BookmarkState::new(),
             font,
             buffer,
             cursors,
@@ -143,25 +130,29 @@ impl App {
             mouse: MouseState {
                 position: dpi::PhysicalPosition::new(0.0, 0.0),
                 selection_anchor: None,
+                last_click: None,
             },
             accessibility_active: false,
             viewport: Viewport {
                 width: 1000.0,
-                height: 700.0 - TAB_BAR_HEIGHT,
+                height: (700.0 - TAB_BAR_HEIGHT - crate::status_bar::STATUS_BAR_HEIGHT).max(1.0),
                 scroll_x: 0.0,
                 scroll_y: 0.0,
             },
             scheduler: RepaintScheduler::new(),
             ime: ImeComposition::new(),
             start: Instant::now(),
-            atlas: GlyphAtlas::new(ATLAS_SIDE),
-            atlas_dirty: true,
-            scale_cx: ScaleContext::new(),
+            atlas_state: AtlasState {
+                atlas: GlyphAtlas::new(ATLAS_SIDE),
+                dirty: true,
+                scale_cx: ScaleContext::new(),
+            },
             gpu_window: None,
             chrome: Chrome::default(),
             keymap: lux_config::keymap::presets::sublime(),
             snippet_session: None,
             syntax: None,
+            ui: crate::ui::UiOverlays::default(),
         }
     }
 
@@ -181,16 +172,7 @@ impl App {
     }
 
     fn build_accessibility_tree(&mut self) -> TreeUpdate {
-        let buffer = &self.buffer;
-        let cursors = &self.cursors;
-        let family = self.editor_view.family().to_string();
-        lux_ui::build_accessibility_tree(
-            self.editor_view.text_layout_mut(),
-            &family,
-            FONT_SIZE * self.scale_factor,
-            buffer,
-            cursors,
-        )
+        crate::accessibility::build_accessibility_tree(self)
     }
 
     pub(crate) fn refresh_accessibility(&mut self) {
@@ -208,11 +190,31 @@ impl App {
             self.syntax = None;
             return;
         }
-        let language = self.documents.path.as_ref().and_then(|p| {
-            p.extension()
-                .and_then(|ext| ext.to_str())
-                .and_then(lux_syntax::LanguageId::from_extension)
+        let language = self.documents.language().or_else(|| {
+            crate::document::detect_language(self.documents.path.as_deref(), &self.buffer)
         });
+        if let Some(lang) = language {
+            self.documents.set_language(Some(lang));
+            let source = self.buffer.text();
+            let mut doc = lux_syntax::Document::new(lang);
+            doc.set_text(&source);
+            self.syntax = Some(SyntaxState {
+                document: Some(doc),
+                source,
+                theme: self.active_syntax_theme(),
+            });
+        } else {
+            self.syntax = None;
+        }
+        self.refresh_foldable_ranges();
+    }
+
+    pub(crate) fn set_language_mode(&mut self, language: Option<lux_syntax::LanguageId>) {
+        self.documents.set_language(language);
+        if self.buffer.is_huge_file_mode() {
+            self.syntax = None;
+            return;
+        }
         if let Some(lang) = language {
             let source = self.buffer.text();
             let mut doc = lux_syntax::Document::new(lang);
@@ -220,11 +222,24 @@ impl App {
             self.syntax = Some(SyntaxState {
                 document: Some(doc),
                 source,
-                theme: &lux_syntax::theme::LUX_DARK,
+                theme: self.active_syntax_theme(),
             });
+            let name = crate::status_bar::language_name(Some(lang));
+            crate::accessibility::announce(self, format!("Language mode set to {name}"));
         } else {
             self.syntax = None;
+            crate::accessibility::announce(self, "Language mode set to Plain Text");
         }
+        self.refresh_foldable_ranges();
+        self.scheduler.invalidate_all();
+        if let Some(gpu) = &self.gpu_window {
+            gpu.window.request_redraw();
+        }
+    }
+
+    pub(crate) fn open_language_picker(&mut self) {
+        self.ui.language_picker = Some(crate::language_picker::LanguagePickerState::new());
+        self.scheduler.invalidate_all();
     }
 
     pub(crate) fn sync_syntax_on_edit(&mut self) {
@@ -232,25 +247,29 @@ impl App {
             self.syntax = None;
             return;
         }
+        let text = self.buffer.text();
         if let Some(syntax) = &mut self.syntax {
-            syntax.source = self.buffer.text();
+            syntax.source = text.clone();
             if let Some(doc) = &mut syntax.document {
                 doc.set_text(&syntax.source);
             }
         }
+        self.refresh_foldable_ranges();
+        if let Some(path) = self.documents.path.clone() {
+            crate::lsp::sync_document_change(self, &path, &text);
+        }
     }
 
-    pub(crate) fn tab_bar_height(&self) -> f32 {
-        TAB_BAR_HEIGHT * self.scale_factor
+    pub(crate) fn is_dirty(&self) -> bool {
+        self.history.state_id() != self.documents.saved_version
     }
 
-    pub(crate) fn tab_width(&self) -> f32 {
-        let count = self.documents.tabs.tabs().len().max(1) as f32;
-        let per_tab = self.viewport.width / count;
-        per_tab.clamp(
-            TAB_MIN_WIDTH * self.scale_factor,
-            TAB_MAX_WIDTH * self.scale_factor,
-        )
+    pub(crate) fn is_find_results_active(&self) -> bool {
+        crate::find_results::is_find_results_active(self)
+    }
+
+    pub(crate) fn find_results_buffer(&self) -> Option<lux_core::buffer::Buffer> {
+        crate::find_results::find_results_buffer(self)
     }
 
     pub(crate) fn handle_mouse_click_on_chrome(
@@ -258,39 +277,23 @@ impl App {
         ctx: &dyn PlatformContext,
         button: MouseButton,
     ) -> bool {
-        let mouse_y = self.mouse.position.y as f32;
-        if mouse_y >= self.tab_bar_height() {
-            return false;
-        }
-        let mouse_x = self.mouse.position.x as f32;
-        let tab_w = self.tab_width();
-        let tabs = self.documents.tabs.tabs().to_vec();
-        let tab_idx = (mouse_x / tab_w) as usize;
-        if let Some(tab) = tabs.get(tab_idx) {
-            let tab_x = tab_idx as f32 * tab_w;
-            let close_w = TAB_CLOSE_BTN_WIDTH * self.scale_factor;
-            let on_close = mouse_x >= tab_x + tab_w - close_w;
-            match button {
-                MouseButton::Left => {
-                    if on_close {
-                        self.close_tab(ctx, tab.id);
-                    } else {
-                        self.switch_to_tab(tab.id);
-                    }
-                }
-                MouseButton::Middle => {
-                    self.close_tab(ctx, tab.id);
-                }
-                _ => {}
-            }
-        }
-        true
+        crate::chrome::handle_mouse_click_on_chrome(self, ctx, button)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn handle_status_bar_click(&mut self, mouse_x: f32, mouse_y: f32) {
+        crate::chrome::handle_status_bar_click(self, mouse_x, mouse_y);
     }
 }
 
 impl PlatformEventHandler for App {
     fn background_event(&mut self, ctx: &dyn PlatformContext) {
+        crate::menu::poll_and_dispatch(self, ctx);
         self.finish_document_operation(ctx);
+        crate::lsp::poll_lsp_events(self, ctx);
+        let mut settings = std::mem::take(&mut self.ui.settings);
+        settings.poll_watcher(self);
+        self.ui.settings = settings;
     }
     fn resumed(&mut self, ctx: &dyn PlatformContext) {
         if self.gpu_window.is_some() {
@@ -298,12 +301,19 @@ impl PlatformEventHandler for App {
         }
         self.create_gpu_window(ctx);
         self.update_document_title();
+        crate::menu::init_native_menu(self);
         if let Some(path) = self.documents.initial_path.take() {
             self.request_document(ctx, crate::document::Request::Open(Some(path)));
+        } else if self.ui.sidebar.is_none() {
+            let session_file = crate::session::default_session_path(None);
+            if session_file.exists() {
+                let _ = crate::session::restore_session(self, &session_file);
+            }
         }
     }
 
     fn window_event(&mut self, ctx: &dyn PlatformContext, window: WindowId, event: PlatformEvent) {
+        crate::menu::poll_and_dispatch(self, ctx);
         let Some(gpu_window) = &self.gpu_window else {
             return;
         };
@@ -335,6 +345,7 @@ impl PlatformEventHandler for App {
             }
             PlatformEvent::Focused(true) => {
                 self.presentation.set_hidden(false);
+                crate::session::poll_file_watcher(self);
                 self.scheduler.invalidate_all();
                 if let Some(gpu) = &self.gpu_window {
                     gpu.window.request_redraw();
@@ -344,11 +355,44 @@ impl PlatformEventHandler for App {
                 self.redraw(ctx);
             }
             PlatformEvent::Keyboard(key_event) => {
-                if !self.document_key(ctx, &key_event) {
+                if !self.document_key(ctx, &key_event)
+                    && !crate::focus::handle_focus_key(self, ctx, &key_event)
+                    && !crate::conflict::handle_conflict_key(self, ctx, &key_event)
+                    && !crate::palette::handle_palette_key(self, ctx, &key_event)
+                    && !crate::language_picker::handle_language_picker_key(self, ctx, &key_event)
+                    && !crate::build::handle_build_key(self, ctx, &key_event)
+                    && !crate::project::handle_project_switch_key(self, ctx, &key_event)
+                    && !crate::theme_picker::handle_theme_picker_key(self, ctx, &key_event)
+                    && !crate::snippets::handle_snippet_picker_key(self, ctx, &key_event)
+                    && !crate::goto::handle_goto_key(self, ctx, &key_event)
+                    && !crate::search::handle_search_key(self, ctx, &key_event)
+                    && !crate::project_search::handle_project_search_key(self, ctx, &key_event)
+                    && !crate::lsp::handle_lsp_key(self, ctx, &key_event)
+                    && !crate::term::input::handle_term_key(self, ctx, &key_event)
+                    && !crate::plugin::handle_plugin_key(self, ctx, &key_event)
+                {
                     self.handle_key_with_clipboard(&key_event, Some(ctx.clipboard()));
+                }
+                if self.is_dirty()
+                    && let Some(path) = &self.documents.path
+                {
+                    self.ui.session.mark_dirty(path);
                 }
                 self.save_recovery_snapshot();
                 self.update_document_title();
+                if self.ui.announcement.is_none() {
+                    let head = self.cursors.primary().head;
+                    let marker = if self.document_dirty() {
+                        " (modified)"
+                    } else {
+                        ""
+                    };
+                    self.ui.announcement = Some(format!(
+                        "Ln {}, Col {}{marker}",
+                        head.line + 1,
+                        head.column + 1
+                    ));
+                }
                 self.refresh_accessibility();
                 if let Some(gpu_window) = &self.gpu_window {
                     gpu_window.window.request_redraw();
@@ -371,7 +415,9 @@ impl PlatformEventHandler for App {
             }
             PlatformEvent::MouseMoved(position) => {
                 self.mouse.position = position;
-                if self.mouse.selection_anchor.is_some() {
+                if self.ui.split.dragging_divider.is_some() {
+                    self.handle_divider_drag(position.x as f32, position.y as f32);
+                } else if self.mouse.selection_anchor.is_some() {
                     self.update_mouse_selection();
                     self.refresh_accessibility();
                     if let Some(gpu_window) = &self.gpu_window {
@@ -384,10 +430,37 @@ impl PlatformEventHandler for App {
                     if !self.handle_mouse_click_on_chrome(ctx, button)
                         && button == MouseButton::Left
                     {
-                        self.begin_mouse_selection();
+                        self.ui.project_search = None;
+                        self.ui.command_palette = None;
+                        self.ui.goto_anything = None;
+                        self.ui.language_picker = None;
+                        self.ui.build.picker = None;
+                        self.ui.project.picker = None;
+
+                        let pos = self.position_at_mouse();
+                        let now = std::time::Instant::now();
+                        let is_double_click = if let Some((last_time, last_line)) =
+                            self.mouse.last_click
+                        {
+                            now.duration_since(last_time).as_millis() < 400 && last_line == pos.line
+                        } else {
+                            false
+                        };
+                        self.mouse.last_click = Some((now, pos.line));
+
+                        if is_double_click && self.is_find_results_active() {
+                            crate::find_results::open_find_result_at_line(
+                                self,
+                                Some(ctx),
+                                pos.line,
+                            );
+                        } else {
+                            self.begin_mouse_selection();
+                        }
                     }
                 } else if button == MouseButton::Left {
                     self.mouse.selection_anchor = None;
+                    self.end_divider_drag();
                 }
                 self.refresh_accessibility();
                 if let Some(gpu_window) = &self.gpu_window {
@@ -421,11 +494,20 @@ impl PlatformEventHandler for App {
     }
 
     fn about_to_wait(&mut self, _ctx: &dyn PlatformContext) {
+        crate::session::poll_file_watcher(self);
+        let mut settings = std::mem::take(&mut self.ui.settings);
+        settings.poll_watcher(self);
+        self.ui.settings = settings;
         let Some(gpu_window) = &self.gpu_window else {
             return;
         };
         if self.presentation.ready(Instant::now()) && self.scheduler.needs_repaint(Instant::now()) {
             gpu_window.window.request_redraw();
         }
+    }
+
+    fn exiting(&mut self, _ctx: &dyn PlatformContext) {
+        let _ = crate::session::save_session(self, true);
+        self.ui.term.shutdown_all();
     }
 }

@@ -73,6 +73,14 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// [`crate::PlatformEvent::AccessibilityInitialTreeRequested`] and again
     /// on every subsequent content/cursor/selection change.
     fn update_accessibility_tree(&self, update: accesskit::TreeUpdate);
+    /// Sets whether the window should enter or exit borderless fullscreen mode.
+    fn set_fullscreen(&self, fullscreen: bool) {
+        let _ = fullscreen;
+    }
+    /// Returns true if the window is currently in fullscreen mode.
+    fn is_fullscreen(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(test)]

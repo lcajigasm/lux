@@ -406,3 +406,148 @@ fn syntax_synchronization_on_open_and_edit() {
         assert!(syntax.source.contains("// comment\n"));
     }
 }
+
+#[test]
+fn option_click_adds_secondary_cursor() {
+    let mut app = app("hello world\nsecond line\n");
+    assert_eq!(app.cursors.count(), 1);
+
+    app.modifiers.alt = true;
+    app.mouse.position = dpi::PhysicalPosition::new(
+        10_000.0,
+        app.tab_bar_height() as f64 + LINE_HEIGHT as f64 + 1.0,
+    );
+    app.begin_mouse_selection();
+    assert_eq!(app.cursors.count(), 2);
+}
+
+#[test]
+fn tab_inserts_spaces_to_next_tabstop_or_tabs() {
+    let mut a = app("");
+    a.buffer.set_indent(lux_core::buffer::Indent {
+        style: lux_core::buffer::IndentStyle::Spaces,
+        width: 4,
+    });
+    named(&mut a, NamedKey::Tab);
+    assert_eq!(a.buffer.text(), "    ");
+    assert_eq!(a.cursors.primary().head.column, 4);
+
+    text(&mut a, "ab");
+    named(&mut a, NamedKey::Tab);
+    assert_eq!(a.buffer.text(), "    ab  ");
+    assert_eq!(a.cursors.primary().head.column, 8);
+
+    let mut a_tabs = app("");
+    a_tabs.buffer.set_indent(lux_core::buffer::Indent {
+        style: lux_core::buffer::IndentStyle::Tabs,
+        width: 1,
+    });
+    named(&mut a_tabs, NamedKey::Tab);
+    assert_eq!(a_tabs.buffer.text(), "\t");
+}
+
+#[test]
+fn enter_auto_indents_and_splits_braces() {
+    let mut a1 = app("    let x = 1;");
+    a1.cursors = MultiCursor::new(Selection::cursor(Position::document_end(&a1.buffer)));
+    named(&mut a1, NamedKey::Enter);
+    assert_eq!(a1.buffer.text(), "    let x = 1;\n    ");
+    assert_eq!(a1.cursors.primary().head.line, 1);
+    assert_eq!(a1.cursors.primary().head.column, 4);
+
+    let mut a_block = app("fn main() {");
+    a_block.buffer.set_indent(lux_core::buffer::Indent {
+        style: lux_core::buffer::IndentStyle::Spaces,
+        width: 4,
+    });
+    a_block.cursors = MultiCursor::new(Selection::cursor(Position::document_end(&a_block.buffer)));
+    named(&mut a_block, NamedKey::Enter);
+    assert_eq!(a_block.buffer.text(), "fn main() {\n    ");
+    assert_eq!(a_block.cursors.primary().head.line, 1);
+    assert_eq!(a_block.cursors.primary().head.column, 4);
+
+    let mut a_pair = app("fn main() {}");
+    a_pair.buffer.set_indent(lux_core::buffer::Indent {
+        style: lux_core::buffer::IndentStyle::Spaces,
+        width: 4,
+    });
+    a_pair.cursors = MultiCursor::new(Selection::cursor(Position::from_char(&a_pair.buffer, 11)));
+    named(&mut a_pair, NamedKey::Enter);
+    assert_eq!(a_pair.buffer.text(), "fn main() {\n    \n}");
+    assert_eq!(a_pair.cursors.primary().head.line, 1);
+    assert_eq!(a_pair.cursors.primary().head.column, 4);
+}
+
+#[test]
+fn toggle_word_wrap_shortcut_and_view_update() {
+    let mut a = app("hello world");
+    assert!(!a.editor_view.metrics().word_wrap);
+
+    // Option+Z toggles word wrap
+    let event = lux_platform::event::KeyEvent {
+        state: ElementState::Pressed,
+        key: Key::Character("z".into()),
+        text: None,
+        repeat: false,
+    };
+    a.modifiers.alt = true;
+    a.handle_key_with_clipboard(&event, None);
+    assert!(a.editor_view.metrics().word_wrap);
+
+    // Pressing Option+Z again toggles it off
+    a.handle_key_with_clipboard(&event, None);
+    assert!(!a.editor_view.metrics().word_wrap);
+}
+
+#[test]
+fn split_editor_shortcuts_and_cycling() {
+    let mut a = app("hello world");
+    assert!(a.ui.split.secondary.is_none());
+
+    let event_split = lux_platform::event::KeyEvent {
+        state: ElementState::Pressed,
+        key: Key::Character("2".into()),
+        text: None,
+        repeat: false,
+    };
+    if cfg!(target_os = "macos") {
+        a.modifiers.meta = true;
+    } else {
+        a.modifiers.control = true;
+    }
+    a.modifiers.alt = true;
+    a.handle_key_with_clipboard(&event_split, None);
+    assert!(a.ui.split.secondary.is_some());
+    assert_eq!(
+        a.ui.split.direction,
+        crate::split::SplitDirection::Horizontal
+    );
+    assert_eq!(a.ui.split.active_pane, 0);
+
+    let event_f6 = lux_platform::event::KeyEvent {
+        state: ElementState::Pressed,
+        key: Key::Named(NamedKey::F(6)),
+        text: None,
+        repeat: false,
+    };
+    a.modifiers.meta = false;
+    a.modifiers.control = false;
+    a.modifiers.alt = false;
+    a.handle_key_with_clipboard(&event_f6, None);
+    assert_eq!(a.ui.split.active_pane, 1);
+
+    let event_close = lux_platform::event::KeyEvent {
+        state: ElementState::Pressed,
+        key: Key::Character("w".into()),
+        text: None,
+        repeat: false,
+    };
+    if cfg!(target_os = "macos") {
+        a.modifiers.meta = true;
+    } else {
+        a.modifiers.control = true;
+    }
+    a.modifiers.alt = true;
+    a.handle_key_with_clipboard(&event_close, None);
+    assert!(a.ui.split.secondary.is_none());
+}

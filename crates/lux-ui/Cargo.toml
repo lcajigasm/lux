@@ -9,12 +9,12 @@ publish.workspace = true
 
 [dependencies]
 accesskit = "0.24.1"
-lux-core = { path = "../lux-core", version = "0.0.0" }
-lux-render = { path = "../lux-render", version = "0.0.0" }
-lux-search = { path = "../lux-search", version = "0.0.0" }
-lux-git = { path = "../lux-git", version = "0.0.0" }
-lux-term = { path = "../lux-term", version = "0.0.0" }
-lux-plugin = { path = "../lux-plugin", version = "0.0.0" }
+lux-core = { path = "../lux-core", version = "1.0.0" }
+lux-render = { path = "../lux-render", version = "1.0.0" }
+lux-search = { path = "../lux-search", version = "1.0.0" }
+lux-git = { path = "../lux-git", version = "1.0.0" }
+lux-term = { path = "../lux-term", version = "1.0.0" }
+lux-plugin = { path = "../lux-plugin", version = "1.0.0" }
 trash = "5.2.6"
 
 [dev-dependencies]

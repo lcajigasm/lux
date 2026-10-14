@@ -43,4 +43,13 @@ mod tests {
         assert_eq!(start_edge_x(Direction::Rtl, 100.0), 100.0);
         assert_eq!(start_edge_x(Direction::Ltr, 100.0), 0.0);
     }
+
+    #[test]
+    fn mixed_bidirectional_text() {
+        // Leading RTL character determines line direction
+        assert_eq!(direction_for("שלום world 123"), Direction::Rtl);
+        assert_eq!(direction_for("123 مرحبا"), Direction::Rtl);
+        // Leading LTR character
+        assert_eq!(direction_for("hello שלום"), Direction::Ltr);
+    }
 }

@@ -15,6 +15,7 @@ mod comment;
 mod indent;
 mod lines;
 mod transform;
+mod whitespace;
 mod word;
 
 pub use comment::{toggle_block_comment, toggle_line_comment};
@@ -23,6 +24,7 @@ pub use lines::{
     delete_line, duplicate_line, join_lines, move_line_down, move_line_up, sort_lines,
 };
 pub use transform::{CaseChange, change_case, transpose};
+pub use whitespace::{ensure_final_newline, trim_trailing_whitespace};
 pub use word::{delete_word_backward, delete_word_forward};
 
 use crate::buffer::Buffer;

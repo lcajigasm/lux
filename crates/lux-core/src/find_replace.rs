@@ -209,6 +209,44 @@ pub fn replace_all(
     Ok(Transaction::new(edits, Vec::new(), Vec::new()))
 }
 
+/// Replaces the specific matches in `matches` with `replacement`
+/// (expanding captures in regex mode), as one atomic transaction.
+/// `matches` should be in document order; edits are applied back-to-front
+/// so that character offsets of preceding matches remain valid.
+pub fn replace_matches(
+    buffer: &mut Buffer,
+    query: &Query,
+    matches: &[Selection],
+    replacement: &str,
+) -> Result<Transaction, QueryError> {
+    if matches.is_empty() || query.pattern.is_empty() {
+        return Ok(Transaction::new(Vec::new(), Vec::new(), Vec::new()));
+    }
+    let regex = query.compile()?;
+    let mut edits = Vec::with_capacity(matches.len() * 2);
+
+    for sel in matches.iter().rev() {
+        let range = sel.char_range();
+        let matched_text = buffer.text_range(range.clone());
+        if let Some(caps) = regex.captures(&matched_text).filter(|c| {
+            c.get(0)
+                .is_some_and(|m| m.start() == 0 && m.end() == matched_text.len())
+        }) {
+            let replaced = expand_for_match(query, &caps, replacement);
+            let delete_edit = Edit::delete(buffer, range.start, range.len());
+            delete_edit.apply(buffer);
+            edits.push(delete_edit);
+            if !replaced.is_empty() {
+                let insert_edit = Edit::insert(range.start, replaced);
+                insert_edit.apply(buffer);
+                edits.push(insert_edit);
+            }
+        }
+    }
+
+    Ok(Transaction::new(edits, Vec::new(), Vec::new()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,5 +434,19 @@ mod tests {
         let transaction = replace_all(&mut buffer, &query, "x").unwrap();
         assert_eq!(buffer.text(), "hello");
         assert!(transaction.edits.is_empty());
+    }
+
+    #[test]
+    fn replace_matches_replaces_subset_of_matches() {
+        let mut buffer = Buffer::from_bytes(b"one two one two one").unwrap();
+        let query = Query::new("one");
+        let all_matches = find_all(&buffer, &query).unwrap();
+        assert_eq!(all_matches.len(), 3);
+        // Replace only the first and third matches
+        let subset = vec![all_matches[0], all_matches[2]];
+        let tx = replace_matches(&mut buffer, &query, &subset, "ONE").unwrap();
+        assert_eq!(buffer.text(), "ONE two one two ONE");
+        tx.undo(&mut buffer);
+        assert_eq!(buffer.text(), "one two one two one");
     }
 }

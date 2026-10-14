@@ -107,6 +107,18 @@ impl PluginHost {
         let (out,) = run.call(&mut store, ())?;
         Ok(out.to_string())
     }
+
+    /// Read and execute either a compiled `.wasm` Component or a text `.wat` Component from disk.
+    pub fn run_file(&self, path: &Path) -> Result<String, HostError> {
+        let bytes = std::fs::read(path)?;
+        let wasm = if path.extension().and_then(|e| e.to_str()) == Some("wat") {
+            wat::parse_bytes(&bytes)
+                .map_err(|e| HostError::Wasm(wasmtime::Error::msg(e.to_string())))?
+        } else {
+            bytes.into()
+        };
+        self.run_component(&wasm)
+    }
 }
 
 #[cfg(test)]

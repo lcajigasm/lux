@@ -81,6 +81,11 @@ pub const PROPERTIES: &[PropertySchema] = &[
         description: "Remove trailing whitespace from each line on save.",
     },
     PropertySchema {
+        key: "editor.trimTrailingWhitespacePreserveCursor",
+        kind: PropertyKind::Boolean,
+        description: "Keep trailing whitespace on lines with active cursors on save.",
+    },
+    PropertySchema {
         key: "editor.insertFinalNewline",
         kind: PropertyKind::Boolean,
         description: "Ensure the file ends with a single newline on save.",
@@ -89,6 +94,11 @@ pub const PROPERTIES: &[PropertySchema] = &[
         key: "editor.wordWrap",
         kind: PropertyKind::Boolean,
         description: "Wrap lines that exceed the viewport width.",
+    },
+    PropertySchema {
+        key: "editor.distractionFreeColumnWidth",
+        kind: PropertyKind::Integer,
+        description: "Column width in characters for distraction free mode.",
     },
 ];
 

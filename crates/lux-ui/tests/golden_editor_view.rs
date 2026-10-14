@@ -49,6 +49,7 @@ fn mixed_line_endings_and_selected_primary_caret_use_rope_byte_offsets() {
             scroll_y: 0.0,
         },
         Duration::ZERO,
+        None,
     );
     assert_eq!(frame.lines.len(), 4);
     let caret = frame.cursors.iter().find(|c| c.primary).unwrap();
@@ -100,6 +101,7 @@ fn build_view() -> EditorView {
         line_height: 20.0,
         font_size: 16.0,
         ligatures: false,
+        word_wrap: false,
         column_rulers: vec![10, 20],
         blink_interval: Duration::from_millis(500),
     };
@@ -123,7 +125,7 @@ fn virtualized_scroll_shapes_only_the_visible_lines() {
         scroll_x: 0.0,
         scroll_y: 40.0,
     };
-    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO);
+    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO, None);
 
     assert_eq!(frame.visible_line_range, 2..6);
     assert_eq!(frame.lines.len(), 4);
@@ -149,7 +151,7 @@ fn line_numbers_are_right_aligned_to_the_documents_digit_width() {
         scroll_x: 0.0,
         scroll_y: 40.0,
     };
-    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO);
+    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO, None);
 
     let numbers: Vec<&str> = frame.lines.iter().map(|l| l.number.as_str()).collect();
     assert_eq!(numbers, vec![" 3", " 4", " 5", " 6"]);
@@ -180,7 +182,13 @@ fn multi_cursor_blinks_and_ignores_carets_scrolled_off_screen() {
         scroll_y: 40.0,
     };
 
-    let blink_on = view.build_frame(&buffer, &cursors, &viewport, Duration::from_millis(200));
+    let blink_on = view.build_frame(
+        &buffer,
+        &cursors,
+        &viewport,
+        Duration::from_millis(200),
+        None,
+    );
     assert_eq!(
         blink_on.cursors.len(),
         1,
@@ -190,7 +198,13 @@ fn multi_cursor_blinks_and_ignores_carets_scrolled_off_screen() {
     assert!(blink_on.cursors[0].visible);
     assert!(blink_on.cursors[0].x > 0.0);
 
-    let blink_off = view.build_frame(&buffer, &cursors, &viewport, Duration::from_millis(700));
+    let blink_off = view.build_frame(
+        &buffer,
+        &cursors,
+        &viewport,
+        Duration::from_millis(700),
+        None,
+    );
     assert_eq!(blink_off.cursors.len(), 1);
     assert!(
         !blink_off.cursors[0].visible,
@@ -219,7 +233,7 @@ fn multi_line_selection_renders_partial_start_full_middle_partial_end() {
         scroll_x: 0.0,
         scroll_y: 40.0,
     };
-    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO);
+    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO, None);
 
     assert_eq!(frame.selections.len(), 3, "must cover lines 2, 3 and 4");
     let find_line = |idx: usize| frame.lines.iter().find(|l| l.index == idx).unwrap();
@@ -266,7 +280,7 @@ fn indent_guides_match_leading_whitespace_and_detected_indent_width() {
         scroll_x: 0.0,
         scroll_y: 40.0,
     };
-    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO);
+    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO, None);
 
     let line2 = frame.lines.iter().find(|l| l.index == 2).unwrap(); // 4 leading spaces
     let line3 = frame.lines.iter().find(|l| l.index == 3).unwrap(); // 8 leading spaces
@@ -299,7 +313,7 @@ fn no_leading_whitespace_means_no_indent_guides() {
         scroll_x: 0.0,
         scroll_y: 0.0,
     };
-    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO);
+    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO, None);
     let line0 = frame.lines.iter().find(|l| l.index == 0).unwrap();
     assert!(line0.indent_guides.is_empty());
 }
@@ -318,7 +332,7 @@ fn column_rulers_are_positioned_in_increasing_column_order() {
         scroll_x: 0.0,
         scroll_y: 40.0,
     };
-    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO);
+    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO, None);
 
     // build_view() configures rulers at columns [10, 20].
     assert_eq!(frame.column_ruler_x.len(), 2);
@@ -327,4 +341,30 @@ fn column_rulers_are_positioned_in_increasing_column_order() {
     // Monospace: column 20 must sit at roughly twice column 10's offset.
     let ratio = frame.column_ruler_x[1] / frame.column_ruler_x[0];
     assert!((ratio - 2.0).abs() < 0.05, "expected ~2x, got {ratio}");
+}
+
+#[test]
+fn build_frame_with_folds_skips_collapsed_lines() {
+    let text = "fn foo() {\n    line 1\n    line 2\n    line 3\n}\nline 5\n";
+    let buffer = Buffer::from_bytes(text.as_bytes()).unwrap();
+    let mut view = build_view();
+    let cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
+    let viewport = Viewport {
+        width: 800.0,
+        height: 200.0,
+        scroll_x: 0.0,
+        scroll_y: 0.0,
+    };
+
+    let mut folds = lux_core::folding::FoldState::new();
+    folds.set_foldable_ranges(vec![lux_core::folding::FoldRange::new(0, 4)]);
+    folds.fold(0);
+
+    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO, Some(&folds));
+    let indices: Vec<usize> = frame.lines.iter().map(|l| l.index).collect();
+    // Lines 1..=4 are folded away; line 0 is folded header, followed by line 5
+    assert_eq!(indices, vec![0, 5, 6]);
+    assert!(frame.lines[0].is_folded);
+    assert_eq!(frame.lines[0].visual_index, 0);
+    assert_eq!(frame.lines[1].visual_index, 1);
 }

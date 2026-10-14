@@ -27,6 +27,17 @@ pub fn delete_line(buffer: &mut Buffer, selection: Selection) -> (Vec<Edit>, Sel
 /// after. The selection lands on the duplicate, at the same relative
 /// offsets it had in the original.
 pub fn duplicate_line(buffer: &mut Buffer, selection: Selection) -> (Vec<Edit>, Selection) {
+    if !selection.is_empty() {
+        let range = selection.char_range();
+        let text = buffer.text_range(range.clone());
+        let count = text.chars().count();
+        let edit = Edit::insert(range.end, text);
+        edit.apply(buffer);
+        let new_anchor = Position::from_char(buffer, range.end);
+        let new_head = Position::from_char(buffer, range.end + count);
+        return (vec![edit], Selection::new(new_anchor, new_head));
+    }
+
     let lines = touched_lines(selection, buffer.rope());
     let block = {
         let rope = buffer.rope();
@@ -320,6 +331,15 @@ mod tests {
         let sel = cursor_at(&buffer, 5);
         duplicate_line(&mut buffer, sel);
         assert_eq!(buffer.text(), "one\ntwo\ntwo");
+    }
+
+    #[test]
+    fn duplicate_selection_inserts_copy_adjacent() {
+        let mut buffer = Buffer::from_bytes(b"hello world").unwrap();
+        let sel = range_at(&buffer, 0, 5); // "hello"
+        let (_, sel) = duplicate_line(&mut buffer, sel);
+        assert_eq!(buffer.text(), "hellohello world");
+        assert_eq!(sel.char_range(), 5..10);
     }
 
     #[test]

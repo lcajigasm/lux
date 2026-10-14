@@ -60,6 +60,19 @@ impl PlatformWindow for DesktopWindow {
     fn update_accessibility_tree(&self, update: accesskit::TreeUpdate) {
         self.accessibility.borrow_mut().update_if_active(|| update);
     }
+
+    fn set_fullscreen(&self, fullscreen: bool) {
+        if fullscreen {
+            self.window
+                .set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+        } else {
+            self.window.set_fullscreen(None);
+        }
+    }
+
+    fn is_fullscreen(&self) -> bool {
+        self.window.fullscreen().is_some()
+    }
 }
 
 impl HasWindowHandle for DesktopWindow {

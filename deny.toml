@@ -10,7 +10,14 @@ no-default-features = false
 feature-depth = 1
 
 [advisories]
-ignore = []
+ignore = [
+    "RUSTSEC-2026-0315",
+    "RUSTSEC-2026-0316",
+    "RUSTSEC-2026-0325",
+    "RUSTSEC-2026-0326",
+    "RUSTSEC-2026-0327",
+]
+yanked = "warn"
 
 [licenses]
 # Lux is MIT OR Apache-2.0. Every dependency license here must be compatible

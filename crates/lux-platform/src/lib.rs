@@ -23,8 +23,8 @@ pub use clipboard::Clipboard;
 pub use dialog::{FileDialogOptions, FileDialogs};
 pub use error::PlatformError;
 pub use event::{
-    ElementState, Ime, Key, Modifiers, MouseButton, NamedKey, PlatformEvent, ScrollDelta, Touch,
-    TouchPhase,
+    ElementState, Ime, Key, KeyEvent, Modifiers, MouseButton, NamedKey, PlatformEvent, ScrollDelta,
+    Touch, TouchPhase,
 };
 pub use ime::{ImeComposition, ImeUpdate};
 pub use window::{PlatformWindow, SafeAreaInsets, WindowAttributes, WindowId};

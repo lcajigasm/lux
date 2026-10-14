@@ -11,7 +11,7 @@ use crate::app::{App, LINE_HEIGHT};
 
 // History stores ordered vectors. Put the primary last so reconstructing a
 // MultiCursor restores the active selection as well as its text ranges.
-fn with_primary_last(cursors: &MultiCursor) -> Vec<Selection> {
+pub(super) fn with_primary_last(cursors: &MultiCursor) -> Vec<Selection> {
     let primary = cursors.primary();
     let mut selections: Vec<_> = cursors
         .cursors()
@@ -21,40 +21,6 @@ fn with_primary_last(cursors: &MultiCursor) -> Vec<Selection> {
         .collect();
     selections.push(primary);
     selections
-}
-
-fn key_event_to_chord(
-    event: &KeyEvent,
-    modifiers: &lux_platform::Modifiers,
-) -> Option<lux_config::Chord> {
-    let key = match &event.key {
-        Key::Character(s) => s.to_lowercase(),
-        Key::Named(named) => match named {
-            NamedKey::Enter => "enter".to_string(),
-            NamedKey::Tab => "tab".to_string(),
-            NamedKey::Space => "space".to_string(),
-            NamedKey::Backspace => "backspace".to_string(),
-            NamedKey::Delete => "delete".to_string(),
-            NamedKey::ArrowUp => "up".to_string(),
-            NamedKey::ArrowDown => "down".to_string(),
-            NamedKey::ArrowLeft => "left".to_string(),
-            NamedKey::ArrowRight => "right".to_string(),
-            NamedKey::Home => "home".to_string(),
-            NamedKey::End => "end".to_string(),
-            NamedKey::PageUp => "pageup".to_string(),
-            NamedKey::PageDown => "pagedown".to_string(),
-            NamedKey::Escape => "escape".to_string(),
-            _ => return None,
-        },
-        _ => return None,
-    };
-    Some(lux_config::Chord {
-        ctrl: modifiers.control,
-        alt: modifiers.alt,
-        shift: modifiers.shift,
-        cmd: modifiers.meta,
-        key,
-    })
 }
 
 impl App {
@@ -68,7 +34,17 @@ impl App {
         }
     }
 
-    fn line_comment_token(&self) -> Option<&'static str> {
+    pub(crate) fn line_comment_token(&self) -> Option<&'static str> {
+        if let Some(lang) = self.documents.language() {
+            use lux_syntax::LanguageId::*;
+            return match lang {
+                Rust | TypeScript | Tsx | JavaScript | C | Cpp | Java | Kotlin | Swift | Go => {
+                    Some("//")
+                }
+                Python | Bash | Toml | Yaml => Some("#"),
+                _ => None,
+            };
+        }
         let extension = self.documents.path.as_ref()?.extension()?.to_str()?;
         match extension.to_ascii_lowercase().as_str() {
             "rs" | "c" | "h" | "cc" | "cpp" | "cxx" | "hpp" | "js" | "jsx" | "ts" | "tsx"
@@ -89,26 +65,58 @@ impl App {
         self.reveal_primary_cursor();
     }
 
-    fn position_at_mouse(&mut self) -> Position {
+    pub(crate) fn position_at_mouse(&mut self) -> Position {
+        let local_x = (self.mouse.position.x as f32 - self.sidebar_width()).max(0.0);
         let local_y = (self.mouse.position.y as f32 - self.tab_bar_height()).max(0.0);
+        let digits = self.buffer.len_lines().max(1).to_string().len();
+        let gutter_w = self.editor_view.reference_width(&"0".repeat(digits));
+        let left_padding = self.text_left() - self.sidebar_width() - gutter_w;
         self.editor_view.hit_test(
             &self.buffer,
             &self.viewport,
-            self.mouse.position.x as f32,
+            local_x,
             local_y,
-            crate::app::TEXT_LEFT_PADDING * self.scale_factor,
+            left_padding,
+            Some(&self.fold_state),
         )
     }
 
     pub(crate) fn begin_mouse_selection(&mut self) {
         let position = self.position_at_mouse();
+        let local_x = (self.mouse.position.x as f32 - self.sidebar_width()).max(0.0);
+        if !self.is_distraction_free() && local_x <= 16.0 * self.scale_factor {
+            self.toggle_bookmark_at_line(position.line);
+            return;
+        }
+        if self.fold_state.is_line_folded(position.line) {
+            let digits = self.buffer.len_lines().max(1).to_string().len();
+            let gutter_w = self.editor_view.reference_width(&"0".repeat(digits));
+            let text_left = gutter_w + 22.0 * self.scale_factor;
+            let line_content = self.buffer.line_content(position.line).unwrap_or_default();
+            let trimmed = line_content.trim_end_matches(['\r', '\n']);
+            let text_w = self.editor_view.reference_width(trimmed);
+            let pill_x = text_left + text_w - self.viewport.scroll_x + 6.0 * self.scale_factor;
+            let pill_w = 26.0 * self.scale_factor;
+            if local_x >= pill_x - 6.0 * self.scale_factor
+                && local_x <= pill_x + pill_w + 6.0 * self.scale_factor
+            {
+                self.unfold_at_line(position.line);
+                return;
+            }
+        }
         let anchor = if self.modifiers.shift {
             self.cursors.primary().anchor
         } else {
             position
         };
         self.mouse.selection_anchor = Some(anchor);
-        self.cursors = MultiCursor::new(Selection::new(anchor, position));
+        if self.modifiers.alt {
+            let mut cursors = self.cursors.cursors().to_vec();
+            cursors.push(Selection::new(anchor, position));
+            self.cursors = MultiCursor::from_cursors(cursors);
+        } else {
+            self.cursors = MultiCursor::new(Selection::new(anchor, position));
+        }
         self.snippet_session = None;
         self.reset_goal_columns();
     }
@@ -118,12 +126,16 @@ impl App {
             return;
         };
         let position = self.position_at_mouse();
-        self.cursors = MultiCursor::new(Selection::new(anchor, position));
+        if self.modifiers.alt {
+            self.cursors = selection_ops::box_select(&self.buffer, anchor, position);
+        } else {
+            self.cursors = MultiCursor::new(Selection::new(anchor, position));
+        }
         self.snippet_session = None;
         self.reset_goal_columns();
     }
 
-    fn reveal_primary_cursor(&mut self) {
+    pub(crate) fn reveal_primary_cursor(&mut self) {
         let line_height = LINE_HEIGHT * self.scale_factor;
         let primary = self.cursors.primary().head;
         let y = primary.line as f32 * line_height;
@@ -153,17 +165,28 @@ impl App {
         if text.is_empty() || self.buffer.is_huge_file_mode() || self.editing_blocked() {
             return;
         }
-        if let Some(session) = &mut self.snippet_session {
-            let edits = session.update_current(&mut self.buffer, text);
-            let before = vec![self.cursors.primary()];
-            let after_sel = session.current_selection(&self.buffer);
-            let transaction = lux_core::history::Transaction::new(edits, before, vec![after_sel]);
-            self.history.record(transaction);
-            self.cursors = MultiCursor::new(after_sel);
-            self.reset_goal_columns();
-            self.sync_syntax_on_edit();
+        if crate::snippets::dispatch::handle_snippet_text_input(self, text) {
             return;
         }
+        crate::macros::dispatch::record_text_input(self, text);
+
+        // Parallel paste: when multi-cursor count matches lines count, paste 1 line per cursor.
+        // Note: apply_to_each processes cursors back-to-front (highest line/offset first),
+        // so we count down line_idx from lines.len() - 1 to distribute lines in document order.
+        let lines: Vec<&str> = text
+            .split('\n')
+            .map(|l| l.strip_suffix('\r').unwrap_or(l))
+            .collect();
+        if self.cursors.count() > 1 && lines.len() == self.cursors.count() {
+            let mut line_idx = lines.len();
+            self.apply_edit_operation(self.cursors.clone(), |buffer, selection| {
+                line_idx = line_idx.saturating_sub(1);
+                let piece = lines.get(line_idx).copied().unwrap_or("");
+                edit_ops::insert_text(buffer, selection, piece)
+            });
+            return;
+        }
+
         self.replace_selections(self.cursors.clone(), text);
     }
 
@@ -185,13 +208,13 @@ impl App {
         self.sync_syntax_on_edit();
     }
 
-    fn replace_selections(&mut self, ranges: MultiCursor, text: &str) {
+    pub(crate) fn replace_selections(&mut self, ranges: MultiCursor, text: &str) {
         self.apply_edit_operation(ranges, |buffer, selection| {
             edit_ops::insert_text(buffer, selection, text)
         });
     }
 
-    fn apply_edit_operation(
+    pub(crate) fn apply_edit_operation(
         &mut self,
         ranges: MultiCursor,
         op: impl FnMut(
@@ -225,7 +248,7 @@ impl App {
         self.sync_syntax_on_edit();
     }
 
-    fn delete_at_cursors(&mut self, backward: bool) {
+    pub(crate) fn delete_at_cursors(&mut self, backward: bool) {
         let selections = with_primary_last(&self.cursors)
             .into_iter()
             .map(|selection| {
@@ -260,100 +283,50 @@ impl App {
             return;
         }
 
-        let platform = if cfg!(target_os = "macos") {
-            lux_config::Platform::Mac
-        } else if cfg!(target_os = "windows") {
-            lux_config::Platform::Windows
-        } else {
-            lux_config::Platform::Linux
-        };
-        let keymap_cmd = key_event_to_chord(event, &self.modifiers).and_then(|chord| {
-            let seq = lux_config::ChordSequence(vec![chord]);
-            self.keymap.command_for(&seq, platform).map(str::to_owned)
-        });
+        if dispatch::dispatch_keymap_or_chord(self, event, clipboard) {
+            return;
+        }
 
-        if let Some(cmd) = keymap_cmd.as_deref() {
-            match cmd {
-                "copy" => {
-                    self.copy_to_clipboard(clipboard);
-                }
-                "cut" if !self.editing_blocked() && !self.buffer.is_huge_file_mode() => {
-                    if self.copy_to_clipboard(clipboard) {
-                        self.replace_selections(self.cursors.clone(), "");
-                    }
-                }
-                "paste" if !self.editing_blocked() && !self.buffer.is_huge_file_mode() => {
-                    if let Some(clipboard) = clipboard {
-                        match clipboard.read_text() {
-                            Ok(text) => self.insert_at_cursor(&text),
-                            Err(error) => self.documents.message = Some(error.to_string()),
-                        }
-                    }
-                }
-                "undo" if !self.buffer.is_huge_file_mode() => {
-                    let restored = self.history.undo(&mut self.buffer);
-                    if let Some(selections) = restored {
-                        self.cursors = MultiCursor::from_cursors(selections);
-                        self.reset_goal_columns();
-                        self.sync_syntax_on_edit();
-                    }
-                }
-                "redo" if !self.buffer.is_huge_file_mode() => {
-                    let restored = self.history.redo(&mut self.buffer);
-                    if let Some(selections) = restored {
-                        self.cursors = MultiCursor::from_cursors(selections);
-                        self.reset_goal_columns();
-                        self.sync_syntax_on_edit();
-                    }
-                }
-                "select_all" => {
-                    self.cursors = MultiCursor::new(Selection::new(
-                        Position::document_start(),
-                        Position::document_end(&self.buffer),
-                    ));
-                    self.reset_goal_columns();
-                }
-                "duplicate_line" => {
-                    self.apply_edit_operation(self.cursors.clone(), edit_ops::duplicate_line);
-                }
-                "select_next_occurrence" => {
-                    if self.cursors.primary().is_empty() {
-                        let selections = with_primary_last(&self.cursors)
-                            .into_iter()
-                            .map(|s| selection_ops::expand_to_word(&self.buffer, s))
-                            .collect();
-                        self.cursors = MultiCursor::from_cursors(selections);
-                    } else {
-                        self.cursors =
-                            selection_ops::select_next_occurrence(&self.buffer, &self.cursors);
-                    }
-                    self.reset_goal_columns();
-                }
-                "delete_line" => {
-                    self.apply_edit_operation(self.cursors.clone(), edit_ops::delete_line);
-                }
-                "join_lines" => {
-                    self.apply_edit_operation(self.cursors.clone(), edit_ops::join_lines);
-                }
-                "indent" => {
-                    self.apply_edit_operation(self.cursors.clone(), edit_ops::indent);
-                }
-                "dedent" => {
-                    self.apply_edit_operation(self.cursors.clone(), edit_ops::dedent);
-                }
-                "toggle_comment" => {
-                    if let Some(token) = self.line_comment_token() {
-                        self.apply_edit_operation(self.cursors.clone(), |buffer, selection| {
-                            edit_ops::toggle_line_comment(buffer, selection, token)
-                        });
-                    }
-                }
-                _ => {}
-            }
+        if self.modifiers.alt
+            && !self.command_modifier()
+            && let Key::Character(key) = &event.key
+            && (key.eq_ignore_ascii_case("z") || key == "Ω")
+        {
+            self.toggle_word_wrap();
+            #[cfg(target_os = "macos")]
+            crate::menu::macos::update_view_checkmarks(self);
+            return;
+        }
+
+        if (event.key == Key::Named(NamedKey::F(11)) && self.modifiers.shift)
+            || (self.command_modifier()
+                && self.modifiers.control
+                && self.modifiers.shift
+                && matches!(&event.key, Key::Character(k) if k.eq_ignore_ascii_case("f")))
+        {
+            self.toggle_distraction_free();
+            #[cfg(target_os = "macos")]
+            crate::menu::macos::update_view_checkmarks(self);
             return;
         }
 
         let command = self.command_modifier();
+        if command
+            && self.modifiers.alt
+            && let Key::Character(key) = &event.key
+        {
+            if key == "2" || key == "™" || key == "€" {
+                if self.modifiers.shift {
+                    self.split_editor_down();
+                } else {
+                    self.split_editor_right();
+                }
+                return;
+            }
+            if (key.eq_ignore_ascii_case("w") || key == "∑") && self.close_active_split() {
+                return;
+            }
+        }
         if command && let Key::Character(key) = &event.key {
             match key.to_lowercase().as_str() {
                 "c" => {
@@ -410,15 +383,9 @@ impl App {
                 "k" if self.modifiers.shift => {
                     self.apply_edit_operation(self.cursors.clone(), edit_ops::delete_line);
                 }
-                "j" => {
-                    self.apply_edit_operation(self.cursors.clone(), edit_ops::join_lines);
-                }
-                "]" => {
-                    self.apply_edit_operation(self.cursors.clone(), edit_ops::indent);
-                }
-                "[" => {
-                    self.apply_edit_operation(self.cursors.clone(), edit_ops::dedent);
-                }
+                "j" => self.apply_edit_operation(self.cursors.clone(), edit_ops::join_lines),
+                "]" => self.apply_edit_operation(self.cursors.clone(), edit_ops::indent),
+                "[" => self.apply_edit_operation(self.cursors.clone(), edit_ops::dedent),
                 "/" => {
                     if let Some(token) = self.line_comment_token() {
                         self.apply_edit_operation(self.cursors.clone(), |buffer, selection| {
@@ -426,6 +393,16 @@ impl App {
                         });
                     }
                 }
+                "p" if self.modifiers.shift => self.toggle_command_palette(),
+                "p" => self.toggle_goto_anything(),
+                "r" if self.modifiers.shift => self.open_goto_project_symbols(),
+                "r" => self.open_goto_anything("@"),
+                "f" if self.modifiers.shift => self.open_project_find(),
+                "f" => self.open_find(),
+                "h" if self.modifiers.shift => self.open_project_replace(),
+                "h" => self.open_replace(),
+                "b" => self.toggle_sidebar(),
+                "m" if self.modifiers.shift => self.open_language_picker(),
                 _ => {}
             }
             return; // Unbound command chords must never type their text.
@@ -434,12 +411,20 @@ impl App {
             return;
         }
         if let Key::Named(key) = event.key {
+            if (matches!(key, NamedKey::F(6))
+                || (command && self.modifiers.alt && key == NamedKey::ArrowRight))
+                && self.focus_next_split()
+            {
+                return;
+            }
             let word = if cfg!(target_os = "macos") {
                 self.modifiers.alt
             } else {
                 self.modifiers.control && !self.modifiers.alt
             };
             if word && matches!(key, NamedKey::Backspace | NamedKey::Delete) {
+                let forward = key == NamedKey::Delete;
+                crate::macros::dispatch::record_word_delete(self, forward);
                 let op = if key == NamedKey::Backspace {
                     edit_ops::delete_word_backward
                 } else {
@@ -458,6 +443,13 @@ impl App {
                 return;
             }
             if self.move_cursors(key) {
+                crate::macros::dispatch::record_move(
+                    self,
+                    key,
+                    word,
+                    self.command_modifier(),
+                    self.modifiers.shift,
+                );
                 self.snippet_session = None;
                 return;
             }
@@ -465,11 +457,21 @@ impl App {
                 return;
             }
             match key {
-                NamedKey::Backspace => self.delete_at_cursors(true),
-                NamedKey::Delete => self.delete_at_cursors(false),
+                NamedKey::Backspace => {
+                    crate::macros::dispatch::record_backspace(self);
+                    if !crate::snippets::dispatch::handle_snippet_backspace(self)
+                        && !autopair::handle_backspace(self)
+                    {
+                        self.delete_at_cursors(true);
+                    }
+                }
+                NamedKey::Delete => {
+                    crate::macros::dispatch::record_delete(self);
+                    self.delete_at_cursors(false);
+                }
                 NamedKey::Enter => {
-                    let eol = self.buffer.eol().as_str().to_owned();
-                    self.insert_at_cursor(&eol);
+                    crate::macros::dispatch::record_enter(self);
+                    self.insert_newline();
                 }
                 NamedKey::Tab if self.modifiers.shift => {
                     if let Some(session) = &mut self.snippet_session
@@ -495,15 +497,29 @@ impl App {
                 NamedKey::Tab if self.cursors.cursors().iter().any(|s| !s.is_empty()) => {
                     self.apply_edit_operation(self.cursors.clone(), edit_ops::indent);
                 }
-                NamedKey::Tab => self.insert_at_cursor("\t"),
+                NamedKey::Tab => {
+                    if !crate::snippets::dispatch::try_expand_snippet_trigger(self) {
+                        self.insert_tab();
+                    }
+                }
                 NamedKey::Space => self.insert_at_cursor(" "),
                 NamedKey::Escape => {
                     if self.snippet_session.take().is_some() {
                         return;
                     }
-                    self.cursors = MultiCursor::new(self.cursors.primary().collapse_to_head());
-                    self.chrome.focus.escape_to_editor();
-                    self.reset_goal_columns();
+                    if self.cursors.cursors().len() > 1 || !self.cursors.primary().is_empty() {
+                        self.cursors = MultiCursor::new(self.cursors.primary().collapse_to_head());
+                        self.chrome.focus.escape_to_editor();
+                        self.reset_goal_columns();
+                    } else if self.is_distraction_free() {
+                        self.exit_distraction_free();
+                        #[cfg(target_os = "macos")]
+                        crate::menu::macos::update_view_checkmarks(self);
+                    } else {
+                        self.cursors = MultiCursor::new(self.cursors.primary().collapse_to_head());
+                        self.chrome.focus.escape_to_editor();
+                        self.reset_goal_columns();
+                    }
                 }
                 _ => {}
             }
@@ -512,39 +528,62 @@ impl App {
         if !self.command_modifier()
             && let Some(text) = &event.text
         {
-            self.insert_at_cursor(text);
-        }
-    }
-
-    /// Copies every non-empty selection in document order. Multiple
-    /// selections use the document's own line ending so pasting into a
-    /// single cursor remains lossless and platform-consistent.
-    fn copy_to_clipboard(&mut self, clipboard: Option<&dyn Clipboard>) -> bool {
-        let Some(clipboard) = clipboard else {
-            return false;
-        };
-        let pieces: Vec<_> = self
-            .cursors
-            .cursors()
-            .iter()
-            .filter(|selection| !selection.is_empty())
-            .map(|selection| self.buffer.text_range(selection.char_range()))
-            .collect();
-        if pieces.is_empty() {
-            return false;
-        }
-        let text = pieces.join(self.buffer.eol().as_str());
-        match clipboard.write_text(&text) {
-            Ok(()) => true,
-            Err(error) => {
-                self.documents.message = Some(error.to_string());
-                false
+            let handled = text.chars().count() == 1
+                && text
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| autopair::handle_char_typed(self, ch));
+            if !handled {
+                self.insert_at_cursor(text);
             }
         }
     }
+
+    pub(crate) fn insert_tab(&mut self) {
+        indent::insert_tab(self);
+    }
+
+    pub(crate) fn insert_newline(&mut self) {
+        indent::insert_newline(self);
+    }
+
+    pub(crate) fn jump_to_matching_bracket(&mut self) {
+        autopair::jump_to_matching_bracket(self);
+    }
 }
 
+mod autopair;
+pub(crate) mod dispatch;
+mod indent;
 mod motion;
 
 #[cfg(test)]
+mod autopair_tests;
+#[cfg(test)]
+mod bookmark_tests;
+#[cfg(test)]
+mod build_tests;
+#[cfg(test)]
+mod distraction_free_tests;
+#[cfg(test)]
+mod find_in_files_tests;
+#[cfg(test)]
+mod folding_tests;
+#[cfg(test)]
+mod goto_tests;
+#[cfg(test)]
+mod layout_tests;
+#[cfg(test)]
+mod macro_tests;
+#[cfg(test)]
+mod occurrence_tests;
+#[cfg(test)]
+mod project_tests;
+#[cfg(test)]
+mod search_tests;
+#[cfg(test)]
+mod snippet_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod theme_tests;

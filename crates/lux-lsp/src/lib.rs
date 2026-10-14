@@ -45,3 +45,5 @@ pub use semantic_tokens::{ResolvedToken, SemanticTokensClient, SemanticTokensErr
 pub use session::{ProgressInfo, ServerSession, ServerState, ServerStatus};
 pub use signature::{Signature, SignatureError, active_parameter_label, active_signature};
 pub use sync::{DocumentSync, SyncError, TextEdit};
+
+pub use async_lsp;

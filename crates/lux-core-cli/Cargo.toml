@@ -12,4 +12,4 @@ name = "lux-core-cli"
 path = "src/main.rs"
 
 [dependencies]
-lux-core = { path = "../lux-core", version = "0.0.0" }
+lux-core = { path = "../lux-core", version = "1.0.0" }
