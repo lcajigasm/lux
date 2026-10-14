@@ -113,6 +113,7 @@ pub(crate) fn render_text_lines(
                 });
             }
 
+            let line_pad_y = (line_height - font_size) * 0.5;
             let is_current = frame.cursors.iter().any(|c| c.line == line.index);
             let num_color = if is_current { foreground } else { muted };
             for cluster in line.number_layout.clusters() {
@@ -124,7 +125,7 @@ pub(crate) fn render_text_lines(
                     font_size,
                     &cluster,
                     sidebar_width + 8.0,
-                    y + line.number_layout.baseline(),
+                    y + line_pad_y + line.number_layout.baseline(),
                     num_color,
                     glyph_instances,
                 );
@@ -224,6 +225,7 @@ pub(crate) fn render_text_lines(
             } else {
                 foreground
             };
+            let line_pad_y = (line_height - font_size) * 0.5;
             push_glyph(
                 &mut atlas_state.atlas,
                 &mut atlas_state.dirty,
@@ -232,7 +234,7 @@ pub(crate) fn render_text_lines(
                 font_size,
                 &cluster,
                 text_left - viewport.scroll_x,
-                y + line.layout.baseline(),
+                y + line_pad_y + line.layout.baseline(),
                 glyph_color,
                 glyph_instances,
             );

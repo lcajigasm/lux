@@ -323,7 +323,7 @@ impl PlatformEventHandler for App {
 
         match event {
             PlatformEvent::CloseRequested => {
-                self.request_document(ctx, crate::document::Request::Close)
+                ctx.exit();
             }
             PlatformEvent::Resized(size) => {
                 self.resize(size);
@@ -415,6 +415,13 @@ impl PlatformEventHandler for App {
             }
             PlatformEvent::MouseMoved(position) => {
                 self.mouse.position = position;
+                if self.ui.language_picker.is_some() {
+                    crate::language_picker::handle_language_picker_hover(
+                        self,
+                        position.x as f32,
+                        position.y as f32,
+                    );
+                }
                 if self.ui.split.dragging_divider.is_some() {
                     self.handle_divider_drag(position.x as f32, position.y as f32);
                 } else if self.mouse.selection_anchor.is_some() {
@@ -507,6 +514,7 @@ impl PlatformEventHandler for App {
     }
 
     fn exiting(&mut self, _ctx: &dyn PlatformContext) {
+        self.sync_active_document_to_entry();
         let _ = crate::session::save_session(self, true);
         self.ui.term.shutdown_all();
     }

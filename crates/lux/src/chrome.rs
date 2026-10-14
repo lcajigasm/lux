@@ -15,6 +15,13 @@ pub(crate) fn handle_mouse_click_on_chrome(
         return true;
     }
 
+    if button == MouseButton::Left
+        && app.ui.language_picker.is_some()
+        && crate::language_picker::handle_language_picker_click(app, mouse_x, mouse_y)
+    {
+        return true;
+    }
+
     if button == MouseButton::Left && app.ui.settings.panel.is_some() {
         let mut settings = std::mem::take(&mut app.ui.settings);
         let handled = settings.handle_click(app, mouse_x, mouse_y);

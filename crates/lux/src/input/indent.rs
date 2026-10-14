@@ -56,11 +56,12 @@ pub(crate) fn insert_newline(app: &mut App) {
         let trimmed_prefix = prefix.trim_end();
         let trimmed_suffix = suffix.trim_start();
 
-        let leading_ws_count = leading_ws.chars().count();
-
         let is_between_braces = (trimmed_prefix.ends_with('{') && trimmed_suffix.starts_with('}'))
             || (trimmed_prefix.ends_with('(') && trimmed_suffix.starts_with(')'))
             || (trimmed_prefix.ends_with('[') && trimmed_suffix.starts_with(']'));
+
+        let is_only_ws = chars.iter().all(|&c| c == ' ' || c == '\t');
+        let leading_ws_count = leading_ws.chars().count();
 
         if is_between_braces {
             let text = format!("{eol}{leading_ws}{indent_unit}{eol}{leading_ws}");
@@ -71,8 +72,15 @@ pub(crate) fn insert_newline(app: &mut App) {
                 selection.ordered().0.char + eol.chars().count() + middle_col,
             );
             (edits, Selection::cursor(new_pos))
-        } else if pos.column <= leading_ws_count {
+        } else if pos.column <= leading_ws_count && !is_only_ws {
             edit_ops::insert_text(buffer, selection, &eol)
+        } else if is_only_ws {
+            if pos.column == 0 {
+                edit_ops::insert_text(buffer, selection, &eol)
+            } else {
+                let text = format!("{eol}{leading_ws}");
+                edit_ops::insert_text(buffer, selection, &text)
+            }
         } else {
             let opens_block = trimmed_prefix.ends_with('{')
                 || trimmed_prefix.ends_with('(')

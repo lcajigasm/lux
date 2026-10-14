@@ -94,7 +94,8 @@ impl App {
         } else {
             0.0
         };
-        let window_width = sidebar_width + viewport.width;
+        let win_size = gpu_window.window.inner_size();
+        let window_width = win_size.width as f32;
         let gutter_total_width = if is_df {
             0.0
         } else {
@@ -226,16 +227,20 @@ impl App {
             );
         }
 
+        let line_pad_y = (line_height - font_size) * 0.5;
+        let caret_h = font_size + 2.0 * stroke;
         let mut cursor_screen = None;
         for cursor_glyph in &frame.cursors {
             let x = text_left + cursor_glyph.x - viewport.scroll_x;
-            let y = editor_top + cursor_glyph.line as f32 * line_height - viewport.scroll_y;
+            let y = editor_top + cursor_glyph.visual_row as f32 * line_height - viewport.scroll_y
+                + line_pad_y
+                - stroke;
             if cursor_glyph.primary {
                 cursor_screen = Some((x, y));
             }
             if cursor_glyph.visible {
                 quad_instances.push(QuadInstance {
-                    rect: [x, y, 2.0 * stroke, line_height],
+                    rect: [x, y, 2.0 * stroke, caret_h],
                     color: color(chrome.theme.accent),
                 });
             }
@@ -291,7 +296,7 @@ impl App {
             );
         }
 
-        let window_height = viewport.height + tab_bar_height + status_bar_height;
+        let window_height = win_size.height as f32;
         let language_id = documents.language();
 
         if let Some(search_state) = &mut ui.search_bar {

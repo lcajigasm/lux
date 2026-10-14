@@ -35,13 +35,22 @@ pub struct CursorState {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TabState {
-    pub path: PathBuf,
+    #[serde(default)]
+    pub path: Option<PathBuf>,
+    #[serde(default)]
+    pub title: String,
     #[serde(default)]
     pub pinned: bool,
     #[serde(default)]
     pub cursors: Vec<CursorState>,
     #[serde(default)]
     pub scroll_line: usize,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub draft_text: Option<String>,
+    #[serde(default)]
+    pub is_dirty: bool,
 }
 
 /// Where you left off: open folders, open tabs (each with its cursors and
@@ -277,16 +286,24 @@ mod tests {
         session.folders = vec![dir.join("backend"), dir.join("frontend")];
         session.tabs = vec![
             TabState {
-                path: dir.join("a.rs"),
+                path: Some(dir.join("a.rs")),
+                title: "a.rs".to_string(),
                 pinned: true,
                 cursors: vec![CursorState { char_offset: 42 }],
                 scroll_line: 10,
+                language: Some("Rust".to_string()),
+                draft_text: None,
+                is_dirty: false,
             },
             TabState {
-                path: dir.join("b.rs"),
+                path: None,
+                title: "Untitled".to_string(),
                 pinned: false,
                 cursors: vec![],
                 scroll_line: 0,
+                language: None,
+                draft_text: Some("unsaved draft".to_string()),
+                is_dirty: true,
             },
         ];
         session.active_tab = Some(1);

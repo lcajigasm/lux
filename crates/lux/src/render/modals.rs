@@ -32,7 +32,7 @@ pub(crate) fn render_all_modals(
     if let Some(pal) = &ui.command_palette {
         super::palette::render_command_palette(
             pal,
-            viewport.width,
+            window_width,
             tab_bar_height,
             scale_factor,
             stroke,
@@ -52,7 +52,7 @@ pub(crate) fn render_all_modals(
     if let Some(picker) = &ui.language_picker {
         super::language_picker::render_language_picker(
             picker,
-            viewport.width,
+            window_width,
             tab_bar_height,
             scale_factor,
             stroke,
@@ -71,7 +71,7 @@ pub(crate) fn render_all_modals(
     if let Some(goto_state) = &ui.goto_anything {
         super::goto::render_goto(
             goto_state,
-            viewport.width,
+            window_width,
             tab_bar_height,
             scale_factor,
             stroke,
@@ -90,7 +90,7 @@ pub(crate) fn render_all_modals(
     if let Some(picker) = &ui.build.picker {
         super::build::render_build_picker(
             picker,
-            viewport.width,
+            window_width,
             tab_bar_height,
             scale_factor,
             stroke,
@@ -110,7 +110,7 @@ pub(crate) fn render_all_modals(
         super::project_picker::render_project_picker(
             picker,
             ui.project.active_project_path.as_deref(),
-            viewport.width,
+            window_width,
             tab_bar_height,
             scale_factor,
             stroke,
@@ -129,7 +129,7 @@ pub(crate) fn render_all_modals(
     if let Some(picker) = &ui.theme_picker {
         super::theme_picker::render_theme_picker(
             picker,
-            viewport.width,
+            window_width,
             tab_bar_height,
             scale_factor,
             stroke,
@@ -148,7 +148,7 @@ pub(crate) fn render_all_modals(
     if let Some(picker) = &ui.snippets.picker {
         super::snippet_picker::render_snippet_picker(
             picker,
-            viewport.width,
+            window_width,
             tab_bar_height,
             scale_factor,
             stroke,

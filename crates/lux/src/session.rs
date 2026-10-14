@@ -82,25 +82,51 @@ pub(crate) fn save_session(app: &App, clean: bool) -> std::io::Result<()> {
     }
 
     for (idx, entry) in app.documents.entries.iter().enumerate() {
-        if let Some(path) = &entry.path {
-            let cursors = entry
-                .cursors
-                .cursors()
-                .iter()
-                .map(|s| CursorState {
-                    char_offset: s.head.char,
-                })
-                .collect();
-            let scroll_line = (entry.scroll_y / LINE_HEIGHT).floor() as usize;
-            session.tabs.push(TabState {
-                path: path.clone(),
-                pinned: false,
-                cursors,
-                scroll_line,
-            });
-            if app.documents.active_tab == Some(entry.tab_id) {
-                session.active_tab = Some(idx);
-            }
+        let is_empty_untitled =
+            entry.path.is_none() && entry.buffer.len_chars() == 0 && !entry.is_dirty();
+        if is_empty_untitled && app.documents.entries.len() > 1 {
+            continue;
+        }
+
+        let cursors = entry
+            .cursors
+            .cursors()
+            .iter()
+            .map(|s| CursorState {
+                char_offset: s.head.char,
+            })
+            .collect();
+        let scroll_line = (entry.scroll_y / LINE_HEIGHT).floor() as usize;
+        let title = app
+            .documents
+            .tabs
+            .tabs()
+            .iter()
+            .find(|t| t.id == entry.tab_id)
+            .map(|t| t.title.clone())
+            .unwrap_or_else(|| "Untitled".to_string());
+        let language = entry
+            .language
+            .map(|l| crate::status_bar::language_name(Some(l)).to_string());
+        let is_dirty = entry.is_dirty() || (entry.path.is_none() && entry.buffer.len_chars() > 0);
+        let draft_text = if is_dirty || entry.path.is_none() {
+            Some(entry.buffer.text())
+        } else {
+            None
+        };
+
+        session.tabs.push(TabState {
+            path: entry.path.clone(),
+            title,
+            pinned: false,
+            cursors,
+            scroll_line,
+            language,
+            draft_text,
+            is_dirty,
+        });
+        if app.documents.active_tab == Some(entry.tab_id) {
+            session.active_tab = Some(idx);
         }
     }
 
@@ -135,36 +161,70 @@ pub(crate) fn restore_session(app: &mut App, session_path: &Path) -> std::io::Re
     let mut restored_any = false;
     let had_initial_empty = app.documents.entries.len() == 1
         && app.documents.entries[0].path.is_none()
-        && !app.documents.entries[0].is_dirty();
+        && !app.documents.entries[0].is_dirty()
+        && app.documents.entries[0].buffer.len_chars() == 0;
 
     for tab_state in &session.tabs {
-        if !tab_state.path.exists() {
-            continue;
-        }
-        if let Ok(buffer) = Buffer::open(&tab_state.path) {
-            let file_name = tab_state
-                .path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("file");
-            let tab_id = app.documents.tabs.open(file_name);
-            let mut entry = DocumentEntry::new(tab_id, Some(tab_state.path.clone()), buffer);
-
-            if !tab_state.cursors.is_empty() {
-                let sels: Vec<_> = tab_state
-                    .cursors
-                    .iter()
-                    .map(|c| {
-                        let pos = Position::from_char(&entry.buffer, c.char_offset);
-                        Selection::cursor(pos)
-                    })
-                    .collect();
-                entry.cursors = MultiCursor::from_cursors(sels);
+        let buffer = if let Some(draft) = &tab_state.draft_text {
+            Buffer::from_bytes(draft.as_bytes()).ok()
+        } else if let Some(path) = &tab_state.path {
+            if path.exists() {
+                Buffer::open(path).ok()
+            } else {
+                None
             }
-            entry.scroll_y = tab_state.scroll_line as f32 * LINE_HEIGHT;
-            app.documents.entries.push(entry);
-            restored_any = true;
+        } else {
+            None
+        };
+
+        let Some(buffer) = buffer else {
+            continue;
+        };
+
+        let file_name = if !tab_state.title.is_empty() {
+            tab_state.title.clone()
+        } else if let Some(path) = &tab_state.path {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file")
+                .to_string()
+        } else {
+            "Untitled".to_string()
+        };
+
+        let tab_id = app.documents.tabs.open(&file_name);
+        let mut entry = DocumentEntry::new(tab_id, tab_state.path.clone(), buffer);
+
+        // Restore language if recorded
+        if let Some(lang_name) = &tab_state.language {
+            for (id, name) in crate::language_picker::all_languages() {
+                if name == lang_name {
+                    entry.language = id;
+                    break;
+                }
+            }
         }
+
+        // Restore dirty state
+        if tab_state.is_dirty || (tab_state.path.is_none() && entry.buffer.len_chars() > 0) {
+            entry.saved_version = u64::MAX;
+        }
+
+        // Restore cursors
+        if !tab_state.cursors.is_empty() {
+            let sels: Vec<_> = tab_state
+                .cursors
+                .iter()
+                .map(|c| {
+                    let pos = Position::from_char(&entry.buffer, c.char_offset);
+                    Selection::cursor(pos)
+                })
+                .collect();
+            entry.cursors = MultiCursor::from_cursors(sels);
+        }
+        entry.scroll_y = tab_state.scroll_line as f32 * LINE_HEIGHT;
+        app.documents.entries.push(entry);
+        restored_any = true;
     }
 
     if restored_any {
@@ -272,10 +332,14 @@ mod tests {
         let mut session = Session::new();
         session.folders.push(dir.path().to_path_buf());
         session.tabs.push(TabState {
-            path: file_path.clone(),
+            path: Some(file_path.clone()),
+            title: "code.rs".to_string(),
             pinned: false,
             cursors: vec![CursorState { char_offset: 3 }],
             scroll_line: 0,
+            language: None,
+            draft_text: None,
+            is_dirty: false,
         });
         session.active_tab = Some(0);
 
@@ -285,7 +349,7 @@ mod tests {
         let loaded = Session::load(&session_file).unwrap();
         assert_eq!(loaded.folders.len(), 1);
         assert_eq!(loaded.tabs.len(), 1);
-        assert_eq!(loaded.tabs[0].path, file_path);
+        assert_eq!(loaded.tabs[0].path, Some(file_path));
         assert_eq!(loaded.tabs[0].cursors[0].char_offset, 3);
         assert_eq!(loaded.active_tab, Some(0));
     }
@@ -318,5 +382,33 @@ mod tests {
         assert_eq!(app2.documents.entries.len(), 1);
         assert_eq!(app2.documents.entries[0].path, Some(file_path));
         assert!(app2.ui.sidebar.is_some());
+    }
+
+    #[test]
+    fn app_session_hot_exit_restores_unsaved_untitled_and_draft_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_file = dir.path().join(SESSION_FILE_NAME);
+
+        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+        app.ui.session.session_path = Some(session_file.clone());
+
+        // Edit the default untitled tab with some unsaved notes
+        app.buffer = Buffer::from_bytes(b"# My Scratchpad\nDraft notes here").unwrap();
+        app.sync_active_document_to_entry();
+
+        save_session(&app, true).unwrap();
+
+        // Restore in a fresh app instance
+        let mut app2 =
+            App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+        let restored = restore_session(&mut app2, &session_file).unwrap();
+        assert!(restored);
+        assert_eq!(app2.documents.entries.len(), 1);
+        assert!(app2.documents.entries[0].path.is_none());
+        assert_eq!(
+            app2.documents.entries[0].buffer.text(),
+            "# My Scratchpad\nDraft notes here"
+        );
+        assert!(app2.document_dirty());
     }
 }
