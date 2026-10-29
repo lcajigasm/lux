@@ -11,14 +11,11 @@ pub(crate) fn handle_mouse_click_on_chrome(
     let mouse_y = app.mouse.position.y as f32;
     let mouse_x = app.mouse.position.x as f32;
 
-    if button == MouseButton::Left && crate::plugin::handle_plugin_click(app, mouse_x, mouse_y) {
+    if button == MouseButton::Left && crate::modal::handle_modal_click(app, ctx, mouse_x, mouse_y) {
         return true;
     }
 
-    if button == MouseButton::Left
-        && app.ui.language_picker.is_some()
-        && crate::language_picker::handle_language_picker_click(app, mouse_x, mouse_y)
-    {
+    if button == MouseButton::Left && crate::plugin::handle_plugin_click(app, mouse_x, mouse_y) {
         return true;
     }
 
@@ -201,7 +198,27 @@ pub(crate) fn handle_mouse_click_on_chrome(
             mouse_x,
             mouse_y,
         ) {
-            app.ui.split.dragging_divider = Some(div);
+            let now = std::time::Instant::now();
+            let is_double_click = if let Some((last_time, last_id)) = app.mouse.last_click {
+                last_id == usize::MAX && now.duration_since(last_time).as_millis() < 400
+            } else {
+                false
+            };
+            app.mouse.last_click = if is_double_click {
+                None
+            } else {
+                Some((now, usize::MAX))
+            };
+            if is_double_click {
+                match div {
+                    crate::split::DraggingDivider::Vertical(_) => app.ui.split.ratio = 0.5,
+                    crate::split::DraggingDivider::Horizontal(_) => app.ui.split.ratio_y = 0.5,
+                }
+                app.ui.split.dragging_divider = None;
+                app.scheduler.invalidate_all();
+            } else {
+                app.ui.split.dragging_divider = Some(div);
+            }
             return true;
         }
         if let Some(pane_idx) = crate::split::hit_test_pane(
@@ -210,10 +227,11 @@ pub(crate) fn handle_mouse_click_on_chrome(
             app.scale_factor,
             mouse_x,
             mouse_y,
-        ) && pane_idx != app.ui.split.active_pane
-        {
-            app.focus_group(pane_idx);
-            return true;
+        ) {
+            if pane_idx != app.ui.split.active_pane {
+                app.focus_group(pane_idx);
+            }
+            return false;
         }
     }
 

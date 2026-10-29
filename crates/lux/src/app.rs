@@ -11,6 +11,7 @@ use lux_core::history::History;
 use lux_core::multicursor::MultiCursor;
 use lux_core::position::Position;
 use lux_core::selection::Selection;
+use lux_platform::event::KeyEvent;
 use lux_platform::{
     ElementState, Ime, ImeComposition, ImeUpdate, Modifiers, MouseButton, PlatformContext,
     PlatformEvent, PlatformEventHandler, WindowId,
@@ -37,6 +38,7 @@ pub(crate) const TAB_CLOSE_BTN_WIDTH: f32 = 24.0;
 mod bookmarks;
 mod folding;
 mod selection;
+mod syntax;
 mod types;
 mod views;
 pub(crate) use types::{AtlasState, GpuWindow, MouseState, SyntaxState};
@@ -185,79 +187,9 @@ impl App {
         }
     }
 
-    pub(crate) fn update_syntax_on_open(&mut self) {
-        if self.buffer.is_huge_file_mode() {
-            self.syntax = None;
-            return;
-        }
-        let language = self.documents.language().or_else(|| {
-            crate::document::detect_language(self.documents.path.as_deref(), &self.buffer)
-        });
-        if let Some(lang) = language {
-            self.documents.set_language(Some(lang));
-            let source = self.buffer.text();
-            let mut doc = lux_syntax::Document::new(lang);
-            doc.set_text(&source);
-            self.syntax = Some(SyntaxState {
-                document: Some(doc),
-                source,
-                theme: self.active_syntax_theme(),
-            });
-        } else {
-            self.syntax = None;
-        }
-        self.refresh_foldable_ranges();
-    }
-
-    pub(crate) fn set_language_mode(&mut self, language: Option<lux_syntax::LanguageId>) {
-        self.documents.set_language(language);
-        if self.buffer.is_huge_file_mode() {
-            self.syntax = None;
-            return;
-        }
-        if let Some(lang) = language {
-            let source = self.buffer.text();
-            let mut doc = lux_syntax::Document::new(lang);
-            doc.set_text(&source);
-            self.syntax = Some(SyntaxState {
-                document: Some(doc),
-                source,
-                theme: self.active_syntax_theme(),
-            });
-            let name = crate::status_bar::language_name(Some(lang));
-            crate::accessibility::announce(self, format!("Language mode set to {name}"));
-        } else {
-            self.syntax = None;
-            crate::accessibility::announce(self, "Language mode set to Plain Text");
-        }
-        self.refresh_foldable_ranges();
-        self.scheduler.invalidate_all();
-        if let Some(gpu) = &self.gpu_window {
-            gpu.window.request_redraw();
-        }
-    }
-
     pub(crate) fn open_language_picker(&mut self) {
         self.ui.language_picker = Some(crate::language_picker::LanguagePickerState::new());
         self.scheduler.invalidate_all();
-    }
-
-    pub(crate) fn sync_syntax_on_edit(&mut self) {
-        if self.buffer.is_huge_file_mode() {
-            self.syntax = None;
-            return;
-        }
-        let text = self.buffer.text();
-        if let Some(syntax) = &mut self.syntax {
-            syntax.source = text.clone();
-            if let Some(doc) = &mut syntax.document {
-                doc.set_text(&syntax.source);
-            }
-        }
-        self.refresh_foldable_ranges();
-        if let Some(path) = self.documents.path.clone() {
-            crate::lsp::sync_document_change(self, &path, &text);
-        }
     }
 
     pub(crate) fn is_dirty(&self) -> bool {
@@ -284,6 +216,53 @@ impl App {
     pub(crate) fn handle_status_bar_click(&mut self, mouse_x: f32, mouse_y: f32) {
         crate::chrome::handle_status_bar_click(self, mouse_x, mouse_y);
     }
+
+    pub(crate) fn handle_keyboard_event(
+        &mut self,
+        ctx: &dyn PlatformContext,
+        key_event: &KeyEvent,
+    ) {
+        if !self.document_key(ctx, key_event)
+            && !crate::about::handle_about_key(self, ctx, key_event)
+            && !crate::focus::handle_focus_key(self, ctx, key_event)
+            && !crate::conflict::handle_conflict_key(self, ctx, key_event)
+            && !crate::palette::handle_palette_key(self, ctx, key_event)
+            && !crate::language_picker::handle_language_picker_key(self, ctx, key_event)
+            && !crate::build::handle_build_key(self, ctx, key_event)
+            && !crate::project::handle_project_switch_key(self, ctx, key_event)
+            && !crate::theme_picker::handle_theme_picker_key(self, ctx, key_event)
+            && !crate::snippets::handle_snippet_picker_key(self, ctx, key_event)
+            && !crate::goto::handle_goto_key(self, ctx, key_event)
+            && !crate::search::handle_search_key(self, ctx, key_event)
+            && !crate::project_search::handle_project_search_key(self, ctx, key_event)
+            && !crate::lsp::handle_lsp_key(self, ctx, key_event)
+            && !crate::term::input::handle_term_key(self, ctx, key_event)
+            && !crate::plugin::handle_plugin_key(self, ctx, key_event)
+        {
+            self.handle_key_with_clipboard(key_event, Some(ctx.clipboard()));
+        }
+        if self.is_dirty()
+            && let Some(path) = &self.documents.path
+        {
+            self.ui.session.mark_dirty(path);
+        }
+        self.save_recovery_snapshot();
+        self.update_document_title();
+        if self.ui.announcement.is_none() {
+            let head = self.cursors.primary().head;
+            let marker = if self.document_dirty() {
+                " (modified)"
+            } else {
+                ""
+            };
+            self.ui.announcement = Some(format!(
+                "Ln {}, Col {}{marker}",
+                head.line + 1,
+                head.column + 1
+            ));
+        }
+        self.refresh_accessibility();
+    }
 }
 
 impl PlatformEventHandler for App {
@@ -291,11 +270,13 @@ impl PlatformEventHandler for App {
         crate::menu::poll_and_dispatch(self, ctx);
         self.finish_document_operation(ctx);
         crate::lsp::poll_lsp_events(self, ctx);
+        self.poll_syntax_highlighter();
         let mut settings = std::mem::take(&mut self.ui.settings);
         settings.poll_watcher(self);
         self.ui.settings = settings;
     }
     fn resumed(&mut self, ctx: &dyn PlatformContext) {
+        crate::menu::register_waker(ctx.background_waker());
         if self.gpu_window.is_some() {
             return;
         }
@@ -355,45 +336,7 @@ impl PlatformEventHandler for App {
                 self.redraw(ctx);
             }
             PlatformEvent::Keyboard(key_event) => {
-                if !self.document_key(ctx, &key_event)
-                    && !crate::focus::handle_focus_key(self, ctx, &key_event)
-                    && !crate::conflict::handle_conflict_key(self, ctx, &key_event)
-                    && !crate::palette::handle_palette_key(self, ctx, &key_event)
-                    && !crate::language_picker::handle_language_picker_key(self, ctx, &key_event)
-                    && !crate::build::handle_build_key(self, ctx, &key_event)
-                    && !crate::project::handle_project_switch_key(self, ctx, &key_event)
-                    && !crate::theme_picker::handle_theme_picker_key(self, ctx, &key_event)
-                    && !crate::snippets::handle_snippet_picker_key(self, ctx, &key_event)
-                    && !crate::goto::handle_goto_key(self, ctx, &key_event)
-                    && !crate::search::handle_search_key(self, ctx, &key_event)
-                    && !crate::project_search::handle_project_search_key(self, ctx, &key_event)
-                    && !crate::lsp::handle_lsp_key(self, ctx, &key_event)
-                    && !crate::term::input::handle_term_key(self, ctx, &key_event)
-                    && !crate::plugin::handle_plugin_key(self, ctx, &key_event)
-                {
-                    self.handle_key_with_clipboard(&key_event, Some(ctx.clipboard()));
-                }
-                if self.is_dirty()
-                    && let Some(path) = &self.documents.path
-                {
-                    self.ui.session.mark_dirty(path);
-                }
-                self.save_recovery_snapshot();
-                self.update_document_title();
-                if self.ui.announcement.is_none() {
-                    let head = self.cursors.primary().head;
-                    let marker = if self.document_dirty() {
-                        " (modified)"
-                    } else {
-                        ""
-                    };
-                    self.ui.announcement = Some(format!(
-                        "Ln {}, Col {}{marker}",
-                        head.line + 1,
-                        head.column + 1
-                    ));
-                }
-                self.refresh_accessibility();
+                self.handle_keyboard_event(ctx, &key_event);
                 if let Some(gpu_window) = &self.gpu_window {
                     gpu_window.window.request_redraw();
                 }
@@ -415,12 +358,10 @@ impl PlatformEventHandler for App {
             }
             PlatformEvent::MouseMoved(position) => {
                 self.mouse.position = position;
-                if self.ui.language_picker.is_some() {
-                    crate::language_picker::handle_language_picker_hover(
-                        self,
-                        position.x as f32,
-                        position.y as f32,
-                    );
+                if crate::modal::handle_modal_hover(self, position.x as f32, position.y as f32)
+                    && let Some(gpu_window) = &self.gpu_window
+                {
+                    gpu_window.window.request_redraw();
                 }
                 if self.ui.split.dragging_divider.is_some() {
                     self.handle_divider_drag(position.x as f32, position.y as f32);
@@ -443,6 +384,8 @@ impl PlatformEventHandler for App {
                         self.ui.language_picker = None;
                         self.ui.build.picker = None;
                         self.ui.project.picker = None;
+                        self.ui.theme_picker = None;
+                        self.ui.snippets.picker = None;
 
                         let pos = self.position_at_mouse();
                         let now = std::time::Instant::now();

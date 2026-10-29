@@ -2,11 +2,13 @@
 //! `lux-platform` + `lux-render` + `lux-ui` into one running application,
 //! closing out Phase 2 (see `docs/receipts/phase-02-lux-app-binario-unificado.md`).
 
+mod about;
 mod accessibility;
 mod app;
 mod build;
 mod chrome;
 mod conflict;
+mod dialog;
 mod distraction_free;
 mod document;
 mod find_results;
@@ -20,7 +22,9 @@ mod lsp;
 mod macros;
 mod menu;
 mod minimap;
+mod modal;
 mod palette;
+mod pane_view;
 mod plugin;
 mod presentation;
 mod project;
@@ -60,7 +64,7 @@ fn main() {
             return;
         }
         if arg_str == "--version" || arg_str == "-v" {
-            println!("lux 1.0.0");
+            println!("lux {}", env!("CARGO_PKG_VERSION"));
             return;
         }
         let target_path = std::path::PathBuf::from(arg);

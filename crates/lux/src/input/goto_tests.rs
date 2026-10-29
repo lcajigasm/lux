@@ -208,6 +208,7 @@ fn goto_file_colon_line_transient_preview_and_escape() {
     let buf2 = Buffer::from_bytes(lines_2.as_bytes()).unwrap();
     app.documents.entries.push(crate::document::DocumentEntry {
         tab_id: tab2_id,
+        buffer_id: 0,
         path: Some(PathBuf::from("file2.rs")),
         buffer: buf2,
         cursors: MultiCursor::new(Selection::cursor(Position::document_start())),
@@ -280,6 +281,7 @@ fn goto_symbol_in_project_finds_symbols_across_open_tabs() {
     let buf2 = Buffer::from_bytes(tab2_code.as_bytes()).unwrap();
     app.documents.entries.push(crate::document::DocumentEntry {
         tab_id: tab2_id,
+        buffer_id: 0,
         path: Some(PathBuf::from("tab2.rs")),
         buffer: buf2,
         cursors: MultiCursor::new(Selection::cursor(Position::document_start())),
@@ -379,6 +381,7 @@ fn goto_symbol_in_project_escape_restores_snapshot() {
     let buf2 = Buffer::from_bytes(other_code.as_bytes()).unwrap();
     app.documents.entries.push(crate::document::DocumentEntry {
         tab_id: tab2_id,
+        buffer_id: 0,
         path: Some(PathBuf::from("other.rs")),
         buffer: buf2,
         cursors: MultiCursor::new(Selection::cursor(Position::document_start())),

@@ -12,10 +12,8 @@ use lux_syntax::LanguageId;
 
 /// Detects the TextMate scope selector for the currently active document.
 pub(crate) fn current_document_scope(app: &App) -> Option<&'static str> {
-    if let Some(syntax) = &app.syntax
-        && let Some(doc) = &syntax.document
-    {
-        return current_document_scope_for_lang(doc.language());
+    if let Some(syntax) = &app.syntax {
+        return current_document_scope_for_lang(syntax.language);
     }
 
     if let Some(path) = &app.documents.path
@@ -114,13 +112,13 @@ pub(crate) fn try_expand_snippet_trigger(app: &mut App) -> bool {
     let initial_sel = session.current_selection(&app.buffer);
 
     let combined_edits = vec![delete_edit, expand_edit];
-    let transaction = Transaction::new(combined_edits, vec![before_sel], vec![initial_sel]);
+    let transaction = Transaction::new(combined_edits.clone(), vec![before_sel], vec![initial_sel]);
     app.history.record(transaction);
 
     app.cursors = MultiCursor::new(initial_sel);
     app.snippet_session = Some(session);
     app.reset_goal_columns();
-    app.sync_syntax_on_edit();
+    app.sync_syntax_incremental(&combined_edits);
 
     true
 }
@@ -135,11 +133,11 @@ pub(crate) fn handle_snippet_text_input(app: &mut App, text: &str) -> bool {
     let cursor_char = before_sel.head.char;
     let (edits, after_sel) = session.handle_text_input(&mut app.buffer, cursor_char, text);
 
-    let transaction = Transaction::new(edits, vec![before_sel], vec![after_sel]);
+    let transaction = Transaction::new(edits.clone(), vec![before_sel], vec![after_sel]);
     app.history.record(transaction);
     app.cursors = MultiCursor::new(after_sel);
     app.reset_goal_columns();
-    app.sync_syntax_on_edit();
+    app.sync_syntax_incremental(&edits);
 
     true
 }
@@ -156,11 +154,11 @@ pub(crate) fn handle_snippet_backspace(app: &mut App) -> bool {
         return false;
     };
 
-    let transaction = Transaction::new(edits, vec![before_sel], vec![after_sel]);
+    let transaction = Transaction::new(edits.clone(), vec![before_sel], vec![after_sel]);
     app.history.record(transaction);
     app.cursors = MultiCursor::new(after_sel);
     app.reset_goal_columns();
-    app.sync_syntax_on_edit();
+    app.sync_syntax_incremental(&edits);
 
     true
 }

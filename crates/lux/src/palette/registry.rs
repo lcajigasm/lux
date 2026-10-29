@@ -22,6 +22,16 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
         ),
         ("file.close_tab", "File: Close Tab", "File"),
         ("file.reopen_closed_tab", "File: Reopen Closed Tab", "File"),
+        (
+            "file.clone_view_to_group",
+            "File: Clone View to Group",
+            "File",
+        ),
+        (
+            "file.new_view_into_file",
+            "File: New View into File",
+            "File",
+        ),
         ("edit.undo", "Edit: Undo", "Edit"),
         ("edit.redo", "Edit: Redo", "Edit"),
         ("edit.cut", "Edit: Cut", "Edit"),
@@ -300,6 +310,7 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
         ),
         ("macro.playback", "Macros: Playback Macro", "Macros"),
         ("macro.save_as", "Macros: Save Macro As...", "Macros"),
+        ("help.about", "Help: About Lux", "Help"),
     ];
 
     for (id, title, category) in commands {

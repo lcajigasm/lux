@@ -323,8 +323,8 @@ pub(crate) fn handle_search_key(
                         .as_mut()
                         .and_then(|s| s.replace_all(&mut app.buffer));
                     if let Some(tx) = replaced_tx {
+                        app.sync_syntax_incremental(&tx.edits);
                         app.history.record(tx);
-                        app.sync_syntax_on_edit();
                         app.scheduler.invalidate_all();
                     }
                     return true;
@@ -355,8 +355,8 @@ pub(crate) fn handle_search_key(
                     (tx, sel)
                 };
                 if let Some(tx) = replaced_tx {
+                    app.sync_syntax_incremental(&tx.edits);
                     app.history.record(tx);
-                    app.sync_syntax_on_edit();
                     if let Some(sel) = next_sel {
                         select_match(app, sel);
                     }
@@ -520,8 +520,8 @@ pub(crate) fn handle_search_click(app: &mut crate::app::App, mouse_x: f32, mouse
             (tx, sel)
         };
         if let Some(tx) = replaced_tx {
+            app.sync_syntax_incremental(&tx.edits);
             app.history.record(tx);
-            app.sync_syntax_on_edit();
             if let Some(sel) = next_sel {
                 select_match(app, sel);
             }
@@ -536,8 +536,8 @@ pub(crate) fn handle_search_click(app: &mut crate::app::App, mouse_x: f32, mouse
             .as_mut()
             .and_then(|s| s.replace_all(&mut app.buffer));
         if let Some(tx) = replaced_tx {
+            app.sync_syntax_incremental(&tx.edits);
             app.history.record(tx);
-            app.sync_syntax_on_edit();
             app.scheduler.invalidate_all();
         }
         return true;

@@ -282,4 +282,80 @@ impl App {
                 .and_then(|e| e.path.clone())
         }
     }
+
+    pub(crate) fn update_document_title(&self) {
+        let Some(gpu) = &self.gpu_window else {
+            return;
+        };
+        let name = self
+            .documents
+            .path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or("Untitled".into());
+        let dirty = if self.document_dirty() { " *" } else { "" };
+        let readonly = if self.buffer.is_huge_file_mode() {
+            " [read-only: large file]"
+        } else {
+            ""
+        };
+        let status = if self.documents.pending.is_some() {
+            " — File operation in progress".to_string()
+        } else {
+            self.documents
+                .message
+                .as_ref()
+                .map(|m| format!(" — {m}"))
+                .unwrap_or_default()
+        };
+        gpu.window
+            .set_title(&format!("{name}{dirty}{readonly} — Lux{status}"));
+    }
+
+    pub(crate) fn close_tab(&mut self, ctx: &dyn PlatformContext, target_id: TabId) {
+        if self.documents.active_tab == Some(target_id) {
+            self.request_document(ctx, crate::document::Request::Close);
+            return;
+        }
+        let is_dirty = self
+            .documents
+            .entries
+            .iter()
+            .find(|e| e.tab_id == target_id)
+            .is_some_and(|e| e.is_dirty());
+        if is_dirty {
+            self.switch_to_tab(target_id);
+            self.request_document(ctx, crate::document::Request::Close);
+        } else {
+            self.documents.tabs.close(target_id);
+            if let Some(pos) = self
+                .documents
+                .entries
+                .iter()
+                .position(|e| e.tab_id == target_id)
+            {
+                let removed = self.documents.entries.remove(pos);
+                self.documents.closed_entries.push(removed);
+            }
+            if self.ui.split.is_active() {
+                let fallback = self
+                    .documents
+                    .active_tab
+                    .or_else(|| self.documents.tabs.tabs().first().map(|t| t.id));
+                if let Some(fb) = fallback {
+                    for pane in &mut self.ui.split.panes {
+                        if pane.tab_id == target_id {
+                            pane.tab_id = fb;
+                            pane.active_tab = fb;
+                        }
+                    }
+                    self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
+                }
+            }
+            self.scheduler.invalidate_all();
+            if let Some(gpu) = &self.gpu_window {
+                gpu.window.request_redraw();
+            }
+        }
+    }
 }

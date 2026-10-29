@@ -402,9 +402,14 @@ fn syntax_synchronization_on_open_and_edit() {
     // Edit the buffer and check syntax sync
     text(&mut app, "// comment\n");
     assert!(app.syntax.is_some());
-    if let Some(syntax) = &app.syntax {
-        assert!(syntax.source.contains("// comment\n"));
-    }
+    let syn = app.syntax.as_ref().unwrap();
+    let res = syn
+        .highlighter
+        .recv()
+        .expect("background highlighter should produce result");
+    assert_eq!(res.version, syn.version);
+    app.poll_syntax_highlighter();
+    assert!(!app.syntax.as_ref().unwrap().tokens.is_empty());
 }
 
 #[test]

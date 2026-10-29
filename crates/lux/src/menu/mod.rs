@@ -2,7 +2,6 @@
 
 use crate::app::App;
 use lux_platform::PlatformContext;
-use std::sync::Mutex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(isize)]
@@ -15,6 +14,8 @@ pub(crate) enum MenuAction {
     Save = 13,
     SaveAs = 14,
     CloseTab = 15,
+    CloneViewToGroup = 16,
+    NewViewIntoFile = 17,
     Undo = 20,
     Redo = 21,
     Cut = 22,
@@ -113,6 +114,8 @@ impl MenuAction {
             13 => Some(Self::Save),
             14 => Some(Self::SaveAs),
             15 => Some(Self::CloseTab),
+            16 => Some(Self::CloneViewToGroup),
+            17 => Some(Self::NewViewIntoFile),
             20 => Some(Self::Undo),
             21 => Some(Self::Redo),
             22 => Some(Self::Cut),
@@ -196,26 +199,13 @@ impl MenuAction {
     }
 }
 
-static MENU_QUEUE: Mutex<Vec<MenuAction>> = Mutex::new(Vec::new());
-
-pub(crate) fn post_action(action: MenuAction) {
-    if let Ok(mut queue) = MENU_QUEUE.lock() {
-        queue.push(action);
-    }
-}
-
-pub(crate) fn poll_actions() -> Vec<MenuAction> {
-    if let Ok(mut queue) = MENU_QUEUE.lock() {
-        std::mem::take(&mut *queue)
-    } else {
-        Vec::new()
-    }
-}
+mod queue;
+pub(crate) use queue::{poll_actions, post_action, register_waker};
 
 pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, action: MenuAction) {
     match action {
         MenuAction::About => {
-            app.toggle_command_palette();
+            app.open_about_dialog();
         }
         MenuAction::Preferences => {
             app.ui.settings.open_settings_ui();
@@ -230,8 +220,7 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
             app.request_document(ctx, crate::document::Request::Open(None));
         }
         MenuAction::OpenFolder => {
-            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            app.open_workspace(cwd);
+            app.open_folder_dialog(ctx);
         }
         MenuAction::Save => {
             app.request_document(ctx, crate::document::Request::Save { save_as: false });
@@ -242,13 +231,20 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
         MenuAction::CloseTab => {
             app.request_document(ctx, crate::document::Request::Close);
         }
+        MenuAction::CloneViewToGroup => {
+            app.clone_view_to_group(None);
+        }
+        MenuAction::NewViewIntoFile => {
+            app.new_view_into_file();
+        }
         MenuAction::Undo => {
             if !app.buffer.is_huge_file_mode()
                 && let Some(selections) = app.history.undo(&mut app.buffer)
             {
                 app.cursors = lux_core::multicursor::MultiCursor::from_cursors(selections);
                 app.reset_goal_columns();
-                app.sync_syntax_on_edit();
+                app.sync_syntax_full();
+                crate::split::clone_view::clamp_cloned_panes_after_undo(app);
             }
         }
         MenuAction::Redo => {
@@ -257,7 +253,8 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
             {
                 app.cursors = lux_core::multicursor::MultiCursor::from_cursors(selections);
                 app.reset_goal_columns();
-                app.sync_syntax_on_edit();
+                app.sync_syntax_full();
+                crate::split::clone_view::clamp_cloned_panes_after_undo(app);
             }
         }
         MenuAction::Cut => {

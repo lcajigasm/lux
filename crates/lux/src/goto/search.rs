@@ -161,12 +161,16 @@ fn compute_symbol_results(
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|| "current".to_string());
-        let syms = if let Some(syntax) = &app.syntax {
-            if let Some(doc) = &syntax.document {
-                lux_syntax::symbols::document_symbols(doc, &syntax.source)
-            } else {
-                lux_syntax::symbols::extract_symbols_from_source(&app.buffer.text(), Some(&path))
-            }
+        let lang = app
+            .syntax
+            .as_ref()
+            .map(|s| s.language)
+            .or_else(|| app.documents.language());
+        let syms = if let Some(lang) = lang {
+            let mut doc = lux_syntax::Document::new(lang);
+            let text = app.buffer.text();
+            doc.set_text(&text);
+            lux_syntax::symbols::document_symbols(&doc, &text)
         } else {
             lux_syntax::symbols::extract_symbols_from_source(&app.buffer.text(), Some(&path))
         };

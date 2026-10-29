@@ -98,6 +98,25 @@ impl App {
         self.scheduler.invalidate_all();
     }
 
+    pub(crate) fn open_folder_dialog(&mut self, ctx: &dyn lux_platform::PlatformContext) {
+        let opts = lux_platform::FileDialogOptions {
+            title: Some("Open Folder".into()),
+            starting_directory: self.workspace_root(),
+            filters: Vec::new(),
+        };
+        if let Some(path) = ctx.file_dialogs().pick_folder(&opts) {
+            self.open_workspace(path);
+        }
+    }
+
+    pub(crate) fn open_about_dialog(&mut self) {
+        self.ui.dialogs.about = Some(crate::about::AboutDialogState::new());
+        self.scheduler.invalidate_all();
+        if let Some(gpu) = &self.gpu_window {
+            gpu.window.request_redraw();
+        }
+    }
+
     pub(crate) fn toggle_sidebar(&mut self) {
         if let Some(sidebar) = &mut self.ui.sidebar {
             sidebar.visible = !sidebar.visible;

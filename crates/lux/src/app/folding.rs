@@ -1,6 +1,6 @@
 //! Folding operations and state management for App.
 
-use lux_core::folding::{FoldRange, indent_folding_ranges};
+use lux_core::folding::indent_folding_ranges;
 use lux_core::position::Position;
 
 use crate::app::App;
@@ -9,16 +9,7 @@ impl App {
     /// Recomputes available foldable ranges from syntax tree or indentation fallback,
     /// updating `self.fold_state` while preserving currently active folds.
     pub(crate) fn refresh_foldable_ranges(&mut self) {
-        let syntax_ranges = self
-            .syntax
-            .as_ref()
-            .and_then(|s| s.document.as_ref())
-            .map(|doc| {
-                lux_syntax::folding::folding_ranges(doc)
-                    .into_iter()
-                    .map(|r| FoldRange::new(r.start_row, r.end_row))
-                    .collect::<Vec<_>>()
-            });
+        let syntax_ranges = self.syntax.as_ref().map(|s| s.fold_ranges.clone());
 
         let ranges = match syntax_ranges {
             Some(ranges) if !ranges.is_empty() => ranges,

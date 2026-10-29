@@ -10,7 +10,7 @@ use lux_platform::{Clipboard, Key, NamedKey};
 use crate::app::App;
 use crate::input::motion;
 
-pub(super) fn dispatch_keymap_or_chord(
+pub(crate) fn dispatch_keymap_or_chord(
     app: &mut App,
     event: &KeyEvent,
     clipboard: Option<&dyn Clipboard>,
@@ -102,7 +102,8 @@ pub(crate) fn execute_keymap_command(app: &mut App, cmd: &str, clipboard: Option
             if let Some(selections) = restored {
                 app.cursors = MultiCursor::from_cursors(selections);
                 app.reset_goal_columns();
-                app.sync_syntax_on_edit();
+                app.sync_syntax_full();
+                crate::split::clone_view::clamp_cloned_panes_after_undo(app);
             }
         }
         "redo" if !app.buffer.is_huge_file_mode() => {
@@ -110,7 +111,8 @@ pub(crate) fn execute_keymap_command(app: &mut App, cmd: &str, clipboard: Option
             if let Some(selections) = restored {
                 app.cursors = MultiCursor::from_cursors(selections);
                 app.reset_goal_columns();
-                app.sync_syntax_on_edit();
+                app.sync_syntax_full();
+                crate::split::clone_view::clamp_cloned_panes_after_undo(app);
             }
         }
         "select_all" => {
@@ -328,6 +330,12 @@ pub(crate) fn execute_keymap_command(app: &mut App, cmd: &str, clipboard: Option
         }
         "move_to_group_4" => {
             app.move_to_group(3);
+        }
+        "clone_view_to_group" => {
+            app.clone_view_to_group(None);
+        }
+        "new_view_into_file" => {
+            app.new_view_into_file();
         }
         "quick_switch_project" => {
             app.quick_switch_project();

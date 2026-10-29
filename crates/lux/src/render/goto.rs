@@ -138,9 +138,22 @@ pub(crate) fn render_goto(
     let rows_top = top + input_height + 2.0 * stroke;
     let row_baseline = (row_height - modal_font_size) * 0.5;
 
-    for (i, item) in goto.items.iter().take(visible_count).enumerate() {
+    let start_idx = if goto.selected_index >= visible_count {
+        goto.selected_index + 1 - visible_count
+    } else {
+        0
+    };
+
+    for (i, item) in goto
+        .items
+        .iter()
+        .skip(start_idx)
+        .take(visible_count)
+        .enumerate()
+    {
         let row_y = rows_top + i as f32 * row_height;
-        let is_selected = i == goto.selected_index;
+        let actual_idx = start_idx + i;
+        let is_selected = actual_idx == goto.selected_index;
 
         if is_selected {
             quad_instances.push(QuadInstance {

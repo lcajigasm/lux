@@ -7,7 +7,7 @@
 //! grammar crates).
 
 use std::ops::Range;
-use tree_sitter::{InputEdit, Language, Parser, Query, QueryCursor, StreamingIterator, Tree};
+use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator, Tree};
 
 pub mod brackets;
 pub mod folding;
@@ -19,6 +19,7 @@ pub use symbols::{
     DocumentSymbol, SymbolKind, document_symbols, extract_fallback_symbols,
     extract_symbols_from_source,
 };
+pub use tree_sitter::{InputEdit, Point};
 
 /// One highlighted span: a byte range plus the highlight query capture name
 /// that matched it (e.g. `"keyword"`, `"function"`, `"string"`).
@@ -195,6 +196,22 @@ impl Document {
         self.tree = self.parser.parse(source, None);
     }
 
+    /// Parses from a `ropey::Rope` using chunk-based streaming without materializing
+    /// full text copies.
+    pub fn set_rope(&mut self, rope: &ropey::Rope) {
+        self.tree = self.parser.parse_with_options(
+            &mut |offset, _| {
+                if offset >= rope.len_bytes() {
+                    return &[] as &[u8];
+                }
+                let (chunk, chunk_start, _, _) = rope.chunk_at_byte(offset);
+                &chunk.as_bytes()[offset - chunk_start..]
+            },
+            None,
+            None,
+        );
+    }
+
     /// Applies `edit` to the previous tree, then reparses `new_source`.
     /// Tree-sitter reuses the subtrees outside the edited range, so this is
     /// a range-local reparse, not a full-file one.
@@ -205,28 +222,60 @@ impl Document {
         self.tree = self.parser.parse(new_source, self.tree.as_ref());
     }
 
+    /// Applies `edit` to the previous tree, then reparses `rope` incrementally
+    /// using chunk-based streaming without materializing full text copies.
+    pub fn edit_rope(&mut self, edit: &InputEdit, rope: &ropey::Rope) {
+        if let Some(tree) = self.tree.as_mut() {
+            tree.edit(edit);
+        }
+        self.tree = self.parser.parse_with_options(
+            &mut |offset, _| {
+                if offset >= rope.len_bytes() {
+                    return &[] as &[u8];
+                }
+                let (chunk, chunk_start, _, _) = rope.chunk_at_byte(offset);
+                &chunk.as_bytes()[offset - chunk_start..]
+            },
+            self.tree.as_ref(),
+            None,
+        );
+    }
+
+    /// Applies multiple `edits` to the previous tree in sequence, then reparses `rope`
+    /// incrementally using chunk-based streaming.
+    pub fn edit_rope_batch(&mut self, edits: &[InputEdit], rope: &ropey::Rope) {
+        if let Some(tree) = self.tree.as_mut() {
+            for edit in edits {
+                tree.edit(edit);
+            }
+        }
+        self.tree = self.parser.parse_with_options(
+            &mut |offset, _| {
+                if offset >= rope.len_bytes() {
+                    return &[] as &[u8];
+                }
+                let (chunk, chunk_start, _, _) = rope.chunk_at_byte(offset);
+                &chunk.as_bytes()[offset - chunk_start..]
+            },
+            self.tree.as_ref(),
+            None,
+        );
+    }
+
     /// Runs this document's language's highlight query over the current
     /// tree, returning every capture as a token ordered by position.
-    ///
-    /// Scans the *whole* tree — correct, but expensive on a large file (see
-    /// `highlight_range`'s doc comment for the actual measured cost and why
-    /// it exists). Fine for one-shot uses (golden token tests, opening a
-    /// file); a per-keystroke UI should call `highlight_range` with the
-    /// visible byte range instead.
     #[must_use]
     pub fn highlight(&self, source: &str) -> Vec<Token> {
         self.highlight_range(source, 0..source.len())
     }
 
-    /// Like [`Self::highlight`], scoped to `byte_range` — the tree isn't
-    /// re-walked outside it (`tree_sitter::QueryCursor::set_byte_range`,
-    /// not a post-hoc filter). Exists because `highlight`'s whole-tree scan
-    /// measured at ~26 ms reparsing + re-highlighting after one keystroke in
-    /// a 20k-line file (`benches/benches/phase3_budgets.rs`), well over the
-    /// 16 ms frame budget `LUX_PROMPT_MAESTRO.md` sets for exactly that
-    /// scenario — a real UI must re-highlight only the visible range after
-    /// an edit, not the whole document, the same reason `EditorView`
-    /// (Phase 2) only shapes glyphs for `visible_line_range`.
+    /// Scans the entire tree with highlight queries over `rope` chunks.
+    #[must_use]
+    pub fn highlight_rope(&self, rope: &ropey::Rope) -> Vec<Token> {
+        self.highlight_range_rope(rope, 0..rope.len_bytes())
+    }
+
+    /// Like [`Self::highlight`], scoped to `byte_range`.
     #[must_use]
     pub fn highlight_range(&self, source: &str, byte_range: Range<usize>) -> Vec<Token> {
         let Some(tree) = self.tree.as_ref() else {
@@ -249,10 +298,44 @@ impl Document {
         tokens
     }
 
+    /// Scoped highlight over `rope` chunks without intermediate string allocations.
+    #[must_use]
+    pub fn highlight_range_rope(&self, rope: &ropey::Rope, byte_range: Range<usize>) -> Vec<Token> {
+        let Some(tree) = self.tree.as_ref() else {
+            return Vec::new();
+        };
+        let mut cursor = QueryCursor::new();
+        cursor.set_byte_range(byte_range);
+        let mut tokens = Vec::new();
+        let mut text_provider = |node: tree_sitter::Node<'_>| {
+            let range = node.byte_range();
+            let start = range.start.min(rope.len_bytes());
+            let end = range.end.min(rope.len_bytes());
+            let slice_range = if start <= end {
+                start..end
+            } else {
+                start..start
+            };
+            rope.byte_slice(slice_range).chunks()
+        };
+        let mut captures =
+            cursor.captures(&self.highlight_query, tree.root_node(), &mut text_provider);
+        while let Some((mat, index)) = captures.next() {
+            let capture = mat.captures[*index];
+            tokens.push(Token {
+                start_byte: capture.node.start_byte(),
+                end_byte: capture.node.end_byte(),
+                kind: self.highlight_query.capture_names()[capture.index as usize].to_string(),
+            });
+        }
+        tokens.sort_by_key(|t| (t.start_byte, t.end_byte));
+        tokens
+    }
+
     /// The current parse tree, for modules (`brackets`, `folding`,
     /// `indent_rules`) that walk its structure directly instead of going
     /// through a highlight query. `None` before the first [`Self::set_text`].
-    pub(crate) fn tree(&self) -> Option<&Tree> {
+    pub fn tree(&self) -> Option<&Tree> {
         self.tree.as_ref()
     }
 
@@ -263,42 +346,85 @@ impl Document {
     }
 }
 
-/// A unit of work for the background parse worker: either a fresh file or
+/// Result returned by the background parse worker to the UI thread.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HighlightResult {
+    pub tokens: Vec<Token>,
+    pub fold_ranges: Vec<folding::FoldRange>,
+    pub version: usize,
+}
+
+/// A unit of work for the background parse worker: either a fresh file/rope or
 /// an edit applied to the document it already holds.
+#[derive(Debug, Clone)]
 pub enum Job {
-    SetText(String),
-    Edit { edit: InputEdit, source: String },
+    SetRope {
+        rope: ropey::Rope,
+        version: usize,
+    },
+    Edit {
+        edits: Vec<InputEdit>,
+        rope: ropey::Rope,
+        version: usize,
+    },
 }
 
 /// Runs parsing and highlighting on a dedicated thread, so the caller (the
 /// UI thread, per golden rule #6) never blocks on tree-sitter work. Driven
-/// entirely by a blocking channel receive — no polling (golden rule #5).
+/// entirely by non-blocking / event-driven channels (golden rule #5).
 pub struct BackgroundHighlighter {
-    jobs: Option<std::sync::mpsc::Sender<Job>>,
-    results: std::sync::mpsc::Receiver<Vec<Token>>,
+    jobs: Option<crossbeam_channel::Sender<Job>>,
+    results: crossbeam_channel::Receiver<HighlightResult>,
     worker: Option<std::thread::JoinHandle<()>>,
 }
 
 impl BackgroundHighlighter {
     #[must_use]
-    pub fn spawn(language: LanguageId) -> Self {
-        let (job_tx, job_rx) = std::sync::mpsc::channel::<Job>();
-        let (result_tx, result_rx) = std::sync::mpsc::channel::<Vec<Token>>();
+    pub fn spawn(
+        language: LanguageId,
+        waker: Option<std::sync::Arc<dyn Fn() + Send + Sync + 'static>>,
+    ) -> Self {
+        let (job_tx, job_rx) = crossbeam_channel::unbounded::<Job>();
+        let (result_tx, result_rx) = crossbeam_channel::unbounded::<HighlightResult>();
         let worker = std::thread::spawn(move || {
             let mut doc = Document::new(language);
-            for job in job_rx {
-                let source = match job {
-                    Job::SetText(source) => {
-                        doc.set_text(&source);
-                        source
+            while let Ok(job) = job_rx.recv() {
+                let mut current_job = Some(job);
+                let mut current_rope = ropey::Rope::new();
+                let mut latest_version = 0;
+                while let Some(j) = current_job {
+                    match j {
+                        Job::SetRope { rope, version } => {
+                            doc.set_rope(&rope);
+                            current_rope = rope;
+                            latest_version = version;
+                        }
+                        Job::Edit {
+                            edits,
+                            rope,
+                            version,
+                        } => {
+                            doc.edit_rope_batch(&edits, &rope);
+                            current_rope = rope;
+                            latest_version = version;
+                        }
                     }
-                    Job::Edit { edit, source } => {
-                        doc.edit(&edit, &source);
-                        source
-                    }
-                };
-                if result_tx.send(doc.highlight(&source)).is_err() {
+                    current_job = job_rx.try_recv().ok();
+                }
+                let tokens = doc.highlight_rope(&current_rope);
+                let fold_ranges = folding::folding_ranges(&doc);
+                if result_tx
+                    .send(HighlightResult {
+                        tokens,
+                        fold_ranges,
+                        version: latest_version,
+                    })
+                    .is_err()
+                {
                     break;
+                }
+                if let Some(waker) = &waker {
+                    waker();
                 }
             }
         });
@@ -309,24 +435,33 @@ impl BackgroundHighlighter {
         }
     }
 
-    /// Queues a job. Never blocks the caller.
-    pub fn submit(&self, job: Job) {
+    /// Queues a job via non-blocking channel. Never blocks the caller.
+    pub fn submit(&self, job: Job) -> bool {
         if let Some(jobs) = self.jobs.as_ref() {
-            let _ = jobs.send(job);
+            jobs.send(job).is_ok()
+        } else {
+            false
         }
     }
 
-    /// Blocks until the worker finishes the next queued job.
-    pub fn recv(&self) -> Option<Vec<Token>> {
+    /// Non-blocking check for the latest parse result, draining any intermediate
+    /// stale results in the queue.
+    pub fn try_recv(&self) -> Option<HighlightResult> {
+        let mut latest = None;
+        while let Ok(res) = self.results.try_recv() {
+            latest = Some(res);
+        }
+        latest
+    }
+
+    /// Blocks until the worker finishes the next queued job (for initial loads or tests).
+    pub fn recv(&self) -> Option<HighlightResult> {
         self.results.recv().ok()
     }
 }
 
 impl Drop for BackgroundHighlighter {
     fn drop(&mut self) {
-        // Drop the sender first: it closes the channel, which ends the
-        // worker's `for job in job_rx` loop so the join below doesn't block
-        // forever waiting on a thread that's still waiting for more jobs.
         self.jobs.take();
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
@@ -378,5 +513,42 @@ mod tests {
     fn highlight_range_on_a_never_parsed_document_is_empty() {
         let doc = Document::new(LanguageId::Rust);
         assert_eq!(doc.highlight_range("fn f() {}", 0..9), Vec::new());
+    }
+
+    #[test]
+    fn rope_based_parsing_matches_str_parsing() {
+        let source = "fn add(a: i32, b: i32) -> i32 { a + b }";
+        let rope = ropey::Rope::from_str(source);
+        let mut doc = Document::new(LanguageId::Rust);
+        doc.set_rope(&rope);
+
+        let tokens_rope = doc.highlight_rope(&rope);
+        let mut doc_str = Document::new(LanguageId::Rust);
+        doc_str.set_text(source);
+        let tokens_str = doc_str.highlight(source);
+
+        assert_eq!(tokens_rope, tokens_str);
+    }
+
+    #[test]
+    fn background_highlighter_processes_rope_jobs_and_waker() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let woke = std::sync::Arc::new(AtomicBool::new(false));
+        let woke_clone = woke.clone();
+        let highlighter = BackgroundHighlighter::spawn(
+            LanguageId::Rust,
+            Some(std::sync::Arc::new(move || {
+                woke_clone.store(true, Ordering::SeqCst);
+            })),
+        );
+
+        let source = "fn test() { let val = 123; }";
+        let rope = ropey::Rope::from_str(source);
+        assert!(highlighter.submit(Job::SetRope { rope, version: 1 }));
+
+        let result = highlighter.recv().expect("should receive parse result");
+        assert_eq!(result.version, 1);
+        assert!(!result.tokens.is_empty());
+        assert!(woke.load(Ordering::SeqCst));
     }
 }

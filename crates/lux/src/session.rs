@@ -293,7 +293,7 @@ pub(crate) fn poll_file_watcher(app: &mut App) {
                     .any(|e| e.path.as_ref() == Some(&change.path) && e.is_dirty());
 
                 if is_dirty_open {
-                    app.ui.conflict_prompt = Some(ConflictPrompt::new(change.path));
+                    app.ui.dialogs.conflict_prompt = Some(ConflictPrompt::new(change.path));
                     repaint_needed = true;
                 }
             }

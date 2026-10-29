@@ -17,7 +17,7 @@ pub(crate) fn build_view_and_tool_menus(mtm: MainThreadMarker, main_menu: &NSMen
         mtm,
         &view_menu,
         "Toggle Side Bar",
-        "b",
+        "",
         Some(MenuAction::ToggleSidebar),
     );
     add_item(

@@ -11,7 +11,7 @@ pub(crate) struct UiOverlays {
     pub(crate) sidebar: Option<crate::sidebar::SidebarState>,
     pub(crate) minimap: crate::minimap::MinimapState,
     pub(crate) project_search: Option<crate::project_search::ProjectSearchState>,
-    pub(crate) conflict_prompt: Option<crate::conflict::ConflictPrompt>,
+    pub(crate) dialogs: crate::dialog::DialogState,
     pub(crate) session: crate::session::WorkspaceSession,
     pub(crate) git: crate::git::GitState,
     pub(crate) lsp: crate::lsp::LspState,

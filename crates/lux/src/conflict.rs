@@ -53,7 +53,7 @@ pub(crate) fn handle_conflict_action(
     _ctx: &dyn PlatformContext,
     action: ConflictAction,
 ) {
-    let Some(prompt) = app.ui.conflict_prompt.clone() else {
+    let Some(prompt) = app.ui.dialogs.conflict_prompt.clone() else {
         return;
     };
     let path = prompt.path;
@@ -95,7 +95,7 @@ pub(crate) fn handle_conflict_action(
                 app.documents.entries.push(entry);
                 app.switch_to_tab(tab_id);
             }
-            app.ui.conflict_prompt = None;
+            app.ui.dialogs.conflict_prompt = None;
             app.scheduler.invalidate_all();
         }
         ConflictAction::OverwriteDisk => {
@@ -113,7 +113,7 @@ pub(crate) fn handle_conflict_action(
                 }
             }
             app.ui.session.mark_clean(&path);
-            app.ui.conflict_prompt = None;
+            app.ui.dialogs.conflict_prompt = None;
             app.scheduler.invalidate_all();
         }
         ConflictAction::ReloadDisk => {
@@ -133,11 +133,11 @@ pub(crate) fn handle_conflict_action(
                 }
             }
             app.ui.session.mark_clean(&path);
-            app.ui.conflict_prompt = None;
+            app.ui.dialogs.conflict_prompt = None;
             app.scheduler.invalidate_all();
         }
         ConflictAction::Dismiss => {
-            app.ui.conflict_prompt = None;
+            app.ui.dialogs.conflict_prompt = None;
             app.scheduler.invalidate_all();
         }
     }
@@ -149,7 +149,7 @@ pub(crate) fn handle_conflict_click(
     mouse_x: f32,
     mouse_y: f32,
 ) -> bool {
-    let Some(prompt) = &app.ui.conflict_prompt else {
+    let Some(prompt) = &app.ui.dialogs.conflict_prompt else {
         return false;
     };
 
@@ -175,7 +175,7 @@ pub(crate) fn handle_conflict_key(
     ctx: &dyn PlatformContext,
     event: &KeyEvent,
 ) -> bool {
-    if app.ui.conflict_prompt.is_none() {
+    if app.ui.dialogs.conflict_prompt.is_none() {
         return false;
     }
 
@@ -252,11 +252,11 @@ mod tests {
         app.buffer = buf;
 
         // Prompt
-        app.ui.conflict_prompt = Some(ConflictPrompt::new(file_path.clone()));
+        app.ui.dialogs.conflict_prompt = Some(ConflictPrompt::new(file_path.clone()));
 
         // Test CompareDiff
         handle_conflict_action(&mut app, &DummyContext, ConflictAction::CompareDiff);
-        assert!(app.ui.conflict_prompt.is_none());
+        assert!(app.ui.dialogs.conflict_prompt.is_none());
         assert_eq!(app.documents.tabs.tabs().len(), 3);
         let diff_text = app.buffer.text();
         assert!(diff_text.contains("-disk content"));
@@ -272,17 +272,17 @@ mod tests {
             entry.buffer = Buffer::from_bytes(b"overwritten content\n").unwrap();
         }
         app.buffer = Buffer::from_bytes(b"overwritten content\n").unwrap();
-        app.ui.conflict_prompt = Some(ConflictPrompt::new(file_path.clone()));
+        app.ui.dialogs.conflict_prompt = Some(ConflictPrompt::new(file_path.clone()));
         handle_conflict_action(&mut app, &DummyContext, ConflictAction::OverwriteDisk);
-        assert!(app.ui.conflict_prompt.is_none());
+        assert!(app.ui.dialogs.conflict_prompt.is_none());
         let on_disk = std::fs::read_to_string(&file_path).unwrap();
         assert_eq!(on_disk, "overwritten content\n");
 
         // Test ReloadDisk
         std::fs::write(&file_path, "new disk data\n").unwrap();
-        app.ui.conflict_prompt = Some(ConflictPrompt::new(file_path.clone()));
+        app.ui.dialogs.conflict_prompt = Some(ConflictPrompt::new(file_path.clone()));
         handle_conflict_action(&mut app, &DummyContext, ConflictAction::ReloadDisk);
-        assert!(app.ui.conflict_prompt.is_none());
+        assert!(app.ui.dialogs.conflict_prompt.is_none());
         let entry = app
             .documents
             .entries

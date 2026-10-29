@@ -91,6 +91,39 @@ impl App {
             ScrollDelta::Lines { y, .. } => y * LINE_HEIGHT * self.scale_factor,
             ScrollDelta::Pixels(p) => p.y as f32,
         };
+        if self.ui.split.is_active() {
+            let primary_rect = [
+                self.sidebar_width(),
+                self.tab_bar_height(),
+                self.viewport.width,
+                self.viewport.height,
+            ];
+            if let Some(pane_idx) = crate::split::hit_test_pane(
+                &self.ui.split,
+                primary_rect,
+                self.scale_factor,
+                self.mouse.position.x as f32,
+                self.mouse.position.y as f32,
+            ) {
+                if pane_idx == self.ui.split.active_pane {
+                    self.viewport.scroll_y = (self.viewport.scroll_y - dy).max(0.0);
+                    if pane_idx < self.ui.split.panes.len() {
+                        self.ui.split.panes[pane_idx].viewport.scroll_y = self.viewport.scroll_y;
+                    }
+                } else if pane_idx < self.ui.split.panes.len() {
+                    let cur = self.ui.split.panes[pane_idx].viewport.scroll_y;
+                    self.ui.split.panes[pane_idx].viewport.scroll_y = (cur - dy).max(0.0);
+                    if pane_idx == 1 {
+                        self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
+                    }
+                }
+                self.scheduler.invalidate_all();
+                if let Some(gpu_window) = &self.gpu_window {
+                    gpu_window.window.request_redraw();
+                }
+                return;
+            }
+        }
         self.viewport.scroll_y = (self.viewport.scroll_y - dy).max(0.0);
         self.scheduler.invalidate_all();
         if let Some(gpu_window) = &self.gpu_window {

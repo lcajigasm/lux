@@ -206,12 +206,13 @@ pub(crate) fn render_text_lines(
         let line_start = buffer.line_start_byte(line.index).unwrap_or(0);
         let line_len = buffer.line_content(line.index).map_or(0, |c| c.len());
         let line_end = line_start + line_len;
-        let line_tokens = if let Some(syntax) = syntax
-            && let Some(doc) = &syntax.document
-        {
-            doc.highlight_range(&syntax.source, line_start..line_end)
+        let line_tokens: &[lux_syntax::Token] = if let Some(syntax) = syntax {
+            let start_idx = syntax.tokens.partition_point(|t| t.end_byte <= line_start);
+            let end_idx =
+                syntax.tokens[start_idx..].partition_point(|t| t.start_byte < line_end) + start_idx;
+            &syntax.tokens[start_idx..end_idx]
         } else {
-            Vec::new()
+            &[]
         };
 
         for cluster in line.layout.clusters() {

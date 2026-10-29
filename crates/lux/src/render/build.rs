@@ -149,9 +149,20 @@ pub(crate) fn render_build_picker(
 
     // 5. Results list
     let list_top = input_top + input_height + 4.0 * scale_factor;
-    for (i, variant) in filtered.iter().take(visible_count).enumerate() {
+    let start_idx = if picker.selected >= visible_count {
+        picker.selected + 1 - visible_count
+    } else {
+        0
+    };
+    for (i, variant) in filtered
+        .iter()
+        .skip(start_idx)
+        .take(visible_count)
+        .enumerate()
+    {
         let row_y = list_top + (i as f32 * row_height);
-        let is_selected = i == picker.selected;
+        let actual_idx = start_idx + i;
+        let is_selected = actual_idx == picker.selected;
 
         if is_selected {
             quad_instances.push(QuadInstance {

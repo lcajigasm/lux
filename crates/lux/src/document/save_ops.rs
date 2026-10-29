@@ -115,9 +115,9 @@ impl App {
 
         self.cursors = MultiCursor::from_cursors(after_selections.clone());
         self.reset_goal_columns();
+        self.sync_syntax_incremental(&edits);
         let tx = lux_core::history::Transaction::new(edits, before_selections, after_selections);
         self.history.record(tx);
-        self.sync_syntax_on_edit();
         self.scheduler.invalidate_all();
     }
 

@@ -23,9 +23,12 @@ pub(crate) struct MouseState {
 }
 
 pub(crate) struct SyntaxState {
-    pub(crate) document: Option<lux_syntax::Document>,
-    pub(crate) source: String,
+    pub(crate) highlighter: lux_syntax::BackgroundHighlighter,
+    pub(crate) language: lux_syntax::LanguageId,
     pub(crate) theme: &'static lux_syntax::theme::SyntaxTheme,
+    pub(crate) tokens: Vec<lux_syntax::Token>,
+    pub(crate) fold_ranges: Vec<lux_core::folding::FoldRange>,
+    pub(crate) version: usize,
 }
 
 pub(crate) struct AtlasState {

@@ -152,7 +152,7 @@ pub(super) fn paint(
     Outcome::Presented
 }
 
-pub(super) fn color(c: lux_ui::Color) -> [f32; 4] {
+pub(crate) fn color(c: lux_ui::Color) -> [f32; 4] {
     [
         c.r as f32 / 255.0,
         c.g as f32 / 255.0,

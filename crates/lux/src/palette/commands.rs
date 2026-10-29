@@ -18,13 +18,20 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         "file.reopen_closed_tab" => {
             app.reopen_last_closed_tab();
         }
+        "file.clone_view_to_group" => {
+            app.clone_view_to_group(None);
+        }
+        "file.new_view_into_file" => {
+            app.new_view_into_file();
+        }
         "edit.undo" => {
             if !app.buffer.is_huge_file_mode()
                 && let Some(selections) = app.history.undo(&mut app.buffer)
             {
                 app.cursors = lux_core::multicursor::MultiCursor::from_cursors(selections);
                 app.reset_goal_columns();
-                app.sync_syntax_on_edit();
+                app.sync_syntax_full();
+                crate::split::clone_view::clamp_cloned_panes_after_undo(app);
             }
         }
         "edit.redo" => {
@@ -33,7 +40,8 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
             {
                 app.cursors = lux_core::multicursor::MultiCursor::from_cursors(selections);
                 app.reset_goal_columns();
-                app.sync_syntax_on_edit();
+                app.sync_syntax_full();
+                crate::split::clone_view::clamp_cloned_panes_after_undo(app);
             }
         }
         "edit.cut" => {
@@ -253,8 +261,7 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
             app.open_goto_anything("#");
         }
         "file.open_folder" => {
-            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            app.open_workspace(cwd);
+            app.open_folder_dialog(ctx);
         }
         "git.view_diff" => {
             if let Some(doc_path) = app.documents.path.clone()
@@ -474,6 +481,9 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         }
         "macro.save_as" | "save_macro" => {
             crate::macros::dispatch::save_macro_as(app, "macro");
+        }
+        "help.about" => {
+            app.open_about_dialog();
         }
         _ => {}
     }

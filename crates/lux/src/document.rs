@@ -35,6 +35,7 @@ struct Pending {
 #[derive(Clone)]
 pub(crate) struct DocumentEntry {
     pub(crate) tab_id: TabId,
+    pub(crate) buffer_id: u64,
     pub(crate) path: Option<PathBuf>,
     pub(crate) buffer: Buffer,
     pub(crate) cursors: MultiCursor,
@@ -90,10 +91,13 @@ impl DocumentEntry {
     }
 
     pub(crate) fn new(tab_id: TabId, path: Option<PathBuf>, buffer: Buffer) -> Self {
+        static NEXT_BID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let buffer_id = NEXT_BID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let disk_snapshot = path.as_ref().map(|_| buffer.clone());
         let language = detect_language(path.as_deref(), &buffer);
         Self {
             tab_id,
+            buffer_id,
             path,
             disk_snapshot,
             language,
@@ -176,6 +180,21 @@ impl Documents {
             entry.language = language;
         }
     }
+
+    pub(crate) fn active_buffer_id(&self) -> Option<u64> {
+        let active_id = self.active_tab?;
+        self.entries
+            .iter()
+            .find(|e| e.tab_id == active_id)
+            .map(|e| e.buffer_id)
+    }
+
+    pub(crate) fn buffer_id_for_tab(&self, tab_id: TabId) -> Option<u64> {
+        self.entries
+            .iter()
+            .find(|e| e.tab_id == tab_id)
+            .map(|e| e.buffer_id)
+    }
 }
 
 impl App {
@@ -194,12 +213,24 @@ impl App {
         if event.state != ElementState::Pressed || self.ime.is_composing() {
             return false;
         }
+        if self.ui.pending_chord.is_some() {
+            return crate::input::dispatch::dispatch_keymap_or_chord(
+                self,
+                event,
+                Some(ctx.clipboard()),
+            );
+        }
         let command = if cfg!(target_os = "macos") {
-            self.modifiers.meta
+            self.modifiers.meta && !self.modifiers.control && !self.modifiers.alt
         } else {
-            self.modifiers.control && !self.modifiers.alt
+            self.modifiers.control && !self.modifiers.meta && !self.modifiers.alt
         };
-        if (self.modifiers.control || command) && matches!(&event.key, Key::Named(NamedKey::Tab)) {
+        let tab_cycle = if cfg!(target_os = "macos") {
+            (self.modifiers.control || self.modifiers.meta) && !self.modifiers.alt
+        } else {
+            self.modifiers.control && !self.modifiers.alt && !self.modifiers.meta
+        };
+        if tab_cycle && matches!(&event.key, Key::Named(NamedKey::Tab)) {
             if self.modifiers.shift {
                 self.switch_to_prev_tab();
             } else {
@@ -222,9 +253,13 @@ impl App {
         if self.modifiers.shift && key.eq_ignore_ascii_case("t") {
             return self.reopen_last_closed_tab();
         }
-        if let Some(digit) = key.chars().next().and_then(|c| c.to_digit(10))
+        if !self.modifiers.shift
+            && let Some(digit) = key.chars().next().and_then(|c| c.to_digit(10))
             && (1..=9).contains(&digit)
         {
+            if self.ui.split.is_active() && (1..=4).contains(&digit) && self.modifiers.control {
+                return false;
+            }
             if digit == 9 {
                 return self.switch_to_last_tab();
             } else {
@@ -232,12 +267,12 @@ impl App {
             }
         }
         let request = match key.to_lowercase().as_str() {
-            "o" => Request::Open(None),
+            "o" if !self.modifiers.shift => Request::Open(None),
             "s" => Request::Save {
                 save_as: self.modifiers.shift,
             },
-            "n" => Request::New,
-            "w" | "q" => Request::Close,
+            "n" if !self.modifiers.shift => Request::New,
+            "w" | "q" if !self.modifiers.shift => Request::Close,
             _ => return false,
         };
         self.request_document(ctx, request);
@@ -245,25 +280,45 @@ impl App {
     }
 
     pub(crate) fn sync_active_document_to_entry(&mut self) {
-        if let Some(active_id) = self.documents.active_tab
-            && let Some(entry) = self
+        if let Some(active_id) = self.documents.active_tab {
+            let active_bid = self
+                .documents
+                .entries
+                .iter()
+                .find(|e| e.tab_id == active_id)
+                .map(|e| e.buffer_id);
+
+            if let Some(entry) = self
                 .documents
                 .entries
                 .iter_mut()
                 .find(|e| e.tab_id == active_id)
-        {
-            entry.path = self.documents.path.clone();
-            entry.buffer = self.buffer.clone();
-            entry.cursors = self.cursors.clone();
-            entry.goal_columns = self.goal_columns.clone();
-            entry.history = self.history.clone();
-            entry.saved_version = self.documents.saved_version;
-            entry.disk_snapshot = self.documents.disk_snapshot.clone();
-            entry.scroll_x = self.viewport.scroll_x;
-            entry.scroll_y = self.viewport.scroll_y;
-            entry.snippet_session = self.snippet_session.clone();
-            entry.fold_state = self.fold_state.clone();
-            entry.bookmarks = self.bookmarks.clone();
+            {
+                entry.path = self.documents.path.clone();
+                entry.buffer = self.buffer.clone();
+                entry.cursors = self.cursors.clone();
+                entry.goal_columns = self.goal_columns.clone();
+                entry.history = self.history.clone();
+                entry.saved_version = self.documents.saved_version;
+                entry.disk_snapshot = self.documents.disk_snapshot.clone();
+                entry.scroll_x = self.viewport.scroll_x;
+                entry.scroll_y = self.viewport.scroll_y;
+                entry.snippet_session = self.snippet_session.clone();
+                entry.fold_state = self.fold_state.clone();
+                entry.bookmarks = self.bookmarks.clone();
+            }
+
+            if let Some(bid) = active_bid {
+                for entry in self.documents.entries.iter_mut() {
+                    if entry.tab_id != active_id && entry.buffer_id == bid {
+                        entry.path = self.documents.path.clone();
+                        entry.buffer = self.buffer.clone();
+                        entry.history = self.history.clone();
+                        entry.saved_version = self.documents.saved_version;
+                        entry.disk_snapshot = self.documents.disk_snapshot.clone();
+                    }
+                }
+            }
         }
     }
 
@@ -283,6 +338,13 @@ impl App {
         };
         self.documents.active_tab = Some(target_id);
         self.documents.tabs.activate(target_id);
+        if self.ui.split.is_active() && self.ui.split.active_pane < self.ui.split.panes.len() {
+            self.ui.split.panes[self.ui.split.active_pane].tab_id = target_id;
+            self.ui.split.panes[self.ui.split.active_pane].active_tab = target_id;
+            if self.ui.split.active_pane == 1 {
+                self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
+            }
+        }
         self.documents.path = entry.path;
         self.buffer = entry.buffer;
         self.cursors = entry.cursors;
@@ -313,38 +375,6 @@ impl App {
             gpu.window.request_redraw();
         }
         true
-    }
-
-    pub(crate) fn close_tab(&mut self, ctx: &dyn PlatformContext, target_id: TabId) {
-        if self.documents.active_tab == Some(target_id) {
-            self.request_document(ctx, Request::Close);
-            return;
-        }
-        let is_dirty = self
-            .documents
-            .entries
-            .iter()
-            .find(|e| e.tab_id == target_id)
-            .is_some_and(|e| e.is_dirty());
-        if is_dirty {
-            self.switch_to_tab(target_id);
-            self.request_document(ctx, Request::Close);
-        } else {
-            self.documents.tabs.close(target_id);
-            if let Some(pos) = self
-                .documents
-                .entries
-                .iter()
-                .position(|e| e.tab_id == target_id)
-            {
-                let removed = self.documents.entries.remove(pos);
-                self.documents.closed_entries.push(removed);
-            }
-            self.scheduler.invalidate_all();
-            if let Some(gpu) = &self.gpu_window {
-                gpu.window.request_redraw();
-            }
-        }
     }
 
     pub(crate) fn request_document(&mut self, ctx: &dyn PlatformContext, request: Request) {
@@ -523,37 +553,10 @@ impl App {
             gpu.window.request_redraw();
         }
     }
-
-    pub(crate) fn update_document_title(&self) {
-        let Some(gpu) = &self.gpu_window else {
-            return;
-        };
-        let name = self
-            .documents
-            .path
-            .as_ref()
-            .map(|p| p.display().to_string())
-            .unwrap_or("Untitled".into());
-        let dirty = if self.document_dirty() { " *" } else { "" };
-        let readonly = if self.buffer.is_huge_file_mode() {
-            " [read-only: large file]"
-        } else {
-            ""
-        };
-        let status = if self.documents.pending.is_some() {
-            " — File operation in progress".to_string()
-        } else {
-            self.documents
-                .message
-                .as_ref()
-                .map(|m| format!(" — {m}"))
-                .unwrap_or_default()
-        };
-        gpu.window
-            .set_title(&format!("{name}{dirty}{readonly} — Lux{status}"));
-    }
 }
 
+#[cfg(test)]
+mod shortcut_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

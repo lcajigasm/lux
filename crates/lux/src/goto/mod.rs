@@ -312,7 +312,7 @@ pub(crate) fn update_live_preview(app: &mut crate::app::App) {
     }
 }
 
-fn execute_goto(
+pub(crate) fn execute_goto(
     app: &mut crate::app::App,
     ctx: &dyn PlatformContext,
     target_path: &str,

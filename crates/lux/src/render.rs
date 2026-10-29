@@ -2,6 +2,7 @@
 //! Kept apart from `crate::app`'s event handling only to stay under the
 //! 600-line file limit — this is still `impl App`, just in its own file.
 
+mod about;
 mod build;
 mod conflict;
 mod git;
@@ -10,7 +11,7 @@ mod language_picker;
 mod lsp;
 mod minimap;
 mod modals;
-mod paint;
+pub(crate) mod paint;
 mod palette;
 mod plugin;
 mod project_picker;
@@ -19,7 +20,7 @@ mod search;
 mod settings;
 mod sidebar;
 mod snippet_picker;
-mod split;
+pub(crate) mod split;
 mod status_bar;
 mod tab_bar;
 mod term;
@@ -125,73 +126,138 @@ impl App {
                 color: [0.15, 0.15, 0.20, 1.0],
             });
         }
-        quad_instances.push(QuadInstance {
-            rect: [sidebar_width, editor_top, viewport.width, viewport.height],
-            color: color(chrome.theme.background),
-        });
-        if gutter_total_width > 0.0 {
-            quad_instances.push(QuadInstance {
-                rect: [
-                    sidebar_width,
-                    editor_top,
-                    gutter_total_width,
-                    viewport.height,
-                ],
-                color: [0.10, 0.10, 0.13, 1.0],
-            });
-            quad_instances.push(QuadInstance {
-                rect: [
-                    sidebar_width + gutter_total_width - stroke,
-                    editor_top,
-                    stroke,
-                    viewport.height,
-                ],
-                color: [0.18, 0.18, 0.22, 1.0],
-            });
-        }
+        let mut glyph_instances = Vec::new();
+        let mut cursor_screen = None;
 
-        for cursor in &frame.cursors {
-            if cursor.primary {
-                let cur_y = editor_top + cursor.visual_row as f32 * line_height - viewport.scroll_y;
-                if cur_y >= editor_top && cur_y < editor_top + viewport.height {
-                    let h_x = if is_df {
-                        0.0
-                    } else {
-                        sidebar_width + gutter_total_width
-                    };
-                    let h_w = if is_df {
-                        window_width
-                    } else {
-                        viewport.width - gutter_total_width
-                    };
+        if ui.split.is_active() {
+            let params = split::SplitRenderParams {
+                split: &ui.split,
+                documents,
+                primary_rect: [sidebar_width, editor_top, viewport.width, viewport.height],
+                scale_factor: *scale_factor,
+                stroke,
+                font_size,
+                line_height,
+                font,
+                active_syntax: syntax.as_ref(),
+                active_buffer: buffer,
+                active_cursors: cursors,
+                active_fold_state: fold_state,
+                active_bookmarks: bookmarks,
+                elapsed,
+                active_scroll: (viewport.scroll_x, viewport.scroll_y),
+                theme: &chrome.theme,
+                syntax_theme: lux_syntax::theme::by_name(chrome.theme.name)
+                    .unwrap_or(&lux_syntax::theme::LUX_DARK),
+            };
+            split::render_split_layout(
+                &params,
+                editor_view,
+                atlas_state,
+                &mut quad_instances,
+                &mut glyph_instances,
+            );
+        } else {
+            quad_instances.push(QuadInstance {
+                rect: [sidebar_width, editor_top, viewport.width, viewport.height],
+                color: color(chrome.theme.background),
+            });
+            if gutter_total_width > 0.0 {
+                quad_instances.push(QuadInstance {
+                    rect: [
+                        sidebar_width,
+                        editor_top,
+                        gutter_total_width,
+                        viewport.height,
+                    ],
+                    color: [0.10, 0.10, 0.13, 1.0],
+                });
+                quad_instances.push(QuadInstance {
+                    rect: [
+                        sidebar_width + gutter_total_width - stroke,
+                        editor_top,
+                        stroke,
+                        viewport.height,
+                    ],
+                    color: [0.18, 0.18, 0.22, 1.0],
+                });
+            }
+
+            for cursor in &frame.cursors {
+                if cursor.primary {
+                    let cur_y =
+                        editor_top + cursor.visual_row as f32 * line_height - viewport.scroll_y;
+                    if cur_y >= editor_top && cur_y < editor_top + viewport.height {
+                        let h_x = if is_df {
+                            0.0
+                        } else {
+                            sidebar_width + gutter_total_width
+                        };
+                        let h_w = if is_df {
+                            window_width
+                        } else {
+                            viewport.width - gutter_total_width
+                        };
+                        quad_instances.push(QuadInstance {
+                            rect: [h_x, cur_y, h_w, line_height],
+                            color: [0.13, 0.13, 0.17, 0.6],
+                        });
+                    }
+                }
+            }
+
+            text::render_text_lines(
+                &frame,
+                buffer,
+                syntax.as_ref(),
+                Some(bookmarks),
+                viewport,
+                editor_top,
+                line_height,
+                sidebar_width,
+                text_left,
+                stroke,
+                !is_df,
+                &chrome.theme,
+                atlas_state,
+                font,
+                font_size,
+                &mut quad_instances,
+                &mut glyph_instances,
+            );
+
+            if let Some(search_state) = &ui.search_bar {
+                search::render_search_matches(
+                    search_state,
+                    buffer,
+                    editor_view,
+                    viewport,
+                    editor_top,
+                    line_height,
+                    TEXT_LEFT_PADDING * *scale_factor,
+                    &mut quad_instances,
+                );
+            }
+
+            let line_pad_y = (line_height - font_size) * 0.5;
+            let caret_h = font_size + 2.0 * stroke;
+            for cursor_glyph in &frame.cursors {
+                let x = text_left + cursor_glyph.x - viewport.scroll_x;
+                let y = editor_top + cursor_glyph.visual_row as f32 * line_height
+                    - viewport.scroll_y
+                    + line_pad_y
+                    - stroke;
+                if cursor_glyph.primary {
+                    cursor_screen = Some((x, y));
+                }
+                if cursor_glyph.visible {
                     quad_instances.push(QuadInstance {
-                        rect: [h_x, cur_y, h_w, line_height],
-                        color: [0.13, 0.13, 0.17, 0.6],
+                        rect: [x, y, 2.0 * stroke, caret_h],
+                        color: color(chrome.theme.accent),
                     });
                 }
             }
         }
-
-        let mut glyph_instances = Vec::new();
-        text::render_text_lines(
-            &frame,
-            buffer,
-            syntax.as_ref(),
-            Some(bookmarks),
-            viewport,
-            editor_top,
-            line_height,
-            sidebar_width,
-            text_left,
-            stroke,
-            !is_df,
-            &chrome.theme,
-            atlas_state,
-            font,
-            font_size,
-            &mut quad_instances,
-            &mut glyph_instances,
-        );
 
         if tab_bar_height > 0.0 {
             tab_bar::render_tab_bar(
@@ -212,38 +278,6 @@ impl App {
                 &mut quad_instances,
                 &mut glyph_instances,
             );
-        }
-
-        if let Some(search_state) = &ui.search_bar {
-            search::render_search_matches(
-                search_state,
-                buffer,
-                editor_view,
-                viewport,
-                editor_top,
-                line_height,
-                TEXT_LEFT_PADDING * *scale_factor,
-                &mut quad_instances,
-            );
-        }
-
-        let line_pad_y = (line_height - font_size) * 0.5;
-        let caret_h = font_size + 2.0 * stroke;
-        let mut cursor_screen = None;
-        for cursor_glyph in &frame.cursors {
-            let x = text_left + cursor_glyph.x - viewport.scroll_x;
-            let y = editor_top + cursor_glyph.visual_row as f32 * line_height - viewport.scroll_y
-                + line_pad_y
-                - stroke;
-            if cursor_glyph.primary {
-                cursor_screen = Some((x, y));
-            }
-            if cursor_glyph.visible {
-                quad_instances.push(QuadInstance {
-                    rect: [x, y, 2.0 * stroke, caret_h],
-                    color: color(chrome.theme.accent),
-                });
-            }
         }
 
         if ime.is_composing()
@@ -427,25 +461,6 @@ impl App {
             viewport.scroll_y,
             *scale_factor,
         );
-
-        if ui.split.is_active() {
-            split::render_split_layout(
-                &ui.split,
-                documents,
-                [sidebar_width, editor_top, viewport.width, viewport.height],
-                *scale_factor,
-                stroke,
-                font_size,
-                font,
-                editor_view,
-                &mut atlas_state.atlas,
-                &mut atlas_state.dirty,
-                &mut atlas_state.scale_cx,
-                &chrome.theme,
-                &mut quad_instances,
-                &mut glyph_instances,
-            );
-        }
 
         let (cx, cy) = cursor_screen.unwrap_or((text_left, editor_top));
         lsp::render_lsp(

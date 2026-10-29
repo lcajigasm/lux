@@ -183,7 +183,7 @@ pub(crate) fn render_all_modals(
         );
     }
 
-    if let Some(prompt) = &mut ui.conflict_prompt {
+    if let Some(prompt) = &mut ui.dialogs.conflict_prompt {
         super::conflict::render_conflict_bar(
             prompt,
             quad_instances,
@@ -198,6 +198,25 @@ pub(crate) fn render_all_modals(
             tab_bar_height,
             scale_factor,
             theme,
+        );
+    }
+
+    if let Some(about) = &mut ui.dialogs.about {
+        super::about::render_about_dialog(
+            about,
+            window_width,
+            viewport.height,
+            scale_factor,
+            stroke,
+            font_size,
+            font,
+            editor_view,
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            theme,
+            quad_instances,
+            glyph_instances,
         );
     }
 }

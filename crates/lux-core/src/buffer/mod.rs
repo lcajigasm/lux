@@ -183,10 +183,34 @@ impl Buffer {
         removed
     }
 
-    /// Crate-internal only: position/selection math needs the rope, but per
-    /// ADR 0007 `ropey` types stay out of `lux-core`'s public signatures so a
-    /// future rope migration doesn't leak past this module.
-    pub(crate) fn rope(&self) -> &Rope {
+    /// Total number of bytes in the buffer, in O(1) time.
+    pub fn len_bytes(&self) -> usize {
+        self.rope.len_bytes()
+    }
+
+    /// Converts a char offset to a byte offset, in O(log N) time.
+    pub fn char_to_byte(&self, char_idx: usize) -> usize {
+        self.rope.char_to_byte(char_idx.min(self.rope.len_chars()))
+    }
+
+    /// Converts a byte offset to a char offset, in O(log N) time.
+    pub fn byte_to_char(&self, byte_idx: usize) -> usize {
+        self.rope.byte_to_char(byte_idx.min(self.rope.len_bytes()))
+    }
+
+    /// Converts a byte offset to a line index, in O(log N) time.
+    pub fn byte_to_line(&self, byte_idx: usize) -> usize {
+        self.rope.byte_to_line(byte_idx.min(self.rope.len_bytes()))
+    }
+
+    /// Converts a line index to its starting byte offset, in O(log N) time.
+    pub fn line_to_byte(&self, line_idx: usize) -> usize {
+        self.rope.line_to_byte(line_idx.min(self.rope.len_lines()))
+    }
+
+    /// Reference to the underlying rope for zero-copy chunk access and
+    /// O(1) Arc cloning across worker thread boundaries.
+    pub fn rope(&self) -> &Rope {
         &self.rope
     }
 }

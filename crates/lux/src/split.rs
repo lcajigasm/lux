@@ -1,7 +1,5 @@
 //! Split editor layout: multi-column, multi-row, and 2x2 grid layouts (T04, ST12).
 
-use lux_ui::tabs::TabId;
-
 use crate::app::App;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -33,14 +31,13 @@ pub(crate) enum SplitDirection {
     Vertical,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct SplitPane {
-    pub(crate) tab_id: TabId,
-    #[allow(dead_code)]
-    pub(crate) scroll_x: f32,
-    #[allow(dead_code)]
-    pub(crate) scroll_y: f32,
-}
+pub(crate) mod clone_view;
+pub(crate) use crate::pane_view::PaneView;
+#[allow(unused_imports)]
+pub(crate) use crate::pane_view::PaneViewport;
+
+#[allow(dead_code)]
+pub(crate) type SplitPane = PaneView;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DraggingDivider {
@@ -54,9 +51,9 @@ pub(crate) struct SplitLayout {
     pub(crate) direction: SplitDirection,
     pub(crate) ratio: f32,
     pub(crate) ratio_y: f32,
-    pub(crate) secondary: Option<SplitPane>,
+    pub(crate) secondary: Option<PaneView>,
     pub(crate) active_pane: usize,
-    pub(crate) panes: Vec<SplitPane>,
+    pub(crate) panes: Vec<PaneView>,
     pub(crate) dragging_divider: Option<DraggingDivider>,
 }
 
@@ -295,20 +292,60 @@ impl App {
         let tabs = self.documents.tabs.tabs().to_vec();
 
         let mut new_panes = Vec::with_capacity(needed);
-        new_panes.push(SplitPane {
-            tab_id: active_tab,
-            scroll_x: 0.0,
-            scroll_y: 0.0,
-        });
+        let mut primary_pane = PaneView::new(active_tab);
+        primary_pane.cursors = self.cursors.clone();
+        primary_pane.fold_state = self.fold_state.clone();
+        primary_pane.bookmarks = self.bookmarks.clone();
+        primary_pane.viewport.scroll_x = self.viewport.scroll_x;
+        primary_pane.viewport.scroll_y = self.viewport.scroll_y;
+        if let Some(syntax) = &self.syntax {
+            primary_pane.tokens = syntax.tokens.clone();
+        }
+        new_panes.push(primary_pane);
 
         let mut tab_iter = tabs.iter().filter(|t| t.id != active_tab);
         for _ in 1..needed {
             let tab_id = tab_iter.next().map(|t| t.id).unwrap_or(active_tab);
-            new_panes.push(SplitPane {
-                tab_id,
-                scroll_x: 0.0,
-                scroll_y: 0.0,
-            });
+            let mut pane = PaneView::new(tab_id);
+            if tab_id == active_tab {
+                pane.cursors = self.cursors.clone();
+                pane.fold_state = self.fold_state.clone();
+                pane.bookmarks = self.bookmarks.clone();
+                pane.viewport.scroll_x = self.viewport.scroll_x;
+                pane.viewport.scroll_y = self.viewport.scroll_y;
+                if let Some(syntax) = &self.syntax {
+                    pane.tokens = syntax.tokens.clone();
+                }
+            } else if let Some(entry) = self.documents.entries.iter().find(|e| e.tab_id == tab_id) {
+                pane.cursors = entry.cursors.clone();
+                pane.fold_state = entry.fold_state.clone();
+                pane.bookmarks = entry.bookmarks.clone();
+                pane.viewport.scroll_x = entry.scroll_x;
+                pane.viewport.scroll_y = entry.scroll_y;
+                let lang = entry.language.or_else(|| {
+                    crate::document::detect_language(entry.path.as_deref(), &entry.buffer)
+                });
+                if let Some(lang) = lang {
+                    let mut doc = lux_syntax::Document::new(lang);
+                    doc.set_rope(entry.buffer.rope());
+                    pane.tokens = doc.highlight_rope(entry.buffer.rope());
+                }
+            }
+            new_panes.push(pane);
+        }
+
+        let sb_w = self.sidebar_width();
+        let top = self.tab_bar_height();
+        let geom = compute_layout_geometry(
+            &self.ui.split,
+            [sb_w, top, self.viewport.width, self.viewport.height],
+            self.scale_factor,
+        );
+        for (pane, &rect) in new_panes.iter_mut().zip(geom.pane_rects.iter()) {
+            pane.viewport.x = rect[0];
+            pane.viewport.y = rect[1];
+            pane.viewport.width = rect[2];
+            pane.viewport.height = rect[3];
         }
 
         self.ui.split.panes = new_panes;
@@ -328,7 +365,16 @@ impl App {
         if !self.ui.split.is_active() {
             return false;
         }
-        self.set_layout(LayoutPreset::Single);
+        let next_preset = match self.ui.split.preset {
+            LayoutPreset::Columns4 => LayoutPreset::Columns3,
+            LayoutPreset::Columns3 => LayoutPreset::Columns2,
+            LayoutPreset::Columns2 => LayoutPreset::Single,
+            LayoutPreset::Rows3 => LayoutPreset::Rows2,
+            LayoutPreset::Rows2 => LayoutPreset::Single,
+            LayoutPreset::Grid2x2 => LayoutPreset::Columns2,
+            LayoutPreset::Single => LayoutPreset::Single,
+        };
+        self.set_layout(next_preset);
         true
     }
 
@@ -346,11 +392,47 @@ impl App {
         if group_idx >= num_panes {
             return false;
         }
+        let cur_active = self.ui.split.active_pane;
+        if cur_active < self.ui.split.panes.len() {
+            self.ui.split.panes[cur_active].cursors = self.cursors.clone();
+            self.ui.split.panes[cur_active].fold_state = self.fold_state.clone();
+            self.ui.split.panes[cur_active].bookmarks = self.bookmarks.clone();
+            self.ui.split.panes[cur_active].viewport.scroll_x = self.viewport.scroll_x;
+            self.ui.split.panes[cur_active].viewport.scroll_y = self.viewport.scroll_y;
+            if let Some(syntax) = &self.syntax {
+                self.ui.split.panes[cur_active].tokens = syntax.tokens.clone();
+            }
+        }
         self.ui.split.active_pane = group_idx;
         if let Some(pane) = self.ui.split.panes.get(group_idx) {
             let target = pane.tab_id;
+            let pane_cursors = pane.cursors.clone();
+            let scroll_x = pane.viewport.scroll_x;
+            let scroll_y = pane.viewport.scroll_y;
+            let fold_state = pane.fold_state.clone();
+            let bookmarks = pane.bookmarks.clone();
             self.switch_to_tab(target);
+            let doc_end = lux_core::position::Position::document_end(&self.buffer);
+            let clamped: Vec<_> = pane_cursors
+                .cursors()
+                .iter()
+                .map(|s| {
+                    let a = s.anchor.char.min(doc_end.char);
+                    let h = s.head.char.min(doc_end.char);
+                    lux_core::selection::Selection::new(
+                        lux_core::position::Position::from_char(&self.buffer, a),
+                        lux_core::position::Position::from_char(&self.buffer, h),
+                    )
+                })
+                .collect();
+            self.cursors = lux_core::multicursor::MultiCursor::from_cursors(clamped);
+            self.viewport.scroll_x = scroll_x;
+            self.viewport.scroll_y = scroll_y;
+            self.fold_state = fold_state;
+            self.bookmarks = bookmarks;
+            self.reset_goal_columns();
         }
+        self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
         self.scheduler.invalidate_all();
         true
     }
@@ -360,11 +442,59 @@ impl App {
         if group_idx >= num_panes {
             return false;
         }
+        let cur_pane = self.ui.split.active_pane;
+        if cur_pane == group_idx {
+            return true;
+        }
         if let Some(tab_id) = self.documents.active_tab {
+            if cur_pane < self.ui.split.panes.len() {
+                self.ui.split.panes[cur_pane].cursors = self.cursors.clone();
+                self.ui.split.panes[cur_pane].viewport.scroll_x = self.viewport.scroll_x;
+                self.ui.split.panes[cur_pane].viewport.scroll_y = self.viewport.scroll_y;
+            }
             if group_idx < self.ui.split.panes.len() {
                 self.ui.split.panes[group_idx].tab_id = tab_id;
+                self.ui.split.panes[group_idx].active_tab = tab_id;
+                self.ui.split.panes[group_idx].cursors = self.cursors.clone();
+                self.ui.split.panes[group_idx].viewport.scroll_x = self.viewport.scroll_x;
+                self.ui.split.panes[group_idx].viewport.scroll_y = self.viewport.scroll_y;
+
+                let other_tab = self
+                    .documents
+                    .tabs
+                    .tabs()
+                    .iter()
+                    .map(|t| t.id)
+                    .find(|&id| {
+                        id != tab_id
+                            && !self
+                                .ui
+                                .split
+                                .panes
+                                .iter()
+                                .enumerate()
+                                .any(|(i, p)| i != cur_pane && p.tab_id == id)
+                    })
+                    .or_else(|| {
+                        self.documents
+                            .tabs
+                            .tabs()
+                            .iter()
+                            .map(|t| t.id)
+                            .find(|&id| id != tab_id)
+                    });
+
+                if let Some(other) = other_tab {
+                    self.ui.split.panes[cur_pane].tab_id = other;
+                    self.ui.split.panes[cur_pane].active_tab = other;
+                    if let Some(entry) = self.documents.entries.iter().find(|e| e.tab_id == other) {
+                        self.ui.split.panes[cur_pane].cursors = entry.cursors.clone();
+                        self.ui.split.panes[cur_pane].viewport.scroll_x = entry.scroll_x;
+                        self.ui.split.panes[cur_pane].viewport.scroll_y = entry.scroll_y;
+                    }
+                }
             }
-            if group_idx == 1 {
+            if group_idx == 1 || cur_pane == 1 {
                 self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
             }
         }
@@ -394,127 +524,6 @@ impl App {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn split_editor_creates_secondary_pane_and_switches_focus() {
-        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-
-        assert!(app.ui.split.secondary.is_none());
-        assert_eq!(app.ui.split.active_pane, 0);
-
-        // Split editor right
-        app.split_editor_right();
-        assert!(app.ui.split.secondary.is_some());
-        assert_eq!(app.ui.split.direction, SplitDirection::Horizontal);
-        assert_eq!(app.ui.split.active_pane, 0);
-
-        // Focus next split cycles to pane 1
-        assert!(app.focus_next_split());
-        assert_eq!(app.ui.split.active_pane, 1);
-
-        // Focus next split cycles back to pane 0
-        assert!(app.focus_next_split());
-        assert_eq!(app.ui.split.active_pane, 0);
-
-        // Split editor down
-        app.split_editor_down();
-        assert_eq!(app.ui.split.direction, SplitDirection::Vertical);
-
-        // Close split
-        assert!(app.close_active_split());
-        assert!(app.ui.split.secondary.is_none());
-        assert_eq!(app.ui.split.active_pane, 0);
-    }
-
-    #[test]
-    fn split_editor_syncs_same_buffer_edits() {
-        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-        app.insert_at_cursor("initial text");
-
-        app.split_editor_right();
-        let secondary = app.ui.split.secondary.as_ref().unwrap();
-        assert_eq!(secondary.tab_id, app.documents.active_tab.unwrap());
-
-        // Edit in current pane
-        app.insert_at_cursor(" + edited");
-        assert_eq!(app.buffer.text(), "initial text + edited");
-    }
-
-    #[test]
-    fn layouts_and_groups_lifecycle() {
-        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-
-        // Single layout initially
-        assert_eq!(app.ui.split.preset, LayoutPreset::Single);
-        assert_eq!(app.ui.split.num_panes(), 1);
-
-        // 2 Columns
-        app.set_layout(LayoutPreset::Columns2);
-        assert_eq!(app.ui.split.num_panes(), 2);
-        assert_eq!(app.ui.split.panes.len(), 2);
-
-        // 3 Columns
-        app.set_layout(LayoutPreset::Columns3);
-        assert_eq!(app.ui.split.num_panes(), 3);
-        assert_eq!(app.ui.split.panes.len(), 3);
-
-        // 4 Columns
-        app.set_layout(LayoutPreset::Columns4);
-        assert_eq!(app.ui.split.num_panes(), 4);
-        assert_eq!(app.ui.split.panes.len(), 4);
-
-        // 2 Rows
-        app.set_layout(LayoutPreset::Rows2);
-        assert_eq!(app.ui.split.num_panes(), 2);
-
-        // Grid 2x2
-        app.set_layout(LayoutPreset::Grid2x2);
-        assert_eq!(app.ui.split.num_panes(), 4);
-
-        // Focus group 1..4
-        assert!(app.focus_group(1));
-        assert_eq!(app.ui.split.active_pane, 1);
-        assert!(app.focus_group(3));
-        assert_eq!(app.ui.split.active_pane, 3);
-        assert!(!app.focus_group(4)); // out of bounds
-
-        // Move to group
-        assert!(app.move_to_group(2));
-        assert_eq!(app.ui.split.active_pane, 2);
-
-        // Back to Single
-        app.set_layout(LayoutPreset::Single);
-        assert_eq!(app.ui.split.num_panes(), 1);
-        assert!(app.ui.split.panes.is_empty());
-    }
-
-    #[test]
-    fn geometry_computation_and_divider_hit_testing() {
-        let split = SplitLayout {
-            preset: LayoutPreset::Grid2x2,
-            ..Default::default()
-        };
-        let rect = [0.0, 0.0, 800.0, 600.0];
-        let geom = compute_layout_geometry(&split, rect, 1.0);
-        assert_eq!(geom.pane_rects.len(), 4);
-        assert_eq!(geom.dividers.len(), 2);
-
-        // Vertical divider is at x = ~400
-        let hit_v = hit_test_divider(&split, rect, 1.0, 400.0, 300.0);
-        assert_eq!(hit_v, Some(DraggingDivider::Vertical(0)));
-
-        // Horizontal divider is at y = ~300
-        let hit_h = hit_test_divider(&split, rect, 1.0, 200.0, 300.0);
-        assert_eq!(hit_h, Some(DraggingDivider::Horizontal(0)));
-
-        // Pane 0 is top-left
-        let pane_0 = hit_test_pane(&split, rect, 1.0, 100.0, 100.0);
-        assert_eq!(pane_0, Some(0));
-
-        // Pane 3 is bottom-right
-        let pane_3 = hit_test_pane(&split, rect, 1.0, 600.0, 500.0);
-        assert_eq!(pane_3, Some(3));
-    }
-}
+mod clone_view_tests;
+#[cfg(test)]
+mod tests;

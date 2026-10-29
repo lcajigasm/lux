@@ -138,10 +138,21 @@ pub(crate) fn render_command_palette(
     // 5. Result rows
     let rows_top = top + input_height + 2.0 * stroke;
     let row_baseline = (row_height - palette_font_size) * 0.5;
+    let start_idx = if palette.selected_index >= visible_count {
+        palette.selected_index + 1 - visible_count
+    } else {
+        0
+    };
 
-    for (i, entry) in results.iter().take(visible_count).enumerate() {
+    for (i, entry) in results
+        .iter()
+        .skip(start_idx)
+        .take(visible_count)
+        .enumerate()
+    {
         let row_y = rows_top + i as f32 * row_height;
-        let is_selected = i == palette.selected_index;
+        let actual_idx = start_idx + i;
+        let is_selected = actual_idx == palette.selected_index;
 
         if is_selected {
             quad_instances.push(QuadInstance {

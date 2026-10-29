@@ -428,7 +428,11 @@ fn mouse_and_keyboard_tab_interactions() {
         text: None,
         repeat: false,
     };
-    app.modifiers.meta = true;
+    if cfg!(target_os = "macos") {
+        app.modifiers.meta = true;
+    } else {
+        app.modifiers.control = true;
+    }
     app.modifiers.shift = true;
     assert!(app.document_key(&ctx, &key_event));
     assert_eq!(app.documents.tabs.tabs().len(), 2);
@@ -463,7 +467,11 @@ fn tab_strip_2_quick_selection_and_context_menu_ops() {
     assert_eq!(app.documents.tabs.tabs().len(), 3);
 
     // Cmd+1 switches to tab 1
-    app.modifiers.meta = true;
+    if cfg!(target_os = "macos") {
+        app.modifiers.meta = true;
+    } else {
+        app.modifiers.control = true;
+    }
     app.modifiers.shift = false;
     let key1 = lux_platform::event::KeyEvent {
         state: ElementState::Pressed,

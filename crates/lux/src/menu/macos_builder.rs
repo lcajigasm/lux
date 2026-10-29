@@ -170,6 +170,21 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
     add_item(
         mtm,
         &file_menu,
+        "New View into File",
+        "",
+        Some(MenuAction::NewViewIntoFile),
+    );
+    add_item(
+        mtm,
+        &file_menu,
+        "Clone View to Group",
+        "",
+        Some(MenuAction::CloneViewToGroup),
+    );
+    add_separator(mtm, &file_menu);
+    add_item(
+        mtm,
+        &file_menu,
         "Close Tab",
         "w",
         Some(MenuAction::CloseTab),
