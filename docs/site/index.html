@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lux — The Ultra-Fast Native Code Editor in Rust</title>
+  <meta name="description" content="Lux is a fast, lightweight, open-source native code editor built from scratch in Rust with GPU acceleration, sub-8ms typing latency, and Sublime Text muscle memory.">
+  <meta name="keywords" content="text editor, code editor, rust, sublime text, wgpu, tree-sitter, native, developer tools, multi-cursor, high performance">
+  
+  <!-- Open Graph / Social Media -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://lcajigasm.github.io/lux/">
+  <meta property="og:title" content="Lux — The Ultra-Fast Native Code Editor in Rust">
+  <meta property="og:description" content="Sublime Text speed and muscle memory. Modern Rust safety and intelligence. GPU-accelerated with WGPU, <62ms cold startup, <8ms typing latency.">
+  <meta property="og:image" content="https://lcajigasm.github.io/lux/assets/icon.png">
+  <meta name="twitter:card" content="summary_large_image">
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="apple-touch-icon" href="assets/icon.png">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Ambient background glow -->
+  <div class="glow-sphere glow-1"></div>
+  <div class="glow-sphere glow-2"></div>
+
+  <!-- Navigation -->
+  <header class="navbar">
+    <div class="nav-container">
+      <a href="#" class="brand">
+        <img src="assets/icon.png" alt="Lux Logo" class="brand-logo">
+        <span class="brand-name">Lux</span>
+        <span class="brand-tag">v1.1.0</span>
+      </a>
+
+      <nav class="nav-menu">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#multi-pane" class="nav-link">Multi-Pane</a>
+        <a href="#benchmarks" class="nav-link">Performance</a>
+        <a href="#shortcuts" class="nav-link">Shortcuts</a>
+        <a href="#download" class="nav-link">Download</a>
+      </nav>
+
+      <div class="nav-actions">
+        <a href="https://github.com/lcajigasm/lux" target="_blank" rel="noopener" class="btn btn-outline nav-github">
+          <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          <span>GitHub</span>
+        </a>
+        <a href="#download" class="btn btn-primary nav-cta">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="container hero-container">
+      <div class="release-pill-wrapper">
+        <a href="https://github.com/lcajigasm/lux/releases/tag/v1.1.0" target="_blank" rel="noopener" class="release-pill">
+          <span class="pill-badge">v1.1.0</span>
+          <span class="pill-text">Real Multi-Pane Split Editor, Cloned Views & macOS Native Waker</span>
+          <span class="pill-arrow">→</span>
+        </a>
+      </div>
+
+      <h1 class="hero-title">
+        The ultra-fast, zero-bloat <br>
+        <span class="gradient-text">native code editor</span> in Rust.
+      </h1>
+
+      <p class="hero-subtitle">
+        Sublime Text speed and muscle memory. Modern Rust safety and intelligence.
+        Hardware-accelerated with WGPU, sub-8ms typing latency, Tree-sitter incremental syntax, and zero cloud bloat.
+      </p>
+
+      <div class="hero-cta-group">
+        <a href="https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg" class="btn btn-hero-primary">
+          <svg class="icon-apple" viewBox="0 0 170 170" width="20" height="20" fill="currentColor">
+            <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.67-7.81-11.96-14.34-7.48-11.41-13.1-23.73-16.86-36.95-3.76-13.23-5.64-25.76-5.64-37.59 0-14.35 3.76-26.33 11.28-35.95 7.52-9.62 16.89-14.52 28.11-14.71 4.58 0 9.87 1.25 15.86 3.75 6 2.5 10.15 3.75 12.46 3.75 2.12 0 6.46-1.3 13.02-3.9 6.56-2.6 12.28-3.79 17.16-3.56 12.78.64 23.01 5.25 30.68 13.82-10.97 6.64-16.32 15.78-16.05 27.42.27 9.14 3.86 16.86 10.77 23.16 6.91 6.3 15.02 9.84 24.33 10.63-2.12 6.53-4.73 13.06-7.83 19.59zM119.22 31.84c0-7.29 2.58-14.15 7.74-20.58 5.16-6.43 11.75-10.42 19.78-11.26.11 1.06.16 1.95.16 2.68 0 7.22-2.73 14.12-8.19 20.7-5.46 6.58-12.04 10.47-19.74 11.66-.08-1.06-.11-2.13-.11-3.2z"/>
+          </svg>
+          <div class="btn-text-block">
+            <span class="btn-main-label">Download for macOS</span>
+            <span class="btn-sub-label">v1.1.0 • Apple Silicon (.dmg, 12.7 MB)</span>
+          </div>
+        </a>
+
+        <a href="https://github.com/lcajigasm/lux/releases/download/v1.1.0/lux-macos-aarch64.tar.gz" class="btn btn-hero-secondary">
+          <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          <span>Portable Tarball (.tar.gz)</span>
+        </a>
+      </div>
+
+      <!-- Quick Metrics Strip -->
+      <div class="metrics-strip">
+        <div class="metric-item">
+          <span class="metric-val">~62 ms</span>
+          <span class="metric-label">Cold Startup Time</span>
+        </div>
+        <div class="metric-divider"></div>
+        <div class="metric-item">
+          <span class="metric-val">2–4 ms</span>
+          <span class="metric-label">Key-to-Pixel Latency</span>
+        </div>
+        <div class="metric-divider"></div>
+        <div class="metric-item">
+          <span class="metric-val">28 MB</span>
+          <span class="metric-label">Base Memory Footprint</span>
+        </div>
+        <div class="metric-divider"></div>
+        <div class="metric-item">
+          <span class="metric-val">0.0%</span>
+          <span class="metric-label">CPU Idle / Zero Telemetry</span>
+        </div>
+      </div>
+
+      <!-- Interactive Editor Mockup -->
+      <div class="editor-window-wrapper">
+        <div class="editor-window">
+          <!-- Window Titlebar -->
+          <div class="editor-titlebar">
+            <div class="window-controls">
+              <span class="ctrl ctrl-close"></span>
+              <span class="ctrl ctrl-min"></span>
+              <span class="ctrl ctrl-max"></span>
+            </div>
+            
+            <div class="editor-tabs">
+              <div class="tab active" data-tab="tab1">
+                <span class="tab-icon">🦀</span>
+                <span class="tab-name">main.rs</span>
+                <span class="tab-close">×</span>
+              </div>
+              <div class="tab" data-tab="tab2">
+                <span class="tab-icon">🦀</span>
+                <span class="tab-name">split.rs</span>
+                <span class="tab-close">×</span>
+              </div>
+              <div class="tab" data-tab="tab3">
+                <span class="tab-icon">📄</span>
+                <span class="tab-name">config.jsonc</span>
+                <span class="tab-close">×</span>
+              </div>
+            </div>
+
+            <div class="split-controls">
+              <button class="split-btn active" data-split="1" title="Single Column (Cmd+Option+1)">
+                <svg width="14" height="14" viewBox="0 0 14 14"><rect width="12" height="12" x="1" y="1" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+              </button>
+              <button class="split-btn" data-split="2" title="2 Columns Split (Cmd+Option+2)">
+                <svg width="14" height="14" viewBox="0 0 14 14"><rect width="12" height="12" x="1" y="1" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/><line x1="7" y1="1" x2="7" y2="13" stroke="currentColor" stroke-width="1.2"/></svg>
+              </button>
+              <button class="split-btn" data-split="grid" title="2x2 Grid (Cmd+Option+5)">
+                <svg width="14" height="14" viewBox="0 0 14 14"><rect width="12" height="12" x="1" y="1" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/><line x1="7" y1="1" x2="7" y2="13" stroke="currentColor" stroke-width="1.2"/><line x1="1" y1="7" x2="13" y2="7" stroke="currentColor" stroke-width="1.2"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Main Editor Workspace (with live multi-pane demo) -->
+          <div class="editor-body split-mode-1" id="editor-body">
+            <!-- Left Pane -->
+            <div class="editor-pane active-pane" id="pane-left">
+              <div class="pane-header">
+                <span class="pane-title">crates/lux/src/main.rs</span>
+                <span class="pane-badge">Active Focus</span>
+              </div>
+              <div class="pane-content">
+                <div class="gutter">
+                  <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+                  <span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
+                  <span>11</span><span>12</span><span>13</span><span>14</span><span>15</span>
+                </div>
+                <div class="code-area">
+<pre><code><span class="syn-kw">pub async fn</span> <span class="syn-fn">run_desktop_app</span>(cfg: <span class="syn-type">EditorConfig</span>) -> <span class="syn-type">Result</span>&lt;()&gt; {
+    <span class="syn-cm">// Pure WGPU 120Hz native renderer - zero web-view overhead</span>
+    <span class="syn-kw">let</span> renderer = <span class="syn-type">WgpuRenderer</span>::<span class="syn-fn">new</span>(&amp;window).<span class="syn-kw">await</span>?;
+    <span class="syn-kw">let mut</span> session = <span class="syn-type">Session</span>::<span class="syn-fn">restore_hot_exit</span>()?;
+
+    <span class="syn-cm">// Independent multi-pane layout architecture</span>
+    <span class="syn-kw">let mut</span> split = <span class="syn-type">SplitLayout</span>::<span class="syn-fn">new</span>(<span class="syn-type">LayoutType</span>::<span class="syn-fn">Columns2</span>);
+    split.<span class="syn-fn">attach_buffer</span>(session.<span class="syn-fn">active_buffer_id</span>());
+
+    <span class="syn-cm">// Real-time tree-sitter incremental syntax typing</span>
+    <span class="syn-kw">let</span> syntax = <span class="syn-type">BackgroundHighlighter</span>::<span class="syn-fn">spawn_worker</span>();
+    event_loop.<span class="syn-fn">run</span>(<span class="syn-kw">move</span> |event, target| {
+        session.<span class="syn-fn">dispatch_sublime_input</span>(&amp;event, &amp;target);<span class="cursor blinking"></span>
+    })
+}</code></pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- Draggable Divider -->
+            <div class="editor-divider" id="editor-divider" title="Drag to resize panes • Double click to reset 50/50">
+              <div class="divider-handle"></div>
+            </div>
+
+            <!-- Right Pane (Split Mode) -->
+            <div class="editor-pane secondary-pane" id="pane-right">
+              <div class="pane-header">
+                <span class="pane-title">crates/lux/src/split/clone_view.rs (Cloned View)</span>
+                <span class="pane-badge badge-dim">Secondary</span>
+              </div>
+              <div class="pane-content">
+                <div class="gutter">
+                  <span>8</span><span>9</span><span>10</span><span>11</span><span>12</span>
+                  <span>13</span><span>14</span><span>15</span><span>16</span><span>17</span>
+                </div>
+                <div class="code-area">
+<pre><code><span class="syn-cm">/// Real-time cloned view sharing identical buffer rope</span>
+<span class="syn-kw">pub fn</span> <span class="syn-fn">shift_pane_cursors</span>(
+    pane: &amp;<span class="syn-kw">mut</span> <span class="syn-type">PaneView</span>,
+    edit_delta: <span class="syn-type">EditDelta</span>,
+) {
+    <span class="syn-kw">for</span> cursor <span class="syn-kw">in</span> pane.cursors.<span class="syn-fn">iter_mut</span>() {
+        cursor.<span class="syn-fn">adjust_offset</span>(edit_delta);<span class="cursor static-cursor"></span>
+    }
+    <span class="syn-cm">// Independent scroll position and selection</span>
+    pane.viewport.<span class="syn-fn">clamp_visible_bounds</span>();
+}</code></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Window Status Bar -->
+          <div class="editor-statusbar">
+            <div class="status-left">
+              <span class="status-item"><span class="dot-accent"></span> Ready</span>
+              <span class="status-item">UTF-8</span>
+              <span class="status-item">Spaces: 4</span>
+              <span class="status-item">Rust 2024</span>
+            </div>
+            <div class="status-right">
+              <span class="status-item">Line 13, Col 54</span>
+              <span class="status-item highlight">120 FPS</span>
+              <span class="status-item">Startup: 62ms</span>
+              <span class="status-item">RAM: 28MB</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Key Architecture Features Section -->
+  <section id="features" class="section">
+    <div class="container">
+      <div class="section-header text-center">
+        <span class="section-tag">Engineered for Purists</span>
+        <h2 class="section-title">Speed you can feel. Cleanliness you can trust.</h2>
+        <p class="section-desc">
+          No Electron. No Chromium runtime. No forced telemetry or invasive AI bots.
+          Just raw Rust performance tuned to human reaction limits.
+        </p>
+      </div>
+
+      <div class="features-grid">
+        <!-- Feature 1 -->
+        <div class="feature-card">
+          <div class="feature-icon-wrapper">
+            <span class="feature-icon">⚡</span>
+          </div>
+          <h3 class="feature-title">Sublime Text Muscle Memory</h3>
+          <p class="feature-desc">
+            Complete fidelity with classic keymaps: <code>Cmd+D</code> multi-cursor selection, 
+            <code>Cmd+K, Cmd+D</code> skip occurrence, column/rectangular editing (<code>Option+Drag</code>), 
+            and parallel multi-caret clipboards.
+          </p>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="feature-card">
+          <div class="feature-icon-wrapper">
+            <span class="feature-icon">📐</span>
+          </div>
+          <h3 class="feature-title">Real Multi-Pane Architecture</h3>
+          <p class="feature-desc">
+            New in v1.1.0: Independent <code>PaneView</code> pipelines supporting 2-4 columns, rows, 
+            2x2 grids, interactive 60/120Hz draggable dividers with 50/50 reset, and live cloned buffer views.
+          </p>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="feature-card">
+          <div class="feature-icon-wrapper">
+            <span class="feature-icon">🚀</span>
+          </div>
+          <h3 class="feature-title">Hardware-Accelerated WGPU</h3>
+          <p class="feature-desc">
+            Direct GPU vertex-cached glyph rendering using modern WGPU primitives. 
+            Native 120Hz ProMotion support on Apple Silicon with 2–4ms key-to-pixel latency.
+          </p>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class="feature-card">
+          <div class="feature-icon-wrapper">
+            <span class="feature-icon">🌲</span>
+          </div>
+          <h3 class="feature-title">Incremental Tree-sitter</h3>
+          <p class="feature-desc">
+            Zero UI freezes during typing. Non-blocking background parsing coupled with 
+            an instant $O(K)$ token shifting algorithm guarantees 120 FPS frame stability on massive files.
+          </p>
+        </div>
+
+        <!-- Feature 5 -->
+        <div class="feature-card">
+          <div class="feature-icon-wrapper">
+            <span class="feature-icon">🛠️</span>
+          </div>
+          <h3 class="feature-title">In-Process Git & Terminal</h3>
+          <p class="feature-desc">
+            Integrated <code>gix</code> Git engine with zero shell-out lag. Gutter diff markers, 
+            floating 3-way merge resolution, and a built-in pseudo-terminal (PTY) with ANSI 24-bit truecolor.
+          </p>
+        </div>
+
+        <!-- Feature 6 -->
+        <div class="feature-card">
+          <div class="feature-icon-wrapper">
+            <span class="feature-icon">🛡️</span>
+          </div>
+          <h3 class="feature-title">Absolute Privacy & Zero Bloat</h3>
+          <p class="feature-desc">
+            Strictly zero telemetry, zero analytics, zero external network calls, and zero integrated LLM bloat. 
+            Plugins execute inside sandboxed WebAssembly Component Model containers.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Multi-Pane Highlight Section -->
+  <section id="multi-pane" class="section section-darker">
+    <div class="container">
+      <div class="dual-grid">
+        <div class="dual-content">
+          <span class="section-tag">New in Release v1.1.0</span>
+          <h2 class="section-title">The Real Multi-Pane Split Editor.</h2>
+          <p class="section-desc">
+            No fake text dumps or compromised viewports. Lux v1.1.0 introduces full independent multi-pane editing:
+          </p>
+          <ul class="feature-list">
+            <li>
+              <div class="list-bullet">✓</div>
+              <div>
+                <strong>Independent Viewports & Cursors:</strong>
+                Each pane preserves its own scroll offsets, multicursors, code folding trees, and syntax cache.
+              </div>
+            </li>
+            <li>
+              <div class="list-bullet">✓</div>
+              <div>
+                <strong>Cloned Views of the Same File:</strong>
+                Open the same source buffer in two panes side-by-side with instantaneous real-time editing synchronization and decoupled scrolling.
+              </div>
+            </li>
+            <li>
+              <div class="list-bullet">✓</div>
+              <div>
+                <strong>Fluid Draggable Dividers:</strong>
+                Smooth proportional split resizing at 60/120 Hz with safety clamping and instant double-click 50/50 balance.
+              </div>
+            </li>
+            <li>
+              <div class="list-bullet">✓</div>
+              <div>
+                <strong>Seamless Navigation:</strong>
+                Switch focus with <code>Ctrl+1..4</code>, move documents across groups with <code>Ctrl+Shift+1..4</code>, or divide layout with <code>Cmd+Option+1..5</code>.
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <div class="dual-graphic">
+          <div class="split-diagram-card">
+            <div class="diagram-header">
+              <span>Split Layout Architecture</span>
+              <span class="badge-accent">Atomic Buffer Sync</span>
+            </div>
+            <div class="diagram-grid">
+              <div class="diag-pane diag-left">
+                <div class="diag-tag">PaneView #1 (Active)</div>
+                <div class="diag-line kw">struct SharedDocument {</div>
+                <div class="diag-line">  buffer_id: AtomicU64,</div>
+                <div class="diag-line">  rope: Arc&lt;Rope&gt;,</div>
+                <div class="diag-line cursor-line">  cursors: MultiCursor, <span class="blink">|</span></div>
+                <div class="diag-line">}</div>
+              </div>
+              <div class="diag-sep">
+                <span class="sep-arrow">⇄</span>
+              </div>
+              <div class="diag-pane diag-right">
+                <div class="diag-tag">PaneView #2 (Cloned)</div>
+                <div class="diag-line kw">impl SharedDocument {</div>
+                <div class="diag-line">  pub fn edit(&amp;mut self) {</div>
+                <div class="diag-line">    // Shift other panes</div>
+                <div class="diag-line cursor-line">    shift_cursors(delta); <span class="static-bar">|</span></div>
+                <div class="diag-line">  }</div>
+              </div>
+            </div>
+            <div class="diagram-footer">
+              <span>Zero-copy shared memory buffer</span>
+              <span>Independent UI Viewport & Selections</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Performance Benchmarks Section -->
+  <section id="benchmarks" class="section">
+    <div class="container">
+      <div class="section-header text-center">
+        <span class="section-tag">Tested & Verified</span>
+        <h2 class="section-title">Measurable, uncompromised speed.</h2>
+        <p class="section-desc">
+          Benchmarked on Apple Silicon (M-Series) under real workloads against standard desktop editors.
+        </p>
+      </div>
+
+      <div class="table-card">
+        <div class="table-responsive">
+          <table class="benchmark-table">
+            <thead>
+              <tr>
+                <th>Benchmark Metric</th>
+                <th class="col-highlight">Lux (Rust)</th>
+                <th>Sublime Text 4</th>
+                <th>VS Code (Electron)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Cold Startup Time</strong></td>
+                <td class="col-highlight"><span class="badge-win">~62 ms</span></td>
+                <td>~120 ms</td>
+                <td>~1,850 ms</td>
+              </tr>
+              <tr>
+                <td><strong>Key-to-Pixel Latency</strong></td>
+                <td class="col-highlight"><span class="badge-win">2–4 ms</span></td>
+                <td>5–8 ms</td>
+                <td>35–65 ms</td>
+              </tr>
+              <tr>
+                <td><strong>Memory Footprint (Idle RSS)</strong></td>
+                <td class="col-highlight"><span class="badge-win">~28 MB</span></td>
+                <td>~45 MB</td>
+                <td>~350 MB+</td>
+              </tr>
+              <tr>
+                <td><strong>Memory on 100 MB File</strong></td>
+                <td class="col-highlight"><span class="badge-win">~1.6× file size</span></td>
+                <td>~2.1× file size</td>
+                <td>~9–14× (or crash)</td>
+              </tr>
+              <tr>
+                <td><strong>Rendering Engine</strong></td>
+                <td class="col-highlight"><span class="badge-win">Native WGPU (120Hz)</span></td>
+                <td>Skia / OpenGL</td>
+                <td>Chromium DOM (HTML/CSS)</td>
+              </tr>
+              <tr>
+                <td><strong>Binary Distribution Size</strong></td>
+                <td class="col-highlight"><span class="badge-win">12.7 MB</span></td>
+                <td>~45 MB</td>
+                <td>~380 MB</td>
+              </tr>
+              <tr>
+                <td><strong>Background Telemetry & Cloud</strong></td>
+                <td class="col-highlight"><span class="badge-win">0.0% (Strictly None)</span></td>
+                <td>Update checks only</td>
+                <td>Continuous Telemetry</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Shortcuts Reference Section -->
+  <section id="shortcuts" class="section section-darker">
+    <div class="container">
+      <div class="section-header text-center">
+        <span class="section-tag">Ergonomics</span>
+        <h2 class="section-title">Essential Keyboard Shortcuts</h2>
+        <p class="section-desc">
+          Your fingers already know how to use Lux.
+        </p>
+      </div>
+
+      <div class="shortcuts-tabs">
+        <button class="shortcut-tab active" data-os="mac">macOS Keymap</button>
+        <button class="shortcut-tab" data-os="win">Windows / Linux Keymap</button>
+      </div>
+
+      <div class="shortcuts-grid" id="shortcuts-grid">
+        <!-- Rendered dynamically by script.js -->
+      </div>
+    </div>
+  </section>
+
+  <!-- Download Section -->
+  <section id="download" class="section">
+    <div class="container">
+      <div class="download-card">
+        <div class="download-content">
+          <span class="section-tag">Get Started Today</span>
+          <h2 class="download-title">Experience Lux v1.1.0</h2>
+          <p class="download-desc">
+            Free and open source. Available for macOS with native Apple Silicon optimization. 
+            Linux and Windows binaries can be compiled effortlessly with Cargo.
+          </p>
+
+          <div class="download-buttons">
+            <a href="https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg" class="btn btn-hero-primary btn-large">
+              <svg class="icon-apple" viewBox="0 0 170 170" width="24" height="24" fill="currentColor">
+                <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.67-7.81-11.96-14.34-7.48-11.41-13.1-23.73-16.86-36.95-3.76-13.23-5.64-25.76-5.64-37.59 0-14.35 3.76-26.33 11.28-35.95 7.52-9.62 16.89-14.52 28.11-14.71 4.58 0 9.87 1.25 15.86 3.75 6 2.5 10.15 3.75 12.46 3.75 2.12 0 6.46-1.3 13.02-3.9 6.56-2.6 12.28-3.79 17.16-3.56 12.78.64 23.01 5.25 30.68 13.82-10.97 6.64-16.32 15.78-16.05 27.42.27 9.14 3.86 16.86 10.77 23.16 6.91 6.3 15.02 9.84 24.33 10.63-2.12 6.53-4.73 13.06-7.83 19.59zM119.22 31.84c0-7.29 2.58-14.15 7.74-20.58 5.16-6.43 11.75-10.42 19.78-11.26.11 1.06.16 1.95.16 2.68 0 7.22-2.73 14.12-8.19 20.7-5.46 6.58-12.04 10.47-19.74 11.66-.08-1.06-.11-2.13-.11-3.2z"/>
+              </svg>
+              <div class="btn-text-block">
+                <span class="btn-main-label">Download Lux for macOS</span>
+                <span class="btn-sub-label">Apple Silicon .dmg • 12.66 MB</span>
+              </div>
+            </a>
+
+            <a href="https://github.com/lcajigasm/lux/releases/download/v1.1.0/lux-macos-aarch64.tar.gz" class="btn btn-outline btn-large">
+              <svg class="icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              <div class="btn-text-block">
+                <span class="btn-main-label">Portable Binary</span>
+                <span class="btn-sub-label">Apple Silicon .tar.gz • 11.57 MB</span>
+              </div>
+            </a>
+          </div>
+
+          <!-- Build from Source Block -->
+          <div class="source-build-box">
+            <div class="source-build-header">
+              <span>Or build directly from source using Rust:</span>
+              <button class="copy-cmd-btn" id="copy-btn" title="Copy to clipboard">
+                <span id="copy-text">Copy</span>
+              </button>
+            </div>
+            <pre class="source-code" id="cmd-source"><code>git clone https://github.com/lcajigasm/lux.git
+cd lux &amp;&amp; cargo build --release</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-container">
+      <div class="footer-brand">
+        <div class="brand">
+          <img src="assets/icon.png" alt="Lux" class="brand-logo" width="28" height="28">
+          <span class="brand-name">Lux</span>
+        </div>
+        <p class="footer-text">
+          A high-performance, distraction-free code editor crafted with Rust.
+        </p>
+        <p class="footer-license">
+          Dual-licensed under MIT or Apache 2.0.
+        </p>
+      </div>
+
+      <div class="footer-nav">
+        <div class="footer-col">
+          <h4>Project</h4>
+          <a href="https://github.com/lcajigasm/lux" target="_blank" rel="noopener">GitHub Repository</a>
+          <a href="https://github.com/lcajigasm/lux/releases" target="_blank" rel="noopener">Releases & Changelog</a>
+          <a href="https://github.com/lcajigasm/lux/issues" target="_blank" rel="noopener">Issue Tracker</a>
+        </div>
+        <div class="footer-col">
+          <h4>Documentation</h4>
+          <a href="https://github.com/lcajigasm/lux/blob/main/CLAUDE.md" target="_blank" rel="noopener">Architecture Rules</a>
+          <a href="https://github.com/lcajigasm/lux/blob/main/docs/STATUS.md" target="_blank" rel="noopener">Platform Status</a>
+          <a href="https://github.com/lcajigasm/lux/blob/main/docs/PERFORMANCE.md" target="_blank" rel="noopener">Performance Budgets</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="container">
+        <p>© 2026 Luis Cajigas. Built with passion for code editing craftsmanship.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

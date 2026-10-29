@@ -1,4 +1,7 @@
 # Lux
 
-A fast, free text editor. Downloads: see GitHub Releases once Phase 11
-signing is configured. Screenshots and status: `docs/STATUS.md`.
+The ultra-fast, zero-bloat native code editor engineered in Rust.
+
+- **Website:** [https://lcajigasm.github.io/lux/](https://lcajigasm.github.io/lux/)
+- **Downloads:** [GitHub Releases v1.1.0](https://github.com/lcajigasm/lux/releases/tag/v1.1.0)
+- **Status & Receipts:** [docs/STATUS.md](../STATUS.md)

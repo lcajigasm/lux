@@ -6,7 +6,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lcajigasm/lux/releases/tag/v1.0.0"><img src="https://img.shields.io/github/v/release/lcajigasm/lux?color=brightgreen&label=release" alt="Release"></a>
+  <a href="https://lcajigasm.github.io/lux/"><img src="https://img.shields.io/badge/website-lcajigasm.github.io%2Flux-ff9e3b.svg" alt="Website"></a>
+  <a href="https://github.com/lcajigasm/lux/releases/tag/v1.1.0"><img src="https://img.shields.io/github/v/release/lcajigasm/lux?color=brightgreen&label=release" alt="Release"></a>
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="License"></a>
   <a href="https://github.com/lcajigasm/lux/actions"><img src="https://img.shields.io/badge/quality%20gates-100%25%20passing%20(512%2B%20tests)-success" alt="Tests"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-2024%20edition-orange.svg" alt="Rust 2024"></a>
@@ -19,20 +20,22 @@
 
 **Lux** is a fast, free, open-source native text and code editor built from the ground up in Rust. It is designed to recapture and surpass the legendary ergonomics of **Sublime Text 3**: instant cold startup (< 150ms), imperceptible input latency (< 8ms), seamless editing of massive files, first-class multi-cursor workflows, and an unobtrusive, distraction-free user interface.
 
+🌐 **Website & Documentation:** [https://lcajigasm.github.io/lux/](https://lcajigasm.github.io/lux/)
+
 Unlike web-based or Electron editors, Lux is compiled directly to native machine code with hardware-accelerated WGPU rendering. It incorporates an in-process Git engine (`gix`), an integrated PTY terminal (`portable-pty`), a non-blocking Language Server Protocol client (`async-lsp`), tree-sitter incremental syntax highlighting, and sandboxed WebAssembly plugins (`wasmtime`).
 
 Target platforms, in order: **macOS**, **Windows**, **Linux**, then **iPadOS/iOS**, then **Android**.
 
 ---
 
-## Downloads (v1.0.0)
+## Downloads (v1.1.0)
 
-Pre-built releases for macOS (Apple Silicon `aarch64`) are available on the [Releases page](https://github.com/lcajigasm/lux/releases/tag/v1.0.0):
+Pre-built releases for macOS (Apple Silicon `aarch64`) are available on the [Releases page](https://github.com/lcajigasm/lux/releases/tag/v1.1.0):
 
 | Platform | Format | Size | Description |
 |---|---|---|---|
-| **macOS (Apple Silicon)** | [**Lux.dmg**](https://github.com/lcajigasm/lux/releases/download/v1.0.0/Lux.dmg) | 12.5 MB | Native drag-and-drop installer application bundle |
-| **macOS (Apple Silicon)** | [**lux-macos-aarch64.tar.gz**](https://github.com/lcajigasm/lux/releases/download/v1.0.0/lux-macos-aarch64.tar.gz) | 11.5 MB | Standalone portable binary distribution |
+| **macOS (Apple Silicon)** | [**Lux.dmg**](https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg) | 12.7 MB | Native drag-and-drop installer application bundle |
+| **macOS (Apple Silicon)** | [**lux-macos-aarch64.tar.gz**](https://github.com/lcajigasm/lux/releases/download/v1.1.0/lux-macos-aarch64.tar.gz) | 11.6 MB | Standalone portable binary distribution |
 
 ---
 
