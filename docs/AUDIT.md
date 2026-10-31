@@ -1,5 +1,9 @@
 # Implementation audit
 
+The current gap matrix is [ROADMAP.md](ROADMAP.md) (2026-10-31). The rows below are the
+2026-09-08 inventory. Several "remaining work" cells (Git, LSP, terminal, command palette)
+were wired into the desktop binary after this page was written; do not treat them as open.
+
 Started 2026-09-08 against the current worktree. This audit is ongoing;
 historical receipts and roadmap checkmarks are claims to verify, not proof
 of current product behavior. The original roadmap through v1.2 remains the
