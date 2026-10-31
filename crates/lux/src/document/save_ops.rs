@@ -30,7 +30,7 @@ impl App {
                 .as_bool()
                 .or_else(|| r["ensure_newline_at_eof_on_save"].as_bool())
                 .or_else(|| r["files.insertFinalNewline"].as_bool())
-                .unwrap_or(true);
+                .unwrap_or(false);
             let preserve = r["editor.trimTrailingWhitespacePreserveCursor"]
                 .as_bool()
                 .or_else(|| r["trim_trailing_white_space_on_save_preserve_cursor"].as_bool())

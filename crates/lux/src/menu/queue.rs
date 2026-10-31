@@ -15,6 +15,7 @@ pub(crate) fn register_waker(waker: Arc<dyn Fn() + Send + Sync>) {
 }
 
 /// Wakes the platform event loop immediately if a waker is registered.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn wake() {
     if let Ok(lock) = WAKER.lock()
         && let Some(waker) = lock.as_ref()
@@ -24,6 +25,7 @@ pub(crate) fn wake() {
 }
 
 /// Posts a menu action to the queue and immediately wakes the event loop.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn post_action(action: MenuAction) {
     if let Ok(mut queue) = MENU_QUEUE.lock() {
         queue.push(action);

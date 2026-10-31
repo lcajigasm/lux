@@ -7,9 +7,9 @@
 
 <p align="center">
   <a href="https://lcajigasm.github.io/lux/"><img src="https://img.shields.io/badge/website-lcajigasm.github.io%2Flux-ff9e3b.svg" alt="Website"></a>
-  <a href="https://github.com/lcajigasm/lux/releases/tag/v1.1.0"><img src="https://img.shields.io/github/v/release/lcajigasm/lux?color=brightgreen&label=release" alt="Release"></a>
+  <a href="https://github.com/lcajigasm/lux/releases/latest"><img src="https://img.shields.io/github/v/release/lcajigasm/lux?color=brightgreen&label=release" alt="Release"></a>
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="License"></a>
-  <a href="https://github.com/lcajigasm/lux/actions"><img src="https://img.shields.io/badge/quality%20gates-100%25%20passing%20(512%2B%20tests)-success" alt="Tests"></a>
+  <a href="https://github.com/lcajigasm/lux/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/lcajigasm/lux/ci.yml?branch=main&label=CI" alt="CI"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-2024%20edition-orange.svg" alt="Rust 2024"></a>
   <a href="#privacy--core-philosophy"><img src="https://img.shields.io/badge/telemetry-zero-blueviolet.svg" alt="Zero Telemetry"></a>
 </p>
@@ -28,14 +28,22 @@ Target platforms, in order: **macOS**, **Windows**, **Linux**, then **iPadOS/iOS
 
 ---
 
-## Downloads (v1.1.0)
+## Downloads
 
-Pre-built releases for macOS (Apple Silicon `aarch64`) are available on the [Releases page](https://github.com/lcajigasm/lux/releases/tag/v1.1.0):
+[v1.1.0](https://github.com/lcajigasm/lux/releases/tag/v1.1.0) publishes a macOS Apple Silicon `.dmg` and `.tar.gz` only.
 
-| Platform | Format | Size | Description |
-|---|---|---|---|
-| **macOS (Apple Silicon)** | [**Lux.dmg**](https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg) | 12.7 MB | Native drag-and-drop installer application bundle |
-| **macOS (Apple Silicon)** | [**lux-macos-aarch64.tar.gz**](https://github.com/lcajigasm/lux/releases/download/v1.1.0/lux-macos-aarch64.tar.gz) | 11.6 MB | Standalone portable binary distribution |
+From **v1.1.1**, pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml). That workflow builds unsigned release binaries and attaches them to the GitHub Release:
+
+| Asset | Runner |
+|---|---|
+| `lux-linux-x86_64` | `ubuntu-latest` |
+| `lux-macos-aarch64` | `macos-latest` (Apple Silicon) |
+| `lux-windows-x86_64.exe` | `windows-latest` |
+| `SHA256SUMS` | checksums of the three binaries |
+
+These are the editor binaries, not installers. Linux needs `libfontconfig` and a GPU driver (Vulkan or GL) at runtime, the same libraries CI uses to link the binary. Signed `.dmg` / `.msi` / `.deb` packages are still open; see [docs/ROADMAP.md](docs/ROADMAP.md).
+
+The macOS installer from v1.1.0 remains at [Lux.dmg](https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg) and [lux-macos-aarch64.tar.gz](https://github.com/lcajigasm/lux/releases/download/v1.1.0/lux-macos-aarch64.tar.gz).
 
 ---
 
@@ -76,6 +84,7 @@ Pre-built releases for macOS (Apple Silicon `aarch64`) are available on the [Rel
   - 2 Rows (Horizontal split)
   - 2x2 Grid (4-pane quadrant)
 - **Pane Management**: Navigate between groups (`Ctrl+1..4`), move tabs across groups (`Ctrl+Shift+1..4`), and resize with draggable pane dividers.
+- **Windows / Linux**: the keymap binds two columns to `Alt+Shift+2` and two rows to `Alt+Shift+8`. `Ctrl+Alt+2` is an extra split-right chord. AltGr text (for example `€`) is still inserted.
 
 ### 🧩 Extensible Snippets & Keyboard Macros
 - **Sublime Text Snippets**: Supports native `.sublime-snippet` XML and JSON formats. Interactive tabstop navigation (`Tab` / `Shift+Tab`), placeholder defaults (`${1:default}`), and real-time synchronized mirror fields.

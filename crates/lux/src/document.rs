@@ -30,6 +30,9 @@ pub(crate) enum Request {
 struct Pending {
     request: Request,
     version: u64,
+    /// True when on-save whitespace edits were recorded and must be undone
+    /// if the worker rejects or cancels the save.
+    revert_transform: bool,
 }
 
 #[derive(Clone)]
@@ -377,6 +380,19 @@ impl App {
         true
     }
 
+    /// Drops on-save whitespace edits when the worker did not write the file
+    /// and the user has not typed since the transform.
+    fn revert_rejected_save_transform(&mut self, pending: &Pending) {
+        if !pending.revert_transform || self.history.state_id() != pending.version {
+            return;
+        }
+        if let Some(selections) = self.history.undo(&mut self.buffer) {
+            self.cursors = MultiCursor::from_cursors(selections);
+            self.reset_goal_columns();
+            self.sync_syntax_full();
+        }
+    }
+
     pub(crate) fn request_document(&mut self, ctx: &dyn PlatformContext, request: Request) {
         if self.documents.pending.is_some() {
             if matches!(request, Request::Close) {
@@ -384,6 +400,7 @@ impl App {
             }
             return;
         }
+        let state_before_save = self.history.state_id();
         if matches!(request, Request::Save { .. }) {
             self.apply_on_save_transforms();
         }
@@ -394,9 +411,11 @@ impl App {
             disk: self.documents.disk_snapshot.clone(),
         };
         let version = self.history.checkpoint();
+        let revert_transform = self.history.state_id() != state_before_save;
         self.documents.pending = Some(Pending {
             request: request.clone(),
             version,
+            revert_transform,
         });
         self.documents.message = None;
         let sender = self.documents.sender.clone();
@@ -414,7 +433,9 @@ impl App {
                 }
             });
         if let Err(error) = spawned {
-            self.documents.pending = None;
+            if let Some(pending) = self.documents.pending.take() {
+                self.revert_rejected_save_transform(&pending);
+            }
             self.documents.message = Some(format!("Cannot start file operation: {error}"));
         }
         self.update_document_title();
@@ -430,8 +451,12 @@ impl App {
         self.presentation.set_hidden(false);
         self.scheduler.invalidate_all();
         match outcome {
-            Ok(Outcome::Cancelled) => self.documents.close_when_idle = false,
+            Ok(Outcome::Cancelled) => {
+                self.revert_rejected_save_transform(&pending);
+                self.documents.close_when_idle = false;
+            }
             Err(error) => {
+                self.revert_rejected_save_transform(&pending);
                 self.documents.message = Some(error);
                 self.documents.close_when_idle = false;
             }

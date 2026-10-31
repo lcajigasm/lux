@@ -1,5 +1,12 @@
 # Status
 
+> Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
+> v1.1.1: `editor.insertFinalNewline` defaults off (Sublime / VS Code). A save the worker
+> rejects or cancels undoes that transform when the user has not typed since. Ctrl+Alt+digit
+> layout chords work on Windows and Linux without swallowing AltGr text. The plugin host
+> is wasmtime 48.0.8 (RUSTSEC-2026-0422, 0423, 0424). Tag `vX.Y.Z` builds
+> unsigned Linux, macOS, and Windows binaries (`.github/workflows/release.yml`).
+>
 > Current audit (2026-10-10): see [AUDIT.md](AUDIT.md). The desktop binary
 > is certified for **v1.0.0** release: integrates transactional editing, configurable keymaps,
 > snippet expansion, tree-sitter syntax highlighting, multi-document tab strip, interactive status bar,

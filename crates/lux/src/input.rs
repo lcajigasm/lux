@@ -34,6 +34,24 @@ impl App {
         }
     }
 
+    /// Layout chords use Ctrl+Alt+digit on Windows/Linux and Cmd+Option on
+    /// macOS. AltGr is excluded when the event's text is a different
+    /// character than the key (AltGr+2 often yields `@`, not a layout).
+    fn layout_chord(&self, event: &KeyEvent) -> bool {
+        let altgr_text = event.text.as_ref().is_some_and(|text| match &event.key {
+            Key::Character(key) => text != key && !text.eq_ignore_ascii_case(key),
+            _ => !text.is_empty(),
+        });
+        if altgr_text {
+            return false;
+        }
+        if cfg!(target_os = "macos") {
+            self.modifiers.meta && self.modifiers.alt
+        } else {
+            self.modifiers.control && self.modifiers.alt
+        }
+    }
+
     pub(crate) fn line_comment_token(&self) -> Option<&'static str> {
         if let Some(lang) = self.documents.language() {
             use lux_syntax::LanguageId::*;
@@ -244,11 +262,15 @@ impl App {
         }
 
         let command = self.command_modifier();
-        if command
-            && self.modifiers.alt
+        if self.layout_chord(event)
             && let Key::Character(key) = &event.key
         {
-            if key == "2" || key == "™" || key == "€" {
+            // Option+2 / Option+W arrive as glyphs on macOS. On Windows and
+            // Linux the same glyphs are AltGr text and must be inserted.
+            let split_key = key == "2" || (cfg!(target_os = "macos") && (key == "™" || key == "€"));
+            let close_key =
+                key.eq_ignore_ascii_case("w") || (cfg!(target_os = "macos") && key == "∑");
+            if split_key {
                 if self.modifiers.shift {
                     self.split_editor_down();
                 } else {
@@ -256,7 +278,7 @@ impl App {
                 }
                 return;
             }
-            if (key.eq_ignore_ascii_case("w") || key == "∑") && self.close_active_split() {
+            if close_key && self.close_active_split() {
                 return;
             }
         }

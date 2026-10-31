@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted.
+Superseded in part by [ADR 0018](0018-wasmtime-48.md): the version pin is
+48.0.8. The Component Model and capability model below stay in force.
 
 ## Context
 

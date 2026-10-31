@@ -54,20 +54,21 @@ fn test_continuous_typing_latency_large_file_under_8ms() {
         latencies.push(elapsed);
     }
 
-    // Verify all keystrokes completed in under 8 ms (120 FPS frame budget)
+    // The 8 ms budget is a release-build measurement (`docs/PERFORMANCE.md`).
+    // `cargo test` is unoptimized; debug CI runners, especially Windows, are
+    // not that hardware. A debug ceiling still fails a stalled highlighter.
+    let budget_ms: u128 = if cfg!(debug_assertions) { 80 } else { 8 };
     latencies.sort();
     let p99_latency = latencies[(latencies.len() as f64 * 0.99) as usize];
     let max_latency = *latencies.last().unwrap();
 
     assert!(
-        p99_latency.as_millis() < 8,
-        "p99 typing latency was {:?}, expected < 8ms",
-        p99_latency
+        p99_latency.as_millis() < budget_ms,
+        "p99 typing latency was {p99_latency:?}, expected < {budget_ms}ms"
     );
     assert!(
-        max_latency.as_millis() < 8,
-        "max typing latency was {:?}, expected < 8ms",
-        max_latency
+        max_latency.as_millis() < budget_ms,
+        "max typing latency was {max_latency:?}, expected < {budget_ms}ms"
     );
 
     // Verify background highlighter receives jobs and updates
