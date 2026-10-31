@@ -66,7 +66,7 @@
       <div class="release-pill-wrapper">
         <a href="https://github.com/lcajigasm/lux/releases/latest" target="_blank" rel="noopener" class="release-pill">
           <span class="pill-badge">v1.2.0</span>
-          <span class="pill-text">Unsigned dmg, msi, and deb on the GitHub Release</span>
+          <span class="pill-text">Linux deb on the GitHub Release; dmg and msi outside CI</span>
           <span class="pill-arrow">→</span>
         </a>
       </div>
@@ -88,7 +88,7 @@
           </svg>
           <div class="btn-text-block">
             <span class="btn-main-label">Latest GitHub Release</span>
-            <span class="btn-sub-label">v1.2.0 • dmg, msi, deb (login required)</span>
+            <span class="btn-sub-label">v1.2.0 • Linux deb (login required)</span>
           </div>
         </a>
 
@@ -522,9 +522,10 @@
           <span class="section-tag">Get Started Today</span>
           <h2 class="download-title">Download Lux v1.2.0</h2>
           <p class="download-desc">
-            The latest GitHub Release lists <code>lux-macos-aarch64.dmg</code> (ad-hoc signed, not notarized),
-            <code>lux-windows-x86_64.msi</code>, and <code>lux-linux-amd64.deb</code>
-            (depends on libfontconfig and the EGL GPU loader), plus the raw binaries and <code>SHA256SUMS</code>.
+            The GitHub Release workflow publishes Linux only:
+            <code>lux-linux-x86_64</code> and <code>lux-linux-amd64.deb</code>
+            (depends on libfontconfig and the EGL GPU loader), plus <code>SHA256SUMS</code>.
+            macOS <code>.dmg</code> and Windows <code>.msi</code> are built outside CI.
             The repository is private, so a GitHub session is required. The second button is the v1.1.0 macOS disk image, which already exists.
           </p>
 
@@ -535,7 +536,7 @@
               </svg>
               <div class="btn-text-block">
                 <span class="btn-main-label">Latest GitHub Release</span>
-                <span class="btn-sub-label">dmg, msi, deb, and raw binaries</span>
+                <span class="btn-sub-label">Linux deb and raw binary</span>
               </div>
             </a>
 

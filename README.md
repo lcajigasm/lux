@@ -30,16 +30,15 @@ Target platforms, in order: **macOS**, **Windows**, **Linux**, then **iPadOS/iOS
 
 ## Downloads
 
-Pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml) and attaches unsigned packages to the GitHub Release. The repository is private, so a GitHub session is required to download them.
+Pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml) on `ubuntu-latest` only and attaches the Linux packages to the GitHub Release. The repository is private, so a GitHub session is required to download them. macOS and Windows are built outside CI.
 
-| Asset | Runner |
+| Asset | Where it is built |
 |---|---|
-| `lux-linux-x86_64` and `lux-linux-amd64.deb` | `ubuntu-latest` |
-| `lux-macos-aarch64` and `lux-macos-aarch64.dmg` | `macos-latest` (Apple Silicon) |
-| `lux-windows-x86_64.exe` and `lux-windows-x86_64.msi` | `windows-latest` |
-| `SHA256SUMS` | checksums of those files |
+| `lux-linux-x86_64`, `lux-linux-amd64.deb`, `SHA256SUMS` | GitHub Actions, `ubuntu-latest` |
+| `lux-macos-aarch64.dmg` | outside CI, `scripts/package-macos.sh` (ad-hoc signature, not notarized) |
+| `lux-windows-x86_64.msi` | outside CI, `scripts/package-msi.ps1` (unsigned WiX) |
 
-The `.deb` depends on `libfontconfig1` and `libegl1` (the GPU loader the Linux binary dlopens), plus the xkbcommon, X11, and Wayland libraries it loads before it opens a window. The `.dmg` is ad-hoc signed (`codesign --sign -`) and is not notarized, so Gatekeeper warns. The `.msi` is unsigned. No signing certificate is stored in this repo. The [v1.1.0 macOS disk image](https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg) is the older Apple Silicon installer. See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/STATUS.md](docs/STATUS.md).
+The `.deb` depends on `libfontconfig1` and `libegl1` (the GPU loader the Linux binary dlopens), plus the xkbcommon, X11, and Wayland libraries it loads before it opens a window. No signing certificate is stored in this repo. The [v1.1.0 macOS disk image](https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg) is the older Apple Silicon installer. See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/STATUS.md](docs/STATUS.md).
 
 ---
 

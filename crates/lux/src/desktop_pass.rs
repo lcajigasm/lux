@@ -1,4 +1,4 @@
-//! Headless desktop session used by CI on Linux, Windows, and macOS.
+//! Headless desktop session. CI runs it on Linux only.
 //!
 //! Drives the same `handle_keyboard_event` path as the window loop: open a
 //! real file, type, save, open the command palette, split, and find. It does

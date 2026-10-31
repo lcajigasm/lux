@@ -42,11 +42,11 @@ session in CI. It does not add a new editor surface.
 | Integrated terminal | no in ST3 core | yes | yes | in shell | shipped |
 | Themes | yes | yes | yes | in shell (Lux Dark plus scheme presets) | shipped |
 | Huge files without hitching | yes | weak | yes | read-only above 10 MB. Release mode asserts 8 ms on `insert_at_cursor` plus syntax sync. That is not keypress-to-pixel | P1 |
-| Download and run on Linux, macOS, Windows | yes | yes | yes | v1.2.0 tag builds raw binaries plus `lux-linux-amd64.deb`, `lux-macos-aarch64.dmg`, and `lux-windows-x86_64.msi`. The repo is private; a GitHub session is required | this release |
-| Installer (dmg notarized, msi, deb/rpm) | yes | yes | yes | unsigned `.deb` and `.msi`, ad-hoc `.dmg` (not notarized). No certificate in CI. rpm/AppImage/Flatpak and winget remain stubs | P1 |
-| GUI pass on Linux and Windows | yes | yes | yes | CI drives open, type, save, palette, split, and find through `handle_keyboard_event`. Pixels, IME, and native file dialogs stay manual | **next** |
-| Screen reader (VoiceOver, NVDA, Orca) | partial | yes | partial | CI checks the AccessKit tree (roles and buffer/find text). VoiceOver was an earlier macOS pass. NVDA and Orca were not run | **next** |
-| Intel Mac binary | yes | yes | yes | not in the release matrix (`macos-latest` is Apple Silicon) | P1 |
+| Download and run on Linux, macOS, Windows | yes | yes | yes | GitHub tag workflow is Linux only: `lux-linux-x86_64` and `lux-linux-amd64.deb`. macOS `.dmg` and Windows `.msi` are built outside CI. The repo is private; a GitHub session is required | this release |
+| Installer (dmg notarized, msi, deb/rpm) | yes | yes | yes | unsigned `.deb` in the Linux tag workflow. Ad-hoc `.dmg` and unsigned `.msi` scripts exist and are not run in CI. rpm/AppImage/Flatpak and winget remain stubs | P1 |
+| GUI pass on Linux and Windows | yes | yes | yes | Linux CI drives open, type, save, palette, split, and find through `handle_keyboard_event`. macOS and Windows are not in CI. Pixels, IME, and native file dialogs stay manual | **next** |
+| Screen reader (VoiceOver, NVDA, Orca) | partial | yes | partial | Linux CI checks the AccessKit tree (roles and buffer/find text). VoiceOver was an earlier macOS pass. NVDA and Orca were not run | **next** |
+| Intel Mac binary | yes | yes | yes | not built in CI. `scripts/package-macos.sh` can lipo a universal binary when the x86_64 std is installed | P1 |
 | Linux aarch64 binary | yes | yes | yes | not in the release matrix | P2 |
 | Auto-update server | yes | yes | yes | Ed25519 verify only. No hosted channel (no paid service) | P2 |
 | Debugger, collaboration, marketplace, AI, accounts, telemetry | varies | yes | varies | excluded by [NON-GOALS.md](NON-GOALS.md) | excluded |
@@ -54,16 +54,15 @@ session in CI. It does not add a new editor surface.
 
 ## Next three (following tanda)
 
-1. **Signed packages and the missing architectures.** v1.2.0 ships an
-   ad-hoc macOS `.dmg`, a WiX `.msi`, and a `.deb`. Notarization and
-   Authenticode need a certificate that is not in the repo and must not
-   be added as a secret from this workflow. Intel Mac and Linux aarch64
-   binaries are still absent (`macos-latest` is Apple Silicon;
-   `ubuntu-latest` is x86_64).
+1. **macOS and Windows back on a builder.** GitHub Actions is Linux only.
+   `scripts/package-macos.sh` and `scripts/package-msi.ps1` still produce
+   an ad-hoc `.dmg` and an unsigned `.msi` outside CI. Notarization and
+   Authenticode need a certificate that is not in the repo. Intel Mac and
+   Linux aarch64 binaries are still absent.
 2. **A real GPU window on Linux and Windows.** The headless session covers
    the editing handlers. It does not cover pixels, the IME candidate
-   window, or the native open/save dialog.
-3. **VoiceOver, NVDA, and Orca on the AccessKit tree.** CI checks roles
-   and the buffer and find-query text. A hardware or OS screen reader was
-   not run for this release. Huge-file editing above 10 MB stays P1 beside
-   these three.
+   window, or the native open/save dialog. CI runs that session on Linux.
+3. **VoiceOver, NVDA, and Orca on the AccessKit tree.** Linux CI checks
+   roles and the buffer and find-query text. A hardware or OS screen reader
+   was not run for this release. Huge-file editing above 10 MB stays P1
+   beside these three.

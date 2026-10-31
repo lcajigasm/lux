@@ -8,6 +8,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# GitHub Actions runs on ubuntu-latest only. macOS and Windows builds
+# stay outside CI (scripts/package-macos.sh, scripts/package-msi.ps1).
+
 jobs:
   fmt:
     name: cargo fmt --check
@@ -27,17 +30,12 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
-    name: cargo test (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: cargo test (ubuntu-latest)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
-      - if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
       - run: cargo test --workspace
 
   deny:
@@ -63,16 +61,11 @@ jobs:
       - run: ./scripts/check-limits.sh
 
   release-latency:
-    name: release typing budget (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: release typing budget (ubuntu-latest)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
-      - if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
       - name: Release-mode 8 ms typing budget
         run: cargo test -p lux --release test_continuous_typing_latency_large_file_under_8ms -- --nocapture

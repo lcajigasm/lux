@@ -8,76 +8,38 @@ on:
 permissions:
   contents: write
 
+# Linux only. macOS (.dmg) and Windows (.msi) are built outside CI with
+# scripts/package-macos.sh and scripts/package-msi.ps1. No signing secrets.
+
 jobs:
   build:
-    name: ${{ matrix.asset }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            binary: lux
-            asset: lux-linux-x86_64
-            package: deb
-          - os: macos-latest
-            binary: lux
-            asset: lux-macos-aarch64
-            package: dmg
-          - os: windows-latest
-            binary: lux.exe
-            asset: lux-windows-x86_64.exe
-            package: msi
+    name: lux-linux-x86_64
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Linux link libraries
-        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
 
       - name: Build release binary
         run: cargo build -p lux --release --locked
 
       - name: Stage raw binary
-        shell: bash
         run: |
           mkdir -p staging
-          cp "target/release/${{ matrix.binary }}" "staging/${{ matrix.asset }}"
+          cp target/release/lux staging/lux-linux-x86_64
 
       - name: Package deb
-        if: matrix.package == 'deb'
-        shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
           chmod +x scripts/package-deb.sh
           ./scripts/package-deb.sh "target/release/lux" "$version" "staging/lux-linux-amd64.deb"
 
-      - name: Package dmg
-        if: matrix.package == 'dmg'
-        shell: bash
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          chmod +x scripts/package-macos.sh
-          # The .app stays out of the artifact. Only the disk image is published.
-          mkdir -p "$RUNNER_TEMP/macos-dist"
-          LUX_BIN="$PWD/target/release/lux" LUX_VERSION="$version" \
-            ./scripts/package-macos.sh "$RUNNER_TEMP/macos-dist" lux-macos-aarch64.dmg
-          cp "$RUNNER_TEMP/macos-dist/lux-macos-aarch64.dmg" staging/
-
-      - name: Package msi
-        if: matrix.package == 'msi'
-        shell: pwsh
-        env:
-          LUX_VERSION: ${{ github.ref_name }}
-          LUX_BIN: ${{ github.workspace }}\target\release\lux.exe
-          LUX_MSI: ${{ github.workspace }}\staging\lux-windows-x86_64.msi
-        run: ./scripts/package-msi.ps1
-
       - name: Upload assets
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
+          name: lux-linux-x86_64
           path: staging/
           if-no-files-found: error
 
@@ -94,7 +56,7 @@ jobs:
       - name: Checksums
         run: |
           mkdir -p assets
-          find dist -type f \( -name 'lux-*' -o -name '*.dmg' -o -name '*.deb' -o -name '*.msi' -o -name '*.exe' \) -exec cp {} assets/ \;
+          find dist -type f \( -name 'lux-linux-*' -o -name '*.deb' \) -exec cp {} assets/ \;
           cd assets
           find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
           ls -l
