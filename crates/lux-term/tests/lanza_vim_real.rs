@@ -69,12 +69,19 @@ mod pty {
         // Ask vim itself what size it thinks the terminal is: this only
         // matches if the kernel actually delivered SIGWINCH to it and vim
         // re-queried the pty's winsize, not just that our own grid resized.
-        pty.write(b":echo &columns . \"x\" . &lines\r")
-            .expect("write the size-echo command");
+        // One write is not enough on a busy runner: SIGWINCH redraws the
+        // screen and drops that command line, and waiting cannot recover a
+        // query that was never accepted. Re-issue it until the answer shows.
+        let mut last_query = Instant::now() - Duration::from_secs(1);
         assert!(
-            wait_until(Duration::from_secs(60), || pty
-                .snapshot()
-                .contains("120x40")),
+            wait_until(Duration::from_secs(60), || {
+                if last_query.elapsed() >= Duration::from_secs(1) {
+                    pty.write(b"\x1b:echo &columns . \"x\" . &lines\r")
+                        .expect("write the size-echo command");
+                    last_query = Instant::now();
+                }
+                pty.snapshot().contains("120x40")
+            }),
             "vim did not observe the resize (no SIGWINCH?):\n{}",
             pty.snapshot()
         );
