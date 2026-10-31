@@ -1,0 +1,25 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!-- Unsigned MSI. WiX 5. No Authenticode certificate and no secrets. -->
+  <Package
+      Name="Lux"
+      Manufacturer="Lux"
+      Version="$(var.Version)"
+      UpgradeCode="6F0E2A1B-9C4D-4E5F-8A71-2B3C4D5E6F70">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Lux is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="Lux" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="LuxFiles" Directory="Lux">
+      <Component>
+        <File Source="$(var.LuxExe)" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main">
+      <ComponentGroupRef Id="LuxFiles" />
+    </Feature>
+  </Package>
+</Wix>

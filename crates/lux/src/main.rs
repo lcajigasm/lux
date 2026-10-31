@@ -42,6 +42,9 @@ mod term;
 mod theme_picker;
 mod ui;
 
+#[cfg(test)]
+mod desktop_pass;
+
 fn main() {
     lux_pack::install_panic_hook();
     let (path, font_bytes) = font::load_system_monospace_font().expect(

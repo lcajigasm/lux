@@ -207,6 +207,9 @@ pub(crate) fn execute_keymap_command(app: &mut App, cmd: &str, clipboard: Option
         "jump_to_matching_bracket" => {
             app.jump_to_matching_bracket();
         }
+        "command_palette" => {
+            app.toggle_command_palette();
+        }
         "quick_open" => {
             app.open_goto_anything("");
         }

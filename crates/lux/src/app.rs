@@ -173,7 +173,7 @@ impl App {
         self.update_document_title();
     }
 
-    fn build_accessibility_tree(&mut self) -> TreeUpdate {
+    pub(crate) fn build_accessibility_tree(&mut self) -> TreeUpdate {
         crate::accessibility::build_accessibility_tree(self)
     }
 
