@@ -29,7 +29,7 @@ pub(crate) const DEFAULT_SETTINGS_JSON: &str = r#"{
   "editor.indentStyle": "space",
   "editor.trimTrailingWhitespace": false,
   "editor.trimTrailingWhitespacePreserveCursor": false,
-  "editor.insertFinalNewline": true,
+  "editor.insertFinalNewline": false,
   "editor.wordWrap": false,
   "editor.distractionFreeColumnWidth": 80,
   "workbench.colorTheme": "lux-dark",
@@ -303,7 +303,7 @@ impl SettingsState {
         let preserve_cursor = r["editor.trimTrailingWhitespacePreserveCursor"]
             .as_bool()
             .unwrap_or(false);
-        let final_nl = r["editor.insertFinalNewline"].as_bool().unwrap_or(true);
+        let final_nl = r["editor.insertFinalNewline"].as_bool().unwrap_or(false);
         let word_wrap = r["editor.wordWrap"].as_bool().unwrap_or(false);
         let df_col = r["editor.distractionFreeColumnWidth"]
             .as_f64()

@@ -5,6 +5,7 @@ use lux_platform::PlatformContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(isize)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) enum MenuAction {
     About = 1,
     Preferences = 2,
@@ -99,10 +100,12 @@ pub(crate) enum MenuAction {
 }
 
 impl MenuAction {
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub(crate) fn tag(self) -> isize {
         self as isize
     }
 
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub(crate) fn from_tag(tag: isize) -> Option<Self> {
         match tag {
             1 => Some(Self::About),
@@ -200,7 +203,9 @@ impl MenuAction {
 }
 
 mod queue;
-pub(crate) use queue::{poll_actions, post_action, register_waker};
+#[cfg_attr(not(target_os = "macos"), allow(unused_imports))]
+pub(crate) use queue::post_action;
+pub(crate) use queue::{poll_actions, register_waker};
 
 pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, action: MenuAction) {
     match action {

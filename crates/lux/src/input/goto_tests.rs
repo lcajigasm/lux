@@ -246,10 +246,14 @@ fn goto_file_colon_line_transient_preview_and_escape() {
 #[test]
 fn goto_symbol_in_project_opens_modal_immediately() {
     let mut app = test_app("fn local_func() {}\n");
-    app.modifiers.meta = true;
+    if cfg!(target_os = "macos") {
+        app.modifiers.meta = true;
+    } else {
+        app.modifiers.control = true;
+    }
     app.modifiers.shift = true;
 
-    // Send Cmd+Shift+R
+    // Cmd+Shift+R on macOS, Ctrl+Shift+R on Windows and Linux.
     send_key(
         &mut app,
         &KeyEvent {

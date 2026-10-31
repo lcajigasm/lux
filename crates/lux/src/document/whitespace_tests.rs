@@ -294,3 +294,25 @@ fn test_manual_whitespace_commands_and_palette_dispatch() {
     app.history.undo(&mut app.buffer);
     assert_eq!(app.buffer.text(), "foo   \nbar");
 }
+
+#[test]
+fn rejected_save_does_not_keep_final_newline_transform() {
+    let temp = tempfile::tempdir().unwrap();
+    let file_path = temp.path().join("note.txt");
+    fs::write(&file_path, "original").unwrap();
+
+    let mut app = test_app(&temp);
+    let ctx = TestContext::new(Some(file_path.clone()), None, SaveDecision::Discard);
+    app.request_document(&ctx, Request::Open(Some(file_path.clone())));
+    ctx.complete(&mut app);
+    app.insert_at_cursor("edit ");
+    app.update_setting("editor.insertFinalNewline", serde_json::Value::Bool(true));
+    fs::write(&file_path, "external").unwrap();
+
+    app.request_document(&ctx, Request::Save { save_as: false });
+    ctx.complete(&mut app);
+
+    assert_eq!(fs::read_to_string(&file_path).unwrap(), "external");
+    assert_eq!(app.buffer.text(), "edit original");
+    assert!(app.document_dirty());
+}
