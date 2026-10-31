@@ -532,13 +532,13 @@ mod tests {
 
     #[test]
     fn background_highlighter_processes_rope_jobs_and_waker() {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        let woke = std::sync::Arc::new(AtomicBool::new(false));
-        let woke_clone = woke.clone();
+        // The worker queues the result and then wakes. `recv` can return
+        // before that wake runs, so the test waits on the waker's own signal.
+        let (woke_tx, woke_rx) = crossbeam_channel::bounded::<()>(1);
         let highlighter = BackgroundHighlighter::spawn(
             LanguageId::Rust,
             Some(std::sync::Arc::new(move || {
-                woke_clone.store(true, Ordering::SeqCst);
+                let _ = woke_tx.try_send(());
             })),
         );
 
@@ -549,6 +549,8 @@ mod tests {
         let result = highlighter.recv().expect("should receive parse result");
         assert_eq!(result.version, 1);
         assert!(!result.tokens.is_empty());
-        assert!(woke.load(Ordering::SeqCst));
+        woke_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("waker should run after the result is queued");
     }
 }
