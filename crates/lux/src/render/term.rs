@@ -6,7 +6,7 @@ use swash::scale::ScaleContext;
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
 
-use crate::render::paint::push_glyph;
+use crate::render::paint::{active_theme, color, push_glyph};
 use crate::term::TerminalState;
 
 #[allow(clippy::too_many_arguments)]
@@ -38,18 +38,18 @@ pub(crate) fn render_term(
     // 1. Panel background
     quad_instances.push(QuadInstance {
         rect: [0.0, grid_y, window_width, grid_h],
-        color: [0.06, 0.06, 0.08, 1.0],
+        color: color(active_theme().background),
     });
 
     // 2. Header background & border
     quad_instances.push(QuadInstance {
         rect: [0.0, dock_y, window_width, header_h],
-        color: [0.10, 0.10, 0.13, 1.0],
+        color: color(active_theme().chrome.tab_bar),
     });
     let top_border_color = if term.focused {
-        [0.35, 0.55, 0.95, 1.0] // Accent blue when terminal has focus
+        color(active_theme().accent)
     } else {
-        [0.20, 0.20, 0.25, 1.0]
+        color(active_theme().chrome.border)
     };
     quad_instances.push(QuadInstance {
         rect: [0.0, dock_y, window_width, stroke],
@@ -57,7 +57,7 @@ pub(crate) fn render_term(
     });
     quad_instances.push(QuadInstance {
         rect: [0.0, grid_y - stroke, window_width, stroke],
-        color: [0.15, 0.15, 0.18, 1.0],
+        color: color(active_theme().chrome.border),
     });
 
     let font_size = 12.0 * scale_factor;
@@ -71,8 +71,8 @@ pub(crate) fn render_term(
     // 3. Header tabs
     let mut tab_x = 8.0 * scale_factor;
     let tab_w = 90.0 * scale_factor;
-    let active_color = [0.16, 0.17, 0.22, 1.0];
-    let inactive_color = [0.10, 0.10, 0.13, 1.0];
+    let active_color = color(active_theme().chrome.panel_row);
+    let inactive_color = color(active_theme().chrome.tab_inactive);
     let text_fg = [0.85, 0.85, 0.90, 1.0];
     let muted_fg = [0.55, 0.55, 0.60, 1.0];
 
@@ -92,7 +92,7 @@ pub(crate) fn render_term(
         if is_active {
             quad_instances.push(QuadInstance {
                 rect: [tab_x, dock_y, tab_w, 2.0 * stroke],
-                color: [0.35, 0.55, 0.95, 1.0],
+                color: color(active_theme().accent),
             });
         }
 
@@ -143,7 +143,7 @@ pub(crate) fn render_term(
             24.0 * scale_factor,
             header_h - 4.0 * stroke,
         ],
-        color: [0.14, 0.14, 0.17, 1.0],
+        color: color(active_theme().chrome.panel_input),
     });
     let plus_line = editor_view.text_layout_mut().layout_line(&style, "+", &[]);
     let plus_base = plus_line.baseline();
@@ -475,7 +475,7 @@ fn render_pty_grid(
         let cur_y = start_y + cur_row as f32 * row_h;
         quad_instances.push(QuadInstance {
             rect: [cur_x, cur_y, char_w, row_h],
-            color: [0.35, 0.65, 0.95, 0.65],
+            color: color(active_theme().accent),
         });
     }
 

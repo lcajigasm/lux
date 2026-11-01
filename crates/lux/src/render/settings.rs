@@ -42,7 +42,7 @@ pub(crate) fn render_settings_panel(
     // 2. Card Background
     quad_instances.push(QuadInstance {
         rect: [left, top, width, total_height],
-        color: [0.10, 0.10, 0.13, 0.98],
+        color: color(theme.chrome.panel),
     });
 
     // 3. Card Border / Focus Ring
@@ -128,7 +128,7 @@ pub(crate) fn render_settings_panel(
     // Header separator line
     quad_instances.push(QuadInstance {
         rect: [left, top + header_height, width, stroke],
-        color: [0.25, 0.25, 0.30, 0.6],
+        color: color(theme.chrome.border),
     });
 
     // 5. Items Rows
@@ -155,7 +155,7 @@ pub(crate) fn render_settings_panel(
                     width - 8.0 * scale_factor,
                     row_height - 2.0 * scale_factor,
                 ],
-                color: [0.20, 0.22, 0.30, 0.95],
+                color: color(theme.chrome.panel_row),
             });
             quad_instances.push(QuadInstance {
                 rect: [

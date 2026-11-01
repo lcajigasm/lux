@@ -33,7 +33,7 @@ use std::time::Instant;
 use crate::presentation::Outcome;
 use lux_platform::PlatformContext;
 use lux_render::QuadInstance;
-use paint::{color, paint, push_glyph};
+use paint::{color, paint, push_glyph, set_active_theme, set_hidpi_grayscale};
 
 use crate::app::{App, BLINK_INTERVAL, FONT_SIZE, LINE_HEIGHT, TEXT_LEFT_PADDING};
 
@@ -79,6 +79,8 @@ impl App {
             return;
         };
         let font = *font;
+        set_hidpi_grayscale(*scale_factor);
+        set_active_theme(chrome.theme);
         let font_size = FONT_SIZE * *scale_factor;
         let line_height = LINE_HEIGHT * *scale_factor;
         let stroke = *scale_factor;
@@ -119,11 +121,11 @@ impl App {
         if tab_bar_height > 0.0 {
             quad_instances.push(QuadInstance {
                 rect: [0.0, 0.0, window_width, tab_bar_height],
-                color: [0.055, 0.055, 0.075, 1.0],
+                color: color(chrome.theme.chrome.tab_bar),
             });
             quad_instances.push(QuadInstance {
                 rect: [0.0, tab_bar_height - stroke, window_width, stroke],
-                color: [0.15, 0.15, 0.20, 1.0],
+                color: color(chrome.theme.chrome.border),
             });
         }
         let mut glyph_instances = Vec::new();
@@ -147,8 +149,10 @@ impl App {
                 elapsed,
                 active_scroll: (viewport.scroll_x, viewport.scroll_y),
                 theme: &chrome.theme,
-                syntax_theme: lux_syntax::theme::by_name(chrome.theme.name)
-                    .unwrap_or(&lux_syntax::theme::LUX_DARK),
+                syntax_theme: crate::color_scheme::syntax_theme(
+                    &ui.settings.schemes,
+                    chrome.theme.name,
+                ),
             };
             split::render_split_layout(
                 &params,
@@ -170,7 +174,7 @@ impl App {
                         gutter_total_width,
                         viewport.height,
                     ],
-                    color: [0.10, 0.10, 0.13, 1.0],
+                    color: color(chrome.theme.chrome.gutter),
                 });
                 quad_instances.push(QuadInstance {
                     rect: [
@@ -179,7 +183,7 @@ impl App {
                         stroke,
                         viewport.height,
                     ],
-                    color: [0.18, 0.18, 0.22, 1.0],
+                    color: color(chrome.theme.chrome.border),
                 });
             }
 
@@ -200,7 +204,7 @@ impl App {
                         };
                         quad_instances.push(QuadInstance {
                             rect: [h_x, cur_y, h_w, line_height],
-                            color: [0.13, 0.13, 0.17, 0.6],
+                            color: color(chrome.theme.chrome.line_highlight),
                         });
                     }
                 }

@@ -28,6 +28,9 @@ pub struct QuadPipeline {
     bind_group: wgpu::BindGroup,
     instance_buffer: wgpu::Buffer,
     instance_capacity: usize,
+    /// 1 when the render target is sRGB and authored colors must be decoded
+    /// to linear before the store. Packed into `viewport_size.z`.
+    output_linear: f32,
 }
 
 impl QuadPipeline {
@@ -131,6 +134,7 @@ impl QuadPipeline {
             bind_group,
             instance_buffer,
             instance_capacity,
+            output_linear: f32::from(target_format.is_srgb()),
         }
     }
 
@@ -141,7 +145,7 @@ impl QuadPipeline {
             &self.globals_buffer,
             0,
             bytemuck::bytes_of(&Globals {
-                viewport_size: [width as f32, height as f32, 0.0, 0.0],
+                viewport_size: [width as f32, height as f32, self.output_linear, 0.0],
             }),
         );
     }

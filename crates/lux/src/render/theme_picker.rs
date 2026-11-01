@@ -52,11 +52,11 @@ pub(crate) fn render_theme_picker(
     // 1. Overlay main background
     quad_instances.push(QuadInstance {
         rect: [left, top, width, total_height],
-        color: [0.09, 0.09, 0.12, 0.98],
+        color: color(theme.chrome.panel),
     });
 
     // 2. Outer border
-    let border_color = [0.25, 0.25, 0.32, 1.0];
+    let border_color = color(theme.chrome.border);
     quad_instances.push(QuadInstance {
         rect: [left, top, width, stroke],
         color: border_color,
@@ -137,7 +137,7 @@ pub(crate) fn render_theme_picker(
         if is_selected {
             quad_instances.push(QuadInstance {
                 rect: [left + stroke, row_y, width - 2.0 * stroke, row_height],
-                color: [0.18, 0.20, 0.28, 0.95],
+                color: color(theme.chrome.panel_row),
             });
             // Left selection accent indicator bar
             quad_instances.push(QuadInstance {
@@ -211,11 +211,11 @@ pub(crate) fn render_theme_picker(
                 // Subtle border around swatch
                 quad_instances.push(QuadInstance {
                     rect: [sx, swatch_y, swatch_size, stroke],
-                    color: [0.3, 0.3, 0.3, 0.5],
+                    color: color(theme.chrome.border),
                 });
                 quad_instances.push(QuadInstance {
                     rect: [sx, swatch_y + swatch_size - stroke, swatch_size, stroke],
-                    color: [0.3, 0.3, 0.3, 0.5],
+                    color: color(theme.chrome.border),
                 });
             }
         }

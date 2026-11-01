@@ -70,7 +70,7 @@ pub(crate) fn render_split_layout(
         let divider_color = if is_dragging {
             color(params.theme.accent)
         } else {
-            [0.20, 0.20, 0.28, 1.0]
+            color(params.theme.chrome.border)
         };
         quad_instances.push(QuadInstance {
             rect: *rect,
@@ -233,7 +233,7 @@ fn render_single_pane(
         if let Some(g_rect) = clamp_quad_to_rect([px, py, gutter_total_width, ph], bounds) {
             quad_instances.push(QuadInstance {
                 rect: g_rect,
-                color: [0.10, 0.10, 0.13, 1.0],
+                color: color(params.theme.chrome.gutter),
             });
         }
         if let Some(b_rect) = clamp_quad_to_rect(
@@ -247,7 +247,7 @@ fn render_single_pane(
         ) {
             quad_instances.push(QuadInstance {
                 rect: b_rect,
-                color: [0.18, 0.18, 0.22, 1.0],
+                color: color(params.theme.chrome.border),
             });
         }
     }
@@ -274,7 +274,7 @@ fn render_single_pane(
             ) {
                 quad_instances.push(QuadInstance {
                     rect: h_rect,
-                    color: [0.13, 0.13, 0.17, 0.6],
+                    color: color(params.theme.chrome.line_highlight),
                 });
             }
         }

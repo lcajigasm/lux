@@ -148,17 +148,22 @@ pub(crate) fn handle_theme_picker_key(
 
 impl App {
     pub(crate) fn active_syntax_theme(&self) -> &'static lux_syntax::theme::SyntaxTheme {
-        lux_syntax::theme::by_name(self.chrome.theme.name).unwrap_or(&lux_syntax::theme::LUX_DARK)
+        crate::color_scheme::syntax_theme(&self.ui.settings.schemes, self.chrome.theme.name)
     }
 
     pub(crate) fn set_theme(&mut self, name: &str) {
-        if let Some(ui_theme) = lux_ui::Theme::by_name(name) {
+        if let Some(loaded) = crate::color_scheme::scheme_named(&self.ui.settings.schemes, name) {
+            self.chrome.theme = loaded.theme;
+            if let Some(syntax) = &mut self.syntax {
+                syntax.theme = loaded.syntax;
+            }
+        } else if let Some(ui_theme) = lux_ui::Theme::by_name(name) {
             self.chrome.theme = ui_theme;
-        }
-        if let Some(syntax_theme) = lux_syntax::theme::by_name(name)
-            && let Some(syntax) = &mut self.syntax
-        {
-            syntax.theme = syntax_theme;
+            if let Some(syntax_theme) = lux_syntax::theme::by_name(name)
+                && let Some(syntax) = &mut self.syntax
+            {
+                syntax.theme = syntax_theme;
+            }
         }
         self.sync_editor_clear_color();
         self.scheduler.invalidate_all();
@@ -197,7 +202,7 @@ impl App {
             let config = self.ui.settings.config.lock().unwrap();
             config.resolved()["workbench.colorTheme"]
                 .as_str()
-                .unwrap_or("system")
+                .unwrap_or("monokai")
                 .to_string()
         };
         self.apply_color_theme_setting(&name);
@@ -219,7 +224,13 @@ impl App {
 
     pub(crate) fn open_theme_picker(&mut self) {
         let current_theme = self.chrome.theme.name;
-        let picker = ThemePickerState::new(current_theme);
+        let mut picker = ThemePickerState::new(current_theme);
+        picker.candidates = crate::color_scheme::theme_names(&self.ui.settings.schemes);
+        picker.selected_index = picker
+            .candidates
+            .iter()
+            .position(|name| name.eq_ignore_ascii_case(current_theme))
+            .unwrap_or(0);
         self.ui.theme_picker = Some(picker);
         self.scheduler.invalidate_all();
     }
@@ -244,18 +255,17 @@ mod tests {
     }
 
     #[test]
-    fn system_light_uses_lux_light_until_a_named_theme_is_chosen() {
+    fn default_is_monokai_until_the_user_asks_to_follow_the_os() {
         let mut app = app();
-        app.apply_system_scheme(ColorScheme::Light);
-        assert_eq!(app.chrome.theme.name, Theme::LUX_LIGHT.name);
-        assert_ne!(app.chrome.theme.background, Theme::LUX_DARK.background);
-        app.apply_color_theme_setting("lux-dark");
+        assert_eq!(app.chrome.theme, Theme::MONOKAI);
         assert!(!app.chrome.theme_follows_system);
-        assert_eq!(app.chrome.theme.name, Theme::LUX_DARK.name);
         app.apply_system_scheme(ColorScheme::Light);
-        assert_eq!(app.chrome.theme.name, Theme::LUX_DARK.name);
+        assert_eq!(app.chrome.theme.name, Theme::MONOKAI.name);
         app.apply_color_theme_setting("system");
         assert!(app.chrome.theme_follows_system);
         assert_eq!(app.chrome.theme.name, Theme::LUX_LIGHT.name);
+        app.apply_color_theme_setting("monokai");
+        assert!(!app.chrome.theme_follows_system);
+        assert_eq!(app.chrome.theme, Theme::MONOKAI);
     }
 }

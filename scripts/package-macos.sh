@@ -82,6 +82,12 @@ mkdir -p "$app_path/Contents/Resources"
 
 cp "$bin" "$app_path/Contents/MacOS/lux"
 chmod +x "$app_path/Contents/MacOS/lux"
+# Two release trees plus the disk-image scratch exhausted the runner
+# (hdiutil: No space left on device, run 41335548609). The bundle already
+# holds the fat binary.
+if [[ -z "${LUX_BIN:-}" ]]; then
+  rm -rf target/aarch64-apple-darwin target/x86_64-apple-darwin target/release
+fi
 
 sed "s/<string>1.0.0<\\/string>/<string>${version}<\\/string>/g" \
   packaging/macos/Info.plist > "$app_path/Contents/Info.plist"

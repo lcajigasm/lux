@@ -54,14 +54,18 @@ pub struct ClusterGeometry {
     pub advance: f32,
     pub is_ligature_start: bool,
     pub is_ligature_continuation: bool,
-    /// This cluster's first rasterizable glyph id, for feeding
-    /// `GlyphAtlas::rasterize` — `None` for a cluster with no glyph at all
-    /// (e.g. a hard line break). A cluster can carry more than one glyph
-    /// (a base character plus a combining mark); only the first is exposed
-    /// today, a real, flagged gap for combining-mark rendering, not a
-    /// silent one — the overwhelming common case (one glyph per cluster,
-    /// true of plain Latin/programming text) is unaffected.
+    /// First rasterizable glyph id. `None` for a cluster with no glyph
+    /// (a hard line break).
     pub glyph_id: Option<u32>,
+    /// Offset of the first glyph from the cluster origin. `y` grows up.
+    pub glyph_dx: f32,
+    pub glyph_dy: f32,
+    /// Further glyphs in the same cluster (a combining mark), each
+    /// `(glyph id, dx from the cluster origin, dy with y growing up)`.
+    pub extra_glyphs: Vec<(u32, f32, f32)>,
+    /// `Blob` id of the font that shaped this cluster. A fallback font
+    /// (CJK, emoji) has a different id from the primary monospace face.
+    pub font_id: u64,
 }
 
 /// A shaped, line-broken, left-aligned single-paragraph layout (an editor
@@ -87,6 +91,26 @@ impl LineLayout {
         self.layout.height()
     }
 
+    /// The face that shaped `font_id`, so a fallback run (CJK, emoji) is
+    /// rasterized from that font and not from the primary monospace file.
+    pub fn face(&self, font_id: u64) -> Option<swash::FontRef<'static>> {
+        for line_index in 0..self.layout.len() {
+            let line = self.layout.get(line_index)?;
+            for item in line.items() {
+                let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                    continue;
+                };
+                let font = glyph_run.run().font();
+                if font.data.id() != font_id {
+                    continue;
+                }
+                let bytes = leaked_font_bytes(&font.data);
+                return swash::FontRef::from_index(bytes, font.index as usize);
+            }
+        }
+        None
+    }
+
     /// Cluster geometry across every line `parley` produced (normally one,
     /// since `layout_line` never sets a max advance — but source text can
     /// still contain hard line breaks, so this doesn't assume a single
@@ -105,17 +129,24 @@ impl LineLayout {
                 let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
                     continue;
                 };
+                let font_id = glyph_run.run().font().data.id();
                 let mut x = glyph_run.offset();
                 for cluster in glyph_run.run().clusters() {
                     let advance = cluster.advance();
-                    let glyph_id = cluster.glyphs().next().map(|glyph| glyph.id);
+                    let mut glyphs = cluster.glyphs();
+                    let first = glyphs.next();
+                    let extra_glyphs = glyphs.map(|glyph| (glyph.id, glyph.x, glyph.y)).collect();
                     out.push(ClusterGeometry {
                         byte_range: cluster.text_range(),
                         x,
                         advance,
                         is_ligature_start: cluster.is_ligature_start(),
                         is_ligature_continuation: cluster.is_ligature_continuation(),
-                        glyph_id,
+                        glyph_id: first.map(|glyph| glyph.id),
+                        glyph_dx: first.map(|glyph| glyph.x).unwrap_or(0.0),
+                        glyph_dy: first.map(|glyph| glyph.y).unwrap_or(0.0),
+                        extra_glyphs,
+                        font_id,
                     });
                     x += advance;
                 }
@@ -157,6 +188,35 @@ impl TextLayoutContext {
             .collection
             .family_name(family_id)
             .map(str::to_owned)
+    }
+
+    /// Registers another face and appends it as a script or emoji fallback.
+    /// The primary monospace file stays the default; this only fills gaps
+    /// (Han, Hiragana, Katakana, Hangul, emoji) it cannot draw.
+    pub fn register_coverage_font(
+        &mut self,
+        font_bytes: &[u8],
+        scripts: &[[u8; 4]],
+        emoji: bool,
+    ) -> bool {
+        let blob = Blob::from(font_bytes.to_vec());
+        let registered = self.font_context.collection.register_fonts(blob, None);
+        if registered.is_empty() {
+            return false;
+        }
+        let ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
+        for script in scripts {
+            let key = fontique::FallbackKey::new(fontique::Script::from_bytes(*script), None);
+            self.font_context
+                .collection
+                .append_fallbacks(key, ids.iter().copied());
+        }
+        if emoji {
+            self.font_context
+                .collection
+                .append_generic_families(fontique::GenericFamily::Emoji, ids.into_iter());
+        }
+        true
     }
 
     /// Lays out one logical line of text: shapes it with `style.family` at
@@ -202,6 +262,31 @@ impl Default for TextLayoutContext {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Keeps one process-lifetime copy of a shaped font's bytes so
+/// [`swash::FontRef`] can outlive the `parley` layout that owned the blob.
+fn leaked_font_bytes(blob: &Blob<u8>) -> &'static [u8] {
+    use std::sync::Mutex;
+    static CACHE: Mutex<Vec<(u64, &'static [u8])>> = Mutex::new(Vec::new());
+    let id = blob.id();
+    let mut cache = CACHE.lock().expect("font byte cache");
+    if let Some((_, bytes)) = cache.iter().find(|(cached, _)| *cached == id) {
+        return bytes;
+    }
+    let owned = blob.clone();
+    let ptr = owned.data().as_ptr();
+    let len = owned.data().len();
+    // The forgotten Arc is never dropped, so this allocation stays for the
+    // process. That is the same lifetime the primary monospace face already
+    // has (`Box::leak` in `App::new`).
+    std::mem::forget(owned);
+    // SAFETY: `owned` was the last Arc we hold and it was forgotten, so the
+    // allocation `ptr` addresses is not freed. `len` is that allocation's
+    // length. The slice is therefore valid for the rest of the process.
+    let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+    cache.push((id, bytes));
+    bytes
 }
 
 /// `calt` (contextual alternates) and `liga` (standard ligatures) are the
@@ -386,5 +471,57 @@ mod tests {
         let unwrapped = cx.layout_line_wrapped(&style, "aaaa aaaa aaaa", None, &[]);
         let wrapped = cx.layout_line_wrapped(&style, "aaaa aaaa aaaa", Some(70.0), &[]);
         assert!(wrapped.layout.len() > unwrapped.layout.len());
+    }
+
+    #[test]
+    fn a_combining_mark_is_not_dropped() {
+        // Subset of DejaVu Sans Mono (e + U+0323). Bundled so macOS CI,
+        // which has no DejaVu install, still shapes a real mark glyph.
+        const MARK_TTF: &[u8] = include_bytes!("../tests/fixtures/dejavu-mono-mark.ttf");
+        let mut cx = TextLayoutContext::new();
+        let family = cx
+            .register_font(MARK_TTF)
+            .expect("DejaVu mark subset registers");
+        let style = LineStyle {
+            family: &family,
+            font_size: 16.0,
+            ligatures: false,
+        };
+        let text = "e\u{0323}";
+        let clusters = cx.layout_line(&style, text, &[]).clusters();
+        let painted = clusters.iter().filter(|c| c.glyph_id.is_some()).count()
+            + clusters.iter().map(|c| c.extra_glyphs.len()).sum::<usize>();
+        let covers_both = clusters.iter().any(|c| c.byte_range.len() > 1);
+        assert!(
+            painted >= 2 || covers_both,
+            "combining sequence must paint the base and the mark, got {clusters:?}"
+        );
+    }
+
+    #[test]
+    fn a_hani_fallback_is_shaped_from_its_own_face() {
+        let path = "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf";
+        let Ok(bytes) = std::fs::read(path) else {
+            return;
+        };
+        const MARK_TTF: &[u8] = include_bytes!("../tests/fixtures/dejavu-mono-mark.ttf");
+        let mut cx = TextLayoutContext::new();
+        let family = cx.register_font(MARK_TTF).expect("mark subset registers");
+        assert!(cx.register_coverage_font(&bytes, &[*b"Hani"], false));
+        let style = LineStyle {
+            family: &family,
+            font_size: 16.0,
+            ligatures: false,
+        };
+        let layout = cx.layout_line(&style, "中", &[]);
+        let cluster = layout
+            .clusters()
+            .into_iter()
+            .find(|cluster| cluster.glyph_id.is_some())
+            .expect("Han cluster");
+        let face = layout.face(cluster.font_id).expect("fallback face");
+        let mapped = face.charmap().map('中');
+        assert_ne!(mapped, 0, "fallback face must contain U+4E2D");
+        assert!(cluster.glyph_id.unwrap() <= u32::from(u16::MAX));
     }
 }

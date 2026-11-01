@@ -7,6 +7,7 @@ mod accessibility;
 mod app;
 mod build;
 mod chrome;
+mod color_scheme;
 mod conflict;
 mod dialog;
 mod distraction_free;

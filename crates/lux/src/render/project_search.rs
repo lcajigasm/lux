@@ -41,7 +41,7 @@ pub(crate) fn render_project_search(
     // Background shadow & modal quad
     quad_instances.push(QuadInstance {
         rect: [modal_x, modal_y, modal_width, modal_h],
-        color: [0.08, 0.08, 0.11, 0.98],
+        color: color(theme.chrome.panel),
     });
 
     // Border outline
@@ -65,9 +65,9 @@ pub(crate) fn render_project_search(
     let input_h = 24.0 * scale_factor;
 
     let find_bg = if state.focused_field == SearchField::Find {
-        [0.14, 0.14, 0.18, 1.0]
+        color(theme.chrome.panel_input)
     } else {
-        [0.10, 0.10, 0.13, 1.0]
+        color(theme.chrome.gutter)
     };
     quad_instances.push(QuadInstance {
         rect: [input_x, input_y, input_w, input_h],
@@ -119,9 +119,9 @@ pub(crate) fn render_project_search(
     // 2. Where Query Input Box
     let where_y = input_y + input_h + 6.0 * scale_factor;
     let where_bg = if state.focused_field == SearchField::Where {
-        [0.14, 0.14, 0.18, 1.0]
+        color(theme.chrome.panel_input)
     } else {
-        [0.10, 0.10, 0.13, 1.0]
+        color(theme.chrome.gutter)
     };
     quad_instances.push(QuadInstance {
         rect: [input_x, where_y, input_w, input_h],
@@ -174,9 +174,9 @@ pub(crate) fn render_project_search(
     if state.is_replace {
         let replace_y = where_y + input_h + 6.0 * scale_factor;
         let replace_bg = if state.focused_field == SearchField::Replace {
-            [0.14, 0.14, 0.18, 1.0]
+            color(theme.chrome.panel_input)
         } else {
-            [0.10, 0.10, 0.13, 1.0]
+            color(theme.chrome.gutter)
         };
         quad_instances.push(QuadInstance {
             rect: [input_x, replace_y, input_w, input_h],

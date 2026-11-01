@@ -1,5 +1,22 @@
 # Status
 
+> Phase 0 (2026-11-01). 0.1 and 0.2 hold. Encoding round-trips UTF-8 (with
+> and without BOM), Latin-1, Windows-1252, and UTF-16 LE/BE with and without
+> a BOM when the no-BOM guess is confident. The status bar names the
+> encoding. Save is byte-for-byte unless a conversion is requested.
+> `docs/compare/characters.png` (macos-15 compare run 41338114570) shows
+> áéíóúüñ, emoji, CJK, and combining marks on Monokai, with `UTF-8` in the
+> status bar. The default theme is Monokai, parsed from
+> `themes/Monokai.sublime-color-scheme` (MIT, `themes/NOTICE.md`). The
+> sidebar, tabs, selectors, and status bar take their colors from that
+> theme. In `docs/compare/monokai-side-by-side.png` the Lux editor well is
+> `#272822`, the tab bar `#1E1F1C`, and the status bar `#414339`, beside
+> Sublime Text on the same file. Sublime's own minimap, breadcrumb, and
+> lighter status chrome are not copied. HiDPI text uses grayscale
+> antialiasing; that capture is a 1× display, so it does not prove Retina.
+> Icons, rounded corners, and selector animation are not done, so 0.3 and
+> block 0 stay open and no release is tagged. See [ROADMAP.md](ROADMAP.md).
+>
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
 > Pull-request and main CI keep the `ubuntu-latest` jobs and add one standard

@@ -179,16 +179,16 @@ pub(crate) fn render_text_lines(
             // Pill background
             quad_instances.push(QuadInstance {
                 rect: [pill_x, pill_y, pill_w, pill_h],
-                color: [0.24, 0.24, 0.30, 0.85],
+                color: color(theme.chrome.panel_input),
             });
             // Pill border stroke
             quad_instances.push(QuadInstance {
                 rect: [pill_x, pill_y, pill_w, stroke],
-                color: [0.35, 0.35, 0.42, 1.0],
+                color: color(theme.chrome.border),
             });
             quad_instances.push(QuadInstance {
                 rect: [pill_x, pill_y + pill_h - stroke, pill_w, stroke],
-                color: [0.35, 0.35, 0.42, 1.0],
+                color: color(theme.chrome.border),
             });
 
             // 3 dots inside pill
@@ -216,6 +216,7 @@ pub(crate) fn render_text_lines(
         };
 
         for cluster in line.layout.clusters() {
+            let face = line.layout.face(cluster.font_id).unwrap_or(font);
             let abs_byte = line_start + cluster.byte_range.start;
             let glyph_color = if let Some(syntax) = syntax
                 && let Some(token) = line_tokens
@@ -231,7 +232,7 @@ pub(crate) fn render_text_lines(
                 &mut atlas_state.atlas,
                 &mut atlas_state.dirty,
                 &mut atlas_state.scale_cx,
-                font,
+                face,
                 font_size,
                 &cluster,
                 text_left - viewport.scroll_x,

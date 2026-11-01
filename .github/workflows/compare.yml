@@ -1,0 +1,41 @@
+name: Compare
+
+# Standard macos-15 only. Produces real window captures of Lux and
+# Sublime Text. pull_request is required because workflow_dispatch cannot
+# be started with the cloud-agent token. Zed is not installed: selector
+# captures belong to phase 0b, which is not done. The job does not publish
+# a release and does not draw a stand-in image.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: lux and sublime (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Capture Lux and Sublime Text
+        run: |
+          chmod +x scripts/compare-captures.sh
+          ./scripts/compare-captures.sh
+
+      - name: Upload captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compare-captures
+          path: docs/compare/*.png
+          if-no-files-found: warn

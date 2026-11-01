@@ -50,33 +50,95 @@ impl Color {
     }
 }
 
-/// The smallest palette that makes "Lux Dark" an actual usable theme
-/// rather than two floating constants: every editor needs a background
-/// *and* a foreground, and `editor_view` already models cursors
-/// ([`crate::CursorGlyph`]) and selections ([`crate::SelectionRect`]) that
-/// will need a color once something paints them. Only `background` and
-/// `accent` are part of the documented v0 identity; `foreground`,
-/// `selection`, and `muted` are this deliverable's own reasonable
-/// completions, not values pulled from a spec — a full token/scope theme
-/// (comments, strings, brackets, diagnostics...) is Phase 3's job.
+/// Chrome surfaces (sidebar, tabs, status bar, selectors). One nested
+/// struct so [`Theme`] stays a small palette instead of growing a field
+/// per rectangle.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ChromeColors {
+    pub sidebar: Color,
+    pub tab_bar: Color,
+    pub tab_inactive: Color,
+    pub status_bar: Color,
+    pub panel: Color,
+    pub panel_input: Color,
+    pub panel_row: Color,
+    pub border: Color,
+    pub gutter: Color,
+    pub line_highlight: Color,
+}
+
+const fn shift_channel(v: u8, delta: i16) -> u8 {
+    let n = v as i16 + delta;
+    if n < 0 {
+        0
+    } else if n > 255 {
+        255
+    } else {
+        n as u8
+    }
+}
+
+/// Moves every channel of `c` by `delta`, clamped to `0..=255`.
+pub const fn shift(c: Color, delta: i16) -> Color {
+    Color {
+        r: shift_channel(c.r, delta),
+        g: shift_channel(c.g, delta),
+        b: shift_channel(c.b, delta),
+        a: c.a,
+    }
+}
+
+/// Chrome derived from an editor background, for themes that do not name
+/// each surface. Dark backgrounds get a darker well and a lighter row.
+pub const fn derived_chrome(bg: Color) -> ChromeColors {
+    ChromeColors {
+        sidebar: shift(bg, -14),
+        tab_bar: shift(bg, -16),
+        tab_inactive: shift(bg, -8),
+        status_bar: shift(bg, -16),
+        panel: shift(bg, -12),
+        panel_input: shift(bg, 18),
+        panel_row: shift(bg, 32),
+        border: shift(bg, 24),
+        gutter: shift(bg, -6),
+        line_highlight: shift(bg, 12),
+    }
+}
+
+/// Classic Monokai wells. Hex values are the ones the MIT VS Code
+/// `theme-monokai` file documents as the original Monokai surfaces
+/// (`#1E1F1C` tab well, `#272822` editor, `#414339` status/input,
+/// `#3E3D32` line highlight, `#49483E` selection).
+pub const MONOKAI_CHROME: ChromeColors = ChromeColors {
+    sidebar: Color::rgb(0x1E, 0x1F, 0x1C),
+    tab_bar: Color::rgb(0x1E, 0x1F, 0x1C),
+    tab_inactive: Color::rgb(0x34, 0x35, 0x2F),
+    status_bar: Color::rgb(0x41, 0x43, 0x39),
+    panel: Color::rgb(0x1E, 0x1F, 0x1C),
+    panel_input: Color::rgb(0x41, 0x43, 0x39),
+    panel_row: Color::rgb(0x49, 0x48, 0x3E),
+    border: Color::rgb(0x3E, 0x3D, 0x32),
+    gutter: Color::rgb(0x27, 0x28, 0x22),
+    line_highlight: Color::rgb(0x3E, 0x3D, 0x32),
+};
+
+/// Editor palette plus the chrome surfaces painted around it.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Theme {
     /// Human-readable display name of the theme.
     pub name: &'static str,
-    /// The editor's base fill — v0's indigo-black, `#12121B`.
+    /// Editor fill.
     pub background: Color,
     /// Body text color, legible against `background`.
     pub foreground: Color,
-    /// v0's golden amber, `#F0B442` — the brand's warm accent. Used for
-    /// the caret and other highlights that should read as "Lux," not just
-    /// "a dark theme."
+    /// Caret, tab underline, and the selected-row stripe.
     pub accent: Color,
-    /// Selection highlight: `accent` at low alpha, so selected text stays
-    /// readable instead of being fully painted over.
+    /// Selection highlight.
     pub selection: Color,
-    /// De-emphasized text (e.g. line numbers, comments once Phase 3's
-    /// token theme exists) — `foreground` dimmed toward `background`.
+    /// De-emphasized text (line numbers, inactive labels).
     pub muted: Color,
+    /// Sidebar, tabs, status bar, and selector surfaces.
+    pub chrome: ChromeColors,
 }
 
 impl Theme {
@@ -89,6 +151,7 @@ impl Theme {
         accent: Color::rgb(0xF0, 0xB4, 0x42),
         selection: Color::rgba(0xF0, 0xB4, 0x42, 0x33),
         muted: Color::rgb(0x6E, 0x6E, 0x82),
+        chrome: derived_chrome(Color::rgb(0x12, 0x12, 0x1B)),
     };
 
     /// High-contrast dark: near-black / near-white, WCAG AA for body text.
@@ -99,6 +162,7 @@ impl Theme {
         accent: Color::rgb(0xFF, 0xD0, 0x00),
         selection: Color::rgba(0xFF, 0xD0, 0x00, 0x66),
         muted: Color::rgb(0xC0, 0xC0, 0xC0),
+        chrome: derived_chrome(Color::rgb(0x00, 0x00, 0x00)),
     };
 
     /// Lux Light theme variant.
@@ -109,6 +173,7 @@ impl Theme {
         accent: Color::rgb(0xD9, 0x77, 0x06),
         selection: Color::rgba(0xD9, 0x77, 0x06, 0x33),
         muted: Color::rgb(0x71, 0x71, 0x7A),
+        chrome: derived_chrome(Color::rgb(0xFA, 0xFA, 0xFD)),
     };
 
     /// Sublime Text 3 classic dark theme (ST15).
@@ -119,6 +184,7 @@ impl Theme {
         accent: Color::rgb(0xF9, 0x26, 0x72),
         selection: Color::rgba(0x49, 0x48, 0x3E, 0x88),
         muted: Color::rgb(0x75, 0x71, 0x5E),
+        chrome: MONOKAI_CHROME,
     };
 
     /// Sublime Text 3.1+ default slate blue theme (ST15).
@@ -129,6 +195,7 @@ impl Theme {
         accent: Color::rgb(0x5F, 0xB3, 0xB3),
         selection: Color::rgba(0x4F, 0x5B, 0x66, 0x88),
         muted: Color::rgb(0xA7, 0xAD, 0xBA),
+        chrome: derived_chrome(Color::rgb(0x30, 0x38, 0x41)),
     };
 
     /// Sublime Text high-contrast ocean theme (ST15).
@@ -139,6 +206,7 @@ impl Theme {
         accent: Color::rgb(0x00, 0xD0, 0xD0),
         selection: Color::rgba(0x1B, 0x25, 0x2E, 0xAA),
         muted: Color::rgb(0x61, 0x73, 0x82),
+        chrome: derived_chrome(Color::rgb(0x0C, 0x10, 0x14)),
     };
 
     /// Sublime Text light theme (ST15).
@@ -149,6 +217,7 @@ impl Theme {
         accent: Color::rgb(0x00, 0x7A, 0xCC),
         selection: Color::rgba(0xD0, 0xE1, 0xF9, 0x88),
         muted: Color::rgb(0x6C, 0x75, 0x7D),
+        chrome: derived_chrome(Color::rgb(0xF8, 0xF9, 0xFA)),
     };
 
     pub const fn lux_dark() -> Self {
@@ -416,5 +485,20 @@ mod tests {
             Some(Theme::LUX_DARK_HIGH_CONTRAST)
         );
         assert_eq!(Theme::by_name("non-existent"), None);
+    }
+
+    #[test]
+    fn monokai_chrome_uses_the_classic_wells() {
+        let t = Theme::MONOKAI;
+        assert_eq!(t.background, Color::from_hex("#272822").unwrap());
+        assert_eq!(t.foreground, Color::from_hex("#F8F8F2").unwrap());
+        assert_eq!(t.chrome.sidebar, Color::from_hex("#1E1F1C").unwrap());
+        assert_eq!(t.chrome.tab_bar, Color::from_hex("#1E1F1C").unwrap());
+        assert_eq!(t.chrome.status_bar, Color::from_hex("#414339").unwrap());
+        assert_eq!(t.chrome.panel, Color::from_hex("#1E1F1C").unwrap());
+        assert_eq!(t.chrome.panel_input, Color::from_hex("#414339").unwrap());
+        assert_eq!(t.chrome.panel_row, Color::from_hex("#49483E").unwrap());
+        assert_eq!(t.chrome.line_highlight, Color::from_hex("#3E3D32").unwrap());
+        assert_eq!(t.chrome.gutter, t.background);
     }
 }
