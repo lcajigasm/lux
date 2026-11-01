@@ -64,6 +64,41 @@ if bestId == 0 { exit(1) }
 print(best)
 SWIFT
 
+# `subl` blocks until Sublime's listener socket is up. A first-launch
+# license or Gatekeeper dialog never opens that socket, so an unbounded
+# `subl` holds the job until the runner kills it. Bound every launch.
+bound() {
+  local seconds="$1"
+  shift
+  "$@" &
+  local pid=$!
+  local i=0
+  while (( i < seconds )); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      wait "$pid" || true
+      return 0
+    fi
+    sleep 1
+    i=$((i + 1))
+  done
+  echo "--> giving up after ${seconds}s: $*" >&2
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  return 0
+}
+
+dump_windows() {
+  swift -e 'import CoreGraphics; import Foundation
+let opts: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+let info = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] ?? []
+for w in info {
+  let owner = w[kCGWindowOwnerName as String] as? String ?? ""
+  let layer = w[kCGWindowLayer as String] as? Int ?? 0
+  if layer != 0 { continue }
+  print(owner)
+}' 2>/dev/null | sort | uniq -c >&2 || true
+}
+
 wait_window() {
   local owner="$1"
   local pid="${2:-}"
@@ -80,7 +115,8 @@ wait_window() {
     fi
     sleep 1
   done
-  echo "timed out waiting for $owner" >&2
+  echo "timed out waiting for $owner; on-screen owners:" >&2
+  dump_windows
   return 1
 }
 
@@ -91,7 +127,11 @@ shoot() {
   line="$(swift /tmp/lux-find-window.swift "$owner")"
   id="${line%% *}"
   echo "--> $owner window $line"
-  screencapture -l "$id" -o "$dest"
+  bound 20 screencapture -l "$id" -o "$dest"
+  if [[ ! -f "$dest" ]]; then
+    echo "screencapture produced no file for $owner" >&2
+    return 1
+  fi
   bytes="$(wc -c < "$dest" | tr -d ' ')"
   if [[ "$bytes" -lt 8000 ]]; then
     echo "capture $dest is only $bytes bytes" >&2
@@ -106,7 +146,7 @@ cleanup() {
     kill "$lux_pid" 2>/dev/null || true
     wait "$lux_pid" 2>/dev/null || true
   fi
-  osascript -e 'tell application "Sublime Text" to quit' >/dev/null 2>&1 || true
+  bound 8 osascript -e 'tell application "Sublime Text" to quit' >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -135,11 +175,16 @@ if [[ ! -x "$subl" ]]; then
   echo "Sublime Text did not install a subl binary at $subl" >&2
   exit 1
 fi
+# A quarantined cask can sit in Gatekeeper verification while `subl` waits.
+xattr -dr com.apple.quarantine "/Applications/Sublime Text.app" || true
 
 echo "--> Opening the Monokai fixture in Lux and Sublime Text"
 "$bin" "$fixture" >"$log" 2>&1 &
 lux_pid=$!
-"$subl" -n "$fixture" || true
+echo "--> lux pid $lux_pid"
+# `open` returns once launchd has started the app. `subl` is only used
+# after a window exists, so it does not wait on the first-run socket.
+bound 30 open -a "Sublime Text" || true
 
 lux_bounds="$(wait_window lux "$lux_pid")" || {
   echo "Lux did not open a window" >&2
@@ -153,8 +198,15 @@ if ! sublime_bounds="$(wait_window "Sublime Text" "")"; then
   exit 1
 fi
 echo "--> sublime $sublime_bounds"
+echo "--> asking Sublime to open the fixture"
+bound 15 "$subl" -n "$fixture" || true
+sleep 2
+if ! sublime_bounds="$(wait_window "Sublime Text" "")"; then
+  echo "Sublime Text lost its window after opening the fixture." >&2
+  exit 1
+fi
 
-osascript << 'APPLESCRIPT' || true
+cat > /tmp/lux-bounds.applescript << 'APPLESCRIPT'
 tell application "System Events"
   try
     tell process "lux"
@@ -170,6 +222,7 @@ tell application "System Events"
   end try
 end tell
 APPLESCRIPT
+bound 8 osascript /tmp/lux-bounds.applescript || true
 sleep 1
 
 tmp="$(mktemp -d)"
