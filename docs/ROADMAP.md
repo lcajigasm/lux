@@ -37,9 +37,10 @@ capture.
 Four separate mechanisms, all visible in that capture or in the draw path
 that produced it:
 
-The capture above is the previous build. The phase 0 code changes the
-four mechanisms as follows. Block 0 stays open until a new compare capture
-shows the window holding up next to Sublime.
+The capture above is the previous build. `docs/compare/monokai-side-by-side.png`
+and `docs/compare/characters.png` are the macos-15 windows from compare run
+41338114570. 0.1 and 0.2 hold on those files. Block 0 stays open because
+0.3 is not done.
 
 1. **Monokai is the launch theme.** `workbench.colorTheme` defaults to
    `monokai`. `Chrome` starts on `Theme::MONOKAI` and does not follow the
@@ -73,7 +74,7 @@ chrome string.
 
 This block is first. Order inside it is fixed.
 
-### 0.1 Encoding — hecho in tests, window capture still owed
+### 0.1 Encoding — hecho
 
 | Check | State |
 |---|---|
@@ -94,12 +95,14 @@ save without an explicit conversion is byte-identical. A requested
 conversion is the only path that may change bytes. Tests open those files;
 they do not rebuild the bytes in the assertion.
 
-### 0.2 Monokai as the default dark theme — parcial until the capture
+### 0.2 Monokai as the default dark theme — hecho
 
 The default is Monokai. `themes/Monokai.sublime-color-scheme` is parsed at
 startup and a test locks it to `Theme::MONOKAI` and the Monokai syntax
 scopes. Sidebar, tabs, palette, goto, and the status bar use that chrome.
-The side-by-side capture is what closes this row.
+`docs/compare/monokai-side-by-side.png` is the macos-15 capture that closes
+this row: Lux `#272822` / `#1E1F1C` / `#414339` beside Sublime on the same
+file. Sublime's minimap and lighter window chrome are Sublime's own UI.
 
 Acceptance: `workbench.colorTheme` defaults to Monokai. One vendored
 `.tmTheme` or `.sublime-color-scheme` is the source of those colors, with
@@ -160,7 +163,7 @@ change. The artifact alone does not close the phase.
 
 | Surface | State on 44684ab |
 |---|---|
-| Theme | parcial. Monokai is the default and paints the chrome. The side-by-side capture is still the acceptance |
+| Theme | hecho for the editor and chrome wells. `docs/compare/monokai-side-by-side.png` |
 | Typography | parcial. System monospace loader works (DejaVu here, Menlo/SF Mono path on macOS). No bundled face, chrome AA is wrong. Block 0.3 |
 | File tree | parcial. Sidebar code runs when a folder is open. The capture opened one file, so the tree was absent |
 | Tabs | parcial. One readable tab in the capture; inactive tabs use the hardcoded dark quad |
@@ -259,12 +262,11 @@ Each phase ends with new `docs/compare/` captures from the job above. Phase
 3 also commits the benchmark table. No release is tagged for a phase that
 missed its bar.
 
-1. **Phase 0, in progress.** Encoding fixtures and Monokai-from-file are
-   in the tree. The compare job produces `monokai-side-by-side.png` and
-   `characters.png`. Block 0 stays open: 0.3 is only partly done (grayscale
-   HiDPI, combining glyphs, palette match highlight, offset shadow; no
-   icons, corners, or motion), and the phase is not closed until the
-   side-by-side is judged. No release.
+1. **Phase 0, in progress.** 0.1 and 0.2 hold on
+   `docs/compare/monokai-side-by-side.png` and `docs/compare/characters.png`
+   (compare run 41338114570). Block 0 stays open: 0.3 is only partly done
+   (grayscale HiDPI, combining glyphs, palette match highlight, offset
+   shadow; no icons, corners, or motion). No release.
 2. **Phase 0b.** Step 0.3: Retina text and the selectors. Commit
    `selectors.png` and a new Monokai pair. Close block 0 only if Lux holds
    the comparison. That close is the first release this plan allows.
