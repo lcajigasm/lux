@@ -281,6 +281,15 @@ pub(crate) fn color(c: lux_ui::Color) -> [f32; 4] {
     ]
 }
 
+pub(super) fn syntax_color(c: lux_syntax::theme::Color) -> [f32; 4] {
+    [
+        c.r as f32 / 255.0,
+        c.g as f32 / 255.0,
+        c.b as f32 / 255.0,
+        1.0,
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::{fuzzy_spans, span_covers};
@@ -292,13 +301,4 @@ mod tests {
         assert!(span_covers(&spans, &(5..6)), "{spans:?}");
         assert!(!span_covers(&spans, &(1..2)), "{spans:?}");
     }
-}
-
-pub(super) fn syntax_color(c: lux_syntax::theme::Color) -> [f32; 4] {
-    [
-        c.r as f32 / 255.0,
-        c.g as f32 / 255.0,
-        c.b as f32 / 255.0,
-        1.0,
-    ]
 }

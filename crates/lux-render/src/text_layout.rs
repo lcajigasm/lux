@@ -396,12 +396,13 @@ mod tests {
 
     #[test]
     fn a_combining_mark_is_not_dropped() {
-        let bytes = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf")
-            .expect("DejaVu Sans Mono is the Linux monospace fallback");
+        // Subset of DejaVu Sans Mono (e + U+0323). Bundled so macOS CI,
+        // which has no DejaVu install, still shapes a real mark glyph.
+        const MARK_TTF: &[u8] = include_bytes!("../tests/fixtures/dejavu-mono-mark.ttf");
         let mut cx = TextLayoutContext::new();
         let family = cx
-            .register_font(&bytes)
-            .expect("DejaVu Sans Mono registers");
+            .register_font(MARK_TTF)
+            .expect("DejaVu mark subset registers");
         let style = LineStyle {
             family: &family,
             font_size: 16.0,
