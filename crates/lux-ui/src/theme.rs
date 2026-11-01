@@ -108,7 +108,8 @@ pub const fn derived_chrome(bg: Color) -> ChromeColors {
 /// Classic Monokai wells. Hex values are the ones the MIT VS Code
 /// `theme-monokai` file documents as the original Monokai surfaces
 /// (`#1E1F1C` tab well, `#272822` editor, `#414339` status/input,
-/// `#3E3D32` line highlight, `#49483E` selection).
+/// `#3E3D32` border, `#49483E` selection). The current line is `#2C2D27`,
+/// a step above the editor, so a comment on that line stays readable.
 pub const MONOKAI_CHROME: ChromeColors = ChromeColors {
     sidebar: Color::rgb(0x1E, 0x1F, 0x1C),
     tab_bar: Color::rgb(0x1E, 0x1F, 0x1C),
@@ -119,7 +120,7 @@ pub const MONOKAI_CHROME: ChromeColors = ChromeColors {
     panel_row: Color::rgb(0x49, 0x48, 0x3E),
     border: Color::rgb(0x3E, 0x3D, 0x32),
     gutter: Color::rgb(0x27, 0x28, 0x22),
-    line_highlight: Color::rgb(0x3E, 0x3D, 0x32),
+    line_highlight: Color::rgb(0x2C, 0x2D, 0x27),
 };
 
 /// Editor palette plus the chrome surfaces painted around it.
@@ -498,7 +499,7 @@ mod tests {
         assert_eq!(t.chrome.panel, Color::from_hex("#1E1F1C").unwrap());
         assert_eq!(t.chrome.panel_input, Color::from_hex("#414339").unwrap());
         assert_eq!(t.chrome.panel_row, Color::from_hex("#49483E").unwrap());
-        assert_eq!(t.chrome.line_highlight, Color::from_hex("#3E3D32").unwrap());
+        assert_eq!(t.chrome.line_highlight, Color::from_hex("#2C2D27").unwrap());
         assert_eq!(t.chrome.gutter, t.background);
     }
 }

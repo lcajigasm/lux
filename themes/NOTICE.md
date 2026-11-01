@@ -12,8 +12,9 @@ Visual Studio Code extension `extensions/theme-monokai`:
 The VS Code file's header documents the original Monokai surfaces this
 scheme uses: `#1E1F1C` (tab well and sidebar), `#272822` (editor
 background), `#414339` (status bar and input), `#75715E` (muted / focus),
-and `#F8F8F2` (foreground). Line highlight `#3E3D32` and selection
-`#49483E` are the classic Sublime Monokai values. Token colors are the
+and `#F8F8F2` (foreground). The border stays `#3E3D32` and selection
+`#49483E`. The current-line fill is `#2C2D27`, a small step above the
+editor, so a comment on that line stays readable. Token colors are the
 classic set (comment `#75715E`, keyword `#F92672`, string `#E6DB74`,
 number `#AE81FF`, type `#66D9EF`, function `#A6E22E`, parameter
 `#FD971F`). The current VS Code JSON shifts the comment color to

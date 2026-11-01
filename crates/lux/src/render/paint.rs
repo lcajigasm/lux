@@ -288,6 +288,13 @@ pub(crate) fn span_covers(
         .any(|span| span.start < range.end && range.start < span.end)
 }
 
+/// Column rulers and the minimap edge. A full `muted` stroke reads as a
+/// hard line on Monokai; a translucent border sits close to the editor.
+pub(crate) fn faint_rule(theme: &lux_ui::Theme) -> [f32; 4] {
+    let c = color(theme.chrome.border);
+    [c[0], c[1], c[2], 0.4]
+}
+
 pub(crate) fn color(c: lux_ui::Color) -> [f32; 4] {
     [
         c.r as f32 / 255.0,

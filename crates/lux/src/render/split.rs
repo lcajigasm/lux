@@ -11,7 +11,7 @@ use swash::FontRef;
 use crate::app::{AtlasState, BLINK_INTERVAL, SyntaxState};
 use crate::document::Documents;
 use crate::pane_view::PaneView;
-use crate::render::paint::{color, push_glyph, syntax_color};
+use crate::render::paint::{color, faint_rule, push_glyph, syntax_color};
 use crate::split::{SplitLayout, compute_layout_geometry};
 
 /// Strictly clamps a quad instance within a bounding rectangle.
@@ -273,10 +273,11 @@ fn render_single_pane(
 
     // Column rulers
     let muted_col = color(params.theme.muted);
+    let rule = faint_rule(params.theme);
     for ruler_x in &frame.column_ruler_x {
         let rx = text_left + ruler_x - scroll_x;
         if let Some(r_rect) = clamp_quad_to_rect([rx, py, params.stroke, ph], text_bounds) {
-            quad_instances.push(QuadInstance::solid(r_rect, muted_col));
+            quad_instances.push(QuadInstance::solid(r_rect, rule));
         }
     }
 

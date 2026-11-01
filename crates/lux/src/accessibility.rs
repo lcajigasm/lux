@@ -81,7 +81,7 @@ pub(crate) fn build_accessibility_tree(app: &mut App) -> TreeUpdate {
         .documents
         .path
         .as_ref()
-        .map(|p| p.display().to_string())
+        .map(|p| crate::document::tab_ops::window_document_label(p))
         .unwrap_or_else(|| "Untitled".into());
     let dirty_marker = if is_dirty { " *" } else { "" };
     let window_title = format!("{doc_name}{dirty_marker} — Lux");

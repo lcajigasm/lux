@@ -12,7 +12,13 @@
 > theme. In `docs/compare/monokai-side-by-side.png` the Lux editor well is
 > `#272822`, the tab bar `#1E1F1C`, and the status bar `#414339`, beside
 > Sublime Text on the same file. Sublime's own minimap, breadcrumb, and
-> lighter status chrome are not copied. HiDPI text uses grayscale
+> lighter status chrome are not copied. The right-hand status labels use
+> the theme foreground so they read on `#414339`. The current line is
+> `#2C2D27`, not the border color. The window title is the file name and
+> its parent folder. The column ruler is off unless `editor.columnRulers`
+> is set, and the minimap edge is a translucent border. Those four
+> differences are not in the committed PNG yet; the next compare job has
+> to be looked at. HiDPI text uses grayscale
 > antialiasing when `scale_factor > 1`; the committed Monokai capture is a
 > 1× display, so it does not prove Retina. Selector panels (command
 > palette, goto, theme picker, completion) draw category icons, rounded
@@ -27,9 +33,11 @@
 > `macos-15` job: `cargo test --workspace`, then a universal `.app` / `.dmg`
 > uploaded as a CI artifact and not published. The debug tree is removed
 > before that image, and the release trees plus the cargo registry are
-> removed after the fat binary is in the bundle, so `hdiutil` fits on the
-> standard runner (runs 41335548609 and 41341898224 filled the disk when
-> those trees were left in place). Windows is not in CI.
+> removed after the fat binary is in the bundle. The disk image is a
+> writable volume whose size is the staged tree plus margin, then
+> converted to UDZO, after any leftover `/Volumes/Lux` is detached.
+> `hdiutil create -srcfolder` filled the disk on runs 41335548609 and
+> 41341898224. Windows is not in CI.
 > A `vX.Y.Z` tag still attaches `lux-linux-x86_64` and `lux-linux-amd64.deb`
 > from the Linux workflow. The deb depends on `libfontconfig1` and `libegl1`
 > (the EGL GPU loader named in the release binary; `libvulkan.so.1` is not in

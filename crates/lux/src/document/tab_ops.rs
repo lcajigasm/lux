@@ -1,7 +1,21 @@
 use lux_platform::PlatformContext;
 use lux_platform::clipboard::Clipboard;
 use lux_ui::tabs::TabId;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// Window title label: the file name, and the parent folder when there is
+/// one. The full path belongs in the tab tooltip, not the title bar.
+pub(crate) fn window_document_label(path: &Path) -> String {
+    let file = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "Untitled".to_string());
+    match path.parent().and_then(|parent| parent.file_name()) {
+        Some(folder) => format!("{file} — {}", folder.to_string_lossy()),
+        None => file,
+    }
+}
 
 use crate::app::App;
 
@@ -291,8 +305,8 @@ impl App {
             .documents
             .path
             .as_ref()
-            .map(|p| p.display().to_string())
-            .unwrap_or("Untitled".into());
+            .map(|p| window_document_label(p))
+            .unwrap_or_else(|| "Untitled".into());
         let dirty = if self.document_dirty() { " *" } else { "" };
         let readonly = if self.buffer.is_huge_file_mode() {
             " [read-only: large file]"
@@ -357,5 +371,17 @@ impl App {
                 gpu.window.request_redraw();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn window_title_is_the_file_and_its_folder() {
+        let path = Path::new("/Users/runner/work/lux/lux/docs/compare/fixtures/monokai.rs");
+        assert_eq!(window_document_label(path), "monokai.rs — fixtures");
+        assert_eq!(window_document_label(Path::new("monokai.rs")), "monokai.rs");
     }
 }

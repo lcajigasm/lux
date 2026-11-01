@@ -6,7 +6,7 @@ use lux_ui::Theme;
 use lux_ui::editor_view::{EditorViewFrame, Viewport};
 use swash::FontRef;
 
-use super::paint::{color, push_glyph, syntax_color};
+use super::paint::{color, faint_rule, push_glyph, syntax_color};
 use crate::app::{AtlasState, SyntaxState};
 
 #[allow(clippy::too_many_arguments)]
@@ -42,7 +42,7 @@ pub(crate) fn render_text_lines(
                 stroke,
                 viewport.height,
             ],
-            muted,
+            faint_rule(theme),
         ));
     }
 

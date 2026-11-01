@@ -15,7 +15,7 @@
     "panel_row": "#49483E",
     "border": "#3E3D32",
     "gutter": "#272822",
-    "line_highlight": "#3E3D32"
+    "line_highlight": "#2C2D27"
   },
   "rules": [
     { "scope": "comment", "foreground": "#75715E" },

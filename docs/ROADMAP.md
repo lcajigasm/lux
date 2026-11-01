@@ -123,10 +123,15 @@ HiDPI frames (`scale_factor > 1`) rasterize grayscale masks and blend them
 with the quad already drawn for that surface. Scale 1 still uses subpixel
 AA. Ligatures and the SF Mono fallback list were already there. The
 command palette, goto, theme picker, and completion list now draw icons,
-rounded shadowed surfaces, fuzzy highlight, and a short ease. The compare
-job writes `docs/compare/selectors.png` from the real Lux, Sublime Text,
-and Zed windows. This row is not hecho until that file has been looked at.
-The macos-15 runner is a 1× display, so the PNG does not prove Retina.
+rounded shadowed surfaces, fuzzy highlight, and a short ease. Against the
+Sublime capture, the status labels on the right use the foreground color,
+the current line is a step above the editor background, the window title
+is the file name plus its folder, and the column ruler is off by default
+with a faint minimap edge. The compare job writes
+`docs/compare/selectors.png` from the real Lux, Sublime Text, and Zed
+windows, and repeats the Monokai pair. This row is not hecho until those
+files have been looked at. The macos-15 runner is a 1× display, so the
+PNG does not prove Retina.
 
 Acceptance, on top of 0.1 and 0.2: Retina text is grayscale-antialiased (or
 otherwise correct for a 2× framebuffer), with ligatures, a stable line
