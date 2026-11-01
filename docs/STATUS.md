@@ -4,7 +4,9 @@
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
 > Pull-request and main CI keep the `ubuntu-latest` jobs and add one standard
 > `macos-14` job: `cargo test --workspace`, then a universal `.app` / `.dmg`
-> uploaded as a CI artifact and not published. Windows is not in CI.
+> uploaded as a CI artifact and not published. The debug tree is removed
+> before that image so both release architectures and `hdiutil` fit on the
+> standard runner. Windows is not in CI.
 > A `vX.Y.Z` tag still attaches `lux-linux-x86_64` and `lux-linux-amd64.deb`
 > from the Linux workflow. The deb depends on `libfontconfig1` and `libegl1`
 > (the EGL GPU loader named in the release binary; `libvulkan.so.1` is not in
