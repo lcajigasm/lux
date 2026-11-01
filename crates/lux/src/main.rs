@@ -37,6 +37,7 @@ mod search;
 mod session;
 mod settings;
 mod sidebar;
+mod snapshot;
 mod snippets;
 mod split;
 mod status_bar;
@@ -56,8 +57,14 @@ fn main() {
     println!("Lux: using system font {path}");
     let mut app = app::App::new(font_bytes);
     let mut open_palette = false;
+    let mut open_goto = false;
+    let mut open_theme = false;
+    let mut query = String::new();
+    let mut snapshot: Option<std::path::PathBuf> = None;
+    let mut snapshot_scale = 2.0_f32;
     let mut positional: Option<std::ffi::OsString> = None;
-    for arg in std::env::args_os().skip(1) {
+    let mut args = std::env::args_os().skip(1);
+    while let Some(arg) = args.next() {
         let arg_str = arg.to_string_lossy();
         if arg_str == "--help" || arg_str == "-h" {
             println!("Lux — Sublime-grade high-performance text editor");
@@ -67,7 +74,12 @@ fn main() {
             println!("Options:");
             println!("  -h, --help     Print help information");
             println!("  -v, --version  Print version information");
-            println!("  --palette      Open the command palette with the file");
+            println!("  --palette      Open the command palette");
+            println!("  --goto         Open go to file");
+            println!("  --theme        Open the color scheme picker");
+            println!("  --query TEXT   Prefill the open selector");
+            println!("  --snapshot PATH  Write one offscreen PNG of this window");
+            println!("  --snapshot-scale N  Scale factor for that PNG (default 2)");
             return;
         }
         if arg_str == "--version" || arg_str == "-v" {
@@ -78,8 +90,40 @@ fn main() {
             open_palette = true;
             continue;
         }
+        if arg_str == "--goto" {
+            open_goto = true;
+            continue;
+        }
+        if arg_str == "--theme" {
+            open_theme = true;
+            continue;
+        }
+        if arg_str == "--query" {
+            let Some(value) = args.next() else {
+                eprintln!("Usage: lux --query TEXT");
+                std::process::exit(2);
+            };
+            query = value.to_string_lossy().into_owned();
+            continue;
+        }
+        if arg_str == "--snapshot" {
+            let Some(value) = args.next() else {
+                eprintln!("Usage: lux --snapshot PATH");
+                std::process::exit(2);
+            };
+            snapshot = Some(std::path::PathBuf::from(value));
+            continue;
+        }
+        if arg_str == "--snapshot-scale" {
+            let Some(value) = args.next() else {
+                eprintln!("Usage: lux --snapshot-scale N");
+                std::process::exit(2);
+            };
+            snapshot_scale = value.to_string_lossy().parse().unwrap_or(2.0);
+            continue;
+        }
         if positional.is_some() {
-            eprintln!("Usage: lux [--palette] [file_or_directory]");
+            eprintln!("Usage: lux [--palette|--goto|--theme] [--query TEXT] [file]");
             std::process::exit(2);
         }
         positional = Some(arg);
@@ -96,8 +140,15 @@ fn main() {
             LaunchKind::Help | LaunchKind::Version => {}
         }
     }
-    if open_palette {
-        app.toggle_command_palette();
+    if open_palette || (!open_goto && !open_theme && !query.is_empty()) {
+        app.open_command_palette(&query);
+    } else if open_goto {
+        app.open_goto_anything(&query);
+    } else if open_theme {
+        app.open_theme_picker_query(&query);
+    }
+    if let Some(path) = snapshot {
+        snapshot::request(path, snapshot_scale);
     }
     lux_platform::desktop::run(app).expect("desktop event loop failed");
 }

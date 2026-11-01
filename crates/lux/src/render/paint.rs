@@ -61,6 +61,24 @@ fn text_mode() -> TextRenderingMode {
     }
 }
 
+/// Selector glyphs composite against the panel already in the framebuffer.
+/// Scale-1 editor text stays subpixel; this guard covers only the overlay.
+pub(crate) struct OverlayText {
+    previous: bool,
+}
+
+impl Drop for OverlayText {
+    fn drop(&mut self) {
+        GRAYSCALE_TEXT.with(|cell| cell.set(self.previous));
+    }
+}
+
+pub(crate) fn overlay_text() -> OverlayText {
+    OverlayText {
+        previous: GRAYSCALE_TEXT.with(|cell| cell.replace(true)),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn push_one_glyph(
     atlas: &mut lux_render::GlyphAtlas,
@@ -158,7 +176,7 @@ pub(super) fn push_glyph(
     }
 }
 
-pub(super) fn paint(
+pub(crate) fn paint(
     gpu_window: &mut GpuWindow,
     quads: &[QuadInstance],
     glyphs: &[GlyphInstance],

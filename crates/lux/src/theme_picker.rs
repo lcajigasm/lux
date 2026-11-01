@@ -237,6 +237,14 @@ impl App {
         self.scheduler.invalidate_all();
     }
 
+    pub(crate) fn open_theme_picker_query(&mut self, query: &str) {
+        self.open_theme_picker();
+        if let Some(picker) = self.ui.theme_picker.as_mut() {
+            picker.query = query.to_string();
+            picker.selected_index = 0;
+        }
+    }
+
     #[allow(dead_code)]
     pub(crate) fn close_theme_picker(&mut self) {
         if let Some(picker) = self.ui.theme_picker.take() {

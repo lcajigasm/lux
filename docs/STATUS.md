@@ -19,10 +19,10 @@
 > not copied. HiDPI text uses grayscale antialiasing when `scale_factor > 1`.
 > The job logged `display scale 1`, so the PNG does not prove Retina.
 > `docs/compare/selectors.png` from the same run shows the command palette
-> open in Lux (icons, rounded surface), Sublime Text, and Zed. A still does
-> not show the open animation. 0.1 and 0.2 hold. The selector still holds.
-> Block 0 stays open until this tree is on main and that main CI is green.
-> No release is tagged. See [ROADMAP.md](ROADMAP.md).
+> open in Lux, Sublime Text, and Zed. Forge rejected that Lux palette: it
+> is narrow, sits on the code, and the input, rows, and shortcuts do not
+> read. Block 0 stays open. No release is tagged. A still does not show
+> the open animation. See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.

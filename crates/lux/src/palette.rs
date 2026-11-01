@@ -1,5 +1,7 @@
 //! Unified Command Palette (G08): command registry, fuzzy search, execution, and state.
 
+use std::collections::HashMap;
+
 use lux_platform::event::KeyEvent;
 use lux_platform::{Key, NamedKey, PlatformContext};
 use lux_ui::command_palette::{CommandRegistry, Context, PaletteEntry};
@@ -8,6 +10,7 @@ pub(crate) struct CommandPaletteState {
     pub(crate) query: String,
     pub(crate) selected_index: usize,
     pub(crate) registry: CommandRegistry,
+    pub(crate) shortcuts: HashMap<String, String>,
     pub(crate) motion: crate::overlay_motion::OverlayMotion,
 }
 
@@ -25,6 +28,7 @@ impl CommandPaletteState {
             query: String::new(),
             selected_index: 0,
             registry,
+            shortcuts: HashMap::new(),
             motion: crate::overlay_motion::OverlayMotion::open(),
         }
     }
@@ -48,6 +52,9 @@ impl CommandPaletteState {
 
 pub(crate) mod commands;
 mod registry;
+mod shortcuts;
+
+pub(crate) use shortcuts::shortcut_labels;
 
 fn populate_registry(registry: &mut CommandRegistry) {
     registry::populate_registry(registry);
