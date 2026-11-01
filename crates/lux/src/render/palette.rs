@@ -5,7 +5,7 @@ use swash::scale::ScaleContext;
 
 use crate::palette::CommandPaletteState;
 use crate::render::paint::{
-    color, fuzzy_spans, overlay_text, push_bold_glyph, push_glyph, span_covers,
+    color, faded, fuzzy_spans, overlay_fade, overlay_text, push_bold_glyph, push_glyph, span_covers,
 };
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::command_palette::Context;
@@ -32,6 +32,7 @@ pub(crate) fn render_command_palette(
     let _overlay = overlay_text();
     let now = std::time::Instant::now();
     let reduced = crate::overlay_motion::reduced_motion();
+    let _fade = overlay_fade(palette.motion.open_fade(now, reduced));
 
     let mut context = Context::new();
     context.set("editorFocus", true);
@@ -95,7 +96,7 @@ pub(crate) fn render_command_palette(
                 2.0 * stroke,
                 palette_font_size,
             ],
-            color(theme.accent),
+            faded(color(theme.accent)),
         ));
     }
 

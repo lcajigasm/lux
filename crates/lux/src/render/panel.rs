@@ -159,11 +159,15 @@ pub(crate) fn push_rounded_surface(
                 rect[2] + grow * 0.35,
                 rect[3] + shadow * 0.28,
             ],
-            [0.0, 0.0, 0.0, 0.78],
+            super::paint::faded([0.0, 0.0, 0.0, 0.78]),
             radius + grow * 0.2,
         ));
     }
-    quads.push(QuadInstance::rounded(rect, border, radius));
+    quads.push(QuadInstance::rounded(
+        rect,
+        super::paint::faded(border),
+        radius,
+    ));
     let inset = stroke.max(1.0);
     quads.push(QuadInstance::rounded(
         [
@@ -172,7 +176,7 @@ pub(crate) fn push_rounded_surface(
             (rect[2] - 2.0 * inset).max(1.0),
             (rect[3] - 2.0 * inset).max(1.0),
         ],
-        fill,
+        super::paint::faded(fill),
         (radius - inset).max(0.0),
     ));
 }
@@ -210,7 +214,7 @@ pub(crate) fn push_moving_row(
             (width - 2.0 * inset).max(1.0),
             (row_height - 2.0 * scale).max(1.0),
         ],
-        fill,
+        super::paint::faded(fill),
         radius,
     ));
     quads.push(QuadInstance::rounded(
@@ -220,7 +224,7 @@ pub(crate) fn push_moving_row(
             4.0 * scale,
             (row_height - 10.0 * scale).max(1.0),
         ],
-        accent,
+        super::paint::faded(accent),
         2.0 * scale,
     ));
 }

@@ -23,12 +23,23 @@
 > sits under the tab bar, about half the window, with a shadow. The editor
 > stays visible above and beside it. The field shows `sel`. On the beige
 > selected row the matched letters are the foreground; other rows keep
-> the accent. `docs/compare/goto.png` lists `monokai.rs` for `mon`.
+> the accent. Go to file keeps a contiguous run or a word-initial match
+> and drops a scattered hit when one of those exists. `mon` on the compare
+> fixtures keeps `monokai.rs`. The `sample-*.bin` names match only as
+> `m`…`o`…`n` (`sample`, a later `o`, and the `n` in `.bin`). The committed
+> `docs/compare/goto.png` is from compare run 41357599959 and still shows
+> those bins; the next compare is the one that has to match Sublime.
 > `docs/compare/theme.png` shows the theme picker with `mo`.
 > `docs/compare/retina-palette.png` is that Lux frame from the renderer
 > at scale factor 2 (2000×1312). The runner logged display scale 1, so
-> Sublime is not in that file. Block 0 stays open. No release is tagged.
-> A still does not show the open animation. See [ROADMAP.md](ROADMAP.md).
+> Sublime is not in that file. Forge accepts that framebuffer as Lux's
+> Retina render and notes that the runner cannot capture Sublime in HiDPI.
+> Selector open motion is 120 ms: the card fades in and slides 8 px down
+> under the tab bar. Reduced motion skips it. The compare PNG is the
+> settled frame. `overlay_motion::the_open_animation_fades_and_slides_across_three_frames`
+> samples the start, the middle, and the end. Block 0 stays open until
+> the new goto capture matches Sublime. No release is tagged.
+> See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
@@ -76,7 +87,8 @@
 > 2026-10-31, release mode measured p99 and max at 376 µs (30 inserts; the test's
 > p99 slot is the slowest sample). A hosted run the same day, before CI was cut
 > to Linux, measured 215 µs on `ubuntu-latest` and 1.06 ms on `windows-latest`.
-> Debug CI keeps an 80 ms ceiling. The 8 ms assert is not widened.
+> Debug CI keeps a 120 ms ceiling. macos-15 debug run 41357599950 measured
+> 82 ms on that test. The 8 ms release assert is not widened.
 >
 > v1.1.1: `editor.insertFinalNewline` defaults off (Sublime / VS Code). A save the worker
 > rejects or cancels undoes that transform when the user has not typed since. Ctrl+Alt+digit

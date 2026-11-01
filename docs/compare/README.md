@@ -15,8 +15,11 @@ the job fails and does not write a replacement image.
 (`lux --palette --query sel`), Sublime Text (`show_overlay` with
 `text: sel`), and Zed (Cmd-Shift-P, then `sel`). `goto.png` is go to
 file with `mon`. Lux opens the fixtures directory for that shot, so the
-list is the folder index (`monokai.rs`), not an empty panel from a file
-that has not loaded yet. `theme.png` is Lux and Sublime's color-scheme pickers
+list is the folder index, not an empty panel from a file that has not
+loaded yet. A contiguous or word-initial match drops scattered names:
+`mon` keeps `monokai.rs` and not `sample-utf8-bom.bin` (its `m`, `o`,
+and `n` are not a run). The PNG from compare run 41357599959 still shows
+the scattered rows; replace it when a later run does not. `theme.png` is Lux and Sublime's color-scheme pickers
 with `mo`; Zed's pane is its command palette filtered to `theme`,
 because this capture has no shortcut that opens Zed's theme selector.
 Zed is installed with `brew install --cask zed` and opened

@@ -4,7 +4,7 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::render::paint::{
-    color, fuzzy_spans, overlay_text, push_bold_glyph, push_glyph, span_covers,
+    color, faded, fuzzy_spans, overlay_fade, overlay_text, push_bold_glyph, push_glyph, span_covers,
 };
 use crate::theme_picker::ThemePickerState;
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
@@ -30,6 +30,7 @@ pub(crate) fn render_theme_picker(
     let _overlay = overlay_text();
     let now = std::time::Instant::now();
     let reduced = crate::overlay_motion::reduced_motion();
+    let _fade = overlay_fade(picker.motion.open_fade(now, reduced));
     let filtered = picker.filtered();
     let visible_count = filtered.len().min(super::panel::THEME_VISIBLE);
     let open_offset = picker.motion.open_offset(now, reduced, -8.0 * scale_factor);
@@ -194,7 +195,7 @@ pub(crate) fn render_theme_picker(
                 let sx = swatches_x + (i as f32 * (swatch_size + swatch_gap));
                 quad_instances.push(QuadInstance::rounded(
                     [sx, swatch_y, swatch_size, swatch_size],
-                    sc,
+                    faded(sc),
                     2.0 * scale_factor,
                 ));
             }

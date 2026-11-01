@@ -134,10 +134,16 @@ foreground color, the selected row is `#75715E` with an accent bar, and
 fuzzy hits use the accent. The right-hand label is the real keymap chord
 when one exists. Compare run 41348580486 is the capture Forge rejected.
 Compare run 41357599959 shows the card under the tab bar, the query, the
-editor beside it, and go to file listing `monokai.rs`. A match on the
-beige selection is the foreground, drawn twice; other rows keep the
-accent. The runner logged display scale 1. `retina-palette.png` is the
-scale-2 framebuffer (2000×1312). A still does not show the open animation.
+editor beside it, and go to file listing `monokai.rs` plus scattered
+`sample-*.bin` hits for `mon`. A match on the beige selection is the
+foreground, drawn twice; other rows keep the accent. Ranking now keeps a
+contiguous or word-initial match and drops those scattered names when
+one exists. The runner logged display scale 1. `retina-palette.png` is
+the scale-2 framebuffer (2000×1312). Forge accepts that file as Lux's
+Retina render; Sublime cannot be captured at that scale on the 1× runner.
+Open motion is a 120 ms fade and an 8 px slide. The still is the settled
+frame. The three samples are
+`overlay_motion::the_open_animation_fades_and_slides_across_three_frames`.
 
 Acceptance, on top of 0.1 and 0.2: Retina text is grayscale-antialiased (or
 otherwise correct for a 2× framebuffer), with ligatures, a stable line

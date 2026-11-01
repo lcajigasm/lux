@@ -5,7 +5,7 @@ use swash::scale::ScaleContext;
 
 use crate::goto::{GotoItemKind, GotoState};
 use crate::render::paint::{
-    color, fuzzy_spans, overlay_text, push_bold_glyph, push_glyph, span_covers,
+    color, faded, fuzzy_spans, overlay_fade, overlay_text, push_bold_glyph, push_glyph, span_covers,
 };
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
@@ -30,6 +30,7 @@ pub(crate) fn render_goto(
     let _overlay = overlay_text();
     let now = std::time::Instant::now();
     let reduced = crate::overlay_motion::reduced_motion();
+    let _fade = overlay_fade(goto.motion.open_fade(now, reduced));
     let visible_count = goto.items.len().min(super::panel::SELECTOR_VISIBLE);
     let open_offset = goto.motion.open_offset(now, reduced, -8.0 * scale_factor);
     let chrome = super::panel::paint_selector_chrome(
@@ -92,7 +93,7 @@ pub(crate) fn render_goto(
                 2.0 * stroke,
                 modal_font_size,
             ],
-            color(theme.accent),
+            faded(color(theme.accent)),
         ));
     }
 
@@ -168,7 +169,7 @@ pub(crate) fn render_goto(
             let badge_y = row_y + (row_height - badge_h) * 0.5;
             quad_instances.push(QuadInstance::rounded(
                 [offset_x, badge_y, badge_w, badge_h],
-                badge_bg,
+                faded(badge_bg),
                 3.0 * scale_factor,
             ));
             for cluster in badge_layout.clusters() {
