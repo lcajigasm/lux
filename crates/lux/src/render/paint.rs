@@ -1,5 +1,7 @@
 //! Low-level rendering helpers, glyph caching, and wgpu render-pass submission.
 
+use std::cell::Cell;
+
 use swash::FontRef;
 use wgpu::CurrentSurfaceTexture;
 
@@ -10,28 +12,61 @@ use lux_render::{
     TextRenderingMode,
 };
 
+thread_local! {
+    /// HiDPI frames rasterize grayscale masks. The quad pass has already
+    /// drawn each surface, so the mask composites against that real color
+    /// instead of one editor-background uniform.
+    static GRAYSCALE_TEXT: Cell<bool> = const { Cell::new(false) };
+}
+
+pub(crate) fn set_hidpi_grayscale(scale_factor: f32) {
+    GRAYSCALE_TEXT.with(|cell| cell.set(scale_factor > 1.0));
+}
+
+thread_local! {
+    static ACTIVE_THEME: Cell<lux_ui::Theme> = const { Cell::new(lux_ui::Theme::MONOKAI) };
+}
+
+/// Panels drawn outside the editor pass (terminal, LSP, git) read this.
+/// `redraw` sets it from the live theme before those passes run.
+pub(crate) fn set_active_theme(theme: lux_ui::Theme) {
+    ACTIVE_THEME.with(|cell| cell.set(theme));
+}
+
+pub(crate) fn active_theme() -> lux_ui::Theme {
+    ACTIVE_THEME.with(|cell| cell.get())
+}
+
+fn text_mode() -> TextRenderingMode {
+    if GRAYSCALE_TEXT.with(|cell| cell.get()) {
+        TextRenderingMode::Grayscale
+    } else {
+        TextRenderingMode::Subpixel
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-pub(super) fn push_glyph(
+fn push_one_glyph(
     atlas: &mut lux_render::GlyphAtlas,
     atlas_dirty: &mut bool,
     scale_cx: &mut swash::scale::ScaleContext,
     font: FontRef,
     font_size: f32,
-    cluster: &lux_render::ClusterGeometry,
+    glyph_id: u32,
+    x: f32,
+    y_up: f32,
     origin_x: f32,
     origin_y: f32,
     color: [f32; 4],
     out: &mut Vec<GlyphInstance>,
 ) {
-    let Some(glyph_id) = cluster.glyph_id else {
-        return;
-    };
+    let placed_x = origin_x + x;
     let key = GlyphKey::new(
         font.key.value(),
         glyph_id as u16,
         font_size,
-        (origin_x + cluster.x).fract(),
-        TextRenderingMode::Subpixel,
+        placed_x.fract(),
+        text_mode(),
     );
     let was_cached = atlas.is_cached(&key);
     let Some(entry) = atlas.rasterize(scale_cx, font, key) else {
@@ -49,8 +84,8 @@ pub(super) fn push_glyph(
     ];
     out.push(GlyphInstance::new(
         [
-            (origin_x + cluster.x).floor() + entry.left as f32,
-            origin_y.round() - entry.top as f32,
+            placed_x.floor() + entry.left as f32,
+            origin_y.round() - y_up - entry.top as f32,
             entry.width as f32,
             entry.height as f32,
         ],
@@ -58,6 +93,53 @@ pub(super) fn push_glyph(
         color,
         entry.kind,
     ));
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn push_glyph(
+    atlas: &mut lux_render::GlyphAtlas,
+    atlas_dirty: &mut bool,
+    scale_cx: &mut swash::scale::ScaleContext,
+    font: FontRef,
+    font_size: f32,
+    cluster: &lux_render::ClusterGeometry,
+    origin_x: f32,
+    origin_y: f32,
+    color: [f32; 4],
+    out: &mut Vec<GlyphInstance>,
+) {
+    if let Some(glyph_id) = cluster.glyph_id {
+        push_one_glyph(
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            font,
+            font_size,
+            glyph_id,
+            cluster.x + cluster.glyph_dx,
+            cluster.glyph_dy,
+            origin_x,
+            origin_y,
+            color,
+            out,
+        );
+    }
+    for &(glyph_id, dx, dy) in &cluster.extra_glyphs {
+        push_one_glyph(
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            font,
+            font_size,
+            glyph_id,
+            cluster.x + dx,
+            dy,
+            origin_x,
+            origin_y,
+            color,
+            out,
+        );
+    }
 }
 
 pub(super) fn paint(
@@ -152,6 +234,44 @@ pub(super) fn paint(
     Outcome::Presented
 }
 
+/// Byte ranges in `haystack` that a case-insensitive subsequence `needle` hits.
+pub(crate) fn fuzzy_spans(haystack: &str, needle: &str) -> Vec<std::ops::Range<usize>> {
+    let mut spans = Vec::new();
+    if needle.trim().is_empty() {
+        return spans;
+    }
+    let mut rest = haystack;
+    let mut base = 0usize;
+    for ch in needle.chars() {
+        if ch.is_whitespace() {
+            continue;
+        }
+        let lower = ch.to_lowercase().next().unwrap_or(ch);
+        let Some((index, matched)) = rest
+            .char_indices()
+            .find(|(_, candidate)| candidate.to_lowercase().next().unwrap_or(*candidate) == lower)
+        else {
+            break;
+        };
+        let start = base + index;
+        let len = matched.len_utf8();
+        spans.push(start..start + len);
+        let next = index + len;
+        base += next;
+        rest = &rest[next..];
+    }
+    spans
+}
+
+pub(crate) fn span_covers(
+    spans: &[std::ops::Range<usize>],
+    range: &std::ops::Range<usize>,
+) -> bool {
+    spans
+        .iter()
+        .any(|span| span.start < range.end && range.start < span.end)
+}
+
 pub(crate) fn color(c: lux_ui::Color) -> [f32; 4] {
     [
         c.r as f32 / 255.0,
@@ -159,6 +279,19 @@ pub(crate) fn color(c: lux_ui::Color) -> [f32; 4] {
         c.b as f32 / 255.0,
         c.a as f32 / 255.0,
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{fuzzy_spans, span_covers};
+
+    #[test]
+    fn fuzzy_spans_cover_a_case_insensitive_subsequence() {
+        let spans = fuzzy_spans("Goto Line", "gl");
+        assert!(span_covers(&spans, &(0..1)), "{spans:?}");
+        assert!(span_covers(&spans, &(5..6)), "{spans:?}");
+        assert!(!span_covers(&spans, &(1..2)), "{spans:?}");
+    }
 }
 
 pub(super) fn syntax_color(c: lux_syntax::theme::Color) -> [f32; 4] {

@@ -55,12 +55,12 @@ pub(crate) fn render_project_picker(
         ligatures: false,
     };
 
-    let bg = [0.13, 0.14, 0.17, 0.98];
-    let border_color = [0.28, 0.30, 0.36, 1.0];
-    let header_bg = [0.16, 0.17, 0.21, 1.0];
-    let sel_bg = [0.22, 0.25, 0.32, 1.0];
+    let bg = color(theme.chrome.panel);
+    let border_color = color(theme.chrome.border);
+    let header_bg = color(theme.chrome.tab_bar);
+    let sel_bg = color(theme.chrome.panel_row);
     let foreground = color(theme.foreground);
-    let muted = [0.55, 0.58, 0.65, 1.0];
+    let muted = color(theme.muted);
     let active_badge_color = [0.25, 0.75, 0.45, 1.0];
 
     // 1. Overlay main background
@@ -123,7 +123,7 @@ pub(crate) fn render_project_picker(
             width - 16.0 * scale_factor,
             input_height - 6.0 * scale_factor,
         ],
-        color: [0.10, 0.11, 0.13, 1.0],
+        color: color(theme.chrome.panel_input),
     });
 
     let prompt = "> ";
@@ -158,7 +158,7 @@ pub(crate) fn render_project_picker(
             2.0 * scale_factor,
             input_height - 14.0 * scale_factor,
         ],
-        color: [0.4, 0.6, 0.95, 1.0],
+        color: color(theme.chrome.panel_row),
     });
 
     // Project results list

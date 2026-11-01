@@ -32,7 +32,7 @@ pub(crate) const DEFAULT_SETTINGS_JSON: &str = r#"{
   "editor.insertFinalNewline": false,
   "editor.wordWrap": false,
   "editor.distractionFreeColumnWidth": 80,
-  "workbench.colorTheme": "system",
+  "workbench.colorTheme": "monokai",
   "workbench.keymap": "sublime"
 }"#;
 
@@ -87,6 +87,7 @@ pub(crate) struct SettingsState {
     pub(crate) watcher: Option<ConfigWatcher>,
     pub(crate) settings_path: PathBuf,
     pub(crate) panel: Option<SettingsPanelState>,
+    pub(crate) schemes: Vec<crate::color_scheme::LoadedScheme>,
 }
 
 impl Default for SettingsState {
@@ -111,11 +112,17 @@ impl SettingsState {
         let watcher =
             ConfigWatcher::new(Arc::clone(&config), [(Layer::User, settings_path.clone())]).ok();
 
+        let mut schemes = vec![crate::color_scheme::bundled_monokai()];
+        if let Some(dir) = settings_path.parent() {
+            schemes.extend(crate::color_scheme::load_user_schemes(&dir.join("themes")));
+        }
+
         Self {
             config,
             watcher,
             settings_path,
             panel: None,
+            schemes,
         }
     }
 
@@ -310,7 +317,7 @@ impl SettingsState {
             .unwrap_or(80.0);
         let theme = r["workbench.colorTheme"]
             .as_str()
-            .unwrap_or("system")
+            .unwrap_or("monokai")
             .to_string();
         let keymap = r["workbench.keymap"]
             .as_str()

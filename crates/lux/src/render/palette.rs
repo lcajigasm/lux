@@ -4,7 +4,7 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::palette::CommandPaletteState;
-use crate::render::paint::{color, push_glyph};
+use crate::render::paint::{color, fuzzy_spans, push_glyph, span_covers};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::command_palette::Context;
 use lux_ui::editor_view::EditorView;
@@ -53,14 +53,20 @@ pub(crate) fn render_command_palette(
     let foreground = color(theme.foreground);
     let muted = color(theme.muted);
 
+    let shadow = 5.0 * scale_factor;
+    quad_instances.push(QuadInstance {
+        rect: [left + shadow, top + shadow, width, total_height],
+        color: [0.0, 0.0, 0.0, 0.45],
+    });
+
     // 1. Overlay main background
     quad_instances.push(QuadInstance {
         rect: [left, top, width, total_height],
-        color: [0.09, 0.09, 0.12, 0.98],
+        color: color(theme.chrome.panel),
     });
 
     // 2. Outer border
-    let border_color = [0.25, 0.25, 0.32, 1.0];
+    let border_color = color(theme.chrome.border);
     quad_instances.push(QuadInstance {
         rect: [left, top, width, stroke],
         color: border_color,
@@ -86,11 +92,11 @@ pub(crate) fn render_command_palette(
             width - 2.0 * stroke,
             input_height,
         ],
-        color: [0.065, 0.065, 0.085, 1.0],
+        color: color(theme.chrome.panel_input),
     });
     quad_instances.push(QuadInstance {
         rect: [left, top + input_height + stroke, width, stroke],
-        color: [0.18, 0.18, 0.22, 1.0],
+        color: color(theme.chrome.border),
     });
 
     // 4. Input text & caret
@@ -157,7 +163,7 @@ pub(crate) fn render_command_palette(
         if is_selected {
             quad_instances.push(QuadInstance {
                 rect: [left + stroke, row_y, width - 2.0 * stroke, row_height],
-                color: [0.18, 0.22, 0.32, 1.0],
+                color: color(theme.chrome.panel_row),
             });
             quad_instances.push(QuadInstance {
                 rect: [left + stroke, row_y, 3.0 * stroke, row_height],
@@ -172,8 +178,14 @@ pub(crate) fn render_command_palette(
                 .layout_line(&style, &entry.command.title, &[]);
         let title_x = left + 14.0 * scale_factor;
         let title_color = if is_selected { foreground } else { muted };
+        let hits = fuzzy_spans(&entry.command.title, &palette.query);
 
         for cluster in title_line.clusters() {
+            let glyph_color = if span_covers(&hits, &cluster.byte_range) {
+                color(theme.accent)
+            } else {
+                title_color
+            };
             push_glyph(
                 atlas,
                 atlas_dirty,
@@ -183,7 +195,7 @@ pub(crate) fn render_command_palette(
                 &cluster,
                 title_x,
                 row_y + row_baseline + title_line.baseline(),
-                title_color,
+                glyph_color,
                 glyph_instances,
             );
         }

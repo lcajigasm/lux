@@ -7,7 +7,7 @@ use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
 
 use crate::plugin::PluginState;
-use crate::render::paint::push_glyph;
+use crate::render::paint::{active_theme, color, push_glyph};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_plugin_modal(
@@ -42,7 +42,7 @@ pub(crate) fn render_plugin_modal(
     // Card background & warning border
     quad_instances.push(QuadInstance {
         rect: [card_x, card_y, card_w, card_h],
-        color: [0.12, 0.12, 0.16, 0.98],
+        color: color(active_theme().chrome.panel),
     });
     quad_instances.push(QuadInstance {
         rect: [card_x, card_y, card_w, stroke * 2.0],

@@ -31,4 +31,4 @@ pub use focus::{FocusRing, FocusTarget};
 pub use i18n::Locale;
 pub use motion::Motion;
 pub use rtl::{Direction, direction_for};
-pub use theme::{Color, Theme, contrast_ratio};
+pub use theme::{ChromeColors, Color, Theme, contrast_ratio, shift};

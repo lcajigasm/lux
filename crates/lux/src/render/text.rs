@@ -179,16 +179,16 @@ pub(crate) fn render_text_lines(
             // Pill background
             quad_instances.push(QuadInstance {
                 rect: [pill_x, pill_y, pill_w, pill_h],
-                color: [0.24, 0.24, 0.30, 0.85],
+                color: color(theme.chrome.panel_input),
             });
             // Pill border stroke
             quad_instances.push(QuadInstance {
                 rect: [pill_x, pill_y, pill_w, stroke],
-                color: [0.35, 0.35, 0.42, 1.0],
+                color: color(theme.chrome.border),
             });
             quad_instances.push(QuadInstance {
                 rect: [pill_x, pill_y + pill_h - stroke, pill_w, stroke],
-                color: [0.35, 0.35, 0.42, 1.0],
+                color: color(theme.chrome.border),
             });
 
             // 3 dots inside pill

@@ -1,5 +1,19 @@
 # Status
 
+> Phase 0 (2026-11-01), not closed. Encoding round-trips UTF-8 (with and
+> without BOM), Latin-1, Windows-1252, and UTF-16 LE/BE with and without a
+> BOM when the no-BOM guess is confident. The status bar names the
+> encoding. Save is byte-for-byte unless a conversion is requested.
+> Fixtures are in `docs/compare/fixtures/`. The default theme is Monokai,
+> parsed from `themes/Monokai.sublime-color-scheme` (MIT, `themes/NOTICE.md`),
+> and the sidebar, tabs, selectors, and status bar take their colors from
+> that theme. HiDPI text uses grayscale antialiasing. The palette
+> highlights a fuzzy subsequence and draws an offset shadow. Icons, rounded
+> corners, and selector animation are not done, so block 0 stays open and
+> no release is tagged for this change. Real window comparisons are
+> `docs/compare/` from `.github/workflows/compare.yml` on standard
+> `macos-15`. See [ROADMAP.md](ROADMAP.md).
+>
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
 > Pull-request and main CI keep the `ubuntu-latest` jobs and add one standard

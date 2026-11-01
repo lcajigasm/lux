@@ -51,11 +51,11 @@ pub(crate) fn render_language_picker(
     // 1. Overlay main background
     quad_instances.push(QuadInstance {
         rect: [left, top, width, total_height],
-        color: [0.09, 0.09, 0.12, 0.98],
+        color: color(theme.chrome.panel),
     });
 
     // 2. Outer border
-    let border_color = [0.25, 0.25, 0.32, 1.0];
+    let border_color = color(theme.chrome.border);
     quad_instances.push(QuadInstance {
         rect: [left, top, width, stroke],
         color: border_color,
@@ -81,11 +81,11 @@ pub(crate) fn render_language_picker(
             width - 2.0 * stroke,
             input_height,
         ],
-        color: [0.065, 0.065, 0.085, 1.0],
+        color: color(theme.chrome.panel_input),
     });
     quad_instances.push(QuadInstance {
         rect: [left, top + input_height + stroke, width, stroke],
-        color: [0.18, 0.18, 0.22, 1.0],
+        color: color(theme.chrome.border),
     });
 
     // 4. Input text & caret
@@ -153,7 +153,7 @@ pub(crate) fn render_language_picker(
         if is_selected {
             quad_instances.push(QuadInstance {
                 rect: [left + stroke, row_y, width - 2.0 * stroke, row_height],
-                color: [0.18, 0.22, 0.32, 0.95],
+                color: color(theme.chrome.panel_row),
             });
         }
 

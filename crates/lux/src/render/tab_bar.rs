@@ -42,7 +42,7 @@ pub(crate) fn render_tab_bar(
         let tab_bg = if is_active {
             color(theme.background)
         } else {
-            [0.075, 0.075, 0.10, 1.0]
+            color(theme.chrome.tab_inactive)
         };
         quad_instances.push(QuadInstance {
             rect: [tab_x, 0.0, tab_width, tab_bar_height - stroke],
@@ -61,7 +61,7 @@ pub(crate) fn render_tab_bar(
                 stroke,
                 tab_bar_height - stroke,
             ],
-            color: [0.15, 0.15, 0.20, 1.0],
+            color: color(theme.chrome.border),
         });
 
         let is_tab_dirty = if is_active {
@@ -156,11 +156,11 @@ pub(crate) fn render_tab_bar(
                 mw + 2.0 * stroke,
                 mh + 2.0 * stroke,
             ],
-            color: [0.06, 0.06, 0.10, 0.98],
+            color: color(theme.chrome.panel),
         });
         quad_instances.push(QuadInstance {
             rect: [mx, my, mw, mh],
-            color: [0.14, 0.14, 0.20, 1.0],
+            color: color(theme.chrome.panel_input),
         });
         let item_h = crate::document::tab_ops::TAB_MENU_ITEM_HEIGHT * scale_factor;
         for (idx, item) in menu.items.iter().enumerate() {

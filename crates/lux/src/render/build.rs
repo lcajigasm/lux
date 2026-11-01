@@ -60,11 +60,11 @@ pub(crate) fn render_build_picker(
     // 1. Overlay main background
     quad_instances.push(QuadInstance {
         rect: [left, top, width, total_height],
-        color: [0.09, 0.09, 0.12, 0.98],
+        color: color(theme.chrome.panel),
     });
 
     // 2. Outer border
-    let border_color = [0.25, 0.25, 0.32, 1.0];
+    let border_color = color(theme.chrome.border);
     quad_instances.push(QuadInstance {
         rect: [left, top, width, stroke],
         color: border_color,
@@ -111,7 +111,7 @@ pub(crate) fn render_build_picker(
             width - 16.0 * scale_factor,
             input_height,
         ],
-        color: [0.14, 0.14, 0.18, 1.0],
+        color: color(theme.chrome.panel_input),
     });
 
     let display_text = if picker.query.is_empty() {

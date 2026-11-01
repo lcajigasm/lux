@@ -1,6 +1,7 @@
 # Roadmap
 
-Checked against `main` `44684ab` on 2026-11-01. This page is the parity plan
+Checked against `main` `197353c` on 2026-11-01, then updated in the
+phase 0 change. This page is the parity plan
 for the macOS product. [NON-GOALS.md](NON-GOALS.md) still excludes a
 debugger, live collaboration, a hosted marketplace, accounts, telemetry,
 and AI chat. Packaging and CI stay as they are unless something is broken.
@@ -36,40 +37,32 @@ capture.
 Four separate mechanisms, all visible in that capture or in the draw path
 that produced it:
 
-1. **The default theme is light, and Monokai is not what launches.**
-   `workbench.colorTheme` defaults to `system`
-   (`crates/lux/src/settings.rs`). On the light `macos-14` runner that
-   selects Lux Light (`#FAFAFD` chrome, pale syntax tokens). Monokai exists
-   only as handwritten constants (`#272822`, `#F8F8F2`, `#F92672`,
-   `#E6DB74` in `crates/lux-ui/src/theme.rs` and
-   `crates/lux-syntax/src/theme/presets.rs`). Nothing loads a `.tmTheme`.
+The capture above is the previous build. The phase 0 code changes the
+four mechanisms as follows. Block 0 stays open until a new compare capture
+shows the window holding up next to Sublime.
 
-2. **Chrome colors ignore the theme.** The tab strip, inactive tabs, status
-   bar, command palette, and find panel are hardcoded indigo quads
-   (`[0.055, 0.055, 0.075]`, `[0.09, 0.09, 0.12]`, and the same family in
-   `crates/lux/src/render.rs`, `status_bar.rs`, `palette.rs`). Text on those
-   quads uses `theme.foreground`. On Lux Light that foreground is `#1E1E24`,
-   so the palette and the status bar draw near-black glyphs on a near-black
-   quad. The active tab uses `theme.background`, which is why the one tab
-   in the capture is readable and the palette is not. The status-bar string
-   itself is real (`UTF-8`, `LF`, the cursor) and is painted; the capture
-   cannot be read because of this contrast.
+1. **Monokai is the launch theme.** `workbench.colorTheme` defaults to
+   `monokai`. `Chrome` starts on `Theme::MONOKAI` and does not follow the
+   OS until the setting is `system`. The colors are parsed from
+   `themes/Monokai.sublime-color-scheme` (MIT, see `themes/NOTICE.md`).
+   More `*.sublime-color-scheme` files load from the user config
+   `themes/` directory.
 
-3. **Subpixel glyphs are composited against one background.** Every glyph
-   is rasterized with `TextRenderingMode::Subpixel` and hinted
-   (`GlyphAtlas::rasterize` calls `hint(true)`). `text.wgsl` mixes that LCD
-   mask with a single uniform, `theme.background`, and writes an opaque
-   pixel. On a Retina framebuffer the LCD assumption is wrong, and any
-   glyph that is not sitting on the editor fill (palette, status bar,
-   selection, gutter) is blended against the wrong color. Layout does scale
-   with the framebuffer: `FONT_SIZE` is 16 and positions are multiplied by
-   `scale_factor`, and the surface size is the physical size. The blur is
-   the AA mode and the single clear color, not a missing scale multiply.
+2. **Chrome colors come from the theme.** Sidebar, tabs, status bar,
+   palette, find, goto, and the other selector panels use `theme.chrome`
+   instead of a fixed indigo quad. Text on those surfaces uses
+   `theme.foreground` against that fill. Git added/removed colors and
+   diagnostic red/amber stay semantic.
 
-4. **Selectors are rectangles.** The palette, goto, and theme picker draw
-   axis-aligned quads. The palette renderer has no match highlight, no
-   icons, no corner radius, and no motion. "Shadow" in the find and LSP
-   panels is another flat quad.
+3. **HiDPI glyphs are grayscale masks.** When `scale_factor` is above 1,
+   rasterization uses `TextRenderingMode::Grayscale`. Quads are drawn
+   first, so the mask blends with the surface already in the framebuffer.
+   Scale 1 still uses subpixel AA. Hinting is unchanged. A cluster paints
+   every glyph parley produced, including a combining mark.
+
+4. **Selectors are still rectangles.** The palette highlights the fuzzy
+   subsequence of the query and draws an offset black shadow. It has no
+   icons, no corner radius, and no motion. Those three are still 0.3.
 
 No font is bundled. The macOS loader tries `SFNSMono.ttf`, then the Xcode
 SF Mono files, then `Menlo.ttc` face 0. Editor ASCII in the capture is a
@@ -80,18 +73,18 @@ chrome string.
 
 This block is first. Order inside it is fixed.
 
-### 0.1 Encoding — parcial
+### 0.1 Encoding — hecho in tests, window capture still owed
 
 | Check | State |
 |---|---|
-| UTF-8, including `é` and emoji, decodes and round-trips | hecho, in memory (`lux-core` encoding tests, `hola señor 😀` save test) |
-| UTF-8 BOM and UTF-16 LE/BE **with** BOM | hecho, in memory |
-| UTF-16 without a BOM | falta. NUL bytes take the binary path and the file is refused |
-| Windows-1252 | falta. The name does not appear in the tree. Invalid UTF-8 falls through to Latin-1, so `0x80`–`0x9F` become C1 controls instead of the 1252 characters |
-| Grapheme movement | hecho in `lux-core` (`next_grapheme`). The live capture file is ASCII, so the window has not shown combining marks, emoji, or CJK |
-| Encoding label in the status bar | parcial. The label is `UTF-8` / `UTF-16 LE` / `Latin-1` and the capture cannot show it (see the contrast bug above) |
-| Save round-trip | parcial. `Buffer::save` writes `encoding::encode` and refuses a Latin-1 save that would drop a character above U+00FF. There is no on-disk fixture. `tests/fixtures/basic.txt` is the ASCII line `hello world` |
-| Sample files in the repo | falta |
+| UTF-8, including `é`, `ñ`, emoji, and CJK, decodes and round-trips | hecho. `docs/compare/fixtures/characters.txt` plus the encoding tests |
+| UTF-8 BOM and UTF-16 LE/BE **with** BOM | hecho. On-disk fixtures, byte-identical save |
+| UTF-16 without a BOM | hecho when one byte of each pair is mostly NUL and the decode scores as text. Shorter, odd-length, or pure-CJK input without a BOM stays binary |
+| Windows-1252 | hecho when the file is not UTF-8 and contains a byte in `0x80..=0x9F`. Other invalid UTF-8 stays Latin-1. Undefined 1252 bytes keep the C1 control so the byte round-trips |
+| Grapheme movement | hecho in `lux-core`. Shaping emits every glyph in a cluster, so a combining mark is not dropped when the font keeps it as a second glyph |
+| Encoding label in the status bar | hecho. Labels include `UTF-8`, `UTF-8 BOM`, `UTF-16 LE`, `UTF-16 BE`, `Windows-1252`, and `Latin-1` |
+| Save round-trip | hecho. `Buffer::save` writes `encoding::encode` and refuses the write when `can_encode` is false. The fixture test asserts the bytes |
+| Sample files in the repo | hecho, under `docs/compare/fixtures/` |
 
 Acceptance: fixture files under `docs/compare/fixtures/` cover `ñ`, áéíóúü,
 emoji, CJK, and a combining sequence; plus Latin-1, Windows-1252, UTF-8
@@ -101,11 +94,12 @@ save without an explicit conversion is byte-identical. A requested
 conversion is the only path that may change bytes. Tests open those files;
 they do not rebuild the bytes in the assertion.
 
-### 0.2 Monokai as the default dark theme — parcial
+### 0.2 Monokai as the default dark theme — parcial until the capture
 
-Classic hex values exist as Rust constants and can be selected by name.
-They are not the default, they do not paint the sidebar, tabs, palette, or
-status bar, and they were not imported from a theme file.
+The default is Monokai. `themes/Monokai.sublime-color-scheme` is parsed at
+startup and a test locks it to `Theme::MONOKAI` and the Monokai syntax
+scopes. Sidebar, tabs, palette, goto, and the status bar use that chrome.
+The side-by-side capture is what closes this row.
 
 Acceptance: `workbench.colorTheme` defaults to Monokai. One vendored
 `.tmTheme` or `.sublime-color-scheme` is the source of those colors, with
@@ -117,9 +111,14 @@ candidate either; the VS Code `theme-monokai` sources are MIT and are the
 first file to check. Sublime's bundled scheme is used only if its license
 allows redistribution.
 
-### 0.3 Text and selectors — falta
+### 0.3 Text and selectors — parcial
 
-The draw path exists and is the path that produced the bad capture.
+HiDPI frames (`scale_factor > 1`) rasterize grayscale masks and blend them
+with the quad already drawn for that surface. The palette highlights the
+matched subsequence and draws an offset shadow. Ligatures and the SF Mono
+fallback list were already there. Still missing, so this row is not hecho:
+icons, rounded corners, and motion. No `selectors.png` until those exist.
+Scale 1 still uses subpixel AA.
 
 Acceptance, on top of 0.1 and 0.2: Retina text is grayscale-antialiased (or
 otherwise correct for a 2× framebuffer), with ligatures, a stable line
@@ -145,32 +144,23 @@ If Lux loses that comparison, the block stays open and no release is tagged.
 
 ### How the compare job works
 
-Not added in the plan change. When phase 0 starts, add
-`.github/workflows/compare.yml`:
-
-- `workflow_dispatch` only, `runs-on: macos-15`, timeout 45 minutes. It
-  does not run on pull requests.
-- Build `lux` in release mode.
-- `brew install --cask sublime-text` and `brew install --cask zed`. No
-  license, no account. If a cask name has moved, the job log is the
-  record and the workflow is updated; the job does not fall back to a
-  drawing.
-- Fixtures live in `docs/compare/fixtures/`. Sublime opens the same file
-  with its built-in Monokai color scheme. Zed opens it for the selector
-  and text frames in 0.3.
-- AppleScript sets each window to the same bounds. `screencapture -l`
-  captures the window id whose owner is `lux`, `Sublime Text`, or `Zed`.
-- ImageMagick appends the pair into the two files above. A third frame,
-  `docs/compare/selectors.png`, is the palette and goto of all three apps
-  on the same query; 0.3 does not close without it.
-- The job uploads the PNGs as an artifact. A person commits them. The
-  artifact alone does not close the phase.
+`.github/workflows/compare.yml` runs on `pull_request` and
+`workflow_dispatch` (this token cannot start `workflow_dispatch`). One
+standard `macos-15` job, timeout 45 minutes. `scripts/compare-captures.sh`
+builds debug `lux`, installs the Sublime Text cask, opens
+`docs/compare/fixtures/monokai.rs` in both apps with Monokai, and
+`docs/compare/fixtures/characters.txt` in Lux. `screencapture -l` captures
+the real windows. ImageMagick appends the pair. Zed is not installed in
+this job: 0.3 is not done, so there is no `selectors.png`. If Sublime
+cannot be captured, the script exits non-zero and does not write a
+stand-in image. The job uploads the PNGs. Committing them is a separate
+change. The artifact alone does not close the phase.
 
 ## Block 1 — Interface — parcial
 
 | Surface | State on 44684ab |
 |---|---|
-| Theme | parcial. Named themes exist; the running default is `system` → Lux Light. Block 0.2 owns the fix |
+| Theme | parcial. Monokai is the default and paints the chrome. The side-by-side capture is still the acceptance |
 | Typography | parcial. System monospace loader works (DejaVu here, Menlo/SF Mono path on macOS). No bundled face, chrome AA is wrong. Block 0.3 |
 | File tree | parcial. Sidebar code runs when a folder is open. The capture opened one file, so the tree was absent |
 | Tabs | parcial. One readable tab in the capture; inactive tabs use the hardcoded dark quad |
@@ -269,11 +259,12 @@ Each phase ends with new `docs/compare/` captures from the job above. Phase
 3 also commits the benchmark table. No release is tagged for a phase that
 missed its bar.
 
-1. **Phase 0, this is the next tanda.** Steps 0.1 and 0.2: encoding
-   fixtures and Monokai as the default theme of the whole window, from a
-   licensed theme file. Land the compare job and commit
-   `monokai-side-by-side.png` and `characters.png`. Block 0 stays open
-   because 0.3 is not done. No release.
+1. **Phase 0, in progress.** Encoding fixtures and Monokai-from-file are
+   in the tree. The compare job produces `monokai-side-by-side.png` and
+   `characters.png`. Block 0 stays open: 0.3 is only partly done (grayscale
+   HiDPI, combining glyphs, palette match highlight, offset shadow; no
+   icons, corners, or motion), and the phase is not closed until the
+   side-by-side is judged. No release.
 2. **Phase 0b.** Step 0.3: Retina text and the selectors. Commit
    `selectors.png` and a new Monokai pair. Close block 0 only if Lux holds
    the comparison. That close is the first release this plan allows.

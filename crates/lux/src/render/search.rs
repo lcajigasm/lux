@@ -97,13 +97,13 @@ pub(crate) fn render_search_bar(
     // 1. Dock Bar Background
     quad_instances.push(QuadInstance {
         rect: [0.0, bar_top, bar_width, bar_height],
-        color: [0.08, 0.08, 0.11, 0.98],
+        color: color(theme.chrome.panel),
     });
 
     // 2. Top Border
     quad_instances.push(QuadInstance {
         rect: [0.0, bar_top, bar_width, stroke],
-        color: [0.22, 0.22, 0.28, 1.0],
+        color: color(theme.chrome.border),
     });
 
     let input_h = 24.0 * scale_factor;
@@ -118,12 +118,12 @@ pub(crate) fn render_search_bar(
     // Find input box background & border
     quad_instances.push(QuadInstance {
         rect: [cur_x, row1_y, input_w, input_h],
-        color: [0.05, 0.05, 0.07, 1.0],
+        color: color(theme.chrome.panel_input),
     });
     let find_border_color = if find_focused {
         accent
     } else {
-        [0.20, 0.20, 0.25, 1.0]
+        color(theme.chrome.border)
     };
     quad_instances.push(QuadInstance {
         rect: [cur_x, row1_y, input_w, stroke],
@@ -232,9 +232,9 @@ pub(crate) fn render_search_bar(
                        rect: [f32; 4]| {
         let [rx, ry, rw, rh] = rect;
         let bg = if active {
-            [0.22, 0.28, 0.40, 1.0]
+            color(theme.chrome.panel_row)
         } else {
-            [0.12, 0.12, 0.15, 1.0]
+            color(theme.chrome.panel_input)
         };
         quads.push(QuadInstance { rect, color: bg });
         let txt_color = if active { accent } else { muted };
@@ -366,12 +366,12 @@ pub(crate) fn render_search_bar(
 
         quad_instances.push(QuadInstance {
             rect: [rep_x, row2_y, input_w, input_h],
-            color: [0.05, 0.05, 0.07, 1.0],
+            color: color(theme.chrome.panel_input),
         });
         let rep_border_color = if rep_focused {
             accent
         } else {
-            [0.20, 0.20, 0.25, 1.0]
+            color(theme.chrome.border)
         };
         quad_instances.push(QuadInstance {
             rect: [rep_x, row2_y, input_w, stroke],

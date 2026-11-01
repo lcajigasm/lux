@@ -4,7 +4,7 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::about::AboutDialogState;
-use crate::render::paint::push_glyph;
+use crate::render::paint::{color, push_glyph};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
 
@@ -41,25 +41,25 @@ pub(crate) fn render_about_dialog(
     // Card background
     quad_instances.push(QuadInstance {
         rect: [left, top, width, height],
-        color: [0.11, 0.11, 0.14, 0.98],
+        color: color(_theme.chrome.panel),
     });
 
     // 4-side borders
     quad_instances.push(QuadInstance {
         rect: [left, top, width, stroke],
-        color: [0.28, 0.28, 0.35, 1.0],
+        color: color(_theme.chrome.border),
     });
     quad_instances.push(QuadInstance {
         rect: [left, top + height - stroke, width, stroke],
-        color: [0.28, 0.28, 0.35, 1.0],
+        color: color(_theme.chrome.border),
     });
     quad_instances.push(QuadInstance {
         rect: [left, top, stroke, height],
-        color: [0.28, 0.28, 0.35, 1.0],
+        color: color(_theme.chrome.border),
     });
     quad_instances.push(QuadInstance {
         rect: [left + width - stroke, top, stroke, height],
-        color: [0.28, 0.28, 0.35, 1.0],
+        color: color(_theme.chrome.border),
     });
 
     // Top sublime-amber accent band
@@ -146,9 +146,9 @@ pub(crate) fn render_about_dialog(
     about.close_btn_rect = [btn_x, btn_y, btn_w, btn_h];
 
     let btn_bg = if about.close_hovered {
-        [0.26, 0.26, 0.33, 1.0]
+        color(_theme.chrome.panel_row)
     } else {
-        [0.17, 0.17, 0.22, 1.0]
+        color(_theme.chrome.panel_input)
     };
     quad_instances.push(QuadInstance {
         rect: [btn_x, btn_y, btn_w, btn_h],
@@ -157,19 +157,19 @@ pub(crate) fn render_about_dialog(
     // Button border
     quad_instances.push(QuadInstance {
         rect: [btn_x, btn_y, btn_w, stroke],
-        color: [0.38, 0.38, 0.46, 1.0],
+        color: color(_theme.chrome.border),
     });
     quad_instances.push(QuadInstance {
         rect: [btn_x, btn_y + btn_h - stroke, btn_w, stroke],
-        color: [0.38, 0.38, 0.46, 1.0],
+        color: color(_theme.chrome.border),
     });
     quad_instances.push(QuadInstance {
         rect: [btn_x, btn_y, stroke, btn_h],
-        color: [0.38, 0.38, 0.46, 1.0],
+        color: color(_theme.chrome.border),
     });
     quad_instances.push(QuadInstance {
         rect: [btn_x + btn_w - stroke, btn_y, stroke, btn_h],
-        color: [0.38, 0.38, 0.46, 1.0],
+        color: color(_theme.chrome.border),
     });
 
     // Close text inside button

@@ -33,9 +33,9 @@ impl Default for Chrome {
             focus: FocusRing::new(),
             locale: Locale::En,
             motion: Motion::default(),
-            theme: Theme::LUX_DARK,
+            theme: Theme::MONOKAI,
             system_scheme: SystemScheme::Dark,
-            theme_follows_system: true,
+            theme_follows_system: false,
             ui_scale: 1.0,
         }
     }
@@ -91,8 +91,8 @@ mod tests {
             "lux-dark"
         );
         let chrome = Chrome::default();
-        assert!(chrome.theme_follows_system);
+        assert!(!chrome.theme_follows_system);
         assert_eq!(chrome.system_scheme, SystemScheme::Dark);
-        assert_eq!(chrome.theme, Theme::LUX_DARK);
+        assert_eq!(chrome.theme, Theme::MONOKAI);
     }
 }

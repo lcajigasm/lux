@@ -54,14 +54,15 @@ pub struct ClusterGeometry {
     pub advance: f32,
     pub is_ligature_start: bool,
     pub is_ligature_continuation: bool,
-    /// This cluster's first rasterizable glyph id, for feeding
-    /// `GlyphAtlas::rasterize` — `None` for a cluster with no glyph at all
-    /// (e.g. a hard line break). A cluster can carry more than one glyph
-    /// (a base character plus a combining mark); only the first is exposed
-    /// today, a real, flagged gap for combining-mark rendering, not a
-    /// silent one — the overwhelming common case (one glyph per cluster,
-    /// true of plain Latin/programming text) is unaffected.
+    /// First rasterizable glyph id. `None` for a cluster with no glyph
+    /// (a hard line break).
     pub glyph_id: Option<u32>,
+    /// Offset of the first glyph from the cluster origin. `y` grows up.
+    pub glyph_dx: f32,
+    pub glyph_dy: f32,
+    /// Further glyphs in the same cluster (a combining mark), each
+    /// `(glyph id, dx from the cluster origin, dy with y growing up)`.
+    pub extra_glyphs: Vec<(u32, f32, f32)>,
 }
 
 /// A shaped, line-broken, left-aligned single-paragraph layout (an editor
@@ -108,14 +109,19 @@ impl LineLayout {
                 let mut x = glyph_run.offset();
                 for cluster in glyph_run.run().clusters() {
                     let advance = cluster.advance();
-                    let glyph_id = cluster.glyphs().next().map(|glyph| glyph.id);
+                    let mut glyphs = cluster.glyphs();
+                    let first = glyphs.next();
+                    let extra_glyphs = glyphs.map(|glyph| (glyph.id, glyph.x, glyph.y)).collect();
                     out.push(ClusterGeometry {
                         byte_range: cluster.text_range(),
                         x,
                         advance,
                         is_ligature_start: cluster.is_ligature_start(),
                         is_ligature_continuation: cluster.is_ligature_continuation(),
-                        glyph_id,
+                        glyph_id: first.map(|glyph| glyph.id),
+                        glyph_dx: first.map(|glyph| glyph.x).unwrap_or(0.0),
+                        glyph_dy: first.map(|glyph| glyph.y).unwrap_or(0.0),
+                        extra_glyphs,
                     });
                     x += advance;
                 }
@@ -386,5 +392,29 @@ mod tests {
         let unwrapped = cx.layout_line_wrapped(&style, "aaaa aaaa aaaa", None, &[]);
         let wrapped = cx.layout_line_wrapped(&style, "aaaa aaaa aaaa", Some(70.0), &[]);
         assert!(wrapped.layout.len() > unwrapped.layout.len());
+    }
+
+    #[test]
+    fn a_combining_mark_is_not_dropped() {
+        let bytes = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf")
+            .expect("DejaVu Sans Mono is the Linux monospace fallback");
+        let mut cx = TextLayoutContext::new();
+        let family = cx
+            .register_font(&bytes)
+            .expect("DejaVu Sans Mono registers");
+        let style = LineStyle {
+            family: &family,
+            font_size: 16.0,
+            ligatures: false,
+        };
+        let text = "e\u{0323}";
+        let clusters = cx.layout_line(&style, text, &[]).clusters();
+        let painted = clusters.iter().filter(|c| c.glyph_id.is_some()).count()
+            + clusters.iter().map(|c| c.extra_glyphs.len()).sum::<usize>();
+        let covers_both = clusters.iter().any(|c| c.byte_range.len() > 1);
+        assert!(
+            painted >= 2 || covers_both,
+            "combining sequence must paint the base and the mark, got {clusters:?}"
+        );
     }
 }

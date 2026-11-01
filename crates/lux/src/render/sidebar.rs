@@ -52,14 +52,14 @@ pub(crate) fn render_sidebar(
     // 1. Sidebar Background
     quad_instances.push(QuadInstance {
         rect: [0.0, tab_bar_height, sidebar_width, content_height],
-        color: [0.07, 0.07, 0.09, 1.0],
+        color: color(theme.chrome.sidebar),
     });
 
     // 2. Right Separator Border
     let border_color = if sidebar.focused {
         accent
     } else {
-        [0.18, 0.18, 0.22, 1.0]
+        color(theme.chrome.border)
     };
     quad_instances.push(QuadInstance {
         rect: [
@@ -75,7 +75,7 @@ pub(crate) fn render_sidebar(
     let header_h = SIDEBAR_HEADER_HEIGHT * scale_factor;
     quad_instances.push(QuadInstance {
         rect: [0.0, tab_bar_height, sidebar_width - stroke, header_h],
-        color: [0.06, 0.06, 0.08, 1.0],
+        color: color(theme.chrome.sidebar),
     });
     quad_instances.push(QuadInstance {
         rect: [
@@ -84,7 +84,7 @@ pub(crate) fn render_sidebar(
             sidebar_width,
             stroke,
         ],
-        color: [0.15, 0.15, 0.18, 1.0],
+        color: color(theme.chrome.border),
     });
 
     let header_line = editor_view
@@ -125,7 +125,7 @@ pub(crate) fn render_sidebar(
         if is_selected {
             quad_instances.push(QuadInstance {
                 rect: [0.0, row_y, sidebar_width - stroke, row_h],
-                color: [0.16, 0.20, 0.28, 1.0],
+                color: color(theme.chrome.panel_row),
             });
             quad_instances.push(QuadInstance {
                 rect: [0.0, row_y, 2.0 * stroke, row_h],
@@ -187,7 +187,7 @@ pub(crate) fn render_sidebar(
                     input_box_w,
                     row_h - 4.0 * stroke,
                 ],
-                color: [0.10, 0.12, 0.18, 1.0],
+                color: color(theme.chrome.panel_row),
             });
             quad_instances.push(QuadInstance {
                 rect: [
@@ -260,11 +260,11 @@ pub(crate) fn render_sidebar(
                 mw + 2.0 * stroke,
                 mh + 2.0 * stroke,
             ],
-            color: [0.06, 0.06, 0.10, 0.98],
+            color: color(theme.chrome.panel),
         });
         quad_instances.push(QuadInstance {
             rect: [mx, my, mw, mh],
-            color: [0.14, 0.14, 0.20, 1.0],
+            color: color(theme.chrome.panel_input),
         });
         let item_h = crate::sidebar::menu::SIDEBAR_MENU_ITEM_HEIGHT * scale_factor;
         for (idx, item) in menu.items.iter().enumerate() {

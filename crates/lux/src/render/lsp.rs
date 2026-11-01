@@ -8,7 +8,7 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::lsp::{CompletionPopupState, DiagnosticItem, HoverPopupState, ProblemsPanelState};
-use crate::render::paint::push_glyph;
+use crate::render::paint::{active_theme, color, push_glyph};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_lsp(
@@ -166,11 +166,11 @@ fn render_completion_popup(
     // Background shadow & panel
     quad_instances.push(QuadInstance {
         rect: [anchor_x - 1.0, anchor_y - 1.0, card_w + 2.0, card_h + 2.0],
-        color: [0.25, 0.35, 0.55, 0.9],
+        color: [0.0, 0.0, 0.0, 0.35],
     });
     quad_instances.push(QuadInstance {
         rect: [anchor_x, anchor_y, card_w, card_h],
-        color: [0.10, 0.11, 0.14, 0.98],
+        color: color(active_theme().chrome.panel),
     });
 
     let font_size = 11.0 * scale_factor;
@@ -196,7 +196,7 @@ fn render_completion_popup(
                     card_w - 8.0 * scale_factor,
                     item_h,
                 ],
-                color: [0.20, 0.35, 0.65, 0.95],
+                color: color(active_theme().chrome.panel_row),
             });
         }
 
@@ -210,7 +210,7 @@ fn render_completion_popup(
         let text_color = if is_selected {
             [1.0, 1.0, 1.0, 1.0]
         } else {
-            [0.85, 0.88, 0.95, 1.0]
+            color(active_theme().foreground)
         };
 
         for cluster in label_text.clusters() {
@@ -264,11 +264,11 @@ fn render_hover_popup(
 
     quad_instances.push(QuadInstance {
         rect: [anchor_x - 1.0, anchor_y - 1.0, box_w + 2.0, box_h + 2.0],
-        color: [0.35, 0.40, 0.55, 0.9],
+        color: color(active_theme().chrome.border),
     });
     quad_instances.push(QuadInstance {
         rect: [anchor_x, anchor_y, box_w, box_h],
-        color: [0.12, 0.13, 0.18, 0.98],
+        color: color(active_theme().chrome.panel),
     });
 
     let text_x = anchor_x + 8.0 * scale_factor;
@@ -283,7 +283,7 @@ fn render_hover_popup(
             &cluster,
             text_x,
             text_y + line_layout.baseline(),
-            [0.90, 0.92, 0.98, 1.0],
+            color(active_theme().foreground),
             glyph_instances,
         );
     }
@@ -311,13 +311,13 @@ fn render_problems_panel(
     // Background panel
     quad_instances.push(QuadInstance {
         rect: [panel_x, panel_y, panel_w, panel_h],
-        color: [0.08, 0.09, 0.12, 0.98],
+        color: color(active_theme().chrome.panel),
     });
-    // Header stroke
+    let theme = active_theme();
     let stroke_color = if problems.focused {
-        [0.35, 0.55, 0.95, 1.0]
+        color(theme.accent)
     } else {
-        [0.25, 0.30, 0.45, 1.0]
+        color(theme.chrome.border)
     };
     quad_instances.push(QuadInstance {
         rect: [panel_x, panel_y, panel_w, 1.0],
@@ -345,7 +345,7 @@ fn render_problems_panel(
             &cluster,
             panel_x + 10.0 * scale_factor,
             panel_y + 4.0 * scale_factor + title_line.baseline(),
-            [0.85, 0.88, 0.95, 1.0],
+            color(active_theme().foreground),
             glyph_instances,
         );
     }

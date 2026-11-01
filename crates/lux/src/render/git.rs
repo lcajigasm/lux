@@ -8,7 +8,7 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::git::{ConflictMarkerBlock, GutterHunkPopup};
-use crate::render::paint::push_glyph;
+use crate::render::paint::{active_theme, color, push_glyph};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_git(
@@ -142,11 +142,11 @@ pub(crate) fn render_hunk_popup(
     // Background shadow / border
     quad_instances.push(QuadInstance {
         rect: [card_x - 1.0, card_y - 1.0, card_w + 2.0, card_h + 2.0],
-        color: [0.3, 0.35, 0.45, 0.9],
+        color: color(active_theme().chrome.border),
     });
     quad_instances.push(QuadInstance {
         rect: [card_x, card_y, card_w, card_h],
-        color: [0.12, 0.13, 0.17, 0.98],
+        color: color(active_theme().chrome.panel),
     });
 
     let font_size = 11.0 * scale_factor;
@@ -244,7 +244,7 @@ pub(crate) fn render_hunk_popup(
     popup.close_btn = [close_x, btn_y, close_w, btn_h];
     quad_instances.push(QuadInstance {
         rect: [close_x, btn_y, close_w, btn_h],
-        color: [0.25, 0.27, 0.32, 0.9],
+        color: color(active_theme().chrome.panel_row),
     });
     let close_text = editor_view
         .text_layout_mut()
@@ -374,7 +374,7 @@ pub(crate) fn render_conflict_decorations(
         block.accept_both_rect = [both_x, btn_y, both_w, btn_h];
         quad_instances.push(QuadInstance {
             rect: [both_x, btn_y, both_w, btn_h],
-            color: [0.35, 0.30, 0.45, 0.9],
+            color: color(active_theme().chrome.panel_row),
         });
         let t_both = editor_view
             .text_layout_mut()

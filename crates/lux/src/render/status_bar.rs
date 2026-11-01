@@ -44,13 +44,13 @@ pub(crate) fn render_status_bar(
     // 1. Background quad
     quad_instances.push(QuadInstance {
         rect: [0.0, bar_y, window_width, bar_height],
-        color: [0.055, 0.055, 0.075, 1.0],
+        color: color(theme.chrome.status_bar),
     });
 
     // 2. Top separator border
     quad_instances.push(QuadInstance {
         rect: [0.0, bar_y, window_width, stroke],
-        color: [0.15, 0.15, 0.20, 1.0],
+        color: color(theme.chrome.border),
     });
 
     let status = build_status_bar(buffer, cursor_pos, language_id);
