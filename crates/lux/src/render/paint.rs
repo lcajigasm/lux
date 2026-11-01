@@ -176,6 +176,48 @@ pub(super) fn push_glyph(
     }
 }
 
+/// The loaded face has no bold cut. A second copy, shifted by a
+/// fraction of the em, is the bold used for a match on the selection.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn push_bold_glyph(
+    atlas: &mut lux_render::GlyphAtlas,
+    atlas_dirty: &mut bool,
+    scale_cx: &mut swash::scale::ScaleContext,
+    font: FontRef,
+    font_size: f32,
+    cluster: &lux_render::ClusterGeometry,
+    origin_x: f32,
+    origin_y: f32,
+    color: [f32; 4],
+    out: &mut Vec<GlyphInstance>,
+) {
+    push_glyph(
+        atlas,
+        atlas_dirty,
+        scale_cx,
+        font,
+        font_size,
+        cluster,
+        origin_x,
+        origin_y,
+        color,
+        out,
+    );
+    let shift = (font_size * 0.065).clamp(0.7, 1.4);
+    push_glyph(
+        atlas,
+        atlas_dirty,
+        scale_cx,
+        font,
+        font_size,
+        cluster,
+        origin_x + shift,
+        origin_y,
+        color,
+        out,
+    );
+}
+
 /// Quads and glyphs for one draw. The selector is a second list so its
 /// card paints after the editor text instead of underneath it.
 pub(crate) struct DrawList<'a> {

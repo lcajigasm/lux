@@ -23,7 +23,9 @@ pub(crate) fn selector_box(viewport_width: f32, tab_bar_height: f32, scale: f32)
     let width = (viewport_width * 0.46).clamp(viewport_width * 0.40, viewport_width * 0.50);
     SelectorBox {
         left: (viewport_width - width) * 0.5,
-        top: tab_bar_height + 52.0 * scale,
+        // Flush under the tab bar. A 52px gap put the card over the
+        // middle of the code; Sublime and Zed sit on the tab strip.
+        top: tab_bar_height + 8.0 * scale,
         width,
         input_height: 46.0 * scale,
         row_height: 36.0 * scale,
@@ -59,6 +61,16 @@ pub(crate) fn rim_color() -> [f32; 4] {
 pub(crate) fn placeholder_ink(theme: &lux_ui::Theme) -> [f32; 4] {
     let ink = color(theme.foreground);
     [ink[0] * 0.78, ink[1] * 0.78, ink[2] * 0.72, 1.0]
+}
+
+/// Accent pink fails on the beige selection. Hits there use the
+/// foreground; unselected hits stay on the accent.
+pub(crate) fn hit_ink(on_selection: bool, theme: &lux_ui::Theme) -> [f32; 4] {
+    if on_selection {
+        color(theme.foreground)
+    } else {
+        color(theme.accent)
+    }
 }
 
 pub(crate) fn shortcut_ink(theme: &lux_ui::Theme) -> [f32; 4] {
@@ -222,11 +234,11 @@ mod tests {
         let box_ = selector_box(1000.0, 32.0, 1.0);
         assert!((box_.width - 460.0).abs() < 0.1);
         assert!(box_.width / 1000.0 >= 0.40 && box_.width / 1000.0 <= 0.50);
-        assert!((box_.top - 84.0).abs() < 0.1);
+        assert!((box_.top - 40.0).abs() < 0.1);
         assert!((box_.input_height - 46.0).abs() < 0.1);
         assert!((box_.row_height - 36.0).abs() < 0.1);
         let wide = selector_box(2000.0, 64.0, 2.0);
         assert!((wide.width / 2000.0 - 0.46).abs() < 0.001);
-        assert!(wide.top >= 64.0 + 100.0);
+        assert!((wide.top - 80.0).abs() < 0.1);
     }
 }

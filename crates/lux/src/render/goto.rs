@@ -4,7 +4,9 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::goto::{GotoItemKind, GotoState};
-use crate::render::paint::{color, fuzzy_spans, overlay_text, push_glyph, span_covers};
+use crate::render::paint::{
+    color, fuzzy_spans, overlay_text, push_bold_glyph, push_glyph, span_covers,
+};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
 
@@ -194,12 +196,18 @@ pub(crate) fn render_goto(
         let hits = fuzzy_spans(&item.label, &goto.query);
 
         for cluster in label_line.clusters() {
-            let glyph_color = if span_covers(&hits, &cluster.byte_range) {
-                color(theme.accent)
+            let hit = span_covers(&hits, &cluster.byte_range);
+            let glyph_color = if hit {
+                super::panel::hit_ink(is_selected, theme)
             } else {
                 label_color
             };
-            push_glyph(
+            let draw = if hit && is_selected {
+                push_bold_glyph
+            } else {
+                push_glyph
+            };
+            draw(
                 atlas,
                 atlas_dirty,
                 scale_cx,

@@ -138,6 +138,8 @@ row, the accent hits, and the editor beside the card. Its runner logged
 display scale 1. `retina-palette.png` from that run is the scale-2
 framebuffer (2000×1312) with the same scene. Go to file in that run
 listed nothing, because the panel was built before the file was open.
+The card now rests 8px under the tab bar. A match on the beige selection
+is the foreground, drawn twice, because accent pink does not read there.
 A still does not show the open animation.
 
 Acceptance, on top of 0.1 and 0.2: Retina text is grayscale-antialiased (or

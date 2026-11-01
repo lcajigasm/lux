@@ -28,8 +28,11 @@
 > is the same Lux frame from the renderer at scale factor 2 (2000×1312).
 > The runner logged display scale 1, so Sublime is not in that file.
 > Go to file in that run drew only the field: the list was built before
-> the file existed. Block 0 stays open. No release is tagged. A still
-> does not show the open animation. See [ROADMAP.md](ROADMAP.md).
+> the file existed. The card now rests 8px under the tab bar, and a
+> match on the selected row is the foreground drawn twice so it stays
+> readable on the beige band. Those two changes are not in the PNGs
+> above. Block 0 stays open. No release is tagged. A still does not
+> show the open animation. See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.

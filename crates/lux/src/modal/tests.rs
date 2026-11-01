@@ -97,14 +97,14 @@ fn test_palette_row_click_and_hover() {
     app.toggle_command_palette();
     assert!(app.ui.command_palette.is_some());
 
-    // Rows top = 32 + 52 + 46 + 2 = 132. Row height = 36.
-    // Row 0 center = 150. Row 1 center = 186.
-    let hovered = handle_modal_hover(&mut app, 500.0, 186.0);
+    // Rows top = 32 + 8 + 46 + 2 = 88. Row height = 36.
+    // Row 0 center = 106. Row 1 center = 142.
+    let hovered = handle_modal_hover(&mut app, 500.0, 142.0);
     assert!(hovered);
     assert_eq!(app.ui.command_palette.as_ref().unwrap().selected_index, 1);
 
     // Test click on Row 1
-    let clicked = handle_modal_click(&mut app, &ctx, 500.0, 186.0);
+    let clicked = handle_modal_click(&mut app, &ctx, 500.0, 142.0);
     assert!(clicked);
     assert!(app.ui.command_palette.is_none());
 }
@@ -168,12 +168,12 @@ fn test_goto_anything_row_click_and_hover() {
         ];
     }
 
-    // Rows top = 132. Row 1 midpoint = 186.
-    let hovered = handle_modal_hover(&mut app, 500.0, 186.0);
+    // Rows top = 88. Row 1 midpoint = 142.
+    let hovered = handle_modal_hover(&mut app, 500.0, 142.0);
     assert!(hovered);
     assert_eq!(app.ui.goto_anything.as_ref().unwrap().selected_index, 1);
 
-    let clicked = handle_modal_click(&mut app, &ctx, 500.0, 186.0);
+    let clicked = handle_modal_click(&mut app, &ctx, 500.0, 142.0);
     assert!(clicked);
     assert!(app.ui.goto_anything.is_none());
 }
@@ -185,9 +185,9 @@ fn test_theme_picker_click_and_hover() {
     app.open_theme_picker();
     assert!(app.ui.theme_picker.is_some());
 
-    // Modal top = 84. Input = 46. Rows top = 132. Row height = 36.
-    // Row 1 midpoint = 186. Row 0 midpoint = 150.
-    let hovered = handle_modal_hover(&mut app, 500.0, 186.0);
+    // Modal top = 40. Input = 46. Rows top = 88. Row height = 36.
+    // Row 1 midpoint = 142. Row 0 midpoint = 106.
+    let hovered = handle_modal_hover(&mut app, 500.0, 142.0);
     assert!(hovered);
     assert_eq!(app.ui.theme_picker.as_ref().unwrap().selected_index, 1);
 
@@ -198,7 +198,7 @@ fn test_theme_picker_click_and_hover() {
 
     // Reopen and click row 0 (midpoint 94.0) to confirm theme
     app.open_theme_picker();
-    let clicked = handle_modal_click(&mut app, &ctx, 500.0, 150.0);
+    let clicked = handle_modal_click(&mut app, &ctx, 500.0, 106.0);
     assert!(clicked);
     assert!(app.ui.theme_picker.is_none());
 }

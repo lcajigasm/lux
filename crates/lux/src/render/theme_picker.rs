@@ -3,7 +3,9 @@
 use swash::FontRef;
 use swash::scale::ScaleContext;
 
-use crate::render::paint::{color, fuzzy_spans, overlay_text, push_glyph, span_covers};
+use crate::render::paint::{
+    color, fuzzy_spans, overlay_text, push_bold_glyph, push_glyph, span_covers,
+};
 use crate::theme_picker::ThemePickerState;
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
@@ -149,12 +151,18 @@ pub(crate) fn render_theme_picker(
         let hits = fuzzy_spans(&label_text, &picker.query);
 
         for cluster in item_layout.clusters() {
-            let glyph_color = if span_covers(&hits, &cluster.byte_range) {
-                accent
+            let hit = span_covers(&hits, &cluster.byte_range);
+            let glyph_color = if hit {
+                super::panel::hit_ink(is_selected, theme)
             } else {
                 name_color
             };
-            push_glyph(
+            let draw = if hit && is_selected {
+                push_bold_glyph
+            } else {
+                push_glyph
+            };
+            draw(
                 atlas,
                 atlas_dirty,
                 scale_cx,

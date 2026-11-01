@@ -4,7 +4,9 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::palette::CommandPaletteState;
-use crate::render::paint::{color, fuzzy_spans, overlay_text, push_glyph, span_covers};
+use crate::render::paint::{
+    color, fuzzy_spans, overlay_text, push_bold_glyph, push_glyph, span_covers,
+};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::command_palette::Context;
 use lux_ui::editor_view::EditorView;
@@ -150,12 +152,18 @@ pub(crate) fn render_command_palette(
         let title_x = icon_x + icon_size + 10.0 * scale_factor;
         let hits = fuzzy_spans(&entry.command.title, &palette.query);
         for cluster in title_line.clusters() {
-            let glyph_color = if span_covers(&hits, &cluster.byte_range) {
-                color(theme.accent)
+            let hit = span_covers(&hits, &cluster.byte_range);
+            let glyph_color = if hit {
+                super::panel::hit_ink(is_selected, theme)
             } else {
                 foreground
             };
-            push_glyph(
+            let draw = if hit && is_selected {
+                push_bold_glyph
+            } else {
+                push_glyph
+            };
+            draw(
                 atlas,
                 atlas_dirty,
                 scale_cx,
