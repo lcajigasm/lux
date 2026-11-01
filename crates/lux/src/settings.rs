@@ -32,7 +32,7 @@ pub(crate) const DEFAULT_SETTINGS_JSON: &str = r#"{
   "editor.insertFinalNewline": false,
   "editor.wordWrap": false,
   "editor.distractionFreeColumnWidth": 80,
-  "workbench.colorTheme": "lux-dark",
+  "workbench.colorTheme": "system",
   "workbench.keymap": "sublime"
 }"#;
 
@@ -159,7 +159,7 @@ impl SettingsState {
             .as_str()
             .or_else(|| resolved["theme"].as_str())
         {
-            app.set_theme(theme_name);
+            app.apply_color_theme_setting(theme_name);
         }
 
         if let Some(keymap_name) = resolved["workbench.keymap"]
@@ -310,7 +310,7 @@ impl SettingsState {
             .unwrap_or(80.0);
         let theme = r["workbench.colorTheme"]
             .as_str()
-            .unwrap_or("lux-dark")
+            .unwrap_or("system")
             .to_string();
         let keymap = r["workbench.keymap"]
             .as_str()
@@ -400,10 +400,11 @@ impl SettingsState {
             SettingItem {
                 key: "workbench.colorTheme",
                 label: "Color Theme",
-                description: "Visual color palette for chrome and editor",
+                description: "Visual color palette. \"system\" follows the OS appearance",
                 kind: SettingKind::Enum {
                     value: theme,
                     options: &[
+                        "system",
                         "monokai",
                         "mariana",
                         "breakers",

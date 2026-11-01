@@ -1,0 +1,44 @@
+name: Release macOS
+
+# Opt-in. A private repository bills each macOS minute at 10x.
+# This workflow does not run on pull_request or on a branch push.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing or new release tag to attach the dmg to (vX.Y.Z)
+        required: true
+        type: string
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    name: lux-macos-universal
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Apple targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Universal disk image
+        run: |
+          chmod +x scripts/package-macos.sh
+          ./scripts/package-macos.sh dist lux-macos-universal.dmg
+
+      - name: Upload to the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: dist/lux-macos-universal.dmg
+          fail_on_unmatched_files: true

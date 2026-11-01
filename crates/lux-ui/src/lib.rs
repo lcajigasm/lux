@@ -22,7 +22,7 @@ pub mod theme;
 pub use accessibility::{
     AccessibilityContext, build_full_window_tree, build_tree as build_accessibility_tree,
 };
-pub use chrome::Chrome;
+pub use chrome::{Chrome, SystemScheme};
 pub use editor_view::{
     CursorGlyph, EditorView, EditorViewFrame, EditorViewMetrics, SelectionRect, Viewport,
     VisibleLine,

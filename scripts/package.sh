@@ -31,8 +31,10 @@ echo "packed $dest (unsigned)"
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
 parent="$(dirname "$dest")"
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  LUX_BIN="$root/$bin" LUX_VERSION="$version" \
-    ./scripts/package-macos.sh "$parent" "lux-macos.dmg"
+  # Do not pass LUX_BIN. That flag skips lipo. The dmg is universal when
+  # both Apple std targets are installed (`rustup target add`).
+  LUX_VERSION="$version" \
+    ./scripts/package-macos.sh "$parent" "lux-macos-universal.dmg"
 elif [[ "$(uname -s)" == "Linux" ]]; then
   ./scripts/package-deb.sh "$root/$bin" "$version" "$parent/lux-linux-amd64.deb"
 fi

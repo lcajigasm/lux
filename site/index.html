@@ -66,7 +66,7 @@
       <div class="release-pill-wrapper">
         <a href="https://github.com/lcajigasm/lux/releases/latest" target="_blank" rel="noopener" class="release-pill">
           <span class="pill-badge">v1.2.0</span>
-          <span class="pill-text">Linux deb on the GitHub Release; dmg and msi outside CI</span>
+          <span class="pill-text">macOS first. Universal dmg is opt-in; Linux deb is on the tag</span>
           <span class="pill-arrow">→</span>
         </a>
       </div>
@@ -88,7 +88,7 @@
           </svg>
           <div class="btn-text-block">
             <span class="btn-main-label">Latest GitHub Release</span>
-            <span class="btn-sub-label">v1.2.0 • Linux deb (login required)</span>
+            <span class="btn-sub-label">tag release, login required</span>
           </div>
         </a>
 
@@ -522,11 +522,12 @@
           <span class="section-tag">Get Started Today</span>
           <h2 class="download-title">Download Lux v1.2.0</h2>
           <p class="download-desc">
-            The GitHub Release workflow publishes Linux only:
-            <code>lux-linux-x86_64</code> and <code>lux-linux-amd64.deb</code>
-            (depends on libfontconfig and the EGL GPU loader), plus <code>SHA256SUMS</code>.
-            macOS <code>.dmg</code> and Windows <code>.msi</code> are built outside CI.
-            The repository is private, so a GitHub session is required. The second button is the v1.1.0 macOS disk image, which already exists.
+            macOS is the focus. The universal <code>.dmg</code> is
+            <code>release-macos.yml</code> (one <code>macos-14</code> job, dispatch or a
+            <code>v*</code> tag only) and is not attached to a release yet.
+            A version tag still publishes <code>lux-linux-x86_64</code> and
+            <code>lux-linux-amd64.deb</code>. Windows <code>.msi</code> stays outside CI.
+            The repository is private, so a GitHub session is required. The second button is the existing v1.1.0 Apple Silicon image.
           </p>
 
           <div class="download-buttons">
@@ -536,7 +537,7 @@
               </svg>
               <div class="btn-text-block">
                 <span class="btn-main-label">Latest GitHub Release</span>
-                <span class="btn-sub-label">Linux deb and raw binary</span>
+                <span class="btn-sub-label">Linux packages on the tag</span>
               </div>
             </a>
 

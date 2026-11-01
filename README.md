@@ -31,15 +31,30 @@ Target platforms, in order: **macOS**, **Windows**, **Linux**, then **iPadOS/iOS
 
 ## Downloads
 
-Pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml) on `ubuntu-latest` only and attaches the Linux packages to the GitHub Release. The repository is private, so a GitHub session is required to download them. macOS and Windows are built outside CI.
+Lux is a macOS editor first. Linux and Windows still build, and they are secondary.
+
+Pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml) on `ubuntu-latest` and attaches the Linux packages. The same tag can also run [`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml), which is the only macOS job: one `macos-14` runner, 20 minute cap, universal `.dmg`. That workflow is not part of pull-request CI. It has not been started from this tree. The repository is private, so a GitHub session is required to download a release. On a private repository each macOS minute is billed at 10×.
 
 | Asset | Where it is built |
 |---|---|
-| `lux-linux-x86_64`, `lux-linux-amd64.deb`, `SHA256SUMS` | GitHub Actions, `ubuntu-latest` |
-| `lux-macos-aarch64.dmg` | outside CI, `scripts/package-macos.sh` (ad-hoc signature, not notarized) |
+| `lux-macos-universal.dmg` | `macos-14`, only `workflow_dispatch` or a `v*` tag (`scripts/package-macos.sh`) |
+| `lux-linux-x86_64`, `lux-linux-amd64.deb`, `SHA256SUMS` | GitHub Actions, `ubuntu-latest`, on a `v*` tag |
 | `lux-windows-x86_64.msi` | outside CI, `scripts/package-msi.ps1` (unsigned WiX) |
 
-The `.deb` depends on `libfontconfig1` and `libegl1` (the GPU loader the Linux binary dlopens), plus the xkbcommon, X11, and Wayland libraries it loads before it opens a window. No signing certificate is stored in this repo. The [v1.1.0 macOS disk image](https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg) is the older Apple Silicon installer. See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/STATUS.md](docs/STATUS.md).
+### Install on macOS
+
+The disk image contains `Lux.app` (bundle id `dev.lux.editor`), a universal binary (Apple Silicon and Intel, `lipo`), `lux.icns`, and an **ad-hoc** signature. It is not notarized. There is no Apple Developer ID certificate in this repo, and Gatekeeper will quarantine the app.
+
+1. Open `lux-macos-universal.dmg` and drag Lux to Applications.
+2. If macOS reports the app as damaged or from an unidentified developer, clear quarantine and open it again:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Lux.app
+```
+
+`lux .` in a terminal opens the current folder. The bundle lists `public.folder`, so Finder can hand a folder to Lux. See [docs/macos-parity.md](docs/macos-parity.md).
+
+The `.deb` depends on `libfontconfig1` and `libegl1` (the GPU loader the Linux binary dlopens), plus the xkbcommon, X11, and Wayland libraries it loads before it opens a window. No signing certificate is stored in this repo. The [v1.1.0 macOS disk image](https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg) is the older Apple Silicon installer, not the universal image above. See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/STATUS.md](docs/STATUS.md).
 
 ---
 

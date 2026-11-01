@@ -3,8 +3,8 @@
 //! matches on a `winit` enum directly.
 
 use crate::event::{
-    ElementState, Ime, Key, KeyEvent, Modifiers, MouseButton, NamedKey, PlatformEvent, ScrollDelta,
-    Touch, TouchPhase,
+    ColorScheme, ElementState, Ime, Key, KeyEvent, Modifiers, MouseButton, NamedKey, PlatformEvent,
+    ScrollDelta, Touch, TouchPhase,
 };
 
 pub(super) fn element_state(state: winit::event::ElementState) -> ElementState {
@@ -116,6 +116,13 @@ pub(super) fn mouse_button(button: winit::event::MouseButton) -> MouseButton {
     }
 }
 
+pub(super) fn color_scheme(theme: winit::window::Theme) -> ColorScheme {
+    match theme {
+        winit::window::Theme::Dark => ColorScheme::Dark,
+        winit::window::Theme::Light => ColorScheme::Light,
+    }
+}
+
 pub(super) fn scroll_delta(delta: winit::event::MouseScrollDelta) -> ScrollDelta {
     match delta {
         winit::event::MouseScrollDelta::LineDelta(x, y) => ScrollDelta::Lines { x, y },
@@ -175,6 +182,7 @@ pub(super) fn window_event(event: winit::event::WindowEvent) -> Option<PlatformE
             scale_factor,
             inner_size_writer: _,
         } => PlatformEvent::ScaleFactorChanged { scale_factor },
+        W::ThemeChanged(theme) => PlatformEvent::ColorSchemeChanged(color_scheme(theme)),
         W::CloseRequested => PlatformEvent::CloseRequested,
         W::Focused(f) => PlatformEvent::Focused(f),
         W::Occluded(o) => PlatformEvent::Occluded(o),
@@ -316,5 +324,16 @@ mod tests {
             )),
             ScrollDelta::Pixels(dpi::PhysicalPosition::new(3.0, 4.0))
         );
+    }
+
+    #[test]
+    fn theme_changed_maps_to_color_scheme() {
+        assert_eq!(
+            window_event(winit::event::WindowEvent::ThemeChanged(
+                winit::window::Theme::Light
+            )),
+            Some(PlatformEvent::ColorSchemeChanged(ColorScheme::Light))
+        );
+        assert_eq!(color_scheme(winit::window::Theme::Dark), ColorScheme::Dark);
     }
 }

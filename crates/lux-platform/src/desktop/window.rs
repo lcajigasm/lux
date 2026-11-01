@@ -6,6 +6,7 @@ use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
 };
 
+use crate::event::ColorScheme;
 use crate::window::{PlatformWindow, SafeAreaInsets, WindowId};
 
 pub(super) struct DesktopWindow {
@@ -29,6 +30,10 @@ impl PlatformWindow for DesktopWindow {
 
     fn scale_factor(&self) -> f64 {
         self.window.scale_factor()
+    }
+
+    fn color_scheme(&self) -> Option<ColorScheme> {
+        self.window.theme().map(super::convert::color_scheme)
     }
 
     fn safe_area_insets(&self) -> SafeAreaInsets {

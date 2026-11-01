@@ -8,8 +8,9 @@ on:
 permissions:
   contents: write
 
-# Linux only. macOS (.dmg) and Windows (.msi) are built outside CI with
-# scripts/package-macos.sh and scripts/package-msi.ps1. No signing secrets.
+# Linux packages for a version tag. The universal macOS .dmg is a separate
+# workflow, release-macos.yml, so this file stays on ubuntu-latest.
+# Windows .msi stays scripts/package-msi.ps1. No signing secrets.
 
 jobs:
   build:

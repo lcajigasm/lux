@@ -160,10 +160,47 @@ impl App {
         {
             syntax.theme = syntax_theme;
         }
+        self.sync_editor_clear_color();
         self.scheduler.invalidate_all();
         if let Some(gpu) = &self.gpu_window {
             gpu.window.request_redraw();
         }
+    }
+
+    /// Named themes stick. `system` / `auto` follow `chrome.system_scheme`.
+    pub(crate) fn apply_color_theme_setting(&mut self, name: &str) {
+        if lux_ui::Chrome::follows_system(name) {
+            self.chrome.theme_follows_system = true;
+            self.set_theme(lux_ui::Chrome::theme_name_for_scheme(
+                self.chrome.system_scheme,
+            ));
+        } else {
+            self.chrome.theme_follows_system = false;
+            self.set_theme(name);
+        }
+    }
+
+    pub(crate) fn apply_system_scheme(&mut self, scheme: lux_platform::ColorScheme) {
+        self.chrome.system_scheme = match scheme {
+            lux_platform::ColorScheme::Dark => lux_ui::SystemScheme::Dark,
+            lux_platform::ColorScheme::Light => lux_ui::SystemScheme::Light,
+        };
+        if self.chrome.theme_follows_system {
+            self.set_theme(lux_ui::Chrome::theme_name_for_scheme(
+                self.chrome.system_scheme,
+            ));
+        }
+    }
+
+    pub(crate) fn apply_saved_color_theme(&mut self) {
+        let name = {
+            let config = self.ui.settings.config.lock().unwrap();
+            config.resolved()["workbench.colorTheme"]
+                .as_str()
+                .unwrap_or("system")
+                .to_string()
+        };
+        self.apply_color_theme_setting(&name);
     }
 
     pub(crate) fn preview_theme(&mut self, name: &str) {
@@ -171,7 +208,7 @@ impl App {
     }
 
     pub(crate) fn confirm_theme(&mut self, name: &str) {
-        self.set_theme(name);
+        self.apply_color_theme_setting(name);
         let mut settings = std::mem::take(&mut self.ui.settings);
         settings.set_string_setting("workbench.colorTheme", name);
         self.ui.settings = settings;
@@ -193,5 +230,32 @@ impl App {
             self.set_theme(picker.original_theme_name);
         }
         self.scheduler.invalidate_all();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lux_platform::ColorScheme;
+    use lux_ui::Theme;
+
+    fn app() -> App {
+        App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec())
+    }
+
+    #[test]
+    fn system_light_uses_lux_light_until_a_named_theme_is_chosen() {
+        let mut app = app();
+        app.apply_system_scheme(ColorScheme::Light);
+        assert_eq!(app.chrome.theme.name, Theme::LUX_LIGHT.name);
+        assert_ne!(app.chrome.theme.background, Theme::LUX_DARK.background);
+        app.apply_color_theme_setting("lux-dark");
+        assert!(!app.chrome.theme_follows_system);
+        assert_eq!(app.chrome.theme.name, Theme::LUX_DARK.name);
+        app.apply_system_scheme(ColorScheme::Light);
+        assert_eq!(app.chrome.theme.name, Theme::LUX_DARK.name);
+        app.apply_color_theme_setting("system");
+        assert!(app.chrome.theme_follows_system);
+        assert_eq!(app.chrome.theme.name, Theme::LUX_LIGHT.name);
     }
 }

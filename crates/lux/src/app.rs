@@ -315,6 +315,9 @@ impl PlatformEventHandler for App {
                     gpu.window.request_redraw();
                 }
             }
+            PlatformEvent::ColorSchemeChanged(scheme) => {
+                self.apply_system_scheme(scheme);
+            }
             PlatformEvent::Occluded(hidden) => {
                 self.presentation.set_hidden(hidden);
                 if !hidden {

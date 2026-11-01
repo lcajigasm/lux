@@ -225,3 +225,20 @@ impl App {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opening_a_directory_shows_that_folder() {
+        let dir = std::env::temp_dir().join(format!("lux-open-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp workspace");
+        let mut app =
+            App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+        app.open_workspace(dir);
+        let sidebar = app.ui.sidebar.expect("workspace sidebar");
+        assert!(sidebar.visible);
+        assert!(sidebar.tree.is_some());
+    }
+}

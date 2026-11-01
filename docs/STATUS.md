@@ -1,14 +1,19 @@
 # Status
 
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
-> v1.2.0: GitHub Actions (CI and the tag workflow) runs on `ubuntu-latest` only.
-> A `vX.Y.Z` tag attaches `lux-linux-x86_64` and `lux-linux-amd64.deb`. The deb
+> v1.2.0: macOS is the product focus. Linux and Windows are secondary.
+> Pull-request CI stays `ubuntu-latest` only. A `vX.Y.Z` tag still attaches
+> `lux-linux-x86_64` and `lux-linux-amd64.deb` from that Linux workflow. The deb
 > depends on `libfontconfig1` and `libegl1` (the EGL GPU loader named in the
 > release binary; `libvulkan.so.1` is not in that binary), plus the xkbcommon,
-> X11, and Wayland libraries it dlopens before a window exists. macOS and Windows
-> are built outside CI: `scripts/package-macos.sh` (ad-hoc `.dmg`, not notarized,
-> no signing secret) and `scripts/package-msi.ps1` (unsigned WiX `.msi`). The
+> X11, and Wayland libraries it dlopens before a window exists.
+> `release-macos.yml` is separate: one `macos-14` job, `timeout-minutes: 20`,
+> cargo cache, universal ad-hoc `.dmg` via `scripts/package-macos.sh`, and only
+> on `workflow_dispatch` or a `v*` tag. It has not been run. Private-repo macOS
+> minutes bill at 10×, so a full 20 minute job is 200 billed minutes.
+> Windows `.msi` stays `scripts/package-msi.ps1` (unsigned WiX). The
 > repository stays private, so a GitHub session is required to download a release.
+> Appearance versus Sublime, VS Code, and Zed is [macos-parity.md](macos-parity.md).
 >
 > The Linux CI test job runs `headless_session_opens_types_saves_palette_split_and_find`
 > (`crates/lux/src/desktop_pass.rs`). It drives `handle_keyboard_event`: open a file,
@@ -31,8 +36,9 @@
 > v1.1.1: `editor.insertFinalNewline` defaults off (Sublime / VS Code). A save the worker
 > rejects or cancels undoes that transform when the user has not typed since. Ctrl+Alt+digit
 > layout chords work on Windows and Linux without swallowing AltGr text. The plugin host
-> is wasmtime 48.0.8 (RUSTSEC-2026-0422, 0423, 0424). Tag `vX.Y.Z` builds
-> unsigned Linux, macOS, and Windows binaries (`.github/workflows/release.yml`).
+> is wasmtime 48.0.8 (RUSTSEC-2026-0422, 0423, 0424). A `vX.Y.Z` tag builds
+> the Linux packages in `.github/workflows/release.yml`. The universal macOS
+> disk image is `.github/workflows/release-macos.yml` and is not part of pull-request CI.
 >
 > Current audit (2026-10-10): see [AUDIT.md](AUDIT.md). The desktop binary
 > is certified for **v1.0.0** release: integrates transactional editing, configurable keymaps,
