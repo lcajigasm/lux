@@ -56,10 +56,10 @@ impl Buffer {
             .prefix(".lux-save-")
             .tempfile_in(dir)?;
         let text = self.text();
-        if self.encoding == super::Encoding::Latin1 && text.chars().any(|c| c as u32 > 0xff) {
+        if !super::encoding::can_encode(&text, self.encoding) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "document contains characters that cannot be saved as Latin-1",
+                "document contains characters that cannot be saved in its encoding",
             ));
         }
         let bytes = encoding::encode(&text, self.encoding);

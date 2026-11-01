@@ -102,6 +102,9 @@ fn encoding_label(encoding: Encoding) -> &'static str {
         Encoding::Utf8Bom => "UTF-8 BOM",
         Encoding::Utf16Le => "UTF-16 LE",
         Encoding::Utf16Be => "UTF-16 BE",
+        Encoding::Utf16LeNoBom => "UTF-16 LE",
+        Encoding::Utf16BeNoBom => "UTF-16 BE",
+        Encoding::Windows1252 => "Windows-1252",
         Encoding::Latin1 => "Latin-1",
     }
 }
@@ -131,6 +134,8 @@ mod tests {
         assert_eq!(encoding_label(Encoding::Utf8Bom), "UTF-8 BOM");
         assert_eq!(encoding_label(Encoding::Utf16Le), "UTF-16 LE");
         assert_eq!(encoding_label(Encoding::Utf16Be), "UTF-16 BE");
+        assert_eq!(encoding_label(Encoding::Utf16LeNoBom), "UTF-16 LE");
+        assert_eq!(encoding_label(Encoding::Windows1252), "Windows-1252");
         assert_eq!(encoding_label(Encoding::Latin1), "Latin-1");
     }
 
