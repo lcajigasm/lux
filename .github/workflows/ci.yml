@@ -89,6 +89,14 @@ jobs:
         run: cargo test --workspace
       - name: Universal disk image
         run: |
+          # cargo test leaves a debug tree the disk image does not need.
+          # Keeping it, then building both release architectures, makes
+          # hdiutil fail with "No space left on device" on macos-14
+          # (runs 41299748706 and 41300655725).
+          rm -rf "$HOME/Library/Developer/Xcode/DerivedData" \
+                 "$HOME/Library/Developer/CoreSimulator/Caches" \
+                 target/debug target/*/debug
+          df -h /
           chmod +x scripts/package-macos.sh
           ./scripts/package-macos.sh dist lux-macos-universal.dmg
       - name: Upload disk image artifact
