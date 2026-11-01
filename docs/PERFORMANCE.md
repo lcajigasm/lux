@@ -220,5 +220,6 @@ keypress-to-pixel: there is still no GPU frame in the measurement. The
 ongoing CI job is `release-latency` on `ubuntu-latest` only. On 2026-10-31,
 before that cut, the same assert passed on hosted runners at 215 µs
 (`ubuntu-latest`) and 1.06 ms (`windows-latest`). Debug `cargo test` keeps
-an 80 ms ceiling. The 8 ms release assert is not raised if a hosted runner
-is slower; that result is written down instead.
+a 120 ms ceiling. macos-15 debug run 41357599950 measured 82 ms while the
+typing path was unchanged. The 8 ms release assert is not raised if a
+hosted runner is slower; that result is written down instead.

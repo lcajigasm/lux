@@ -55,9 +55,10 @@ fn test_continuous_typing_latency_large_file_under_8ms() {
     }
 
     // The 8 ms budget is a release-build measurement (`docs/PERFORMANCE.md`).
-    // `cargo test` is unoptimized; debug CI runners, especially Windows, are
-    // not that hardware. A debug ceiling still fails a stalled highlighter.
-    let budget_ms: u128 = if cfg!(debug_assertions) { 80 } else { 8 };
+    // `cargo test` is unoptimized. Debug macos-15 run 41357599950 measured
+    // 82 ms on this path with no edit to it. The ceiling only has to fail
+    // a stalled highlighter.
+    let budget_ms: u128 = if cfg!(debug_assertions) { 120 } else { 8 };
     latencies.sort();
     let p99_latency = latencies[(latencies.len() as f64 * 0.99) as usize];
     let max_latency = *latencies.last().unwrap();
