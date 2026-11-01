@@ -33,12 +33,12 @@ Target platforms, in order: **macOS**, **Windows**, **Linux**, then **iPadOS/iOS
 
 Lux is a macOS editor first. Linux and Windows still build, and they are secondary.
 
-Pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml) on `ubuntu-latest` and attaches the Linux packages. That publish starts [`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml) once: one `macos-14` runner, 20 minute cap, universal `.dmg`, attached to the same release. The macOS workflow does not run on pull request, branch push, or the tag push itself, so the Linux workflow does not start a second macOS job. `workflow_dispatch` is only a manual retry. The repository is private, so a GitHub session is required to download a release. On a private repository each macOS minute is billed at 10×.
+Pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml) on `ubuntu-latest` and attaches the Linux packages plus `SHA256SUMS`. That publish starts [`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml) once: one `macos-14` runner, 20 minute cap, universal `.dmg`, attached to the same release. That job appends the `.dmg` line to `SHA256SUMS`. The macOS workflow does not run on pull request, branch push, or the tag push itself, so the Linux workflow does not start a second macOS job. `workflow_dispatch` is only a manual retry. The repository is private, so a GitHub session is required to download a release. On a private repository each macOS minute is billed at 10×.
 
 | Asset | Where it is built |
 |---|---|
 | `lux-macos-universal.dmg` | `macos-14`, when the GitHub Release is published (`scripts/package-macos.sh`) |
-| `lux-linux-x86_64`, `lux-linux-amd64.deb`, `SHA256SUMS` | GitHub Actions, `ubuntu-latest`, on a `v*` tag |
+| `lux-linux-x86_64`, `lux-linux-amd64.deb`, `SHA256SUMS` | GitHub Actions, `ubuntu-latest`, on a `v*` tag. The macOS job then adds the `.dmg` hash to `SHA256SUMS` |
 | `lux-windows-x86_64.msi` | outside CI, `scripts/package-msi.ps1` (unsigned WiX) |
 
 ### Install on macOS

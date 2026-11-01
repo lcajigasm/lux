@@ -3,9 +3,9 @@ name: Release macOS
 # Private-repo macOS minutes bill at 10x.
 # Not a pull_request, not a branch push, and not a tag push.
 # The Linux tag workflow publishes the GitHub Release; that single
-# `published` event starts this job. Uploading the dmg edits the same
-# release and does not publish a second one. workflow_dispatch is the
-# manual retry, and it is not used by the tag workflow.
+# `published` event starts this job. Uploading the dmg and replacing
+# SHA256SUMS edit the same release and do not publish a second one.
+# workflow_dispatch is the manual retry, and it is not used by the tag workflow.
 on:
   release:
     types: [published]
@@ -50,3 +50,16 @@ jobs:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.release.tag_name }}
           files: dist/lux-macos-universal.dmg
           fail_on_unmatched_files: true
+
+      - name: Add the disk image to SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          gh release download "$RELEASE_TAG" --pattern SHA256SUMS --dir dist
+          hash=$(shasum -a 256 dist/lux-macos-universal.dmg | awk '{print $1}')
+          awk '$2 != "./lux-macos-universal.dmg" && $2 != "lux-macos-universal.dmg"' dist/SHA256SUMS > dist/SHA256SUMS.body
+          printf '%s  ./lux-macos-universal.dmg\n' "$hash" >> dist/SHA256SUMS.body
+          mv dist/SHA256SUMS.body dist/SHA256SUMS
+          gh release upload "$RELEASE_TAG" dist/SHA256SUMS --clobber
