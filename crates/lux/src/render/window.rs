@@ -1,7 +1,6 @@
 use dpi::{LogicalSize, PhysicalSize};
 use lux_platform::{PlatformContext, PlatformWindow, ScrollDelta, WindowAttributes};
 use lux_render::{GpuContext, QuadPipeline, Surface, TextPipeline};
-use lux_ui::Theme;
 
 use crate::app::{ATLAS_SIDE, App, GpuWindow, LINE_HEIGHT};
 use crate::render::paint::color;
@@ -28,11 +27,14 @@ impl App {
         let quads = QuadPipeline::new(&gpu.device, format);
         let text = TextPipeline::new(&gpu.device, format, ATLAS_SIDE);
         quads.set_viewport_size(&gpu.queue, size.width, size.height);
+        if let Some(scheme) = window.color_scheme() {
+            self.apply_system_scheme(scheme);
+        }
         text.set_globals(
             &gpu.queue,
             size.width,
             size.height,
-            color(Theme::LUX_DARK.background),
+            color(self.chrome.theme.background),
         );
 
         let tab_bar_height = self.tab_bar_height();
@@ -51,6 +53,7 @@ impl App {
             quads,
             text,
         });
+        self.apply_saved_color_theme();
         self.scheduler.invalidate_all();
         window.request_redraw();
     }
@@ -73,7 +76,7 @@ impl App {
             &gpu_window.gpu.queue,
             size.width,
             size.height,
-            color(Theme::LUX_DARK.background),
+            color(self.chrome.theme.background),
         );
         self.viewport.width = size.width as f32;
         self.viewport.height = (size.height as f32
@@ -86,11 +89,19 @@ impl App {
         gpu_window.window.request_redraw();
     }
 
-    pub(crate) fn scroll(&mut self, delta: ScrollDelta) {
-        let dy = match delta {
-            ScrollDelta::Lines { y, .. } => y * LINE_HEIGHT * self.scale_factor,
-            ScrollDelta::Pixels(p) => p.y as f32,
+    pub(crate) fn sync_editor_clear_color(&mut self) {
+        let Some(gpu_window) = &self.gpu_window else {
+            return;
         };
+        let size = gpu_window.window.inner_size();
+        let clear = color(self.chrome.theme.background);
+        gpu_window
+            .text
+            .set_globals(&gpu_window.gpu.queue, size.width, size.height, clear);
+    }
+
+    pub(crate) fn scroll(&mut self, delta: ScrollDelta) {
+        let (dx, dy) = scroll_offset_delta(delta, self.scale_factor);
         if self.ui.split.is_active() {
             let primary_rect = [
                 self.sidebar_width(),
@@ -106,13 +117,15 @@ impl App {
                 self.mouse.position.y as f32,
             ) {
                 if pane_idx == self.ui.split.active_pane {
-                    self.viewport.scroll_y = (self.viewport.scroll_y - dy).max(0.0);
+                    self.apply_scroll_delta(dx, dy);
                     if pane_idx < self.ui.split.panes.len() {
+                        self.ui.split.panes[pane_idx].viewport.scroll_x = self.viewport.scroll_x;
                         self.ui.split.panes[pane_idx].viewport.scroll_y = self.viewport.scroll_y;
                     }
                 } else if pane_idx < self.ui.split.panes.len() {
-                    let cur = self.ui.split.panes[pane_idx].viewport.scroll_y;
-                    self.ui.split.panes[pane_idx].viewport.scroll_y = (cur - dy).max(0.0);
+                    let pane = &mut self.ui.split.panes[pane_idx].viewport;
+                    pane.scroll_x = (pane.scroll_x - dx).max(0.0);
+                    pane.scroll_y = (pane.scroll_y - dy).max(0.0);
                     if pane_idx == 1 {
                         self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
                     }
@@ -124,10 +137,63 @@ impl App {
                 return;
             }
         }
-        self.viewport.scroll_y = (self.viewport.scroll_y - dy).max(0.0);
+        self.apply_scroll_delta(dx, dy);
         self.scheduler.invalidate_all();
         if let Some(gpu_window) = &self.gpu_window {
             gpu_window.window.request_redraw();
         }
+    }
+
+    fn apply_scroll_delta(&mut self, dx: f32, dy: f32) {
+        self.viewport.scroll_x = (self.viewport.scroll_x - dx).max(0.0);
+        self.viewport.scroll_y = (self.viewport.scroll_y - dy).max(0.0);
+    }
+}
+
+/// Physical-pixel movement for one wheel event.
+///
+/// `scroll_x` / `scroll_y` share the window's physical pixel space (`LINE_HEIGHT`
+/// times the scale factor). winit's macOS backend already converts precise
+/// trackpad deltas, including the momentum phase, into physical pixels, so
+/// those are applied as-is. A notch is one line at the current scale.
+pub(crate) fn scroll_offset_delta(delta: ScrollDelta, scale: f32) -> (f32, f32) {
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    match delta {
+        ScrollDelta::Lines { x, y } => (x * LINE_HEIGHT * scale, y * LINE_HEIGHT * scale),
+        ScrollDelta::Pixels(p) => (p.x as f32, p.y as f32),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scroll_offset_delta;
+    use crate::app::{App, LINE_HEIGHT};
+    use dpi::PhysicalPosition;
+    use lux_platform::ScrollDelta;
+
+    fn app() -> App {
+        App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec())
+    }
+
+    #[test]
+    fn trackpad_pixels_stay_physical_while_lines_follow_scale() {
+        let line = scroll_offset_delta(ScrollDelta::Lines { x: 0.0, y: -1.0 }, 2.0);
+        assert!((line.1 + LINE_HEIGHT * 2.0).abs() < f32::EPSILON);
+        let pixels =
+            scroll_offset_delta(ScrollDelta::Pixels(PhysicalPosition::new(4.0, -20.0)), 2.0);
+        assert_eq!(pixels, (4.0, -20.0));
+    }
+
+    #[test]
+    fn scroll_applies_trackpad_pixels_on_both_axes() {
+        let mut app = app();
+        app.scale_factor = 2.0;
+        app.scroll(ScrollDelta::Pixels(PhysicalPosition::new(-30.0, -40.0)));
+        assert_eq!(app.viewport.scroll_x, 30.0);
+        assert_eq!(app.viewport.scroll_y, 40.0);
     }
 }

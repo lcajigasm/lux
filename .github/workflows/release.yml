@@ -8,8 +8,10 @@ on:
 permissions:
   contents: write
 
-# Linux only. macOS (.dmg) and Windows (.msi) are built outside CI with
-# scripts/package-macos.sh and scripts/package-msi.ps1. No signing secrets.
+# Linux packages for a version tag. This file has no macOS runner and does
+# not call release-macos.yml. Publishing the release is the one event that
+# starts that workflow (`release: types: [published]`). A tag push alone
+# does not. Windows .msi stays scripts/package-msi.ps1. No signing secrets.
 
 jobs:
   build:

@@ -3,6 +3,8 @@
 use dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
+use crate::event::ColorScheme;
+
 /// Identifies a window for the lifetime of the process. Backend-assigned;
 /// callers should treat it as opaque.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -56,6 +58,11 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn id(&self) -> WindowId;
     fn inner_size(&self) -> PhysicalSize<u32>;
     fn scale_factor(&self) -> f64;
+    /// OS appearance, when the backend knows it. `None` on platforms that
+    /// do not report a scheme; the editor then keeps its last choice.
+    fn color_scheme(&self) -> Option<ColorScheme> {
+        None
+    }
     fn safe_area_insets(&self) -> SafeAreaInsets;
     fn set_title(&self, title: &str);
     fn request_redraw(&self);

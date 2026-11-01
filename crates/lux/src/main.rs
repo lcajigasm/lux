@@ -70,16 +70,14 @@ fn main() {
             println!("lux {}", env!("CARGO_PKG_VERSION"));
             return;
         }
-        let target_path = std::path::PathBuf::from(arg);
-        if target_path.is_dir() {
-            app.open_workspace(target_path);
-        } else if target_path
-            .extension()
-            .is_some_and(|ext| ext == "sublime-project" || ext == "lux-project")
-        {
-            app.open_project_file(&target_path, None);
-        } else {
-            app.documents.initial_path = Some(target_path);
+        let target_path = std::path::PathBuf::from(&arg);
+        match launch_kind(&arg_str, target_path.is_dir()) {
+            LaunchKind::Workspace => app.open_workspace(target_path),
+            LaunchKind::ProjectFile => {
+                app.open_project_file(&target_path, None);
+            }
+            LaunchKind::Document => app.documents.initial_path = Some(target_path),
+            LaunchKind::Help | LaunchKind::Version => {}
         }
     }
     if args.next().is_some() {
@@ -87,4 +85,51 @@ fn main() {
         std::process::exit(2);
     }
     lux_platform::desktop::run(app).expect("desktop event loop failed");
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LaunchKind {
+    Help,
+    Version,
+    Workspace,
+    ProjectFile,
+    Document,
+}
+
+/// `lux .` and any other directory open the workspace. Finder passes a
+/// folder path the same way when the bundle's document type includes
+/// `public.folder`.
+fn launch_kind(arg: &str, is_dir: bool) -> LaunchKind {
+    if arg == "--help" || arg == "-h" {
+        LaunchKind::Help
+    } else if arg == "--version" || arg == "-v" {
+        LaunchKind::Version
+    } else if is_dir {
+        LaunchKind::Workspace
+    } else if std::path::Path::new(arg)
+        .extension()
+        .is_some_and(|ext| ext == "sublime-project" || ext == "lux-project")
+    {
+        LaunchKind::ProjectFile
+    } else {
+        LaunchKind::Document
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dot_opens_a_workspace_and_flags_stay_flags() {
+        assert_eq!(launch_kind(".", true), LaunchKind::Workspace);
+        assert_eq!(launch_kind("/tmp/proj", true), LaunchKind::Workspace);
+        assert_eq!(launch_kind("--help", true), LaunchKind::Help);
+        assert_eq!(launch_kind("-v", false), LaunchKind::Version);
+        assert_eq!(launch_kind("main.rs", false), LaunchKind::Document);
+        assert_eq!(
+            launch_kind("app.lux-project", false),
+            LaunchKind::ProjectFile
+        );
+    }
 }

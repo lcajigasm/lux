@@ -22,29 +22,38 @@ if [[ -z "$version" ]]; then
   exit 1
 fi
 
-# 1. Use a prebuilt binary, or compile one. LUX_BIN skips the universal lipo
-# so the release workflow ships the architecture it just built.
+# True when `rustup target add` has installed that Apple std.
+have_target_std() {
+  local triple="$1"
+  local libdir
+  libdir="$(rustc --print target-libdir --target "$triple" 2>/dev/null || true)"
+  [[ -n "$libdir" && -d "$libdir" ]] || return 1
+  compgen -G "$libdir/libstd*" > /dev/null
+}
+
+# 1. Use a prebuilt binary, or compile one.
+# LUX_BIN skips lipo (one architecture, already built).
+# Otherwise, when both Apple stds are installed, build arm64 and x86_64
+# and lipo them. That is the release path. A host-only build is the fallback
+# for a machine that has only one target.
 if [[ -n "${LUX_BIN:-}" ]]; then
   bin="$LUX_BIN"
-  echo "--> Using prebuilt binary $bin"
+  echo "--> Using prebuilt binary $bin (single architecture, no lipo)"
+elif have_target_std aarch64-apple-darwin && have_target_std x86_64-apple-darwin; then
+  echo "--> Building universal binary (aarch64 + x86_64)..."
+  cargo build -p lux --release --locked --target aarch64-apple-darwin
+  cargo build -p lux --release --locked --target x86_64-apple-darwin
+  mkdir -p target/universal
+  lipo -create \
+    target/aarch64-apple-darwin/release/lux \
+    target/x86_64-apple-darwin/release/lux \
+    -output target/universal/lux
+  lipo -info target/universal/lux
+  bin="target/universal/lux"
 else
-  echo "--> Compiling lux (release)..."
-  cargo build -p lux --release
+  echo "--> Single architecture release build for host $(uname -m)..."
+  cargo build -p lux --release --locked
   bin="target/release/lux"
-  x86_libdir="$(rustc --print target-libdir --target x86_64-apple-darwin 2>/dev/null || true)"
-  if [[ -n "$x86_libdir" && -d "$x86_libdir" ]] && compgen -G "$x86_libdir/libstd*" > /dev/null 2>&1; then
-    echo "--> Detected x86_64 target standard library; building universal binary..."
-    cargo build -p lux --release --target x86_64-apple-darwin
-    cargo build -p lux --release --target aarch64-apple-darwin
-    mkdir -p target/universal
-    lipo -create \
-      target/aarch64-apple-darwin/release/lux \
-      target/x86_64-apple-darwin/release/lux \
-      -output target/universal/lux
-    bin="target/universal/lux"
-  else
-    echo "--> Single architecture build ($bin) for host target $(uname -m)..."
-  fi
 fi
 
 if [[ ! -f "$bin" ]]; then

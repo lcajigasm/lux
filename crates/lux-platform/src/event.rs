@@ -130,6 +130,14 @@ pub enum Ime {
     Disabled,
 }
 
+/// Light or dark appearance reported by the OS. Distinct from the editor
+/// theme the user picked: a named theme wins until the setting is `system`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorScheme {
+    Dark,
+    Light,
+}
+
 /// A single input or lifecycle event delivered to
 /// [`crate::PlatformEventHandler::window_event`].
 #[derive(Debug, Clone, PartialEq)]
@@ -140,6 +148,10 @@ pub enum PlatformEvent {
     ScaleFactorChanged {
         scale_factor: f64,
     },
+    /// The OS appearance changed (macOS `ThemeChanged`, and the same event
+    /// on Windows). Trackpad inertia is not a separate event: macOS delivers
+    /// it as further [`PlatformEvent::MouseWheel`] pixel deltas.
+    ColorSchemeChanged(ColorScheme),
     Focused(bool),
     Occluded(bool),
     CloseRequested,

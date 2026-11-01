@@ -1,0 +1,52 @@
+name: Release macOS
+
+# Private-repo macOS minutes bill at 10x.
+# Not a pull_request, not a branch push, and not a tag push.
+# The Linux tag workflow publishes the GitHub Release; that single
+# `published` event starts this job. Uploading the dmg edits the same
+# release and does not publish a second one. workflow_dispatch is the
+# manual retry, and it is not used by the tag workflow.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to attach the dmg to (vX.Y.Z)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    name: lux-macos-universal
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - name: Checkout the published release
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.release.tag_name }}
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Apple targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Universal disk image
+        run: |
+          chmod +x scripts/package-macos.sh
+          ./scripts/package-macos.sh dist lux-macos-universal.dmg
+
+      - name: Upload to the triggering release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.release.tag_name }}
+          files: dist/lux-macos-universal.dmg
+          fail_on_unmatched_files: true

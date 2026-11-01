@@ -11,10 +11,16 @@
 
 use std::path::PathBuf;
 
-#[cfg(target_os = "macos")]
-const MACOS_MONOSPACE_CANDIDATES: &[&str] = &[
-    // San Francisco Mono: the actual system monospace font on modern macOS.
+/// SF Mono before Menlo. `SFNSMono.ttf` is the older system file; current
+/// macOS ships SF Mono from Xcode at the Supplemental and `/Library/Fonts`
+/// paths. Menlo remains the fallback when SF Mono is not installed.
+/// Compiled on every host so the order can be tested off macOS; only the
+/// macOS loader reads it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) const MACOS_MONOSPACE_CANDIDATES: &[&str] = &[
     "/System/Library/Fonts/SFNSMono.ttf",
+    "/System/Library/Fonts/Supplemental/SF-Mono-Regular.otf",
+    "/Library/Fonts/SF-Mono-Regular.otf",
     "/System/Library/Fonts/Menlo.ttc",
     "/System/Library/Fonts/Monaco.ttf",
     "/System/Library/Fonts/Supplemental/Andale Mono.ttf",
@@ -86,5 +92,24 @@ mod tests {
             swash::FontRef::from_index(&bytes, 0).is_some(),
             "font bytes read from {path} must parse as a real font"
         );
+    }
+
+    #[test]
+    fn macos_tries_sf_mono_before_menlo() {
+        let sf = MACOS_MONOSPACE_CANDIDATES
+            .iter()
+            .position(|path| path.contains("SF"))
+            .expect("an SF Mono path");
+        let menlo = MACOS_MONOSPACE_CANDIDATES
+            .iter()
+            .position(|path| path.ends_with("Menlo.ttc"))
+            .expect("Menlo");
+        assert!(sf < menlo);
+        assert!(
+            MACOS_MONOSPACE_CANDIDATES
+                .iter()
+                .any(|path| path.ends_with("SF-Mono-Regular.otf"))
+        );
+        assert!(MACOS_MONOSPACE_CANDIDATES[0].ends_with("SFNSMono.ttf"));
     }
 }
