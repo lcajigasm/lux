@@ -21,6 +21,7 @@
 **Lux** is a fast, free, open-source native text and code editor built from the ground up in Rust. It is designed to recapture and surpass the legendary ergonomics of **Sublime Text 3**: instant cold startup (< 150ms), imperceptible input latency (< 8ms), seamless editing of massive files, first-class multi-cursor workflows, and an unobtrusive, distraction-free user interface.
 
 🌐 **Website & Documentation:** [https://lcajigasm.github.io/lux/](https://lcajigasm.github.io/lux/)
+Publishing that site is manual: `.github/workflows/pages.yml` runs only on `workflow_dispatch`. A push to `main` no longer deploys it, because the Pages API returned HTTP 422 for this private repository (run 41274477945).
 
 Unlike web-based or Electron editors, Lux is compiled directly to native machine code with hardware-accelerated WGPU rendering. It incorporates an in-process Git engine (`gix`), an integrated PTY terminal (`portable-pty`), a non-blocking Language Server Protocol client (`async-lsp`), tree-sitter incremental syntax highlighting, and sandboxed WebAssembly plugins (`wasmtime`).
 
