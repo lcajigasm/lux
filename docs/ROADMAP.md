@@ -37,10 +37,13 @@ capture.
 Four separate mechanisms, all visible in that capture or in the draw path
 that produced it:
 
-The capture above is the previous build. `docs/compare/monokai-side-by-side.png`
-and `docs/compare/characters.png` are the macos-15 windows from compare run
-41338114570. 0.1 and 0.2 hold on those files. Block 0 stays open until
-`selectors.png` has been looked at.
+The capture above is the previous build. `docs/compare/monokai-side-by-side.png`,
+`docs/compare/characters.png`, and `docs/compare/selectors.png` are the
+macos-15 windows from compare run 41348580486. 0.1 and 0.2 hold. The
+selector still holds: all three palettes are open, and Lux draws icons on
+a rounded surface. The job logged display scale 1, so Retina pixels are
+not in the file. Block 0 stays open until this tree is on main and that
+main CI is green.
 
 1. **Monokai is the launch theme.** `workbench.colorTheme` defaults to
    `monokai`. `Chrome` starts on `Theme::MONOKAI` and does not follow the
@@ -117,21 +120,20 @@ candidate either; the VS Code `theme-monokai` sources are MIT and are the
 first file to check. Sublime's bundled scheme is used only if its license
 allows redistribution.
 
-### 0.3 Text and selectors — en curso
+### 0.3 Text and selectors — captura mirada, Retina sin foto
 
 HiDPI frames (`scale_factor > 1`) rasterize grayscale masks and blend them
 with the quad already drawn for that surface. Scale 1 still uses subpixel
 AA. Ligatures and the SF Mono fallback list were already there. The
-command palette, goto, theme picker, and completion list now draw icons,
+command palette, goto, theme picker, and completion list draw icons,
 rounded shadowed surfaces, fuzzy highlight, and a short ease. Against the
 Sublime capture, the status labels on the right use the foreground color,
-the current line is a step above the editor background, the window title
-is the file name plus its folder, and the column ruler is off by default
-with a faint minimap edge. The compare job writes
-`docs/compare/selectors.png` from the real Lux, Sublime Text, and Zed
-windows, and repeats the Monokai pair. This row is not hecho until those
-files have been looked at. The macos-15 runner is a 1× display, so the
-PNG does not prove Retina.
+the current line is `#2C2D27`, the window title is the file name plus its
+folder, and the column ruler is off by default with a faint minimap edge.
+Compare run 41348580486 wrote `docs/compare/selectors.png` from the real
+Lux, Sublime Text, and Zed windows, all three with the palette open, and
+repeated the Monokai pair. The runner logged display scale 1, so the PNG
+does not prove Retina, and a still does not show the open animation.
 
 Acceptance, on top of 0.1 and 0.2: Retina text is grayscale-antialiased (or
 otherwise correct for a 2× framebuffer), with ligatures, a stable line
@@ -153,8 +155,9 @@ before that.
 - `docs/compare/characters.png` — the Lux window on the special-character
   fixture, same resolution.
 - `docs/compare/selectors.png` — Lux, Sublime Text, and Zed with the
-  command palette open. Not committed until the job produces it and it
-  has been looked at.
+  command palette open. Compare run 41348580486. Lux holds as a readable
+  rounded palette with icons. It is not a copy of Sublime's light list or
+  Zed's denser one. The runner is 1×.
 
 If Lux loses that comparison, the block stays open and no release is tagged.
 
@@ -185,7 +188,7 @@ the phase.
 | Status bar | parcial. Items are built and painted; the capture cannot be read |
 | Minimap | parcial. A muted strip is in the capture. It is not a readable map of the file |
 | Splits | parcial. `split.png` shows two columns of the same file. The gutter and divider are the dark hardcoded chrome |
-| Command palette | parcial. `Cmd+Shift+P` is bound and the headless session opens it. The capture of the open palette is illegible. Block 0.3 |
+| Command palette | parcial. Compare run 41348580486 shows Lux, Sublime, and Zed with the palette open. Lux rows have icons and a rounded surface. The still does not show the ease |
 | Settings | parcial. `workbench.colorTheme` and `workbench.keymap` load from JSON. There is no settings editor that meets the visual bar |
 
 Acceptance: every row is visible in a `docs/compare/` capture of one
@@ -277,11 +280,10 @@ Each phase ends with new `docs/compare/` captures from the job above. Phase
 3 also commits the benchmark table. No release is tagged for a phase that
 missed its bar.
 
-1. **Phase 0, in progress.** 0.1 and 0.2 hold on
-   `docs/compare/monokai-side-by-side.png` and `docs/compare/characters.png`
-   (compare run 41338114570). 0.3 now draws selector icons, rounded
-   surfaces, and a short ease. Block 0 stays open until `selectors.png`
-   is looked at. No release.
+1. **Phase 0, in progress.** 0.1 and 0.2 hold. The selector still from
+   compare run 41348580486 holds. Retina is not in that 1× capture.
+   Block 0 stays open until this tree is on main and that main CI is
+   green. No release.
 2. **Phase 0b.** The selector capture against Sublime and Zed. Close
    block 0 only if Lux holds that comparison. That close is the first
    release this plan allows.

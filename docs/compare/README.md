@@ -6,7 +6,7 @@ opens `fixtures/monokai.rs` in both with Monokai, and opens
 `fixtures/characters.txt` in Lux. `screencapture -l` records the real
 windows. ImageMagick joins the Monokai pair.
 
-Committed PNGs are copies of compare run 41338114570. A file that did not
+Committed PNGs are copies of compare run 41348580486. A file that did not
 come from the job is not a comparison. If Sublime Text cannot be captured,
 the job fails and does not write a replacement image.
 
