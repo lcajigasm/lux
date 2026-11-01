@@ -244,7 +244,13 @@ fn write_texture(
         quads_pipe.draw(device, queue, &mut pass, base.quads);
         text.draw(device, queue, &mut pass, base.glyphs);
     }
+    // Same instance-buffer rule as the window: submit the editor before the
+    // selector draw replaces it. One submit kept only the clear color.
     if !overlay.quads.is_empty() || !overlay.glyphs.is_empty() {
+        queue.submit(Some(encoder.finish()));
+        encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("lux scale snapshot overlay"),
+        });
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("lux scale snapshot overlay"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {

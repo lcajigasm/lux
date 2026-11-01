@@ -269,10 +269,16 @@ pub(crate) fn paint(
             base.glyphs,
         );
     }
-    // A second pass, not a second draw in the first: `Pipeline::draw` borrows
-    // the pipeline for the whole pass, and editor glyphs in pass one would
-    // otherwise paint on top of the selector card.
+    // `draw` writes one instance buffer per pipeline. A second pass in the
+    // same submit overwrites that buffer before the GPU runs the first pass,
+    // so the editor disappears and only the selector survives. Submit the
+    // editor first.
     if !overlay.quads.is_empty() || !overlay.glyphs.is_empty() {
+        gpu_window.gpu.queue.submit(Some(encoder.finish()));
+        encoder = gpu_window
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("lux overlay"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {

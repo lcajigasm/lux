@@ -21,8 +21,12 @@
 > `docs/compare/selectors.png` from the same run shows the command palette
 > open in Lux, Sublime Text, and Zed. Forge rejected that Lux palette: it
 > is narrow, sits on the code, and the input, rows, and shortcuts do not
-> read. Block 0 stays open. No release is tagged. A still does not show
-> the open animation. See [ROADMAP.md](ROADMAP.md).
+> read. Compare run 41353967042 drew the wider card, the query, and the
+> shortcut column, and the editor behind that card was black: both render
+> passes shared one instance buffer, so the selector draw replaced the
+> editor before the GPU ran it. The editor pass is now submitted first.
+> Those PNGs are not in `docs/compare/` yet. Block 0 stays open. No release
+> is tagged. A still does not show the open animation. See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.

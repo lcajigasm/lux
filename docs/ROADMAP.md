@@ -133,7 +133,11 @@ dark input well, and a drop shadow. Placeholders are "Execute a command…",
 foreground color, the selected row is `#75715E` with an accent bar, and
 fuzzy hits use the accent. The right-hand label is the real keymap chord
 when one exists. Compare run 41348580486 is the capture Forge rejected.
-Its runner logged display scale 1. A still does not show the open animation.
+Compare run 41353967042 showed the new card and a black editor: the
+selector pass overwrote the shared instance buffer. The editor pass is
+submitted on its own before that draw. Its runner logged display scale 1,
+and `retina-palette.png` from that run is the scale-2 framebuffer with
+the same hole. A still does not show the open animation.
 
 Acceptance, on top of 0.1 and 0.2: Retina text is grayscale-antialiased (or
 otherwise correct for a 2× framebuffer), with ligatures, a stable line
