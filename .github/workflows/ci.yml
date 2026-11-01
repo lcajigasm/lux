@@ -9,7 +9,7 @@ env:
   CARGO_TERM_COLOR: always
 
 # Linux jobs stay on ubuntu-latest. Pull requests and main also run one
-# standard macos-14 job (tests, plus a universal .app/.dmg artifact that
+# standard macos-15 job (tests, plus a universal .app/.dmg artifact that
 # is not published). Windows stays out of CI. No larger runners.
 # release-macos.yml still publishes the disk image only when a GitHub
 # Release is published, or on workflow_dispatch. The repository is public,
@@ -75,8 +75,8 @@ jobs:
         run: cargo test -p lux --release test_continuous_typing_latency_large_file_under_8ms -- --nocapture
 
   macos:
-    name: cargo test and universal dmg (macos-14)
-    runs-on: macos-14
+    name: cargo test and universal dmg (macos-15)
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -91,7 +91,7 @@ jobs:
         run: |
           # cargo test leaves a debug tree the disk image does not need.
           # Keeping it, then building both release architectures, makes
-          # hdiutil fail with "No space left on device" on macos-14
+          # hdiutil fail with "No space left on device" on the macOS runner
           # (runs 41299748706 and 41300655725).
           rm -rf "$HOME/Library/Developer/Xcode/DerivedData" \
                  "$HOME/Library/Developer/CoreSimulator/Caches" \
