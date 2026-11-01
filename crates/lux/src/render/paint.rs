@@ -176,10 +176,17 @@ pub(super) fn push_glyph(
     }
 }
 
+/// Quads and glyphs for one draw. The selector is a second list so its
+/// card paints after the editor text instead of underneath it.
+pub(crate) struct DrawList<'a> {
+    pub quads: &'a [QuadInstance],
+    pub glyphs: &'a [GlyphInstance],
+}
+
 pub(crate) fn paint(
     gpu_window: &mut GpuWindow,
-    quads: &[QuadInstance],
-    glyphs: &[GlyphInstance],
+    base: DrawList<'_>,
+    overlay: DrawList<'_>,
     atlas: &GlyphAtlas,
     background: [f32; 4],
 ) -> Outcome {
@@ -253,13 +260,46 @@ pub(crate) fn paint(
             &gpu_window.gpu.device,
             &gpu_window.gpu.queue,
             &mut pass,
-            quads,
+            base.quads,
         );
         gpu_window.text.draw(
             &gpu_window.gpu.device,
             &gpu_window.gpu.queue,
             &mut pass,
-            glyphs,
+            base.glyphs,
+        );
+    }
+    // A second pass, not a second draw in the first: `Pipeline::draw` borrows
+    // the pipeline for the whole pass, and editor glyphs in pass one would
+    // otherwise paint on top of the selector card.
+    if !overlay.quads.is_empty() || !overlay.glyphs.is_empty() {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("lux overlay"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        gpu_window.quads.draw(
+            &gpu_window.gpu.device,
+            &gpu_window.gpu.queue,
+            &mut pass,
+            overlay.quads,
+        );
+        gpu_window.text.draw(
+            &gpu_window.gpu.device,
+            &gpu_window.gpu.queue,
+            &mut pass,
+            overlay.glyphs,
         );
     }
     gpu_window.window.pre_present_notify();

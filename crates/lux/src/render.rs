@@ -35,7 +35,7 @@ use std::time::Instant;
 use crate::presentation::Outcome;
 use lux_platform::PlatformContext;
 use lux_render::QuadInstance;
-use paint::{color, push_glyph, set_active_theme, set_hidpi_grayscale};
+use paint::{DrawList, color, push_glyph, set_active_theme, set_hidpi_grayscale};
 
 use crate::app::{App, BLINK_INTERVAL, FONT_SIZE, LINE_HEIGHT, TEXT_LEFT_PADDING};
 
@@ -134,6 +134,8 @@ impl App {
             ));
         }
         let mut glyph_instances = Vec::new();
+        let mut overlay_quads = Vec::new();
+        let mut overlay_glyphs = Vec::new();
         let mut cursor_screen = None;
 
         if ui.split.is_active() {
@@ -447,8 +449,8 @@ impl App {
             &mut atlas_state.atlas,
             &mut atlas_state.dirty,
             &mut atlas_state.scale_cx,
-            &mut quad_instances,
-            &mut glyph_instances,
+            &mut overlay_quads,
+            &mut overlay_glyphs,
         );
 
         git::render_git(
@@ -552,8 +554,14 @@ impl App {
 
         let outcome = crate::snapshot::present_or_capture(
             gpu_window,
-            &quad_instances,
-            &glyph_instances,
+            DrawList {
+                quads: &quad_instances,
+                glyphs: &glyph_instances,
+            },
+            DrawList {
+                quads: &overlay_quads,
+                glyphs: &overlay_glyphs,
+            },
             &atlas_state.atlas,
             color(chrome.theme.background),
             extent.capture,

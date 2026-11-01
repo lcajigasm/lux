@@ -7,9 +7,9 @@ use std::path::PathBuf;
 
 use crate::app::{ATLAS_SIDE, App, GpuWindow};
 use crate::presentation::Outcome;
-use crate::render::paint;
+use crate::render::paint::{self, DrawList};
 use lux_platform::PlatformContext;
-use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance, QuadPipeline, TextPipeline};
+use lux_render::{GlyphAtlas, QuadPipeline, TextPipeline};
 
 struct Request {
     path: PathBuf,
@@ -67,16 +67,16 @@ pub(crate) fn frame_extent(window_width: u32, window_height: u32) -> FrameExtent
 
 pub(crate) fn present_or_capture(
     gpu_window: &mut GpuWindow,
-    quads: &[QuadInstance],
-    glyphs: &[GlyphInstance],
+    base: DrawList<'_>,
+    overlay: DrawList<'_>,
     atlas: &GlyphAtlas,
     background: [f32; 4],
     capture: Option<Capture>,
 ) -> Outcome {
     let Some(capture) = capture else {
-        return paint::paint(gpu_window, quads, glyphs, atlas, background);
+        return paint::paint(gpu_window, base, overlay, atlas, background);
     };
-    match write_texture(gpu_window, quads, glyphs, atlas, background, &capture) {
+    match write_texture(gpu_window, base, overlay, atlas, background, &capture) {
         Ok(()) => eprintln!(
             "Lux: wrote scale snapshot {} ({}x{})",
             capture.path.display(),
@@ -186,8 +186,8 @@ fn settled(app: &App) -> bool {
 
 fn write_texture(
     gpu_window: &mut GpuWindow,
-    quads: &[QuadInstance],
-    glyphs: &[GlyphInstance],
+    base: DrawList<'_>,
+    overlay: DrawList<'_>,
     atlas: &GlyphAtlas,
     background: [f32; 4],
     capture: &Capture,
@@ -241,8 +241,28 @@ fn write_texture(
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        quads_pipe.draw(device, queue, &mut pass, quads);
-        text.draw(device, queue, &mut pass, glyphs);
+        quads_pipe.draw(device, queue, &mut pass, base.quads);
+        text.draw(device, queue, &mut pass, base.glyphs);
+    }
+    if !overlay.quads.is_empty() || !overlay.glyphs.is_empty() {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("lux scale snapshot overlay"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        quads_pipe.draw(device, queue, &mut pass, overlay.quads);
+        text.draw(device, queue, &mut pass, overlay.glyphs);
     }
 
     let tight = capture.width * 4;
