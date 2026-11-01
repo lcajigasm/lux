@@ -9,8 +9,9 @@ env:
   CARGO_TERM_COLOR: always
 
 # Pull-request and main CI stay on ubuntu-latest only. The universal macOS
-# disk image is .github/workflows/release-macos.yml, which runs only on
-# workflow_dispatch or a v* tag (macos minutes on a private repo bill at 10x).
+# disk image is .github/workflows/release-macos.yml. It runs when a GitHub
+# Release is published, or on workflow_dispatch. It does not run on
+# pull_request, branch push, or tag push. Private-repo macOS minutes bill at 10x.
 
 jobs:
   fmt:

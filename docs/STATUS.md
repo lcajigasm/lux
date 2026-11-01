@@ -1,16 +1,18 @@
 # Status
 
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
-> v1.2.0: macOS is the product focus. Linux and Windows are secondary.
+> v1.3.0: macOS is the product focus. Linux and Windows are secondary.
 > Pull-request CI stays `ubuntu-latest` only. A `vX.Y.Z` tag still attaches
 > `lux-linux-x86_64` and `lux-linux-amd64.deb` from that Linux workflow. The deb
 > depends on `libfontconfig1` and `libegl1` (the EGL GPU loader named in the
 > release binary; `libvulkan.so.1` is not in that binary), plus the xkbcommon,
 > X11, and Wayland libraries it dlopens before a window exists.
-> `release-macos.yml` is separate: one `macos-14` job, `timeout-minutes: 20`,
-> cargo cache, universal ad-hoc `.dmg` via `scripts/package-macos.sh`, and only
-> on `workflow_dispatch` or a `v*` tag. It has not been run. Private-repo macOS
-> minutes bill at 10×, so a full 20 minute job is 200 billed minutes.
+> `release-macos.yml` is a separate one-job `macos-14` workflow
+> (`timeout-minutes: 20`, cargo cache, universal ad-hoc `.dmg` via
+> `scripts/package-macos.sh`). It starts when that GitHub Release is published,
+> or on `workflow_dispatch`. It does not run on pull request, branch push, or
+> tag push, so the Linux workflow does not start a second macOS job. Private-repo
+> macOS minutes bill at 10×, so a full 20 minute job is 200 billed minutes.
 > Windows `.msi` stays `scripts/package-msi.ps1` (unsigned WiX). The
 > repository stays private, so a GitHub session is required to download a release.
 > Appearance versus Sublime, VS Code, and Zed is [macos-parity.md](macos-parity.md).
@@ -2248,8 +2250,9 @@ verifies Ed25519 update payloads (`crates/lux-pack/src/update.rs`). `lux` instal
 (`crates/lux/src/main.rs`). `scripts/package.sh` builds the release distribution tree (`dist/lux` containing
 `bin/lux`, `share/doc/README.md`, `share/doc/LICENSE*`). Windows Package Manager manifest prepared in
 `packaging/winget/Lux.Lux.yaml`. The tag workflow on GitHub builds the unsigned Linux
-`.deb` only. `scripts/package-macos.sh` and `scripts/package-msi.ps1` still build an
-ad-hoc `.dmg` and an unsigned `.msi` outside CI (see the note at the top). Signed and
+`.deb`. Publishing that release starts `release-macos.yml` for the universal
+ad-hoc `.dmg`. `scripts/package-msi.ps1` still builds an unsigned `.msi` outside
+CI (see the note at the top). Signed and
 notarized installers stay `not-started`: no certificate is stored in the repo.
 
 ## Mobile shells (Phase 12 `v1.1.0`, Phase 13 `v1.2.0`)
@@ -2268,7 +2271,7 @@ notarized installers stay `not-started`: no certificate is stored in the repo.
 UIKeyInput, document picker) and Kotlin `LuxActivity` (SurfaceView,
 InputConnection, SAF) live in `host-ios/` and `host-android/`. Rust FFI
 modules compile on desktop as `available() == false`. Not run on device;
-store rows stay `not-started`. Workspace version 1.2.0 is the desktop installer
+store rows stay `not-started`. Workspace version 1.3.0 is the desktop installer
 release; these phase labels are the original plan names and are still not done.
 `lux_platform::child_processes_allowed` is false on iOS.
 

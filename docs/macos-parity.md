@@ -51,5 +51,5 @@ not notarized. There is no Apple Developer ID in this repo.
 `scripts/package-macos.sh` builds that image when both
 `aarch64-apple-darwin` and `x86_64-apple-darwin` standard libraries are
 installed. `.github/workflows/release-macos.yml` runs that script on
-`macos-14` only for `workflow_dispatch` or a `v*` tag. It is not part of
-pull-request CI. It has not been dispatched from this change.
+`macos-14` when a GitHub Release is published, or on `workflow_dispatch`.
+It does not run on pull request, branch push, or tag push.
