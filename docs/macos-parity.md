@@ -50,6 +50,8 @@ not notarized. There is no Apple Developer ID in this repo.
 
 `scripts/package-macos.sh` builds that image when both
 `aarch64-apple-darwin` and `x86_64-apple-darwin` standard libraries are
-installed. `.github/workflows/release-macos.yml` runs that script on
-`macos-14` when a GitHub Release is published, or on `workflow_dispatch`.
-It does not run on pull request, branch push, or tag push.
+installed. Pull-request CI runs that script on standard `macos-14` and
+uploads the `.app` and `.dmg` as an artifact. It does not publish them.
+`.github/workflows/release-macos.yml` runs the same script on `macos-14`
+when a GitHub Release is published, or on `workflow_dispatch`. That
+release workflow does not run on pull request, branch push, or tag push.

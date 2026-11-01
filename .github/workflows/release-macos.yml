@@ -1,7 +1,8 @@
 name: Release macOS
 
-# Private-repo macOS minutes bill at 10x.
-# Not a pull_request, not a branch push, and not a tag push.
+# Standard macos-14 runner. The repository is public, so this job is inside
+# the included quota. Not a larger runner. Not a pull_request, not a branch
+# push, and not a tag push.
 # The Linux tag workflow publishes the GitHub Release; that single
 # `published` event starts this job. Uploading the dmg and replacing
 # SHA256SUMS edit the same release and do not publish a second one.

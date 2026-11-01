@@ -1,13 +1,11 @@
 name: Deploy GitHub Pages
 
-# Push to main no longer deploys. Run 41274477945 (commit 8a27f6f) uploaded
-# the site artifact and then GitHub returned HTTP 422 Validation Failed from
-# the Pages deployment API. The same workflow succeeded on 2026-10-31, the
-# github-pages environment still allows main, and the repository stays
-# private. That 422 is the private-Pages rejection, not a bad artifact.
-# Dispatch remains so a retry does not run on every push. This file does
-# not change repository visibility or billing.
+# Deploys site/ on every push to main, and on workflow_dispatch.
+# Run 41274477945 failed with HTTP 422 while the repository was private.
+# The repository is public now. This file does not change visibility or billing.
 on:
+  push:
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:

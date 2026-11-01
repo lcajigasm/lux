@@ -8,10 +8,12 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
-# Pull-request and main CI stay on ubuntu-latest only. The universal macOS
-# disk image is .github/workflows/release-macos.yml. It runs when a GitHub
-# Release is published, or on workflow_dispatch. It does not run on
-# pull_request, branch push, or tag push. Private-repo macOS minutes bill at 10x.
+# Linux jobs stay on ubuntu-latest. Pull requests and main also run one
+# standard macos-14 job (tests, plus a universal .app/.dmg artifact that
+# is not published). Windows stays out of CI. No larger runners.
+# release-macos.yml still publishes the disk image only when a GitHub
+# Release is published, or on workflow_dispatch. The repository is public,
+# so these standard runners are inside the included quota.
 
 jobs:
   fmt:
@@ -71,3 +73,29 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
       - name: Release-mode 8 ms typing budget
         run: cargo test -p lux --release test_continuous_typing_latency_large_file_under_8ms -- --nocapture
+
+  macos:
+    name: cargo test and universal dmg (macos-14)
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Apple targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Test
+        run: cargo test --workspace
+      - name: Universal disk image
+        run: |
+          chmod +x scripts/package-macos.sh
+          ./scripts/package-macos.sh dist lux-macos-universal.dmg
+      - name: Upload disk image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lux-macos-universal
+          path: |
+            dist/lux-macos-universal.dmg
+            dist/Lux.app
+          if-no-files-found: error

@@ -37,7 +37,7 @@
       <a href="#" class="brand">
         <img src="assets/icon.png" alt="Lux Logo" class="brand-logo">
         <span class="brand-name">Lux</span>
-        <span class="brand-tag">v1.3.0</span>
+        <span class="brand-tag">v1.3.1</span>
       </a>
 
       <nav class="nav-menu">
@@ -65,7 +65,7 @@
     <div class="container hero-container">
       <div class="release-pill-wrapper">
         <a href="https://github.com/lcajigasm/lux/releases/latest" target="_blank" rel="noopener" class="release-pill">
-          <span class="pill-badge">v1.3.0</span>
+          <span class="pill-badge">v1.3.1</span>
           <span class="pill-text">macOS first. Universal dmg is opt-in; Linux deb is on the tag</span>
           <span class="pill-arrow">→</span>
         </a>
@@ -520,14 +520,15 @@
       <div class="download-card">
         <div class="download-content">
           <span class="section-tag">Get Started Today</span>
-          <h2 class="download-title">Download Lux v1.3.0</h2>
+          <h2 class="download-title">Download Lux v1.3.1</h2>
           <p class="download-desc">
             macOS is the focus. Publishing a GitHub Release starts one
-            <code>macos-14</code> job (<code>release-macos.yml</code>) that attaches
+            standard <code>macos-14</code> job (<code>release-macos.yml</code>) that attaches
             the universal <code>.dmg</code>. A version tag publishes
             <code>lux-linux-x86_64</code> and <code>lux-linux-amd64.deb</code> and does
-            not start a second macOS job. Windows <code>.msi</code> stays outside CI.
-            The repository is private, so a GitHub session is required. The second button is the existing v1.1.0 Apple Silicon image.
+            not start a second macOS job. Pull-request CI builds the same image as an
+            artifact and does not publish it. Windows <code>.msi</code> stays outside CI.
+            The second button is the existing v1.1.0 Apple Silicon image.
           </p>
 
           <div class="download-buttons">
