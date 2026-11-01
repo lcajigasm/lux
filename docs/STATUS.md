@@ -19,6 +19,9 @@
 > The repository is public. These jobs use standard runners only.
 > Windows `.msi` stays `scripts/package-msi.ps1` (unsigned WiX).
 > `pages.yml` deploys `site/` on push to `main` and on `workflow_dispatch`.
+> Editor pictures on the site and in the README come only from
+> `scripts/screenshots.sh` (standard `macos-14`, `workflow_dispatch` or a
+> published release). That job builds `lux` and captures its window.
 > Appearance versus Sublime, VS Code, and Zed is [macos-parity.md](macos-parity.md).
 >
 > The Linux CI test job runs `headless_session_opens_types_saves_palette_split_and_find`

@@ -27,6 +27,11 @@ Unlike web-based or Electron editors, Lux is compiled directly to native machine
 
 Target platforms, in order: **macOS**, **Windows**, **Linux**, then **iPadOS/iOS**, then **Android**.
 
+Editor pictures in this README and on the website are PNGs produced by
+`scripts/screenshots.sh` (see [CONTRIBUTING.md](CONTRIBUTING.md)). That job
+builds the real `lux` binary and captures its window. Drawings of the UI
+are not accepted.
+
 ---
 
 ## Downloads
