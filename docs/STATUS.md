@@ -3,7 +3,7 @@
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
 > Pull-request and main CI keep the `ubuntu-latest` jobs and add one standard
-> `macos-14` job: `cargo test --workspace`, then a universal `.app` / `.dmg`
+> `macos-15` job: `cargo test --workspace`, then a universal `.app` / `.dmg`
 > uploaded as a CI artifact and not published. The debug tree is removed
 > before that image so both release architectures and `hdiutil` fit on the
 > standard runner. Windows is not in CI.
@@ -12,7 +12,7 @@
 > (the EGL GPU loader named in the release binary; `libvulkan.so.1` is not in
 > that binary), plus the xkbcommon, X11, and Wayland libraries it dlopens
 > before a window exists.
-> `release-macos.yml` is a separate one-job standard `macos-14` workflow
+> `release-macos.yml` is a separate one-job standard `macos-15` workflow
 > (`timeout-minutes: 45`, cargo cache, universal ad-hoc `.dmg` via
 > `scripts/package-macos.sh`). After the upload it appends the `.dmg`
 > line to the release `SHA256SUMS`. It starts when that GitHub Release is published,
@@ -22,7 +22,7 @@
 > Windows `.msi` stays `scripts/package-msi.ps1` (unsigned WiX).
 > `pages.yml` deploys `site/` on push to `main` and on `workflow_dispatch`.
 > Editor pictures on the site and in the README come only from
-> `scripts/screenshots.sh` (standard `macos-14`, `workflow_dispatch` or a
+> `scripts/screenshots.sh` (standard `macos-15`, `workflow_dispatch` or a
 > published release). That job builds `lux` and captures its window.
 > Appearance versus Sublime, VS Code, and Zed is [macos-parity.md](macos-parity.md).
 >

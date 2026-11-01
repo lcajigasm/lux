@@ -131,8 +131,10 @@ block input.
 
 ### Block 0 is closed only when these captures exist
 
-Both files are produced by the compare job on standard `macos-14` and
-committed under `docs/compare/`:
+Both files are produced by the compare job on standard `macos-15` and
+committed under `docs/compare/`. `macos-14` is unsupported after
+2026-11-02; the captures already in `docs/screenshots/` were taken on it
+before that.
 
 - `docs/compare/monokai-side-by-side.png` — Lux with Monokai beside Sublime
   Text with Monokai, same file, same window size, same display resolution.
@@ -146,7 +148,7 @@ If Lux loses that comparison, the block stays open and no release is tagged.
 Not added in the plan change. When phase 0 starts, add
 `.github/workflows/compare.yml`:
 
-- `workflow_dispatch` only, `runs-on: macos-14`, timeout 45 minutes. It
+- `workflow_dispatch` only, `runs-on: macos-15`, timeout 45 minutes. It
   does not run on pull requests.
 - Build `lux` in release mode.
 - `brew install --cask sublime-text` and `brew install --cask zed`. No
@@ -198,7 +200,7 @@ Monokai, with the status bar readable.
 Acceptance: one capture per row on the fixture project, plus a test that
 opens a file, types, undoes, redoes, finds, jumps to a symbol, and asks a
 real `rust-analyzer` (or the repo's chosen server) for one completion. The
-server binary is installed on the `macos-14` job, not stubbed.
+server binary is installed on the `macos-15` job, not stubbed.
 
 ## Block 3 — Shortcuts — parcial
 
