@@ -11,7 +11,7 @@
 > that binary), plus the xkbcommon, X11, and Wayland libraries it dlopens
 > before a window exists.
 > `release-macos.yml` is a separate one-job standard `macos-14` workflow
-> (`timeout-minutes: 20`, cargo cache, universal ad-hoc `.dmg` via
+> (`timeout-minutes: 45`, cargo cache, universal ad-hoc `.dmg` via
 > `scripts/package-macos.sh`). After the upload it appends the `.dmg`
 > line to the release `SHA256SUMS`. It starts when that GitHub Release is published,
 > or on `workflow_dispatch`. It does not run on pull request, branch push, or
