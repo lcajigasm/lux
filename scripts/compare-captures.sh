@@ -102,9 +102,10 @@ for w in info {
 wait_window() {
   local owner="$1"
   local pid="${2:-}"
+  local attempts="${3:-60}"
   local found=""
   local _
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$attempts"); do
     if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
       echo "$owner process exited before a window appeared" >&2
       return 1
@@ -142,6 +143,7 @@ shoot() {
 
 lux_pid=""
 zed_started=0
+zed_bundle_id=""
 cleanup() {
   if [[ -n "$lux_pid" ]] && kill -0 "$lux_pid" 2>/dev/null; then
     kill "$lux_pid" 2>/dev/null || true
@@ -149,6 +151,9 @@ cleanup() {
   fi
   bound 8 osascript -e 'tell application "Sublime Text" to quit' >/dev/null 2>&1 || true
   if [[ "$zed_started" == 1 ]]; then
+    if [[ -n "$zed_bundle_id" ]]; then
+      bound 8 osascript -e "tell application id \"$zed_bundle_id\" to quit" >/dev/null 2>&1 || true
+    fi
     bound 8 osascript -e 'tell application "Zed" to quit' >/dev/null 2>&1 || true
   fi
 }
@@ -255,6 +260,14 @@ echo "--> Installing Zed (cask) for the selector capture"
 brew install --cask zed
 xattr -dr com.apple.quarantine "/Applications/Zed.app" || true
 zed_started=1
+# A cask installed seconds ago is often missing from Launch Services.
+# `open -a Zed` then exits with "Unable to find application named 'Zed'".
+lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+if [[ -x "$lsregister" ]]; then
+  "$lsregister" -f "/Applications/Zed.app" || true
+fi
+zed_bundle_id="$(defaults read "/Applications/Zed.app/Contents/Info.plist" CFBundleIdentifier 2>/dev/null || echo "dev.zed.Zed")"
+echo "--> Zed bundle id ${zed_bundle_id}"
 zed_support="$HOME/Library/Application Support/Zed"
 mkdir -p "$zed_support"
 if [[ ! -f "$zed_support/settings.json" ]]; then
@@ -298,14 +311,28 @@ echo "--> Opening command palettes in Lux, Sublime Text, and Zed"
 lux_pid=$!
 wait_window lux "$lux_pid" >/dev/null
 bound 15 "$subl" --command 'show_overlay {"overlay": "command_palette"}' || true
-bound 40 open -a "Zed" || true
-if ! wait_window "Zed" "" >/dev/null; then
+# `bound` returns 0 once the child exits, including when `open` failed.
+# Record the real status so a missing app is visible in the log.
+launch_zed() {
+  if open -a "/Applications/Zed.app" "$fixture"; then
+    echo "--> open -a /Applications/Zed.app returned 0"
+    return 0
+  fi
+  echo "--> open -a by bundle path failed; opening the bundle" >&2
+  open "/Applications/Zed.app"
+}
+bound 25 launch_zed || true
+if ! wait_window "Zed" "" 90 >/dev/null; then
   echo "Zed did not open a capturable window. Not writing selectors.png." >&2
   dump_windows
   exit 1
 fi
 sleep 1
-bound 8 osascript -e 'tell application "Zed" to activate' || true
+if [[ -n "$zed_bundle_id" ]]; then
+  bound 8 osascript -e "tell application id \"$zed_bundle_id\" to activate" || true
+else
+  bound 8 osascript -e 'tell application "Zed" to activate' || true
+fi
 sleep 1
 if ! swift /tmp/lux-keys.swift; then
   echo "Could not send Zed's command-palette shortcut. Not writing selectors.png." >&2
