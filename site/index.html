@@ -123,131 +123,15 @@
         </div>
       </div>
 
-      <!-- Interactive Editor Mockup -->
-      <div class="editor-window-wrapper">
-        <div class="editor-window">
-          <!-- Window Titlebar -->
-          <div class="editor-titlebar">
-            <div class="window-controls">
-              <span class="ctrl ctrl-close"></span>
-              <span class="ctrl ctrl-min"></span>
-              <span class="ctrl ctrl-max"></span>
-            </div>
-            
-            <div class="editor-tabs">
-              <div class="tab active" data-tab="tab1">
-                <span class="tab-icon">🦀</span>
-                <span class="tab-name">main.rs</span>
-                <span class="tab-close">×</span>
-              </div>
-              <div class="tab" data-tab="tab2">
-                <span class="tab-icon">🦀</span>
-                <span class="tab-name">split.rs</span>
-                <span class="tab-close">×</span>
-              </div>
-              <div class="tab" data-tab="tab3">
-                <span class="tab-icon">📄</span>
-                <span class="tab-name">config.jsonc</span>
-                <span class="tab-close">×</span>
-              </div>
-            </div>
-
-            <div class="split-controls">
-              <button class="split-btn active" data-split="1" title="Single Column (Cmd+Option+1)">
-                <svg width="14" height="14" viewBox="0 0 14 14"><rect width="12" height="12" x="1" y="1" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
-              </button>
-              <button class="split-btn" data-split="2" title="2 Columns Split (Cmd+Option+2)">
-                <svg width="14" height="14" viewBox="0 0 14 14"><rect width="12" height="12" x="1" y="1" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/><line x1="7" y1="1" x2="7" y2="13" stroke="currentColor" stroke-width="1.2"/></svg>
-              </button>
-              <button class="split-btn" data-split="grid" title="2x2 Grid (Cmd+Option+5)">
-                <svg width="14" height="14" viewBox="0 0 14 14"><rect width="12" height="12" x="1" y="1" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/><line x1="7" y1="1" x2="7" y2="13" stroke="currentColor" stroke-width="1.2"/><line x1="1" y1="7" x2="13" y2="7" stroke="currentColor" stroke-width="1.2"/></svg>
-              </button>
-            </div>
-          </div>
-
-          <!-- Main Editor Workspace (with live multi-pane demo) -->
-          <div class="editor-body split-mode-1" id="editor-body">
-            <!-- Left Pane -->
-            <div class="editor-pane active-pane" id="pane-left">
-              <div class="pane-header">
-                <span class="pane-title">crates/lux/src/main.rs</span>
-                <span class="pane-badge">Active Focus</span>
-              </div>
-              <div class="pane-content">
-                <div class="gutter">
-                  <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
-                  <span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
-                  <span>11</span><span>12</span><span>13</span><span>14</span><span>15</span>
-                </div>
-                <div class="code-area">
-<pre><code><span class="syn-kw">pub async fn</span> <span class="syn-fn">run_desktop_app</span>(cfg: <span class="syn-type">EditorConfig</span>) -> <span class="syn-type">Result</span>&lt;()&gt; {
-    <span class="syn-cm">// Pure WGPU 120Hz native renderer - zero web-view overhead</span>
-    <span class="syn-kw">let</span> renderer = <span class="syn-type">WgpuRenderer</span>::<span class="syn-fn">new</span>(&amp;window).<span class="syn-kw">await</span>?;
-    <span class="syn-kw">let mut</span> session = <span class="syn-type">Session</span>::<span class="syn-fn">restore_hot_exit</span>()?;
-
-    <span class="syn-cm">// Independent multi-pane layout architecture</span>
-    <span class="syn-kw">let mut</span> split = <span class="syn-type">SplitLayout</span>::<span class="syn-fn">new</span>(<span class="syn-type">LayoutType</span>::<span class="syn-fn">Columns2</span>);
-    split.<span class="syn-fn">attach_buffer</span>(session.<span class="syn-fn">active_buffer_id</span>());
-
-    <span class="syn-cm">// Real-time tree-sitter incremental syntax typing</span>
-    <span class="syn-kw">let</span> syntax = <span class="syn-type">BackgroundHighlighter</span>::<span class="syn-fn">spawn_worker</span>();
-    event_loop.<span class="syn-fn">run</span>(<span class="syn-kw">move</span> |event, target| {
-        session.<span class="syn-fn">dispatch_sublime_input</span>(&amp;event, &amp;target);<span class="cursor blinking"></span>
-    })
-}</code></pre>
-                </div>
-              </div>
-            </div>
-
-            <!-- Draggable Divider -->
-            <div class="editor-divider" id="editor-divider" title="Drag to resize panes • Double click to reset 50/50">
-              <div class="divider-handle"></div>
-            </div>
-
-            <!-- Right Pane (Split Mode) -->
-            <div class="editor-pane secondary-pane" id="pane-right">
-              <div class="pane-header">
-                <span class="pane-title">crates/lux/src/split/clone_view.rs (Cloned View)</span>
-                <span class="pane-badge badge-dim">Secondary</span>
-              </div>
-              <div class="pane-content">
-                <div class="gutter">
-                  <span>8</span><span>9</span><span>10</span><span>11</span><span>12</span>
-                  <span>13</span><span>14</span><span>15</span><span>16</span><span>17</span>
-                </div>
-                <div class="code-area">
-<pre><code><span class="syn-cm">/// Real-time cloned view sharing identical buffer rope</span>
-<span class="syn-kw">pub fn</span> <span class="syn-fn">shift_pane_cursors</span>(
-    pane: &amp;<span class="syn-kw">mut</span> <span class="syn-type">PaneView</span>,
-    edit_delta: <span class="syn-type">EditDelta</span>,
-) {
-    <span class="syn-kw">for</span> cursor <span class="syn-kw">in</span> pane.cursors.<span class="syn-fn">iter_mut</span>() {
-        cursor.<span class="syn-fn">adjust_offset</span>(edit_delta);<span class="cursor static-cursor"></span>
-    }
-    <span class="syn-cm">// Independent scroll position and selection</span>
-    pane.viewport.<span class="syn-fn">clamp_visible_bounds</span>();
-}</code></pre>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Window Status Bar -->
-          <div class="editor-statusbar">
-            <div class="status-left">
-              <span class="status-item"><span class="dot-accent"></span> Ready</span>
-              <span class="status-item">UTF-8</span>
-              <span class="status-item">Spaces: 4</span>
-              <span class="status-item">Rust 2024</span>
-            </div>
-            <div class="status-right">
-              <span class="status-item">Line 13, Col 54</span>
-              <span class="status-item highlight">120 FPS</span>
-              <span class="status-item">Startup: 62ms</span>
-              <span class="status-item">RAM: 28MB</span>
-            </div>
-          </div>
-        </div>
+      <div class="shot-row">
+        <figure class="editor-shot">
+          <img src="assets/screenshots/editor.png" alt="Lux window editing docs/screenshots/example.rs">
+          <figcaption>Live window, example.rs. Captured by scripts/screenshots.sh.</figcaption>
+        </figure>
+        <figure class="editor-shot">
+          <img src="assets/screenshots/palette.png" alt="Lux command palette open over example.rs">
+          <figcaption>Command palette in the same window.</figcaption>
+        </figure>
       </div>
     </div>
   </section>
@@ -349,7 +233,7 @@
           <span class="section-tag">New in Release v1.1.0</span>
           <h2 class="section-title">The Real Multi-Pane Split Editor.</h2>
           <p class="section-desc">
-            No fake text dumps or compromised viewports. Lux v1.1.0 introduces full independent multi-pane editing:
+            The picture is the live window after the two-column layout command. Lux keeps an independent viewport in each pane:
           </p>
           <ul class="feature-list">
             <li>
@@ -383,39 +267,10 @@
           </ul>
         </div>
 
-        <div class="dual-graphic">
-          <div class="split-diagram-card">
-            <div class="diagram-header">
-              <span>Split Layout Architecture</span>
-              <span class="badge-accent">Atomic Buffer Sync</span>
-            </div>
-            <div class="diagram-grid">
-              <div class="diag-pane diag-left">
-                <div class="diag-tag">PaneView #1 (Active)</div>
-                <div class="diag-line kw">struct SharedDocument {</div>
-                <div class="diag-line">  buffer_id: AtomicU64,</div>
-                <div class="diag-line">  rope: Arc&lt;Rope&gt;,</div>
-                <div class="diag-line cursor-line">  cursors: MultiCursor, <span class="blink">|</span></div>
-                <div class="diag-line">}</div>
-              </div>
-              <div class="diag-sep">
-                <span class="sep-arrow">⇄</span>
-              </div>
-              <div class="diag-pane diag-right">
-                <div class="diag-tag">PaneView #2 (Cloned)</div>
-                <div class="diag-line kw">impl SharedDocument {</div>
-                <div class="diag-line">  pub fn edit(&amp;mut self) {</div>
-                <div class="diag-line">    // Shift other panes</div>
-                <div class="diag-line cursor-line">    shift_cursors(delta); <span class="static-bar">|</span></div>
-                <div class="diag-line">  }</div>
-              </div>
-            </div>
-            <div class="diagram-footer">
-              <span>Zero-copy shared memory buffer</span>
-              <span>Independent UI Viewport & Selections</span>
-            </div>
-          </div>
-        </div>
+        <figure class="editor-shot">
+          <img src="assets/screenshots/split.png" alt="Lux with two columns of example.rs">
+          <figcaption>Two-column layout of the same file, captured from the live window.</figcaption>
+        </figure>
       </div>
     </div>
   </section>

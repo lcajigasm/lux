@@ -32,6 +32,12 @@ Editor pictures in this README and on the website are PNGs produced by
 builds the real `lux` binary and captures its window. Drawings of the UI
 are not accepted.
 
+![Lux editing docs/screenshots/example.rs](docs/screenshots/editor.png)
+
+![Lux command palette](docs/screenshots/palette.png)
+
+![Lux two-column layout](docs/screenshots/split.png)
+
 ---
 
 ## Downloads
