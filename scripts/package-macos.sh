@@ -167,11 +167,13 @@ fi
 echo "--> Writable image ${size_mb}m for ${staging_kb} KiB of payload"
 df -h /
 
+# A sized image is read/write by default. `-format UDRW` is rejected
+# unless `-srcfolder` or `-srcdevice` is also set (macOS 15:
+# "hdiutil: create: -format requires -srcfolder or -srcdevice").
 hdiutil create \
   -size "${size_mb}m" \
   -fs HFS+ \
   -volname "Lux" \
-  -format UDRW \
   -ov \
   "$raw_path"
 
