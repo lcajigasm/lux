@@ -216,6 +216,7 @@ pub(crate) fn render_text_lines(
         };
 
         for cluster in line.layout.clusters() {
+            let face = line.layout.face(cluster.font_id).unwrap_or(font);
             let abs_byte = line_start + cluster.byte_range.start;
             let glyph_color = if let Some(syntax) = syntax
                 && let Some(token) = line_tokens
@@ -231,7 +232,7 @@ pub(crate) fn render_text_lines(
                 &mut atlas_state.atlas,
                 &mut atlas_state.dirty,
                 &mut atlas_state.scale_cx,
-                font,
+                face,
                 font_size,
                 &cluster,
                 text_left - viewport.scroll_x,
