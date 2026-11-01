@@ -1,6 +1,33 @@
 # Status
 
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
+> v1.2.0: GitHub Actions (CI and the tag workflow) runs on `ubuntu-latest` only.
+> A `vX.Y.Z` tag attaches `lux-linux-x86_64` and `lux-linux-amd64.deb`. The deb
+> depends on `libfontconfig1` and `libegl1` (the EGL GPU loader named in the
+> release binary; `libvulkan.so.1` is not in that binary), plus the xkbcommon,
+> X11, and Wayland libraries it dlopens before a window exists. macOS and Windows
+> are built outside CI: `scripts/package-macos.sh` (ad-hoc `.dmg`, not notarized,
+> no signing secret) and `scripts/package-msi.ps1` (unsigned WiX `.msi`). The
+> repository stays private, so a GitHub session is required to download a release.
+>
+> The Linux CI test job runs `headless_session_opens_types_saves_palette_split_and_find`
+> (`crates/lux/src/desktop_pass.rs`). It drives `handle_keyboard_event`: open a file,
+> type, save, command palette (`Ctrl/Cmd+Shift+P`), split (`Ctrl+Alt+2`), and find.
+> The same test builds the AccessKit tree and checks `Window`, `MultilineTextInput`,
+> `TextRun` (the buffer text), `Search`, and `TextInput` (the find query). It does
+> not open a GPU surface. What stays manual: pixels on screen, the IME candidate
+> window, and the native file dialog. This environment has no DRM render node, so
+> a real window was not opened here. VoiceOver, NVDA, and Orca were not run.
+>
+> The 8 ms typing budget is asserted in release mode by
+> `test_continuous_typing_latency_large_file_under_8ms` (CI job `release-latency`
+> on `ubuntu-latest` only). It times `insert_at_cursor` plus syntax sync on a
+> 20,000-line buffer. It is not keypress-to-pixel. On this Linux x86_64 machine,
+> 2026-10-31, release mode measured p99 and max at 376 µs (30 inserts; the test's
+> p99 slot is the slowest sample). A hosted run the same day, before CI was cut
+> to Linux, measured 215 µs on `ubuntu-latest` and 1.06 ms on `windows-latest`.
+> Debug CI keeps an 80 ms ceiling. The 8 ms assert is not widened.
+>
 > v1.1.1: `editor.insertFinalNewline` defaults off (Sublime / VS Code). A save the worker
 > rejects or cancels undoes that transform when the user has not typed since. Ctrl+Alt+digit
 > layout chords work on Windows and Linux without swallowing AltGr text. The plugin host
@@ -2196,8 +2223,10 @@ and executable via the Command Palette. `cargo test -p lux-plugin` (10 tests) an
 `lux` implements full keyboard navigation via `FocusRing` (`F6`/`Shift+F6`, `Escape` untrap),
 full AccessKit window tree with live status announcer (`ANNOUNCER_ID`), 100% catalog key completeness
 for English and Spanish in `lux-ui::i18n` with dynamic palette language switching (`view.locale_en`, `view.locale_es`),
-and bidirectional text layout support (`lux-ui::rtl`). VoiceOver accessibility validated on macOS.
-Windows/Linux columns stay `not-started` (untested on those platforms).
+and bidirectional text layout support (`lux-ui::rtl`). VoiceOver accessibility was validated on macOS
+in an earlier pass. v1.2.0 adds an automated AccessKit tree check in the Linux CI
+job (see the v1.2.0 note at the top). NVDA and Orca have not been run, so the Windows
+and Linux screen-reader rows stay `not-started`.
 
 ## Packaging & distribution (Phase 11, `v1.0.0`)
 
@@ -2212,7 +2241,10 @@ Windows/Linux columns stay `not-started` (untested on those platforms).
 verifies Ed25519 update payloads (`crates/lux-pack/src/update.rs`). `lux` installs the panic hook at startup
 (`crates/lux/src/main.rs`). `scripts/package.sh` builds the release distribution tree (`dist/lux` containing
 `bin/lux`, `share/doc/README.md`, `share/doc/LICENSE*`). Windows Package Manager manifest prepared in
-`packaging/winget/Lux.Lux.yaml`. Unsigned packages certified; signing/notarization reserved for release infrastructure.
+`packaging/winget/Lux.Lux.yaml`. The tag workflow on GitHub builds the unsigned Linux
+`.deb` only. `scripts/package-macos.sh` and `scripts/package-msi.ps1` still build an
+ad-hoc `.dmg` and an unsigned `.msi` outside CI (see the note at the top). Signed and
+notarized installers stay `not-started`: no certificate is stored in the repo.
 
 ## Mobile shells (Phase 12 `v1.1.0`, Phase 13 `v1.2.0`)
 
@@ -2230,8 +2262,9 @@ verifies Ed25519 update payloads (`crates/lux-pack/src/update.rs`). `lux` instal
 UIKeyInput, document picker) and Kotlin `LuxActivity` (SurfaceView,
 InputConnection, SAF) live in `host-ios/` and `host-android/`. Rust FFI
 modules compile on desktop as `available() == false`. Not run on device;
-store rows stay `not-started`. `lux_platform::child_processes_allowed`
-is false on iOS.
+store rows stay `not-started`. Workspace version 1.2.0 is the desktop installer
+release; these phase labels are the original plan names and are still not done.
+`lux_platform::child_processes_allowed` is false on iOS.
 
 ## Experimental
 

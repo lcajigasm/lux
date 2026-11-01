@@ -8,45 +8,39 @@ on:
 permissions:
   contents: write
 
+# Linux only. macOS (.dmg) and Windows (.msi) are built outside CI with
+# scripts/package-macos.sh and scripts/package-msi.ps1. No signing secrets.
+
 jobs:
   build:
-    name: ${{ matrix.asset }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            binary: lux
-            asset: lux-linux-x86_64
-          - os: macos-latest
-            binary: lux
-            asset: lux-macos-aarch64
-          - os: windows-latest
-            binary: lux.exe
-            asset: lux-windows-x86_64.exe
+    name: lux-linux-x86_64
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Linux link libraries
-        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
 
       - name: Build release binary
         run: cargo build -p lux --release --locked
 
-      - name: Stage asset
-        shell: bash
+      - name: Stage raw binary
         run: |
           mkdir -p staging
-          cp "target/release/${{ matrix.binary }}" "staging/${{ matrix.asset }}"
+          cp target/release/lux staging/lux-linux-x86_64
 
-      - name: Upload asset
+      - name: Package deb
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          chmod +x scripts/package-deb.sh
+          ./scripts/package-deb.sh "target/release/lux" "$version" "staging/lux-linux-amd64.deb"
+
+      - name: Upload assets
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
-          path: staging/${{ matrix.asset }}
+          name: lux-linux-x86_64
+          path: staging/
           if-no-files-found: error
 
   publish:
@@ -54,7 +48,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Download binaries
+      - name: Download packages
         uses: actions/download-artifact@v4
         with:
           path: dist
@@ -62,15 +56,13 @@ jobs:
       - name: Checksums
         run: |
           mkdir -p assets
-          find dist -type f -name 'lux-*' -exec cp {} assets/ \;
+          find dist -type f \( -name 'lux-linux-*' -o -name '*.deb' \) -exec cp {} assets/ \;
           cd assets
-          sha256sum lux-* > SHA256SUMS
+          find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
           ls -l
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: |
-            assets/lux-*
-            assets/SHA256SUMS
+          files: assets/*

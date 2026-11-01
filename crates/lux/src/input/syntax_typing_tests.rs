@@ -61,6 +61,10 @@ fn test_continuous_typing_latency_large_file_under_8ms() {
     latencies.sort();
     let p99_latency = latencies[(latencies.len() as f64 * 0.99) as usize];
     let max_latency = *latencies.last().unwrap();
+    eprintln!(
+        "typing latency p99={p99_latency:?} max={max_latency:?} budget={budget_ms}ms debug={}",
+        cfg!(debug_assertions)
+    );
 
     assert!(
         p99_latency.as_millis() < budget_ms,

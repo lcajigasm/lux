@@ -206,3 +206,19 @@ has the same page-cache dynamic); noted here because 46× margin is large
 enough that it's worth being explicit about what "43.6 ms" does and
 doesn't represent, rather than letting the number imply more precision
 than it has.
+
+**2026-10-31, v1.2.0, Linux x86_64 (cloud VM, not the MacBook Pro reference),
+`--release`:**
+
+| Metric | Budget | Measured | Result |
+|---|---|---|---|
+| `insert_at_cursor` plus syntax sync, 30 inserts in a 20,000-line Rust buffer (`test_continuous_typing_latency_large_file_under_8ms`) | < 8 ms p99 and max | **376 µs** p99 and max | pass |
+
+The test's p99 index on 30 sorted samples is the slowest sample, so p99 and
+max are the same number here. This is the edit-and-highlight path, not
+keypress-to-pixel: there is still no GPU frame in the measurement. The
+ongoing CI job is `release-latency` on `ubuntu-latest` only. On 2026-10-31,
+before that cut, the same assert passed on hosted runners at 215 µs
+(`ubuntu-latest`) and 1.06 ms (`windows-latest`). Debug `cargo test` keeps
+an 80 ms ceiling. The 8 ms release assert is not raised if a hosted runner
+is slower; that result is written down instead.

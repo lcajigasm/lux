@@ -30,20 +30,15 @@ Target platforms, in order: **macOS**, **Windows**, **Linux**, then **iPadOS/iOS
 
 ## Downloads
 
-[v1.1.0](https://github.com/lcajigasm/lux/releases/tag/v1.1.0) publishes a macOS Apple Silicon `.dmg` and `.tar.gz` only.
+Pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml) on `ubuntu-latest` only and attaches the Linux packages to the GitHub Release. The repository is private, so a GitHub session is required to download them. macOS and Windows are built outside CI.
 
-From **v1.1.1**, pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml). That workflow builds unsigned release binaries and attaches them to the GitHub Release:
-
-| Asset | Runner |
+| Asset | Where it is built |
 |---|---|
-| `lux-linux-x86_64` | `ubuntu-latest` |
-| `lux-macos-aarch64` | `macos-latest` (Apple Silicon) |
-| `lux-windows-x86_64.exe` | `windows-latest` |
-| `SHA256SUMS` | checksums of the three binaries |
+| `lux-linux-x86_64`, `lux-linux-amd64.deb`, `SHA256SUMS` | GitHub Actions, `ubuntu-latest` |
+| `lux-macos-aarch64.dmg` | outside CI, `scripts/package-macos.sh` (ad-hoc signature, not notarized) |
+| `lux-windows-x86_64.msi` | outside CI, `scripts/package-msi.ps1` (unsigned WiX) |
 
-These are the editor binaries, not installers. Linux needs `libfontconfig` and a GPU driver (Vulkan or GL) at runtime, the same libraries CI uses to link the binary. Signed `.dmg` / `.msi` / `.deb` packages are still open; see [docs/ROADMAP.md](docs/ROADMAP.md).
-
-The macOS installer from v1.1.0 remains at [Lux.dmg](https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg) and [lux-macos-aarch64.tar.gz](https://github.com/lcajigasm/lux/releases/download/v1.1.0/lux-macos-aarch64.tar.gz).
+The `.deb` depends on `libfontconfig1` and `libegl1` (the GPU loader the Linux binary dlopens), plus the xkbcommon, X11, and Wayland libraries it loads before it opens a window. No signing certificate is stored in this repo. The [v1.1.0 macOS disk image](https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg) is the older Apple Silicon installer. See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/STATUS.md](docs/STATUS.md).
 
 ---
 

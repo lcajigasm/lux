@@ -37,7 +37,7 @@
       <a href="#" class="brand">
         <img src="assets/icon.png" alt="Lux Logo" class="brand-logo">
         <span class="brand-name">Lux</span>
-        <span class="brand-tag">v1.1.0</span>
+        <span class="brand-tag">v1.2.0</span>
       </a>
 
       <nav class="nav-menu">
@@ -64,9 +64,9 @@
   <section class="hero-section">
     <div class="container hero-container">
       <div class="release-pill-wrapper">
-        <a href="https://github.com/lcajigasm/lux/releases/tag/v1.1.0" target="_blank" rel="noopener" class="release-pill">
-          <span class="pill-badge">v1.1.0</span>
-          <span class="pill-text">Real Multi-Pane Split Editor, Cloned Views & macOS Native Waker</span>
+        <a href="https://github.com/lcajigasm/lux/releases/latest" target="_blank" rel="noopener" class="release-pill">
+          <span class="pill-badge">v1.2.0</span>
+          <span class="pill-text">Linux deb on the GitHub Release; dmg and msi outside CI</span>
           <span class="pill-arrow">→</span>
         </a>
       </div>
@@ -82,21 +82,21 @@
       </p>
 
       <div class="hero-cta-group">
-        <a href="https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg" class="btn btn-hero-primary">
+        <a href="https://github.com/lcajigasm/lux/releases/latest" class="btn btn-hero-primary">
           <svg class="icon-apple" viewBox="0 0 170 170" width="20" height="20" fill="currentColor">
             <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.67-7.81-11.96-14.34-7.48-11.41-13.1-23.73-16.86-36.95-3.76-13.23-5.64-25.76-5.64-37.59 0-14.35 3.76-26.33 11.28-35.95 7.52-9.62 16.89-14.52 28.11-14.71 4.58 0 9.87 1.25 15.86 3.75 6 2.5 10.15 3.75 12.46 3.75 2.12 0 6.46-1.3 13.02-3.9 6.56-2.6 12.28-3.79 17.16-3.56 12.78.64 23.01 5.25 30.68 13.82-10.97 6.64-16.32 15.78-16.05 27.42.27 9.14 3.86 16.86 10.77 23.16 6.91 6.3 15.02 9.84 24.33 10.63-2.12 6.53-4.73 13.06-7.83 19.59zM119.22 31.84c0-7.29 2.58-14.15 7.74-20.58 5.16-6.43 11.75-10.42 19.78-11.26.11 1.06.16 1.95.16 2.68 0 7.22-2.73 14.12-8.19 20.7-5.46 6.58-12.04 10.47-19.74 11.66-.08-1.06-.11-2.13-.11-3.2z"/>
           </svg>
           <div class="btn-text-block">
-            <span class="btn-main-label">Download for macOS</span>
-            <span class="btn-sub-label">v1.1.0 • Apple Silicon (.dmg, 12.7 MB)</span>
+            <span class="btn-main-label">Latest GitHub Release</span>
+            <span class="btn-sub-label">v1.2.0 • Linux deb (login required)</span>
           </div>
         </a>
 
-        <a href="https://github.com/lcajigasm/lux/releases/download/v1.1.0/lux-macos-aarch64.tar.gz" class="btn btn-hero-secondary">
+        <a href="https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg" class="btn btn-hero-secondary">
           <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
           </svg>
-          <span>Portable Tarball (.tar.gz)</span>
+          <span>v1.1.0 macOS disk image</span>
         </a>
       </div>
 
@@ -520,30 +520,33 @@
       <div class="download-card">
         <div class="download-content">
           <span class="section-tag">Get Started Today</span>
-          <h2 class="download-title">Experience Lux v1.1.0</h2>
+          <h2 class="download-title">Download Lux v1.2.0</h2>
           <p class="download-desc">
-            Free and open source. The v1.1.0 buttons below are the macOS Apple Silicon build.
-            From v1.1.1, a version tag also publishes unsigned Linux x86_64 and Windows x86_64 binaries.
+            The GitHub Release workflow publishes Linux only:
+            <code>lux-linux-x86_64</code> and <code>lux-linux-amd64.deb</code>
+            (depends on libfontconfig and the EGL GPU loader), plus <code>SHA256SUMS</code>.
+            macOS <code>.dmg</code> and Windows <code>.msi</code> are built outside CI.
+            The repository is private, so a GitHub session is required. The second button is the v1.1.0 macOS disk image, which already exists.
           </p>
 
           <div class="download-buttons">
-            <a href="https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg" class="btn btn-hero-primary btn-large">
+            <a href="https://github.com/lcajigasm/lux/releases/latest" class="btn btn-hero-primary btn-large">
               <svg class="icon-apple" viewBox="0 0 170 170" width="24" height="24" fill="currentColor">
                 <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.67-7.81-11.96-14.34-7.48-11.41-13.1-23.73-16.86-36.95-3.76-13.23-5.64-25.76-5.64-37.59 0-14.35 3.76-26.33 11.28-35.95 7.52-9.62 16.89-14.52 28.11-14.71 4.58 0 9.87 1.25 15.86 3.75 6 2.5 10.15 3.75 12.46 3.75 2.12 0 6.46-1.3 13.02-3.9 6.56-2.6 12.28-3.79 17.16-3.56 12.78.64 23.01 5.25 30.68 13.82-10.97 6.64-16.32 15.78-16.05 27.42.27 9.14 3.86 16.86 10.77 23.16 6.91 6.3 15.02 9.84 24.33 10.63-2.12 6.53-4.73 13.06-7.83 19.59zM119.22 31.84c0-7.29 2.58-14.15 7.74-20.58 5.16-6.43 11.75-10.42 19.78-11.26.11 1.06.16 1.95.16 2.68 0 7.22-2.73 14.12-8.19 20.7-5.46 6.58-12.04 10.47-19.74 11.66-.08-1.06-.11-2.13-.11-3.2z"/>
               </svg>
               <div class="btn-text-block">
-                <span class="btn-main-label">Download Lux for macOS</span>
-                <span class="btn-sub-label">Apple Silicon .dmg • 12.66 MB</span>
+                <span class="btn-main-label">Latest GitHub Release</span>
+                <span class="btn-sub-label">Linux deb and raw binary</span>
               </div>
             </a>
 
-            <a href="https://github.com/lcajigasm/lux/releases/download/v1.1.0/lux-macos-aarch64.tar.gz" class="btn btn-outline btn-large">
+            <a href="https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg" class="btn btn-outline btn-large">
               <svg class="icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
               </svg>
               <div class="btn-text-block">
-                <span class="btn-main-label">Portable Binary</span>
-                <span class="btn-sub-label">Apple Silicon .tar.gz • 11.57 MB</span>
+                <span class="btn-main-label">v1.1.0 macOS disk image</span>
+                <span class="btn-sub-label">Apple Silicon .dmg</span>
               </div>
             </a>
           </div>

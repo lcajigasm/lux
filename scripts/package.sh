@@ -28,7 +28,11 @@ for license in LICENSE*; do
 done
 echo "packed $dest (unsigned)"
 
-# On macOS, also produce native application bundle and DMG disk image
+version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+parent="$(dirname "$dest")"
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  ./scripts/package-macos.sh "$(dirname "$dest")" "Lux.dmg"
+  LUX_BIN="$root/$bin" LUX_VERSION="$version" \
+    ./scripts/package-macos.sh "$parent" "lux-macos.dmg"
+elif [[ "$(uname -s)" == "Linux" ]]; then
+  ./scripts/package-deb.sh "$root/$bin" "$version" "$parent/lux-linux-amd64.deb"
 fi
