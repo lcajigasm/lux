@@ -268,9 +268,13 @@ if [[ -x "$lsregister" ]]; then
 fi
 zed_bundle_id="$(defaults read "/Applications/Zed.app/Contents/Info.plist" CFBundleIdentifier 2>/dev/null || echo "dev.zed.Zed")"
 echo "--> Zed bundle id ${zed_bundle_id}"
-zed_support="$HOME/Library/Application Support/Zed"
-mkdir -p "$zed_support"
-if [[ ! -f "$zed_support/settings.json" ]]; then
+# Always overwrite. A file Zed created on install would otherwise keep
+# the default, and the first open stops on the Unrecognized Project dialog.
+for zed_support in \
+  "$HOME/Library/Application Support/Zed" \
+  "$HOME/.config/zed"
+do
+  mkdir -p "$zed_support"
   cat > "$zed_support/settings.json" << 'JSON'
 {
   "theme": "One Dark",
@@ -280,7 +284,8 @@ if [[ ! -f "$zed_support/settings.json" ]]; then
   "session": { "trust_all_worktrees": true }
 }
 JSON
-fi
+  echo "--> wrote $zed_support/settings.json"
+done
 
 cat > /tmp/lux-keys.swift << 'SWIFT'
 import CoreGraphics
@@ -297,7 +302,13 @@ func post(_ key: CGKeyCode, _ down: Bool, _ flags: CGEventFlags) {
 }
 
 let escape: CGKeyCode = 0x35
+let ret: CGKeyCode = 0x24
 let p: CGKeyCode = 0x23
+// The trust dialog's default button is Return ("Trust and Continue").
+// Plain Escape does not dismiss it; the label is Option-Escape.
+post(ret, true, [])
+post(ret, false, [])
+Thread.sleep(forTimeInterval: 0.6)
 for _ in 0..<3 {
     post(escape, true, [])
     post(escape, false, [])
