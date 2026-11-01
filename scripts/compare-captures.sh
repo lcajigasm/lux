@@ -276,7 +276,8 @@ if [[ ! -f "$zed_support/settings.json" ]]; then
   "theme": "One Dark",
   "buffer_font_family": "Menlo",
   "buffer_font_size": 15,
-  "telemetry": { "diagnostics": false, "metrics": false }
+  "telemetry": { "diagnostics": false, "metrics": false },
+  "session": { "trust_all_worktrees": true }
 }
 JSON
 fi

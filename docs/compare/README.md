@@ -14,7 +14,9 @@ the job fails and does not write a replacement image.
 (`lux --palette`), Sublime Text (`show_overlay` command palette), and Zed
 (Cmd-Shift-P). Zed is installed with `brew install --cask zed` and opened
 by bundle path (`open -a /Applications/Zed.app`), because `open -a Zed`
-does not see a cask Launch Services has not indexed yet. If Zed or
+does not see a cask Launch Services has not indexed yet. Zed's settings
+set `session.trust_all_worktrees` so the first open does not stop on the
+worktree-trust dialog. If Zed or
 Sublime cannot be captured, the job fails and does not write a stand-in.
 The GitHub macos-15 display is 1×, so this file does not prove Retina
 pixels. HiDPI grayscale is selected when `scale_factor > 1` and is covered
