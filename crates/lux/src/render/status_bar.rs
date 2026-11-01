@@ -42,20 +42,19 @@ pub(crate) fn render_status_bar(
     };
 
     // 1. Background quad
-    quad_instances.push(QuadInstance {
-        rect: [0.0, bar_y, window_width, bar_height],
-        color: color(theme.chrome.status_bar),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, bar_y, window_width, bar_height],
+        color(theme.chrome.status_bar),
+    ));
 
     // 2. Top separator border
-    quad_instances.push(QuadInstance {
-        rect: [0.0, bar_y, window_width, stroke],
-        color: color(theme.chrome.border),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, bar_y, window_width, stroke],
+        color(theme.chrome.border),
+    ));
 
     let status = build_status_bar(buffer, cursor_pos, language_id);
     let foreground = color(theme.foreground);
-    let muted = color(theme.muted);
 
     let mut layout = StatusBarLayout {
         bar_rect: Rect {
@@ -144,7 +143,7 @@ pub(crate) fn render_status_bar(
             &cluster,
             lang_x,
             bar_y + text_baseline_offset + lang_baseline,
-            muted,
+            foreground,
             glyph_instances,
         );
     }
@@ -173,7 +172,7 @@ pub(crate) fn render_status_bar(
             &cluster,
             eol_x,
             bar_y + text_baseline_offset + eol_baseline,
-            muted,
+            foreground,
             glyph_instances,
         );
     }
@@ -202,7 +201,7 @@ pub(crate) fn render_status_bar(
             &cluster,
             enc_x,
             bar_y + text_baseline_offset + enc_baseline,
-            muted,
+            foreground,
             glyph_instances,
         );
     }
@@ -231,7 +230,7 @@ pub(crate) fn render_status_bar(
             &cluster,
             ind_x,
             bar_y + text_baseline_offset + ind_baseline,
-            muted,
+            foreground,
             glyph_instances,
         );
     }

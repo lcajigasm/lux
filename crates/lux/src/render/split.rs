@@ -11,7 +11,7 @@ use swash::FontRef;
 use crate::app::{AtlasState, BLINK_INTERVAL, SyntaxState};
 use crate::document::Documents;
 use crate::pane_view::PaneView;
-use crate::render::paint::{color, push_glyph, syntax_color};
+use crate::render::paint::{color, faint_rule, push_glyph, syntax_color};
 use crate::split::{SplitLayout, compute_layout_geometry};
 
 /// Strictly clamps a quad instance within a bounding rectangle.
@@ -72,10 +72,7 @@ pub(crate) fn render_split_layout(
         } else {
             color(params.theme.chrome.border)
         };
-        quad_instances.push(QuadInstance {
-            rect: *rect,
-            color: divider_color,
-        });
+        quad_instances.push(QuadInstance::solid(*rect, divider_color));
     }
 
     // 2. Render each pane view with strict geometric boundaries
@@ -119,19 +116,13 @@ fn render_single_pane(
     let [px, py, pw, ph] = bounds;
 
     // Pane background
-    quad_instances.push(QuadInstance {
-        rect: bounds,
-        color: color(params.theme.background),
-    });
+    quad_instances.push(QuadInstance::solid(bounds, color(params.theme.background)));
 
     // Active pane indicator border
     if is_active_pane
         && let Some(top_border) = clamp_quad_to_rect([px, py, pw, 2.0 * params.stroke], bounds)
     {
-        quad_instances.push(QuadInstance {
-            rect: top_border,
-            color: color(params.theme.accent),
-        });
+        quad_instances.push(QuadInstance::solid(top_border, color(params.theme.accent)));
     }
 
     // Resolve buffer, cursors, syntax tokens, fold state, and bookmarks
@@ -231,10 +222,10 @@ fn render_single_pane(
     // Gutter background & right border
     if gutter_total_width > 0.0 {
         if let Some(g_rect) = clamp_quad_to_rect([px, py, gutter_total_width, ph], bounds) {
-            quad_instances.push(QuadInstance {
-                rect: g_rect,
-                color: color(params.theme.chrome.gutter),
-            });
+            quad_instances.push(QuadInstance::solid(
+                g_rect,
+                color(params.theme.chrome.gutter),
+            ));
         }
         if let Some(b_rect) = clamp_quad_to_rect(
             [
@@ -245,10 +236,10 @@ fn render_single_pane(
             ],
             bounds,
         ) {
-            quad_instances.push(QuadInstance {
-                rect: b_rect,
-                color: color(params.theme.chrome.border),
-            });
+            quad_instances.push(QuadInstance::solid(
+                b_rect,
+                color(params.theme.chrome.border),
+            ));
         }
     }
 
@@ -272,23 +263,21 @@ fn render_single_pane(
                 ],
                 text_bounds,
             ) {
-                quad_instances.push(QuadInstance {
-                    rect: h_rect,
-                    color: color(params.theme.chrome.line_highlight),
-                });
+                quad_instances.push(QuadInstance::solid(
+                    h_rect,
+                    color(params.theme.chrome.line_highlight),
+                ));
             }
         }
     }
 
     // Column rulers
     let muted_col = color(params.theme.muted);
+    let rule = faint_rule(params.theme);
     for ruler_x in &frame.column_ruler_x {
         let rx = text_left + ruler_x - scroll_x;
         if let Some(r_rect) = clamp_quad_to_rect([rx, py, params.stroke, ph], text_bounds) {
-            quad_instances.push(QuadInstance {
-                rect: r_rect,
-                color: muted_col,
-            });
+            quad_instances.push(QuadInstance::solid(r_rect, rule));
         }
     }
 
@@ -300,10 +289,7 @@ fn render_single_pane(
             if let Some(g_rect) =
                 clamp_quad_to_rect([gx, y, params.stroke, params.line_height], text_bounds)
             {
-                quad_instances.push(QuadInstance {
-                    rect: g_rect,
-                    color: muted_col,
-                });
+                quad_instances.push(QuadInstance::solid(g_rect, muted_col));
             }
         }
     }
@@ -314,10 +300,7 @@ fn render_single_pane(
         let width = (selection.x_end - selection.x_start).max(1.0);
         let sx = text_left + selection.x_start - scroll_x;
         if let Some(s_rect) = clamp_quad_to_rect([sx, y, width, params.line_height], text_bounds) {
-            quad_instances.push(QuadInstance {
-                rect: s_rect,
-                color: sel_col,
-            });
+            quad_instances.push(QuadInstance::solid(s_rect, sel_col));
         }
     }
 
@@ -338,10 +321,7 @@ fn render_single_pane(
             let bm_h = (params.line_height * 0.60).clamp(8.0 * params.stroke, 14.0 * params.stroke);
             let bm_y = y + (params.line_height - bm_h) / 2.0;
             if let Some(bm_rect) = clamp_quad_to_rect([bm_x, bm_y, bm_w, bm_h], bounds) {
-                quad_instances.push(QuadInstance {
-                    rect: bm_rect,
-                    color: [0.25, 0.70, 0.95, 0.95],
-                });
+                quad_instances.push(QuadInstance::solid(bm_rect, [0.25, 0.70, 0.95, 0.95]));
             }
         }
 
@@ -434,10 +414,7 @@ fn render_single_pane(
             if let Some(c_rect) =
                 clamp_quad_to_rect([x, y, 2.0 * params.stroke, caret_h], text_bounds)
             {
-                quad_instances.push(QuadInstance {
-                    rect: c_rect,
-                    color: caret_color,
-                });
+                quad_instances.push(QuadInstance::solid(c_rect, caret_color));
             }
         }
     }

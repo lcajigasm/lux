@@ -24,6 +24,7 @@ mod macros;
 mod menu;
 mod minimap;
 mod modal;
+mod overlay_motion;
 mod palette;
 mod pane_view;
 mod plugin;
@@ -54,8 +55,9 @@ fn main() {
     );
     println!("Lux: using system font {path}");
     let mut app = app::App::new(font_bytes);
-    let mut args = std::env::args_os().skip(1);
-    if let Some(arg) = args.next() {
+    let mut open_palette = false;
+    let mut positional: Option<std::ffi::OsString> = None;
+    for arg in std::env::args_os().skip(1) {
         let arg_str = arg.to_string_lossy();
         if arg_str == "--help" || arg_str == "-h" {
             println!("Lux — Sublime-grade high-performance text editor");
@@ -65,12 +67,25 @@ fn main() {
             println!("Options:");
             println!("  -h, --help     Print help information");
             println!("  -v, --version  Print version information");
+            println!("  --palette      Open the command palette with the file");
             return;
         }
         if arg_str == "--version" || arg_str == "-v" {
             println!("lux {}", env!("CARGO_PKG_VERSION"));
             return;
         }
+        if arg_str == "--palette" {
+            open_palette = true;
+            continue;
+        }
+        if positional.is_some() {
+            eprintln!("Usage: lux [--palette] [file_or_directory]");
+            std::process::exit(2);
+        }
+        positional = Some(arg);
+    }
+    if let Some(arg) = positional {
+        let arg_str = arg.to_string_lossy();
         let target_path = std::path::PathBuf::from(&arg);
         match launch_kind(&arg_str, target_path.is_dir()) {
             LaunchKind::Workspace => app.open_workspace(target_path),
@@ -81,9 +96,8 @@ fn main() {
             LaunchKind::Help | LaunchKind::Version => {}
         }
     }
-    if args.next().is_some() {
-        eprintln!("Usage: lux [file_or_directory]");
-        std::process::exit(2);
+    if open_palette {
+        app.toggle_command_palette();
     }
     lux_platform::desktop::run(app).expect("desktop event loop failed");
 }

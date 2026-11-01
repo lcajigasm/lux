@@ -13,7 +13,7 @@ const MAX_VISIBLE_RESULTS: usize = 8;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_command_palette(
-    palette: &CommandPaletteState,
+    palette: &mut CommandPaletteState,
     viewport_width: f32,
     tab_bar_height: f32,
     scale_factor: f32,
@@ -29,15 +29,22 @@ pub(crate) fn render_command_palette(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
+    let now = std::time::Instant::now();
+    let reduced = crate::overlay_motion::reduced_motion();
     let width = (viewport_width * 0.55).clamp(360.0 * scale_factor, 620.0 * scale_factor);
     let left = (viewport_width - width) * 0.5;
-    let top = tab_bar_height + 12.0 * scale_factor;
+    let top = tab_bar_height
+        + 12.0 * scale_factor
+        + palette
+            .motion
+            .open_offset(now, reduced, -8.0 * scale_factor);
     let input_height = 34.0 * scale_factor;
     let row_height = 26.0 * scale_factor;
 
     let mut context = Context::new();
     context.set("editorFocus", true);
     context.set("hasSelection", has_selection);
+    let visual = palette.motion.row(palette.selected_index, now, reduced);
     let results = palette.results(&context);
     let visible_count = results.len().min(MAX_VISIBLE_RESULTS);
     let total_height = input_height + (visible_count as f32 * row_height) + 4.0 * stroke;
@@ -53,51 +60,27 @@ pub(crate) fn render_command_palette(
     let foreground = color(theme.foreground);
     let muted = color(theme.muted);
 
-    let shadow = 5.0 * scale_factor;
-    quad_instances.push(QuadInstance {
-        rect: [left + shadow, top + shadow, width, total_height],
-        color: [0.0, 0.0, 0.0, 0.45],
-    });
-
-    // 1. Overlay main background
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, total_height],
-        color: color(theme.chrome.panel),
-    });
-
-    // 2. Outer border
-    let border_color = color(theme.chrome.border);
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, stroke],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top + total_height - stroke, width, stroke],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top, stroke, total_height],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left + width - stroke, top, stroke, total_height],
-        color: border_color,
-    });
-
-    // 3. Input background & separator
-    quad_instances.push(QuadInstance {
-        rect: [
-            left + stroke,
-            top + stroke,
-            width - 2.0 * stroke,
-            input_height,
+    let radius = 8.0 * scale_factor;
+    super::panel::push_rounded_surface(
+        quad_instances,
+        [left, top, width, total_height],
+        radius,
+        color(theme.chrome.panel),
+        color(theme.chrome.border),
+        6.0 * scale_factor,
+        stroke,
+    );
+    let well_inset = radius * 0.75;
+    quad_instances.push(QuadInstance::rounded(
+        [
+            left + well_inset,
+            top + well_inset * 0.55,
+            width - 2.0 * well_inset,
+            input_height - well_inset * 0.45,
         ],
-        color: color(theme.chrome.panel_input),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top + input_height + stroke, width, stroke],
-        color: color(theme.chrome.border),
-    });
+        color(theme.chrome.panel_input),
+        5.0 * scale_factor,
+    ));
 
     // 4. Input text & caret
     let input_baseline = (input_height - palette_font_size) * 0.5;
@@ -130,15 +113,15 @@ pub(crate) fn render_command_palette(
 
     if !palette.query.is_empty() {
         let caret_x = text_x + input_line.width() + 2.0 * stroke;
-        quad_instances.push(QuadInstance {
-            rect: [
+        quad_instances.push(QuadInstance::solid(
+            [
                 caret_x,
                 top + stroke + (input_height - palette_font_size) * 0.5,
                 2.0 * stroke,
                 palette_font_size,
             ],
-            color: color(theme.accent),
-        });
+            color(theme.accent),
+        ));
     }
 
     // 5. Result rows
@@ -149,6 +132,19 @@ pub(crate) fn render_command_palette(
     } else {
         0
     };
+    super::panel::push_moving_row(
+        quad_instances,
+        left,
+        rows_top,
+        width,
+        row_height,
+        visual,
+        start_idx,
+        visible_count,
+        color(theme.chrome.panel_row),
+        color(theme.accent),
+        scale_factor,
+    );
 
     for (i, entry) in results
         .iter()
@@ -160,23 +156,30 @@ pub(crate) fn render_command_palette(
         let actual_idx = start_idx + i;
         let is_selected = actual_idx == palette.selected_index;
 
-        if is_selected {
-            quad_instances.push(QuadInstance {
-                rect: [left + stroke, row_y, width - 2.0 * stroke, row_height],
-                color: color(theme.chrome.panel_row),
-            });
-            quad_instances.push(QuadInstance {
-                rect: [left + stroke, row_y, 3.0 * stroke, row_height],
-                color: color(theme.accent),
-            });
-        }
+        let icon_size = 14.0 * scale_factor;
+        let icon_x = left + 12.0 * scale_factor;
+        let icon_y = row_y + (row_height - icon_size) * 0.5;
+        let hole = if is_selected {
+            color(theme.chrome.panel_row)
+        } else {
+            color(theme.chrome.panel)
+        };
+        super::icons::push_icon(
+            super::icons::icon_for_category(&entry.command.category),
+            quad_instances,
+            icon_x,
+            icon_y,
+            icon_size,
+            color(theme.accent),
+            hole,
+        );
 
         // Title
         let title_line =
             editor_view
                 .text_layout_mut()
                 .layout_line(&style, &entry.command.title, &[]);
-        let title_x = left + 14.0 * scale_factor;
+        let title_x = icon_x + icon_size + 8.0 * scale_factor;
         let title_color = if is_selected { foreground } else { muted };
         let hits = fuzzy_spans(&entry.command.title, &palette.query);
 
@@ -221,4 +224,5 @@ pub(crate) fn render_command_palette(
             );
         }
     }
+    crate::overlay_motion::note_if_animating(&palette.motion, now);
 }

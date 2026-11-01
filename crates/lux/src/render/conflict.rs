@@ -32,16 +32,16 @@ pub(crate) fn render_conflict_bar(
     prompt.bar_rect = [bar_x, bar_y, bar_w, bar_h];
 
     // Background quad: warning amber/dark brown
-    quad_instances.push(QuadInstance {
-        rect: [bar_x, bar_y, bar_w, bar_h],
-        color: [0.28, 0.20, 0.05, 0.95],
-    });
+    quad_instances.push(QuadInstance::solid(
+        [bar_x, bar_y, bar_w, bar_h],
+        [0.28, 0.20, 0.05, 0.95],
+    ));
 
     // Border bottom: amber accent
-    quad_instances.push(QuadInstance {
-        rect: [bar_x, bar_y + bar_h - 1.0, bar_w, 1.0],
-        color: [0.85, 0.65, 0.15, 1.0],
-    });
+    quad_instances.push(QuadInstance::solid(
+        [bar_x, bar_y + bar_h - 1.0, bar_w, 1.0],
+        [0.85, 0.65, 0.15, 1.0],
+    ));
 
     let font_size = 12.0 * scale_factor;
     let family = editor_view.family().to_string();
@@ -109,10 +109,7 @@ pub(crate) fn render_conflict_bar(
     for (label, action, btn_w, btn_color) in button_defs.into_iter().rev() {
         cur_x -= btn_w;
         let rect = [cur_x, btn_y, btn_w, btn_h];
-        quad_instances.push(QuadInstance {
-            rect,
-            color: btn_color,
-        });
+        quad_instances.push(QuadInstance::solid(rect, btn_color));
 
         // Label glyphs
         let btn_line = editor_view

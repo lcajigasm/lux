@@ -50,10 +50,10 @@ pub(crate) fn render_sidebar(
     };
 
     // 1. Sidebar Background
-    quad_instances.push(QuadInstance {
-        rect: [0.0, tab_bar_height, sidebar_width, content_height],
-        color: color(theme.chrome.sidebar),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, tab_bar_height, sidebar_width, content_height],
+        color(theme.chrome.sidebar),
+    ));
 
     // 2. Right Separator Border
     let border_color = if sidebar.focused {
@@ -61,31 +61,31 @@ pub(crate) fn render_sidebar(
     } else {
         color(theme.chrome.border)
     };
-    quad_instances.push(QuadInstance {
-        rect: [
+    quad_instances.push(QuadInstance::solid(
+        [
             sidebar_width - stroke,
             tab_bar_height,
             stroke,
             content_height,
         ],
-        color: border_color,
-    });
+        border_color,
+    ));
 
     // 3. Header: Project Root
     let header_h = SIDEBAR_HEADER_HEIGHT * scale_factor;
-    quad_instances.push(QuadInstance {
-        rect: [0.0, tab_bar_height, sidebar_width - stroke, header_h],
-        color: color(theme.chrome.sidebar),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [
+    quad_instances.push(QuadInstance::solid(
+        [0.0, tab_bar_height, sidebar_width - stroke, header_h],
+        color(theme.chrome.sidebar),
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [
             0.0,
             tab_bar_height + header_h - stroke,
             sidebar_width,
             stroke,
         ],
-        color: color(theme.chrome.border),
-    });
+        color(theme.chrome.border),
+    ));
 
     let header_line = editor_view
         .text_layout_mut()
@@ -123,14 +123,14 @@ pub(crate) fn render_sidebar(
 
         let is_selected = selected_id == Some(row.id);
         if is_selected {
-            quad_instances.push(QuadInstance {
-                rect: [0.0, row_y, sidebar_width - stroke, row_h],
-                color: color(theme.chrome.panel_row),
-            });
-            quad_instances.push(QuadInstance {
-                rect: [0.0, row_y, 2.0 * stroke, row_h],
-                color: accent,
-            });
+            quad_instances.push(QuadInstance::solid(
+                [0.0, row_y, sidebar_width - stroke, row_h],
+                color(theme.chrome.panel_row),
+            ));
+            quad_instances.push(QuadInstance::solid(
+                [0.0, row_y, 2.0 * stroke, row_h],
+                accent,
+            ));
         }
 
         let indent = 12.0 * scale_factor + (row.depth as f32 * 12.0 * scale_factor);
@@ -180,24 +180,24 @@ pub(crate) fn render_sidebar(
                 .map(|inp| inp.text.as_str())
                 .unwrap_or("");
             let input_box_w = sidebar_width - stroke - name_x - 8.0 * scale_factor;
-            quad_instances.push(QuadInstance {
-                rect: [
+            quad_instances.push(QuadInstance::solid(
+                [
                     name_x - 2.0 * stroke,
                     row_y + 2.0 * stroke,
                     input_box_w,
                     row_h - 4.0 * stroke,
                 ],
-                color: color(theme.chrome.panel_row),
-            });
-            quad_instances.push(QuadInstance {
-                rect: [
+                color(theme.chrome.panel_row),
+            ));
+            quad_instances.push(QuadInstance::solid(
+                [
                     name_x - 2.0 * stroke,
                     row_y + row_h - 2.0 * stroke,
                     input_box_w,
                     stroke,
                 ],
-                color: accent,
-            });
+                accent,
+            ));
             let edit_line = editor_view
                 .text_layout_mut()
                 .layout_line(&style, input_text, &[]);
@@ -216,15 +216,15 @@ pub(crate) fn render_sidebar(
                 );
             }
             let caret_x = name_x + edit_line.width();
-            quad_instances.push(QuadInstance {
-                rect: [
+            quad_instances.push(QuadInstance::solid(
+                [
                     caret_x,
                     row_y + 4.0 * stroke,
                     2.0 * stroke,
                     row_h - 8.0 * stroke,
                 ],
-                color: accent,
-            });
+                accent,
+            ));
         } else {
             let name_line = editor_view
                 .text_layout_mut()
@@ -253,19 +253,19 @@ pub(crate) fn render_sidebar(
 
     if let Some(menu) = &sidebar.context_menu {
         let [mx, my, mw, mh] = menu.rect;
-        quad_instances.push(QuadInstance {
-            rect: [
+        quad_instances.push(QuadInstance::solid(
+            [
                 mx - stroke,
                 my - stroke,
                 mw + 2.0 * stroke,
                 mh + 2.0 * stroke,
             ],
-            color: color(theme.chrome.panel),
-        });
-        quad_instances.push(QuadInstance {
-            rect: [mx, my, mw, mh],
-            color: color(theme.chrome.panel_input),
-        });
+            color(theme.chrome.panel),
+        ));
+        quad_instances.push(QuadInstance::solid(
+            [mx, my, mw, mh],
+            color(theme.chrome.panel_input),
+        ));
         let item_h = crate::sidebar::menu::SIDEBAR_MENU_ITEM_HEIGHT * scale_factor;
         for (idx, item) in menu.items.iter().enumerate() {
             let item_y = my + 4.0 * scale_factor + idx as f32 * item_h;

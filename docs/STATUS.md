@@ -4,26 +4,37 @@
 > and without BOM), Latin-1, Windows-1252, and UTF-16 LE/BE with and without
 > a BOM when the no-BOM guess is confident. The status bar names the
 > encoding. Save is byte-for-byte unless a conversion is requested.
-> `docs/compare/characters.png` (macos-15 compare run 41338114570) shows
+> `docs/compare/characters.png` (macos-15 compare run 41348580486) shows
 > áéíóúüñ, emoji, CJK, and combining marks on Monokai, with `UTF-8` in the
 > status bar. The default theme is Monokai, parsed from
 > `themes/Monokai.sublime-color-scheme` (MIT, `themes/NOTICE.md`). The
 > sidebar, tabs, selectors, and status bar take their colors from that
-> theme. In `docs/compare/monokai-side-by-side.png` the Lux editor well is
-> `#272822`, the tab bar `#1E1F1C`, and the status bar `#414339`, beside
-> Sublime Text on the same file. Sublime's own minimap, breadcrumb, and
-> lighter status chrome are not copied. HiDPI text uses grayscale
-> antialiasing; that capture is a 1× display, so it does not prove Retina.
-> Icons, rounded corners, and selector animation are not done, so 0.3 and
-> block 0 stay open and no release is tagged. See [ROADMAP.md](ROADMAP.md).
+> theme. In `docs/compare/monokai-side-by-side.png` from that same run the
+> Lux editor well is `#272822`, the current line is `#2C2D27`, the tab bar
+> is `#1E1F1C`, and the status bar is `#414339`, beside Sublime Text on the
+> same file. The right-hand status labels are light on that bar. The window
+> title is the file name and its parent folder. The column ruler is off
+> unless `editor.columnRulers` is set, and the minimap edge is a faint
+> border. Sublime's own minimap, breadcrumb, and lighter status chrome are
+> not copied. HiDPI text uses grayscale antialiasing when `scale_factor > 1`.
+> The job logged `display scale 1`, so the PNG does not prove Retina.
+> `docs/compare/selectors.png` from the same run shows the command palette
+> open in Lux (icons, rounded surface), Sublime Text, and Zed. A still does
+> not show the open animation. 0.1 and 0.2 hold. The selector still holds.
+> Block 0 stays open until this tree is on main and that main CI is green.
+> No release is tagged. See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
 > Pull-request and main CI keep the `ubuntu-latest` jobs and add one standard
 > `macos-15` job: `cargo test --workspace`, then a universal `.app` / `.dmg`
 > uploaded as a CI artifact and not published. The debug tree is removed
-> before that image so both release architectures and `hdiutil` fit on the
-> standard runner. Windows is not in CI.
+> before that image, and the release trees plus the cargo registry are
+> removed after the fat binary is in the bundle. The disk image is a
+> writable volume whose size is the staged tree plus margin, then
+> converted to UDZO, after any leftover `/Volumes/Lux` is detached.
+> `hdiutil create -srcfolder` filled the disk on runs 41335548609 and
+> 41341898224. Windows is not in CI.
 > A `vX.Y.Z` tag still attaches `lux-linux-x86_64` and `lux-linux-amd64.deb`
 > from the Linux workflow. The deb depends on `libfontconfig1` and `libegl1`
 > (the EGL GPU loader named in the release binary; `libvulkan.so.1` is not in

@@ -5,12 +5,37 @@ use wgpu::util::DeviceExt;
 
 const SHADER_SRC: &str = include_str!("quad.wgsl");
 
-/// One filled rectangle: physical-pixel position/size and straight RGBA.
+/// One filled rectangle: physical-pixel position/size, straight RGBA, and
+/// a corner radius. Radius `0` is a sharp rectangle — the same shape every
+/// existing quad drew before corners existed.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct QuadInstance {
     pub rect: [f32; 4],
     pub color: [f32; 4],
+    /// Corner radius in physical pixels. Zero keeps a sharp rectangle.
+    pub radius: f32,
+    _pad: [f32; 3],
+}
+
+impl QuadInstance {
+    pub fn solid(rect: [f32; 4], color: [f32; 4]) -> Self {
+        Self {
+            rect,
+            color,
+            radius: 0.0,
+            _pad: [0.0; 3],
+        }
+    }
+
+    pub fn rounded(rect: [f32; 4], color: [f32; 4], radius: f32) -> Self {
+        Self {
+            rect,
+            color,
+            radius,
+            _pad: [0.0; 3],
+        }
+    }
 }
 
 #[repr(C)]
@@ -90,6 +115,11 @@ impl QuadPipeline {
                     format: wgpu::VertexFormat::Float32x4,
                     offset: 16,
                     shader_location: 1,
+                },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32,
+                    offset: 32,
+                    shader_location: 2,
                 },
             ],
         };

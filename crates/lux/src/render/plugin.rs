@@ -29,10 +29,10 @@ pub(crate) fn render_plugin_modal(
     };
 
     // Dimmed background backdrop
-    quad_instances.push(QuadInstance {
-        rect: [0.0, 0.0, window_width, window_height],
-        color: [0.0, 0.0, 0.0, 0.55],
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, 0.0, window_width, window_height],
+        [0.0, 0.0, 0.0, 0.55],
+    ));
 
     let card_w = 460.0 * scale_factor;
     let card_h = 160.0 * scale_factor;
@@ -40,14 +40,14 @@ pub(crate) fn render_plugin_modal(
     let card_y = ((window_height - card_h) * 0.5).max(0.0);
 
     // Card background & warning border
-    quad_instances.push(QuadInstance {
-        rect: [card_x, card_y, card_w, card_h],
-        color: color(active_theme().chrome.panel),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [card_x, card_y, card_w, stroke * 2.0],
-        color: [0.95, 0.70, 0.20, 1.0], // Amber warning accent
-    });
+    quad_instances.push(QuadInstance::solid(
+        [card_x, card_y, card_w, card_h],
+        color(active_theme().chrome.panel),
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [card_x, card_y, card_w, stroke * 2.0],
+        [0.95, 0.70, 0.20, 1.0],
+    ));
 
     let font_size = 12.0 * scale_factor;
     let family = editor_view.family().to_string();
@@ -126,10 +126,10 @@ pub(crate) fn render_plugin_modal(
     // Grant & Run button
     let grant_w = 140.0 * scale_factor;
     let grant_x = card_x + 18.0 * scale_factor;
-    quad_instances.push(QuadInstance {
-        rect: [grant_x, btn_y, grant_w, btn_h],
-        color: [0.18, 0.55, 0.30, 1.0],
-    });
+    quad_instances.push(QuadInstance::solid(
+        [grant_x, btn_y, grant_w, btn_h],
+        [0.18, 0.55, 0.30, 1.0],
+    ));
     let grant_line = editor_view
         .text_layout_mut()
         .layout_line(&style, "Grant & Run (Enter)", &[]);
@@ -152,10 +152,10 @@ pub(crate) fn render_plugin_modal(
     // Deny button
     let deny_w = 90.0 * scale_factor;
     let deny_x = grant_x + grant_w + 12.0 * scale_factor;
-    quad_instances.push(QuadInstance {
-        rect: [deny_x, btn_y, deny_w, btn_h],
-        color: [0.60, 0.20, 0.20, 1.0],
-    });
+    quad_instances.push(QuadInstance::solid(
+        [deny_x, btn_y, deny_w, btn_h],
+        [0.60, 0.20, 0.20, 1.0],
+    ));
     let deny_line = editor_view
         .text_layout_mut()
         .layout_line(&style, "Deny (Esc)", &[]);

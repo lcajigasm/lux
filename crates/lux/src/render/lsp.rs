@@ -1,7 +1,7 @@
 //! Rendering for Language Server Protocol UI (Goal G16).
 //! Diagnostics squiggles, autocompletion popup, hover tooltips, and problems panel.
 
-use lux_lsp::async_lsp::lsp_types::{DiagnosticSeverity, Url};
+use lux_lsp::async_lsp::lsp_types::{CompletionItemKind, DiagnosticSeverity, Url};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
 use swash::FontRef;
@@ -135,10 +135,10 @@ fn render_diagnostics_squiggles(
             _ => [0.85, 0.35, 0.35, 0.95],
         };
 
-        quad_instances.push(QuadInstance {
-            rect: [x_start, y, width, 2.0 * scale_factor],
+        quad_instances.push(QuadInstance::solid(
+            [x_start, y, width, 2.0 * scale_factor],
             color,
-        });
+        ));
     }
 }
 
@@ -161,17 +161,20 @@ fn render_completion_popup(
     let card_w = 260.0 * scale_factor;
     let card_h = visible_items as f32 * item_h + 8.0 * scale_factor;
 
+    let now = std::time::Instant::now();
+    let reduced = crate::overlay_motion::reduced_motion();
+    let draw_y = anchor_y + popup.motion.open_offset(now, reduced, -6.0 * scale_factor);
     popup.rect = [anchor_x, anchor_y, card_w, card_h];
 
-    // Background shadow & panel
-    quad_instances.push(QuadInstance {
-        rect: [anchor_x - 1.0, anchor_y - 1.0, card_w + 2.0, card_h + 2.0],
-        color: [0.0, 0.0, 0.0, 0.35],
-    });
-    quad_instances.push(QuadInstance {
-        rect: [anchor_x, anchor_y, card_w, card_h],
-        color: color(active_theme().chrome.panel),
-    });
+    super::panel::push_rounded_surface(
+        quad_instances,
+        [anchor_x, draw_y, card_w, card_h],
+        8.0 * scale_factor,
+        color(active_theme().chrome.panel),
+        color(active_theme().chrome.border),
+        5.0 * scale_factor,
+        scale_factor,
+    );
 
     let font_size = 11.0 * scale_factor;
     let family = editor_view.family().to_string();
@@ -183,28 +186,46 @@ fn render_completion_popup(
 
     let start_idx = popup.selected_index.saturating_sub(visible_items / 2);
     let end_idx = (start_idx + visible_items).min(popup.items.len());
+    let rows_top = draw_y + 4.0 * scale_factor;
+    let visual = popup.motion.row(popup.selected_index, now, reduced);
+    super::panel::push_moving_row(
+        quad_instances,
+        anchor_x,
+        rows_top,
+        card_w,
+        item_h,
+        visual,
+        start_idx,
+        end_idx - start_idx,
+        color(active_theme().chrome.panel_row),
+        color(active_theme().accent),
+        scale_factor,
+    );
 
     for (display_idx, idx) in (start_idx..end_idx).enumerate() {
-        let item_y = anchor_y + 4.0 * scale_factor + display_idx as f32 * item_h;
+        let item_y = rows_top + display_idx as f32 * item_h;
         let is_selected = idx == popup.selected_index;
 
-        if is_selected {
-            quad_instances.push(QuadInstance {
-                rect: [
-                    anchor_x + 4.0 * scale_factor,
-                    item_y,
-                    card_w - 8.0 * scale_factor,
-                    item_h,
-                ],
-                color: color(active_theme().chrome.panel_row),
-            });
-        }
-
         let item = &popup.items[idx];
+        let icon_size = 12.0 * scale_factor;
+        let hole = if is_selected {
+            color(active_theme().chrome.panel_row)
+        } else {
+            color(active_theme().chrome.panel)
+        };
+        super::icons::push_icon(
+            completion_icon(item.kind),
+            quad_instances,
+            anchor_x + 8.0 * scale_factor,
+            item_y + (item_h - icon_size) * 0.5,
+            icon_size,
+            color(active_theme().accent),
+            hole,
+        );
         let label_text = editor_view
             .text_layout_mut()
             .layout_line(&style, &item.label, &[]);
-        let label_x = anchor_x + 8.0 * scale_factor;
+        let label_x = anchor_x + 8.0 * scale_factor + icon_size + 6.0 * scale_factor;
         let label_y = item_y + 3.0 * scale_factor;
 
         let text_color = if is_selected {
@@ -227,6 +248,29 @@ fn render_completion_popup(
                 glyph_instances,
             );
         }
+    }
+    crate::overlay_motion::note_if_animating(&popup.motion, now);
+}
+
+fn completion_icon(kind: Option<CompletionItemKind>) -> super::icons::Icon {
+    match kind {
+        Some(CompletionItemKind::FUNCTION)
+        | Some(CompletionItemKind::METHOD)
+        | Some(CompletionItemKind::CONSTRUCTOR) => super::icons::Icon::Symbol,
+        Some(CompletionItemKind::STRUCT)
+        | Some(CompletionItemKind::CLASS)
+        | Some(CompletionItemKind::INTERFACE)
+        | Some(CompletionItemKind::ENUM)
+        | Some(CompletionItemKind::MODULE) => super::icons::Icon::View,
+        Some(CompletionItemKind::FILE) | Some(CompletionItemKind::FOLDER) => {
+            super::icons::Icon::File
+        }
+        Some(CompletionItemKind::SNIPPET) => super::icons::Icon::Snippet,
+        Some(CompletionItemKind::VARIABLE)
+        | Some(CompletionItemKind::FIELD)
+        | Some(CompletionItemKind::PROPERTY)
+        | Some(CompletionItemKind::CONSTANT) => super::icons::Icon::Edit,
+        _ => super::icons::Icon::Command,
     }
 }
 
@@ -262,14 +306,14 @@ fn render_hover_popup(
 
     hover.rect = [anchor_x, anchor_y, box_w, box_h];
 
-    quad_instances.push(QuadInstance {
-        rect: [anchor_x - 1.0, anchor_y - 1.0, box_w + 2.0, box_h + 2.0],
-        color: color(active_theme().chrome.border),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [anchor_x, anchor_y, box_w, box_h],
-        color: color(active_theme().chrome.panel),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [anchor_x - 1.0, anchor_y - 1.0, box_w + 2.0, box_h + 2.0],
+        color(active_theme().chrome.border),
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [anchor_x, anchor_y, box_w, box_h],
+        color(active_theme().chrome.panel),
+    ));
 
     let text_x = anchor_x + 8.0 * scale_factor;
     let text_y = anchor_y + 4.0 * scale_factor;
@@ -309,20 +353,20 @@ fn render_problems_panel(
     problems.rect = [panel_x, panel_y, panel_w, panel_h];
 
     // Background panel
-    quad_instances.push(QuadInstance {
-        rect: [panel_x, panel_y, panel_w, panel_h],
-        color: color(active_theme().chrome.panel),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [panel_x, panel_y, panel_w, panel_h],
+        color(active_theme().chrome.panel),
+    ));
     let theme = active_theme();
     let stroke_color = if problems.focused {
         color(theme.accent)
     } else {
         color(theme.chrome.border)
     };
-    quad_instances.push(QuadInstance {
-        rect: [panel_x, panel_y, panel_w, 1.0],
-        color: stroke_color,
-    });
+    quad_instances.push(QuadInstance::solid(
+        [panel_x, panel_y, panel_w, 1.0],
+        stroke_color,
+    ));
 
     let font_size = 11.0 * scale_factor;
     let family = editor_view.family().to_string();

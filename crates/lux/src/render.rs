@@ -7,12 +7,14 @@ mod build;
 mod conflict;
 mod git;
 mod goto;
+mod icons;
 mod language_picker;
 mod lsp;
 mod minimap;
 mod modals;
 pub(crate) mod paint;
 mod palette;
+mod panel;
 mod plugin;
 mod project_picker;
 mod project_search;
@@ -45,6 +47,7 @@ impl App {
     /// in progress — the real inline preedit text at the actual cursor
     /// position, all in one real `wgpu` submit + present.
     pub(crate) fn redraw(&mut self, ctx: &dyn PlatformContext) {
+        crate::overlay_motion::begin_frame(self.chrome.motion.reduced);
         if !self.presentation.ready(Instant::now()) {
             return;
         }
@@ -119,14 +122,14 @@ impl App {
 
         let mut quad_instances = Vec::new();
         if tab_bar_height > 0.0 {
-            quad_instances.push(QuadInstance {
-                rect: [0.0, 0.0, window_width, tab_bar_height],
-                color: color(chrome.theme.chrome.tab_bar),
-            });
-            quad_instances.push(QuadInstance {
-                rect: [0.0, tab_bar_height - stroke, window_width, stroke],
-                color: color(chrome.theme.chrome.border),
-            });
+            quad_instances.push(QuadInstance::solid(
+                [0.0, 0.0, window_width, tab_bar_height],
+                color(chrome.theme.chrome.tab_bar),
+            ));
+            quad_instances.push(QuadInstance::solid(
+                [0.0, tab_bar_height - stroke, window_width, stroke],
+                color(chrome.theme.chrome.border),
+            ));
         }
         let mut glyph_instances = Vec::new();
         let mut cursor_screen = None;
@@ -162,29 +165,29 @@ impl App {
                 &mut glyph_instances,
             );
         } else {
-            quad_instances.push(QuadInstance {
-                rect: [sidebar_width, editor_top, viewport.width, viewport.height],
-                color: color(chrome.theme.background),
-            });
+            quad_instances.push(QuadInstance::solid(
+                [sidebar_width, editor_top, viewport.width, viewport.height],
+                color(chrome.theme.background),
+            ));
             if gutter_total_width > 0.0 {
-                quad_instances.push(QuadInstance {
-                    rect: [
+                quad_instances.push(QuadInstance::solid(
+                    [
                         sidebar_width,
                         editor_top,
                         gutter_total_width,
                         viewport.height,
                     ],
-                    color: color(chrome.theme.chrome.gutter),
-                });
-                quad_instances.push(QuadInstance {
-                    rect: [
+                    color(chrome.theme.chrome.gutter),
+                ));
+                quad_instances.push(QuadInstance::solid(
+                    [
                         sidebar_width + gutter_total_width - stroke,
                         editor_top,
                         stroke,
                         viewport.height,
                     ],
-                    color: color(chrome.theme.chrome.border),
-                });
+                    color(chrome.theme.chrome.border),
+                ));
             }
 
             for cursor in &frame.cursors {
@@ -202,10 +205,10 @@ impl App {
                         } else {
                             viewport.width - gutter_total_width
                         };
-                        quad_instances.push(QuadInstance {
-                            rect: [h_x, cur_y, h_w, line_height],
-                            color: color(chrome.theme.chrome.line_highlight),
-                        });
+                        quad_instances.push(QuadInstance::solid(
+                            [h_x, cur_y, h_w, line_height],
+                            color(chrome.theme.chrome.line_highlight),
+                        ));
                     }
                 }
             }
@@ -255,10 +258,10 @@ impl App {
                     cursor_screen = Some((x, y));
                 }
                 if cursor_glyph.visible {
-                    quad_instances.push(QuadInstance {
-                        rect: [x, y, 2.0 * stroke, caret_h],
-                        color: color(chrome.theme.accent),
-                    });
+                    quad_instances.push(QuadInstance::solid(
+                        [x, y, 2.0 * stroke, caret_h],
+                        color(chrome.theme.accent),
+                    ));
                 }
             }
         }
@@ -314,15 +317,15 @@ impl App {
             // A thin underline distinguishes in-progress composition from
             // already-committed text — the same visual convention every
             // desktop IME candidate UI already uses.
-            quad_instances.push(QuadInstance {
-                rect: [
+            quad_instances.push(QuadInstance::solid(
+                [
                     x,
                     y + line_height - 2.0 * stroke,
                     layout.width().max(stroke),
                     2.0 * stroke,
                 ],
-                color: color(chrome.theme.accent),
-            });
+                color(chrome.theme.accent),
+            ));
             gpu_window.window.set_ime_cursor_area(
                 dpi::PhysicalPosition::new(x as i32, y as i32),
                 dpi::PhysicalSize::new(layout.width().max(stroke) as u32, line_height as u32),
@@ -565,6 +568,11 @@ impl App {
             let next_toggle = *start + BLINK_INTERVAL * (phase as u32 + 1);
             scheduler.request_repaint_at(next_toggle);
             ctx.request_wakeup(next_toggle);
+        }
+        if crate::overlay_motion::take_animating() {
+            let at = Instant::now() + std::time::Duration::from_millis(16);
+            scheduler.request_repaint_at(at);
+            ctx.request_wakeup(at);
         }
     }
 }

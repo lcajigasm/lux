@@ -96,7 +96,7 @@ impl App {
             font_size: FONT_SIZE,
             ligatures: true,
             word_wrap: false,
-            column_rulers: vec![80],
+            column_rulers: Vec::new(),
             blink_interval: BLINK_INTERVAL,
         };
         let mut editor_view = EditorView::new(text_layout, font_bytes, metrics)

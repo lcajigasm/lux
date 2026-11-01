@@ -44,25 +44,25 @@ pub(crate) fn render_tab_bar(
         } else {
             color(theme.chrome.tab_inactive)
         };
-        quad_instances.push(QuadInstance {
-            rect: [tab_x, 0.0, tab_width, tab_bar_height - stroke],
-            color: tab_bg,
-        });
+        quad_instances.push(QuadInstance::solid(
+            [tab_x, 0.0, tab_width, tab_bar_height - stroke],
+            tab_bg,
+        ));
         if is_active {
-            quad_instances.push(QuadInstance {
-                rect: [tab_x, 0.0, tab_width, 2.0 * stroke],
-                color: color(theme.accent),
-            });
+            quad_instances.push(QuadInstance::solid(
+                [tab_x, 0.0, tab_width, 2.0 * stroke],
+                color(theme.accent),
+            ));
         }
-        quad_instances.push(QuadInstance {
-            rect: [
+        quad_instances.push(QuadInstance::solid(
+            [
                 tab_x + tab_width - stroke,
                 0.0,
                 stroke,
                 tab_bar_height - stroke,
             ],
-            color: color(theme.chrome.border),
-        });
+            color(theme.chrome.border),
+        ));
 
         let is_tab_dirty = if is_active {
             is_current_dirty
@@ -105,25 +105,25 @@ pub(crate) fn render_tab_bar(
 
         if tab.pinned {
             let pin_indicator_w = 3.0 * stroke;
-            quad_instances.push(QuadInstance {
-                rect: [
+            quad_instances.push(QuadInstance::solid(
+                [
                     tab_x + 2.0 * stroke,
                     4.0 * stroke,
                     pin_indicator_w,
                     tab_bar_height - 8.0 * stroke,
                 ],
-                color: color(theme.accent),
-            });
+                color(theme.accent),
+            ));
         }
 
         if is_tab_dirty {
             let dot_size = 5.0 * stroke;
             let dot_x = tab_x + tab_width - close_btn_w - dot_size - 2.0 * stroke;
             let dot_y = (tab_bar_height - dot_size) * 0.5;
-            quad_instances.push(QuadInstance {
-                rect: [dot_x, dot_y, dot_size, dot_size],
-                color: color(theme.accent),
-            });
+            quad_instances.push(QuadInstance::solid(
+                [dot_x, dot_y, dot_size, dot_size],
+                color(theme.accent),
+            ));
         }
 
         let close_layout = editor_view
@@ -149,19 +149,19 @@ pub(crate) fn render_tab_bar(
     if let Some(menu) = &documents.tab_context_menu {
         let [mx, my, mw, mh] = menu.rect;
         // Background and border
-        quad_instances.push(QuadInstance {
-            rect: [
+        quad_instances.push(QuadInstance::solid(
+            [
                 mx - stroke,
                 my - stroke,
                 mw + 2.0 * stroke,
                 mh + 2.0 * stroke,
             ],
-            color: color(theme.chrome.panel),
-        });
-        quad_instances.push(QuadInstance {
-            rect: [mx, my, mw, mh],
-            color: color(theme.chrome.panel_input),
-        });
+            color(theme.chrome.panel),
+        ));
+        quad_instances.push(QuadInstance::solid(
+            [mx, my, mw, mh],
+            color(theme.chrome.panel_input),
+        ));
         let item_h = crate::document::tab_ops::TAB_MENU_ITEM_HEIGHT * scale_factor;
         for (idx, item) in menu.items.iter().enumerate() {
             let item_y = my + 4.0 * scale_factor + idx as f32 * item_h;

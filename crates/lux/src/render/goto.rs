@@ -4,7 +4,7 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::goto::{GotoItemKind, GotoState};
-use crate::render::paint::{color, push_glyph};
+use crate::render::paint::{color, fuzzy_spans, push_glyph, span_covers};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
 
@@ -12,7 +12,7 @@ const MAX_VISIBLE_RESULTS: usize = 8;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_goto(
-    goto: &GotoState,
+    goto: &mut GotoState,
     viewport_width: f32,
     tab_bar_height: f32,
     scale_factor: f32,
@@ -27,9 +27,13 @@ pub(crate) fn render_goto(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
+    let now = std::time::Instant::now();
+    let reduced = crate::overlay_motion::reduced_motion();
     let width = (viewport_width * 0.58).clamp(380.0 * scale_factor, 660.0 * scale_factor);
     let left = (viewport_width - width) * 0.5;
-    let top = tab_bar_height + 12.0 * scale_factor;
+    let top = tab_bar_height
+        + 12.0 * scale_factor
+        + goto.motion.open_offset(now, reduced, -8.0 * scale_factor);
     let input_height = 34.0 * scale_factor;
     let row_height = 26.0 * scale_factor;
 
@@ -47,45 +51,27 @@ pub(crate) fn render_goto(
     let foreground = color(theme.foreground);
     let muted = color(theme.muted);
 
-    // 1. Overlay main background
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, total_height],
-        color: color(theme.chrome.panel),
-    });
-
-    // 2. Outer border
-    let border_color = color(theme.chrome.border);
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, stroke],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top + total_height - stroke, width, stroke],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top, stroke, total_height],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left + width - stroke, top, stroke, total_height],
-        color: border_color,
-    });
-
-    // 3. Input background & separator
-    quad_instances.push(QuadInstance {
-        rect: [
-            left + stroke,
-            top + stroke,
-            width - 2.0 * stroke,
-            input_height,
+    let radius = 8.0 * scale_factor;
+    super::panel::push_rounded_surface(
+        quad_instances,
+        [left, top, width, total_height],
+        radius,
+        color(theme.chrome.panel),
+        color(theme.chrome.border),
+        6.0 * scale_factor,
+        stroke,
+    );
+    let well_inset = radius * 0.75;
+    quad_instances.push(QuadInstance::rounded(
+        [
+            left + well_inset,
+            top + well_inset * 0.55,
+            width - 2.0 * well_inset,
+            input_height - well_inset * 0.45,
         ],
-        color: color(theme.chrome.panel_input),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top + input_height + stroke, width, stroke],
-        color: color(theme.chrome.border),
-    });
+        color(theme.chrome.panel_input),
+        5.0 * scale_factor,
+    ));
 
     // 4. Input text & caret
     let input_baseline = (input_height - modal_font_size) * 0.5;
@@ -123,15 +109,15 @@ pub(crate) fn render_goto(
 
     if !goto.query.is_empty() {
         let caret_x = text_x + input_line.width() + 2.0 * stroke;
-        quad_instances.push(QuadInstance {
-            rect: [
+        quad_instances.push(QuadInstance::solid(
+            [
                 caret_x,
                 top + stroke + (input_height - modal_font_size) * 0.5,
                 2.0 * stroke,
                 modal_font_size,
             ],
-            color: color(theme.accent),
-        });
+            color(theme.accent),
+        ));
     }
 
     // 5. Result rows
@@ -143,6 +129,20 @@ pub(crate) fn render_goto(
     } else {
         0
     };
+    let visual = goto.motion.row(goto.selected_index, now, reduced);
+    super::panel::push_moving_row(
+        quad_instances,
+        left,
+        rows_top,
+        width,
+        row_height,
+        visual,
+        start_idx,
+        visible_count,
+        color(theme.chrome.panel_row),
+        color(theme.accent),
+        scale_factor,
+    );
 
     for (i, item) in goto
         .items
@@ -154,19 +154,28 @@ pub(crate) fn render_goto(
         let row_y = rows_top + i as f32 * row_height;
         let actual_idx = start_idx + i;
         let is_selected = actual_idx == goto.selected_index;
-
-        if is_selected {
-            quad_instances.push(QuadInstance {
-                rect: [left + stroke, row_y, width - 2.0 * stroke, row_height],
-                color: color(theme.chrome.panel_row),
-            });
-            quad_instances.push(QuadInstance {
-                rect: [left + stroke, row_y, 3.0 * stroke, row_height],
-                color: color(theme.accent),
-            });
-        }
-
-        let mut offset_x = left + 14.0 * scale_factor;
+        let icon = match &item.kind {
+            GotoItemKind::File { .. } => super::icons::Icon::File,
+            GotoItemKind::Symbol { .. } => super::icons::Icon::Symbol,
+            GotoItemKind::Term { .. } => super::icons::Icon::Find,
+        };
+        let icon_size = 14.0 * scale_factor;
+        let icon_x = left + 12.0 * scale_factor;
+        let hole = if is_selected {
+            color(theme.chrome.panel_row)
+        } else {
+            color(theme.chrome.panel)
+        };
+        super::icons::push_icon(
+            icon,
+            quad_instances,
+            icon_x,
+            row_y + (row_height - icon_size) * 0.5,
+            icon_size,
+            color(theme.accent),
+            hole,
+        );
+        let mut offset_x = icon_x + icon_size + 8.0 * scale_factor;
 
         // Render badge for symbols
         if let GotoItemKind::Symbol { kind_badge, .. } = &item.kind {
@@ -182,10 +191,11 @@ pub(crate) fn render_goto(
             let badge_w = badge_layout.width() + 8.0 * scale_factor;
             let badge_h = 16.0 * scale_factor;
             let badge_y = row_y + (row_height - badge_h) * 0.5;
-            quad_instances.push(QuadInstance {
-                rect: [offset_x, badge_y, badge_w, badge_h],
-                color: badge_bg,
-            });
+            quad_instances.push(QuadInstance::rounded(
+                [offset_x, badge_y, badge_w, badge_h],
+                badge_bg,
+                3.0 * scale_factor,
+            ));
             for cluster in badge_layout.clusters() {
                 push_glyph(
                     atlas,
@@ -208,8 +218,14 @@ pub(crate) fn render_goto(
             .text_layout_mut()
             .layout_line(&style, &item.label, &[]);
         let label_color = if is_selected { foreground } else { muted };
+        let hits = fuzzy_spans(&item.label, &goto.query);
 
         for cluster in label_line.clusters() {
+            let glyph_color = if span_covers(&hits, &cluster.byte_range) {
+                color(theme.accent)
+            } else {
+                label_color
+            };
             push_glyph(
                 atlas,
                 atlas_dirty,
@@ -219,7 +235,7 @@ pub(crate) fn render_goto(
                 &cluster,
                 offset_x,
                 row_y + row_baseline + label_line.baseline(),
-                label_color,
+                glyph_color,
                 glyph_instances,
             );
         }
@@ -246,4 +262,5 @@ pub(crate) fn render_goto(
             }
         }
     }
+    crate::overlay_motion::note_if_animating(&goto.motion, now);
 }

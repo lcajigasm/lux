@@ -8,6 +8,7 @@ pub(crate) struct CommandPaletteState {
     pub(crate) query: String,
     pub(crate) selected_index: usize,
     pub(crate) registry: CommandRegistry,
+    pub(crate) motion: crate::overlay_motion::OverlayMotion,
 }
 
 impl Default for CommandPaletteState {
@@ -24,6 +25,7 @@ impl CommandPaletteState {
             query: String::new(),
             selected_index: 0,
             registry,
+            motion: crate::overlay_motion::OverlayMotion::open(),
         }
     }
 

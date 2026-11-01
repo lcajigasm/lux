@@ -83,10 +83,20 @@ mkdir -p "$app_path/Contents/Resources"
 cp "$bin" "$app_path/Contents/MacOS/lux"
 chmod +x "$app_path/Contents/MacOS/lux"
 # Two release trees plus the disk-image scratch exhausted the runner
-# (hdiutil: No space left on device, run 41335548609). The bundle already
-# holds the fat binary.
+# (hdiutil: No space left on device, runs 41335548609 and 41341898224).
+# Deleting only the arch directories still left the cargo registry and
+# the rest of target/, and hdiutil failed while copying the binary.
+# The bundle already holds the fat binary, so the whole target tree can go.
 if [[ -z "${LUX_BIN:-}" ]]; then
-  rm -rf target/aarch64-apple-darwin target/x86_64-apple-darwin target/release
+  echo "--> Freeing build output before hdiutil"
+  df -h /
+  rm -rf target
+  if [[ -n "${CI:-}" ]]; then
+    rm -rf "$HOME/.cargo/registry/src" "$HOME/.cargo/registry/cache" \
+      "$HOME/Library/Developer/Xcode" \
+      "$HOME/Library/Caches/org.swift.swiftpm"
+  fi
+  df -h /
 fi
 
 sed "s/<string>1.0.0<\\/string>/<string>${version}<\\/string>/g" \
@@ -99,10 +109,39 @@ echo -n "APPLlux " > "$app_path/Contents/PkgInfo"
 echo "--> Applying ad-hoc codesign (no Developer ID)..."
 codesign --force --deep --sign - "$app_path"
 
-# 4. Create DMG with Applications drag-and-drop link
+# 4. Create DMG with Applications drag-and-drop link.
+# `hdiutil create -srcfolder` picks its own scratch size and has failed
+# with "No space left on device" after the image was already mounted
+# (runs 41335548609 and 41341898224). The writable image is an explicit
+# size taken from the staged tree, then converted to UDZO.
 echo "--> Creating DMG staging..."
 staging_dir="$(mktemp -d)"
-trap 'rm -rf "$staging_dir"' EXIT
+raw_path=""
+mounted=""
+cleanup_dmg() {
+  if [[ -n "${mounted:-}" ]]; then
+    hdiutil detach "$mounted" -force >/dev/null 2>&1 || true
+  fi
+  rm -rf "$staging_dir"
+  if [[ -n "${raw_path:-}" ]]; then
+    rm -f "$raw_path"
+  fi
+}
+trap cleanup_dmg EXIT
+
+detach_volume() {
+  local name="$1"
+  local tries=0
+  while [[ -d "/Volumes/$name" && "$tries" -lt 5 ]]; do
+    echo "--> Detaching leftover /Volumes/$name"
+    hdiutil detach "/Volumes/$name" -force >/dev/null 2>&1 \
+      || diskutil unmount force "/Volumes/$name" >/dev/null 2>&1 \
+      || true
+    tries=$((tries + 1))
+    sleep 1
+  done
+}
+detach_volume "Lux"
 
 cp -R "$app_path" "$staging_dir/$app_name"
 ln -s /Applications "$staging_dir/Applications"
@@ -116,43 +155,73 @@ for license in LICENSE*; do
 done
 
 dmg_path="$dist_dir/$dmg_name"
-rm -f "$dmg_path"
+raw_path="$dist_dir/.lux-rw.dmg"
+rm -f "$dmg_path" "$raw_path"
 
-echo "--> Building compressed disk image: $dmg_path..."
+staging_kb="$(du -sk "$staging_dir" | awk '{print $1}')"
+# Half again, plus 32 MiB for the HFS catalog. Never smaller than 64 MiB.
+size_mb=$(( (staging_kb + staging_kb / 2 + 32768 + 1023) / 1024 ))
+if (( size_mb < 64 )); then
+  size_mb=64
+fi
+echo "--> Writable image ${size_mb}m for ${staging_kb} KiB of payload"
+df -h /
+
+# A sized image is read/write by default. `-format UDRW` is rejected
+# unless `-srcfolder` or `-srcdevice` is also set (macOS 15:
+# "hdiutil: create: -format requires -srcfolder or -srcdevice").
 hdiutil create \
+  -size "${size_mb}m" \
+  -fs HFS+ \
   -volname "Lux" \
-  -srcfolder "$staging_dir" \
   -ov \
-  -format UDZO \
-  "$dmg_path"
+  "$raw_path"
+
+echo "--> Copying payload into the writable image..."
+mount_output="$(hdiutil attach -nobrowse -readwrite "$raw_path")"
+mounted="$(echo "$mount_output" | grep -o '/Volumes/[^	]*' | head -n 1)"
+if [[ -z "$mounted" || ! -d "$mounted" ]]; then
+  echo "Error: Failed to mount the writable image." >&2
+  echo "$mount_output" >&2
+  exit 1
+fi
+cp -R "$staging_dir/." "$mounted/"
+# The staged tree is now inside the image. Drop it before compress.
+rm -rf "$staging_dir"
+hdiutil detach "$mounted"
+mounted=""
+
+echo "--> Compressing to $dmg_path..."
+hdiutil convert "$raw_path" -format UDZO -ov -o "${dmg_path%.dmg}"
+rm -f "$raw_path"
+raw_path=""
 
 # 5. Verify DMG mountability and contents
 echo "--> Verifying DMG mounting and integrity..."
 mount_output="$(hdiutil attach -nobrowse -readonly "$dmg_path")"
-mount_point="$(echo "$mount_output" | grep -o '/Volumes/[^	]*' | head -n 1)"
+mounted="$(echo "$mount_output" | grep -o '/Volumes/[^	]*' | head -n 1)"
 
-if [[ -z "$mount_point" || ! -d "$mount_point" ]]; then
+if [[ -z "$mounted" || ! -d "$mounted" ]]; then
   echo "Error: Failed to mount disk image for verification." >&2
   exit 1
 fi
 
-echo "--> Mounted at: $mount_point"
-if [[ ! -d "$mount_point/$app_name" ]]; then
+echo "--> Mounted at: $mounted"
+if [[ ! -d "$mounted/$app_name" ]]; then
   echo "Error: $app_name missing inside mounted DMG!" >&2
-  hdiutil detach "$mount_point"
   exit 1
 fi
 
-if [[ ! -L "$mount_point/Applications" ]]; then
+if [[ ! -L "$mounted/Applications" ]]; then
   echo "Error: /Applications symlink missing inside mounted DMG!" >&2
-  hdiutil detach "$mount_point"
   exit 1
 fi
 
 echo "--> Verifying mounted binary execution..."
-"$mount_point/$app_name/Contents/MacOS/lux" --help 2>&1 || true
+"$mounted/$app_name/Contents/MacOS/lux" --help 2>&1 || true
 
-hdiutil detach "$mount_point"
+hdiutil detach "$mounted"
+mounted=""
 echo "--> DMG detached successfully."
 
 echo ""

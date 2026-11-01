@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Capture the real Lux and Sublime Text windows on macOS.
-# Writes docs/compare/monokai-side-by-side.png and docs/compare/characters.png.
-# Does not draw a stand-in if an application cannot be captured.
+# Capture the real Lux, Sublime Text, and Zed windows on macOS.
+# Writes docs/compare/monokai-side-by-side.png, characters.png, and
+# selectors.png. Does not draw a stand-in if an application cannot be captured.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -102,9 +102,10 @@ for w in info {
 wait_window() {
   local owner="$1"
   local pid="${2:-}"
+  local attempts="${3:-60}"
   local found=""
   local _
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$attempts"); do
     if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
       echo "$owner process exited before a window appeared" >&2
       return 1
@@ -141,12 +142,20 @@ shoot() {
 }
 
 lux_pid=""
+zed_started=0
+zed_bundle_id=""
 cleanup() {
   if [[ -n "$lux_pid" ]] && kill -0 "$lux_pid" 2>/dev/null; then
     kill "$lux_pid" 2>/dev/null || true
     wait "$lux_pid" 2>/dev/null || true
   fi
   bound 8 osascript -e 'tell application "Sublime Text" to quit' >/dev/null 2>&1 || true
+  if [[ "$zed_started" == 1 ]]; then
+    if [[ -n "$zed_bundle_id" ]]; then
+      bound 8 osascript -e "tell application id \"$zed_bundle_id\" to quit" >/dev/null 2>&1 || true
+    fi
+    bound 8 osascript -e 'tell application "Zed" to quit' >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -242,3 +251,143 @@ wait_window lux "$lux_pid" >/dev/null
 sleep 1
 shoot lux "$out/characters.png"
 echo "--> wrote $out/characters.png"
+
+kill "$lux_pid" 2>/dev/null || true
+wait "$lux_pid" 2>/dev/null || true
+lux_pid=""
+
+echo "--> Installing Zed (cask) for the selector capture"
+brew install --cask zed
+xattr -dr com.apple.quarantine "/Applications/Zed.app" || true
+zed_started=1
+# A cask installed seconds ago is often missing from Launch Services.
+# `open -a Zed` then exits with "Unable to find application named 'Zed'".
+lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+if [[ -x "$lsregister" ]]; then
+  "$lsregister" -f "/Applications/Zed.app" || true
+fi
+zed_bundle_id="$(defaults read "/Applications/Zed.app/Contents/Info.plist" CFBundleIdentifier 2>/dev/null || echo "dev.zed.Zed")"
+echo "--> Zed bundle id ${zed_bundle_id}"
+# Always overwrite. A file Zed created on install would otherwise keep
+# the default, and the first open stops on the Unrecognized Project dialog.
+for zed_support in \
+  "$HOME/Library/Application Support/Zed" \
+  "$HOME/.config/zed"
+do
+  mkdir -p "$zed_support"
+  cat > "$zed_support/settings.json" << 'JSON'
+{
+  "theme": "One Dark",
+  "buffer_font_family": "Menlo",
+  "buffer_font_size": 15,
+  "telemetry": { "diagnostics": false, "metrics": false },
+  "session": { "trust_all_worktrees": true }
+}
+JSON
+  echo "--> wrote $zed_support/settings.json"
+done
+
+cat > /tmp/lux-keys.swift << 'SWIFT'
+import CoreGraphics
+import Foundation
+
+func post(_ key: CGKeyCode, _ down: Bool, _ flags: CGEventFlags) {
+    let source = CGEventSource(stateID: .hidSystemState)
+    guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else {
+        fputs("cannot build a key event\n", stderr)
+        exit(1)
+    }
+    event.flags = flags
+    event.post(tap: .cghidEventTap)
+}
+
+let escape: CGKeyCode = 0x35
+let ret: CGKeyCode = 0x24
+let p: CGKeyCode = 0x23
+// The trust dialog's default button is Return ("Trust and Continue").
+// Plain Escape does not dismiss it; the label is Option-Escape.
+post(ret, true, [])
+post(ret, false, [])
+Thread.sleep(forTimeInterval: 0.6)
+for _ in 0..<3 {
+    post(escape, true, [])
+    post(escape, false, [])
+}
+let chord: CGEventFlags = [.maskCommand, .maskShift]
+post(p, true, chord)
+post(p, false, chord)
+SWIFT
+
+echo "--> Opening command palettes in Lux, Sublime Text, and Zed"
+"$bin" --palette "$fixture" >"$log" 2>&1 &
+lux_pid=$!
+wait_window lux "$lux_pid" >/dev/null
+bound 15 "$subl" --command 'show_overlay {"overlay": "command_palette"}' || true
+# `bound` returns 0 once the child exits, including when `open` failed.
+# Record the real status so a missing app is visible in the log.
+launch_zed() {
+  if open -a "/Applications/Zed.app" "$fixture"; then
+    echo "--> open -a /Applications/Zed.app returned 0"
+    return 0
+  fi
+  echo "--> open -a by bundle path failed; opening the bundle" >&2
+  open "/Applications/Zed.app"
+}
+bound 25 launch_zed || true
+if ! wait_window "Zed" "" 90 >/dev/null; then
+  echo "Zed did not open a capturable window. Not writing selectors.png." >&2
+  dump_windows
+  exit 1
+fi
+sleep 1
+if [[ -n "$zed_bundle_id" ]]; then
+  bound 8 osascript -e "tell application id \"$zed_bundle_id\" to activate" || true
+else
+  bound 8 osascript -e 'tell application "Zed" to activate' || true
+fi
+sleep 1
+if ! swift /tmp/lux-keys.swift; then
+  echo "Could not send Zed's command-palette shortcut. Not writing selectors.png." >&2
+  exit 1
+fi
+sleep 1
+
+cat > /tmp/lux-selector-bounds.applescript << 'APPLESCRIPT'
+tell application "System Events"
+  try
+    tell process "lux"
+      set position of window 1 to {40, 40}
+      set size of window 1 to {1000, 700}
+    end tell
+  end try
+  try
+    tell process "Sublime Text"
+      set position of window 1 to {40, 40}
+      set size of window 1 to {1000, 700}
+    end tell
+  end try
+  try
+    tell process "Zed"
+      set position of window 1 to {40, 40}
+      set size of window 1 to {1000, 700}
+    end tell
+  end try
+end tell
+APPLESCRIPT
+bound 8 osascript /tmp/lux-selector-bounds.applescript || true
+sleep 1
+
+sel="$(mktemp -d)"
+shoot lux "$sel/lux.png"
+if ! shoot "Sublime Text" "$sel/sublime.png"; then
+  echo "Sublime Text's command palette could not be captured. Not writing selectors.png." >&2
+  exit 1
+fi
+if ! shoot "Zed" "$sel/zed.png"; then
+  echo "Zed could not be captured. Not writing selectors.png." >&2
+  exit 1
+fi
+magick "$sel/lux.png" "$sel/sublime.png" "$sel/zed.png" +append "$out/selectors.png"
+echo "--> wrote $out/selectors.png"
+echo "--> lux display scale (1 means this runner is not Retina):"
+grep "display scale" "$log" || true

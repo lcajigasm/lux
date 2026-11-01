@@ -19,8 +19,24 @@ thread_local! {
     static GRAYSCALE_TEXT: Cell<bool> = const { Cell::new(false) };
 }
 
+/// Retina and other HiDPI framebuffers (`scale_factor > 1`) rasterize
+/// grayscale masks. Those masks blend with the quads already in the
+/// framebuffer. Scale 1 keeps subpixel AA against the editor background.
+pub(crate) fn rendering_mode_for_scale(scale_factor: f32) -> TextRenderingMode {
+    if scale_factor > 1.0 {
+        TextRenderingMode::Grayscale
+    } else {
+        TextRenderingMode::Subpixel
+    }
+}
+
 pub(crate) fn set_hidpi_grayscale(scale_factor: f32) {
-    GRAYSCALE_TEXT.with(|cell| cell.set(scale_factor > 1.0));
+    GRAYSCALE_TEXT.with(|cell| {
+        cell.set(matches!(
+            rendering_mode_for_scale(scale_factor),
+            TextRenderingMode::Grayscale
+        ));
+    });
 }
 
 thread_local! {
@@ -272,6 +288,13 @@ pub(crate) fn span_covers(
         .any(|span| span.start < range.end && range.start < span.end)
 }
 
+/// Column rulers and the minimap edge. A full `muted` stroke reads as a
+/// hard line on Monokai; a translucent border sits close to the editor.
+pub(crate) fn faint_rule(theme: &lux_ui::Theme) -> [f32; 4] {
+    let c = color(theme.chrome.border);
+    [c[0], c[1], c[2], 0.4]
+}
+
 pub(crate) fn color(c: lux_ui::Color) -> [f32; 4] {
     [
         c.r as f32 / 255.0,
@@ -292,7 +315,15 @@ pub(super) fn syntax_color(c: lux_syntax::theme::Color) -> [f32; 4] {
 
 #[cfg(test)]
 mod tests {
-    use super::{fuzzy_spans, span_covers};
+    use super::{fuzzy_spans, rendering_mode_for_scale, span_covers};
+    use lux_render::TextRenderingMode;
+
+    #[test]
+    fn retina_scale_uses_grayscale_and_scale_one_stays_subpixel() {
+        assert_eq!(rendering_mode_for_scale(2.0), TextRenderingMode::Grayscale);
+        assert_eq!(rendering_mode_for_scale(1.5), TextRenderingMode::Grayscale);
+        assert_eq!(rendering_mode_for_scale(1.0), TextRenderingMode::Subpixel);
+    }
 
     #[test]
     fn fuzzy_spans_cover_a_case_insensitive_subsequence() {

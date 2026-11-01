@@ -107,10 +107,7 @@ pub(crate) fn render_gutter_markers(
             HunkKind::Removed => ([0.90, 0.25, 0.25, 0.95], 3.0 * scale_factor),
         };
 
-        quad_instances.push(QuadInstance {
-            rect: [marker_x, y, marker_w, h],
-            color,
-        });
+        quad_instances.push(QuadInstance::solid([marker_x, y, marker_w, h], color));
     }
 }
 
@@ -140,14 +137,14 @@ pub(crate) fn render_hunk_popup(
     popup.rect = [card_x, card_y, card_w, card_h];
 
     // Background shadow / border
-    quad_instances.push(QuadInstance {
-        rect: [card_x - 1.0, card_y - 1.0, card_w + 2.0, card_h + 2.0],
-        color: color(active_theme().chrome.border),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [card_x, card_y, card_w, card_h],
-        color: color(active_theme().chrome.panel),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [card_x - 1.0, card_y - 1.0, card_w + 2.0, card_h + 2.0],
+        color(active_theme().chrome.border),
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [card_x, card_y, card_w, card_h],
+        color(active_theme().chrome.panel),
+    ));
 
     let font_size = 11.0 * scale_factor;
     let family = editor_view.family().to_string();
@@ -190,10 +187,10 @@ pub(crate) fn render_hunk_popup(
     let stage_w = 75.0 * scale_factor;
     let stage_x = card_x + 8.0 * scale_factor;
     popup.stage_btn = [stage_x, btn_y, stage_w, btn_h];
-    quad_instances.push(QuadInstance {
-        rect: [stage_x, btn_y, stage_w, btn_h],
-        color: [0.18, 0.48, 0.28, 0.9],
-    });
+    quad_instances.push(QuadInstance::solid(
+        [stage_x, btn_y, stage_w, btn_h],
+        [0.18, 0.48, 0.28, 0.9],
+    ));
     let stage_text = editor_view
         .text_layout_mut()
         .layout_line(&style, "Stage Hunk", &[]);
@@ -216,10 +213,10 @@ pub(crate) fn render_hunk_popup(
     let rev_w = 60.0 * scale_factor;
     let rev_x = stage_x + stage_w + 6.0 * scale_factor;
     popup.revert_btn = [rev_x, btn_y, rev_w, btn_h];
-    quad_instances.push(QuadInstance {
-        rect: [rev_x, btn_y, rev_w, btn_h],
-        color: [0.55, 0.22, 0.22, 0.9],
-    });
+    quad_instances.push(QuadInstance::solid(
+        [rev_x, btn_y, rev_w, btn_h],
+        [0.55, 0.22, 0.22, 0.9],
+    ));
     let rev_text = editor_view
         .text_layout_mut()
         .layout_line(&style, "Revert", &[]);
@@ -242,10 +239,10 @@ pub(crate) fn render_hunk_popup(
     let close_w = 50.0 * scale_factor;
     let close_x = rev_x + rev_w + 6.0 * scale_factor;
     popup.close_btn = [close_x, btn_y, close_w, btn_h];
-    quad_instances.push(QuadInstance {
-        rect: [close_x, btn_y, close_w, btn_h],
-        color: color(active_theme().chrome.panel_row),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [close_x, btn_y, close_w, btn_h],
+        color(active_theme().chrome.panel_row),
+    ));
     let close_text = editor_view
         .text_layout_mut()
         .layout_line(&style, "Close", &[]);
@@ -301,18 +298,18 @@ pub(crate) fn render_conflict_decorations(
 
         // Tint ours section (start_line to sep_line)
         if sep_y > start_y {
-            quad_instances.push(QuadInstance {
-                rect: [sidebar_width, start_y, viewport_width, sep_y - start_y],
-                color: [0.15, 0.35, 0.20, 0.25],
-            });
+            quad_instances.push(QuadInstance::solid(
+                [sidebar_width, start_y, viewport_width, sep_y - start_y],
+                [0.15, 0.35, 0.20, 0.25],
+            ));
         }
 
         // Tint theirs section (sep_line to end_line)
         if end_y > sep_y {
-            quad_instances.push(QuadInstance {
-                rect: [sidebar_width, sep_y, viewport_width, end_y - sep_y],
-                color: [0.15, 0.25, 0.40, 0.25],
-            });
+            quad_instances.push(QuadInstance::solid(
+                [sidebar_width, sep_y, viewport_width, end_y - sep_y],
+                [0.15, 0.25, 0.40, 0.25],
+            ));
         }
 
         // CodeLens style buttons directly above start_line
@@ -322,10 +319,10 @@ pub(crate) fn render_conflict_decorations(
         let ours_w = 95.0 * scale_factor;
         let ours_x = sidebar_width + 20.0 * scale_factor;
         block.accept_ours_rect = [ours_x, btn_y, ours_w, btn_h];
-        quad_instances.push(QuadInstance {
-            rect: [ours_x, btn_y, ours_w, btn_h],
-            color: [0.18, 0.45, 0.25, 0.9],
-        });
+        quad_instances.push(QuadInstance::solid(
+            [ours_x, btn_y, ours_w, btn_h],
+            [0.18, 0.45, 0.25, 0.9],
+        ));
         let t_ours = editor_view
             .text_layout_mut()
             .layout_line(&style, "Accept Current", &[]);
@@ -347,10 +344,10 @@ pub(crate) fn render_conflict_decorations(
         let theirs_w = 105.0 * scale_factor;
         let theirs_x = ours_x + ours_w + 6.0 * scale_factor;
         block.accept_theirs_rect = [theirs_x, btn_y, theirs_w, btn_h];
-        quad_instances.push(QuadInstance {
-            rect: [theirs_x, btn_y, theirs_w, btn_h],
-            color: [0.18, 0.32, 0.55, 0.9],
-        });
+        quad_instances.push(QuadInstance::solid(
+            [theirs_x, btn_y, theirs_w, btn_h],
+            [0.18, 0.32, 0.55, 0.9],
+        ));
         let t_theirs = editor_view
             .text_layout_mut()
             .layout_line(&style, "Accept Incoming", &[]);
@@ -372,10 +369,10 @@ pub(crate) fn render_conflict_decorations(
         let both_w = 80.0 * scale_factor;
         let both_x = theirs_x + theirs_w + 6.0 * scale_factor;
         block.accept_both_rect = [both_x, btn_y, both_w, btn_h];
-        quad_instances.push(QuadInstance {
-            rect: [both_x, btn_y, both_w, btn_h],
-            color: color(active_theme().chrome.panel_row),
-        });
+        quad_instances.push(QuadInstance::solid(
+            [both_x, btn_y, both_w, btn_h],
+            color(active_theme().chrome.panel_row),
+        ));
         let t_both = editor_view
             .text_layout_mut()
             .layout_line(&style, "Accept Both", &[]);

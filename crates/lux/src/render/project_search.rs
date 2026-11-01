@@ -39,16 +39,16 @@ pub(crate) fn render_project_search(
     let modal_h = header_h + list_h + 16.0 * scale_factor;
 
     // Background shadow & modal quad
-    quad_instances.push(QuadInstance {
-        rect: [modal_x, modal_y, modal_width, modal_h],
-        color: color(theme.chrome.panel),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [modal_x, modal_y, modal_width, modal_h],
+        color(theme.chrome.panel),
+    ));
 
     // Border outline
-    quad_instances.push(QuadInstance {
-        rect: [modal_x, modal_y, modal_width, stroke],
-        color: color(theme.accent),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [modal_x, modal_y, modal_width, stroke],
+        color(theme.accent),
+    ));
 
     let input_font_size = font_size * 0.95;
     let family = editor_view.family().to_string();
@@ -69,10 +69,10 @@ pub(crate) fn render_project_search(
     } else {
         color(theme.chrome.gutter)
     };
-    quad_instances.push(QuadInstance {
-        rect: [input_x, input_y, input_w, input_h],
-        color: find_bg,
-    });
+    quad_instances.push(QuadInstance::solid(
+        [input_x, input_y, input_w, input_h],
+        find_bg,
+    ));
 
     let find_text = if state.find_query.is_empty() {
         "Find: Search in files...".to_string()
@@ -105,15 +105,15 @@ pub(crate) fn render_project_search(
 
     if state.focused_field == SearchField::Find {
         let caret_x = input_x + 6.0 * scale_factor + layout.width();
-        quad_instances.push(QuadInstance {
-            rect: [
+        quad_instances.push(QuadInstance::solid(
+            [
                 caret_x,
                 input_y + 3.0 * scale_factor,
                 2.0 * stroke,
                 input_h - 6.0 * scale_factor,
             ],
-            color: color(theme.accent),
-        });
+            color(theme.accent),
+        ));
     }
 
     // 2. Where Query Input Box
@@ -123,10 +123,10 @@ pub(crate) fn render_project_search(
     } else {
         color(theme.chrome.gutter)
     };
-    quad_instances.push(QuadInstance {
-        rect: [input_x, where_y, input_w, input_h],
-        color: where_bg,
-    });
+    quad_instances.push(QuadInstance::solid(
+        [input_x, where_y, input_w, input_h],
+        where_bg,
+    ));
 
     let where_text = if state.where_query.is_empty() {
         "Where: (e.g. ./src, *.rs, -*.test.rs)".to_string()
@@ -159,15 +159,15 @@ pub(crate) fn render_project_search(
 
     if state.focused_field == SearchField::Where {
         let caret_x = input_x + 6.0 * scale_factor + where_layout.width();
-        quad_instances.push(QuadInstance {
-            rect: [
+        quad_instances.push(QuadInstance::solid(
+            [
                 caret_x,
                 where_y + 3.0 * scale_factor,
                 2.0 * stroke,
                 input_h - 6.0 * scale_factor,
             ],
-            color: color(theme.accent),
-        });
+            color(theme.accent),
+        ));
     }
 
     // 3. Replace Query Input Box (if replace mode)
@@ -178,10 +178,10 @@ pub(crate) fn render_project_search(
         } else {
             color(theme.chrome.gutter)
         };
-        quad_instances.push(QuadInstance {
-            rect: [input_x, replace_y, input_w, input_h],
-            color: replace_bg,
-        });
+        quad_instances.push(QuadInstance::solid(
+            [input_x, replace_y, input_w, input_h],
+            replace_bg,
+        ));
 
         let rep_text = if state.replace_query.is_empty() {
             "Replace: (Enter on Replace to apply)".to_string()
@@ -214,15 +214,15 @@ pub(crate) fn render_project_search(
 
         if state.focused_field == SearchField::Replace {
             let caret_x = input_x + 6.0 * scale_factor + rep_layout.width();
-            quad_instances.push(QuadInstance {
-                rect: [
+            quad_instances.push(QuadInstance::solid(
+                [
                     caret_x,
                     replace_y + 3.0 * scale_factor,
                     2.0 * stroke,
                     input_h - 6.0 * scale_factor,
                 ],
-                color: color(theme.accent),
-            });
+                color(theme.accent),
+            ));
         }
     }
 
@@ -244,15 +244,15 @@ pub(crate) fn render_project_search(
         let y = list_y + row_offset as f32 * row_h;
 
         if is_selected {
-            quad_instances.push(QuadInstance {
-                rect: [input_x, y, input_w, row_h],
-                color: [
+            quad_instances.push(QuadInstance::solid(
+                [input_x, y, input_w, row_h],
+                [
                     theme.selection.r as f32 / 255.0,
                     theme.selection.g as f32 / 255.0,
                     theme.selection.b as f32 / 255.0,
                     0.4,
                 ],
-            });
+            ));
         }
 
         let matched = &state.matches[match_idx];
