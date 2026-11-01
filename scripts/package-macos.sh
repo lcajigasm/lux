@@ -83,10 +83,20 @@ mkdir -p "$app_path/Contents/Resources"
 cp "$bin" "$app_path/Contents/MacOS/lux"
 chmod +x "$app_path/Contents/MacOS/lux"
 # Two release trees plus the disk-image scratch exhausted the runner
-# (hdiutil: No space left on device, run 41335548609). The bundle already
-# holds the fat binary.
+# (hdiutil: No space left on device, runs 41335548609 and 41341898224).
+# Deleting only the arch directories still left the cargo registry and
+# the rest of target/, and hdiutil failed while copying the binary.
+# The bundle already holds the fat binary, so the whole target tree can go.
 if [[ -z "${LUX_BIN:-}" ]]; then
-  rm -rf target/aarch64-apple-darwin target/x86_64-apple-darwin target/release
+  echo "--> Freeing build output before hdiutil"
+  df -h /
+  rm -rf target
+  if [[ -n "${CI:-}" ]]; then
+    rm -rf "$HOME/.cargo/registry/src" "$HOME/.cargo/registry/cache" \
+      "$HOME/Library/Developer/Xcode" \
+      "$HOME/Library/Caches/org.swift.swiftpm"
+  fi
+  df -h /
 fi
 
 sed "s/<string>1.0.0<\\/string>/<string>${version}<\\/string>/g" \

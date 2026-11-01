@@ -26,8 +26,10 @@
 > Pull-request and main CI keep the `ubuntu-latest` jobs and add one standard
 > `macos-15` job: `cargo test --workspace`, then a universal `.app` / `.dmg`
 > uploaded as a CI artifact and not published. The debug tree is removed
-> before that image so both release architectures and `hdiutil` fit on the
-> standard runner. Windows is not in CI.
+> before that image, and the release trees plus the cargo registry are
+> removed after the fat binary is in the bundle, so `hdiutil` fits on the
+> standard runner (runs 41335548609 and 41341898224 filled the disk when
+> those trees were left in place). Windows is not in CI.
 > A `vX.Y.Z` tag still attaches `lux-linux-x86_64` and `lux-linux-amd64.deb`
 > from the Linux workflow. The deb depends on `libfontconfig1` and `libegl1`
 > (the EGL GPU loader named in the release binary; `libvulkan.so.1` is not in
