@@ -359,3 +359,125 @@ fn the_gap_between_the_two_glyphs_stays_pure_background() {
         "gap between glyphs",
     );
 }
+
+/// The window surface prefers an sRGB format. Authored theme colors are
+/// sRGB byte values; the shader must decode them so the stored bytes match
+/// the theme. This is the Monokai editor background, `#272822`.
+#[test]
+fn an_srgb_target_stores_authored_monokai_bytes() {
+    let context = match pollster::block_on(GpuContext::new(None)) {
+        Ok(context) => context,
+        Err(_) => return,
+    };
+    let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+    let features = context.adapter.get_texture_format_features(format);
+    let needed = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC;
+    if !features.allowed_usages.contains(needed) {
+        return;
+    }
+    let side = 64u32;
+    let mut quads = QuadPipeline::new(&context.device, format);
+    let authored = [0x27_u8, 0x28, 0x22, 255];
+    let color = [
+        authored[0] as f32 / 255.0,
+        authored[1] as f32 / 255.0,
+        authored[2] as f32 / 255.0,
+        1.0,
+    ];
+    quads.set_viewport_size(&context.queue, side, side);
+
+    let target = context.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("srgb monokai target"),
+        size: wgpu::Extent3d {
+            width: side,
+            height: side,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: needed,
+        view_formats: &[],
+    });
+    let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut encoder = context
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("srgb monokai pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        quads.draw(
+            &context.device,
+            &context.queue,
+            &mut pass,
+            &[QuadInstance {
+                rect: [0.0, 0.0, side as f32, side as f32],
+                color,
+            }],
+        );
+    }
+    let bytes_per_row = side * 4;
+    let readback = context.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("srgb monokai readback"),
+        size: (bytes_per_row * side) as wgpu::BufferAddress,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture: &target,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &readback,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(bytes_per_row),
+                rows_per_image: Some(side),
+            },
+        },
+        wgpu::Extent3d {
+            width: side,
+            height: side,
+            depth_or_array_layers: 1,
+        },
+    );
+    context.queue.submit(Some(encoder.finish()));
+    let (tx, rx) = std::sync::mpsc::channel();
+    readback
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, move |result| {
+            tx.send(result)
+                .expect("readback receiver must still be alive");
+        });
+    context
+        .device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .expect("device poll must succeed");
+    rx.recv()
+        .expect("map_async callback must fire")
+        .expect("mapping the readback buffer must succeed");
+    let bytes = readback
+        .slice(..)
+        .get_mapped_range()
+        .expect("buffer must be mapped by now");
+    let pixel: [u8; 4] = bytes[0..4].try_into().unwrap();
+    assert_close(pixel, authored, "srgb monokai background");
+}

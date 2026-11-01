@@ -72,6 +72,8 @@ pub struct TextPipeline {
     subpixel: Plane,
     instance_buffer: wgpu::Buffer,
     instance_capacity: usize,
+    /// 1 when the render target is sRGB. Packed into `viewport_size.z`.
+    output_linear: f32,
 }
 
 impl TextPipeline {
@@ -119,7 +121,7 @@ impl TextPipeline {
         let globals_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("lux_render::pipeline::text::globals"),
             contents: bytemuck::bytes_of(&Globals {
-                viewport_size: [1.0, 1.0, 0.0, 0.0],
+                viewport_size: [1.0, 1.0, f32::from(target_format.is_srgb()), 0.0],
                 background_color: [0.0, 0.0, 0.0, 1.0],
             }),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -233,6 +235,7 @@ impl TextPipeline {
             subpixel,
             instance_buffer,
             instance_capacity,
+            output_linear: f32::from(target_format.is_srgb()),
         }
     }
 
@@ -295,7 +298,12 @@ impl TextPipeline {
             &self.globals_buffer,
             0,
             bytemuck::bytes_of(&Globals {
-                viewport_size: [viewport_width as f32, viewport_height as f32, 0.0, 0.0],
+                viewport_size: [
+                    viewport_width as f32,
+                    viewport_height as f32,
+                    self.output_linear,
+                    0.0,
+                ],
                 background_color,
             }),
         );

@@ -54,6 +54,25 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, instance: Instance) -> Vert
     return out;
 }
 
+fn srgb_channel_to_linear(c: f32) -> f32 {
+    if (c <= 0.04045) {
+        return c / 12.92;
+    }
+    return pow((c + 0.055) / 1.055, 2.4);
+}
+
+// Same contract as the quad shader: `viewport_size.z > 0` is an sRGB target.
+fn authored_rgb(rgb: vec3<f32>) -> vec3<f32> {
+    if (globals.viewport_size.z < 0.5) {
+        return rgb;
+    }
+    return vec3<f32>(
+        srgb_channel_to_linear(rgb.r),
+        srgb_channel_to_linear(rgb.g),
+        srgb_channel_to_linear(rgb.b),
+    );
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if (in.kind == 0u) {
@@ -61,11 +80,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // alpha blending composites this correctly against anything
         // already drawn, transparent or not.
         let coverage = textureSample(monochrome_tex, atlas_sampler, in.uv).r;
-        return vec4<f32>(in.color.rgb, in.color.a * coverage);
+        let rgb = authored_rgb(in.color.rgb);
+        return vec4<f32>(rgb, in.color.a * coverage);
     } else if (in.kind == 1u) {
         // Polychrome: already-colored bitmap (emoji, COLR layers) — no
-        // tint, sample and composite as-is.
-        return textureSample(polychrome_tex, atlas_sampler, in.uv);
+        // tint. The bitmap is sRGB, like every other authored color.
+        let sample = textureSample(polychrome_tex, atlas_sampler, in.uv);
+        return vec4<f32>(authored_rgb(sample.rgb), sample.a);
     } else {
         // Subpixel: the mask's own R/G/B channels are per-channel coverage
         // (LCD subpixel AA), which can only composite correctly against a
@@ -75,9 +96,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // shader, then outputting fully opaque. Regular alpha blending
         // with alpha = 1.0 degenerates to a plain replace, so this still
         // composites correctly through the same blend state the other two
-        // kinds use.
+        // kinds use. On an sRGB target the mix is in linear light.
         let mask = textureSample(subpixel_tex, atlas_sampler, in.uv).rgb;
-        let rgb = mix(globals.background_color.rgb, in.color.rgb, mask);
+        let rgb = mix(
+            authored_rgb(globals.background_color.rgb),
+            authored_rgb(in.color.rgb),
+            mask,
+        );
         return vec4<f32>(rgb, 1.0);
     }
 }

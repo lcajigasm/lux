@@ -37,8 +37,30 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, instance: Instance) -> Vert
 
     var out: VertexOutput;
     out.position = vec4<f32>(ndc_x, ndc_y, 0.0, 1.0);
-    out.color = instance.color;
+    // `viewport_size.z > 0` means the render target is sRGB. Authored
+    // colors are sRGB bytes/255; an sRGB target stores linear and encodes
+    // on write, so passing the bytes through would lighten every dark
+    // Monokai well (the #272822 editor became about #6D6E66).
+    out.color = vec4<f32>(authored_rgb(instance.color.rgb), instance.color.a);
     return out;
+}
+
+fn srgb_channel_to_linear(c: f32) -> f32 {
+    if (c <= 0.04045) {
+        return c / 12.92;
+    }
+    return pow((c + 0.055) / 1.055, 2.4);
+}
+
+fn authored_rgb(rgb: vec3<f32>) -> vec3<f32> {
+    if (globals.viewport_size.z < 0.5) {
+        return rgb;
+    }
+    return vec3<f32>(
+        srgb_channel_to_linear(rgb.r),
+        srgb_channel_to_linear(rgb.g),
+        srgb_channel_to_linear(rgb.b),
+    );
 }
 
 @fragment
