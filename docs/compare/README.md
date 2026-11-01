@@ -6,16 +6,18 @@ opens `fixtures/monokai.rs` in both with Monokai, and opens
 `fixtures/characters.txt` in Lux. `screencapture -l` records the real
 windows. ImageMagick joins the Monokai pair.
 
-Committed PNGs are copies of compare run 41348580486. Compare run
-41353967042 is not committed: its Lux window showed the selector on a
-black editor because both passes shared one instance buffer. A file that
-did not come from the job is not a comparison. If Sublime Text cannot be captured,
+`selectors.png`, `theme.png`, `retina-palette.png`, `characters.png`, and
+`monokai-side-by-side.png` are copies of compare run 41355569373.
+`goto.png` from that run is not committed: Lux listed no files. A file
+that did not come from the job is not a comparison. If Sublime Text cannot be captured,
 the job fails and does not write a replacement image.
 
 `selectors.png` is the same job with a query typed: Lux
 (`lux --palette --query sel`), Sublime Text (`show_overlay` with
 `text: sel`), and Zed (Cmd-Shift-P, then `sel`). `goto.png` is go to
-file with `mon`. `theme.png` is Lux and Sublime's color-scheme pickers
+file with `mon`. Lux opens the fixtures directory for that shot, so the
+list is the folder index (`monokai.rs`), not an empty panel from a file
+that has not loaded yet. `theme.png` is Lux and Sublime's color-scheme pickers
 with `mo`; Zed's pane is its command palette filtered to `theme`,
 because this capture has no shortcut that opens Zed's theme selector.
 Zed is installed with `brew install --cask zed` and opened

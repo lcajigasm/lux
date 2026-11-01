@@ -39,10 +39,10 @@ that produced it:
 
 The capture above is the previous build. `docs/compare/monokai-side-by-side.png`,
 `docs/compare/characters.png`, and `docs/compare/selectors.png` are the
-macos-15 windows from compare run 41348580486. 0.1 and 0.2 hold. Forge
-rejected the Lux palette in that file: it does not separate from the code,
-and the input, rows, and shortcuts do not read. Retina pixels are not in
-that 1× capture. Block 0 stays open. No release.
+macos-15 windows from compare run 41355569373. 0.1 and 0.2 hold. The Lux
+palette in that file is the wider card with the query `sel`, on top of the
+editor. `retina-palette.png` is that frame at scale factor 2. The runner
+is 1×, so Sublime is not in the scale-2 file. Block 0 stays open. No release.
 
 1. **Monokai is the launch theme.** `workbench.colorTheme` defaults to
    `monokai`. `Chrome` starts on `Theme::MONOKAI` and does not follow the
@@ -133,11 +133,12 @@ dark input well, and a drop shadow. Placeholders are "Execute a command…",
 foreground color, the selected row is `#75715E` with an accent bar, and
 fuzzy hits use the accent. The right-hand label is the real keymap chord
 when one exists. Compare run 41348580486 is the capture Forge rejected.
-Compare run 41353967042 showed the new card and a black editor: the
-selector pass overwrote the shared instance buffer. The editor pass is
-submitted on its own before that draw. Its runner logged display scale 1,
-and `retina-palette.png` from that run is the scale-2 framebuffer with
-the same hole. A still does not show the open animation.
+Compare run 41355569373 shows the wider card, the query, the selected
+row, the accent hits, and the editor beside the card. Its runner logged
+display scale 1. `retina-palette.png` from that run is the scale-2
+framebuffer (2000×1312) with the same scene. Go to file in that run
+listed nothing, because the panel was built before the file was open.
+A still does not show the open animation.
 
 Acceptance, on top of 0.1 and 0.2: Retina text is grayscale-antialiased (or
 otherwise correct for a 2× framebuffer), with ligatures, a stable line
@@ -159,9 +160,9 @@ before that.
 - `docs/compare/characters.png` — the Lux window on the special-character
   fixture, same resolution.
 - `docs/compare/selectors.png` — Lux, Sublime Text, and Zed with the
-  command palette open. Compare run 41348580486. Forge rejected Lux in
-  that file. The runner is 1×. This row stays open until a later capture
-  holds.
+  command palette open and the query `sel`. Compare run 41355569373.
+  The runner is 1×. `retina-palette.png` is Lux's renderer at scale 2.
+  This row stays open until the comparison holds.
 
 If Lux loses that comparison, the block stays open and no release is tagged.
 
@@ -290,9 +291,10 @@ Each phase ends with new `docs/compare/` captures from the job above. Phase
 3 also commits the benchmark table. No release is tagged for a phase that
 missed its bar.
 
-1. **Phase 0, in progress.** 0.1 and 0.2 hold. The selector in compare
-   run 41348580486 does not. Retina is not in that 1× capture. Block 0
-   stays open. No release.
+1. **Phase 0, in progress.** 0.1 and 0.2 hold. Compare run 41355569373
+   shows the wider palette with the editor beside it, and
+   `retina-palette.png` is the scale-2 framebuffer. The runner is 1×.
+   Block 0 stays open. No release.
 2. **Phase 0b.** The selector capture against Sublime and Zed. Close
    block 0 only if Lux holds that comparison. That close is the first
    release this plan allows.

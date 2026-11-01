@@ -18,15 +18,18 @@
 > border. Sublime's own minimap, breadcrumb, and lighter status chrome are
 > not copied. HiDPI text uses grayscale antialiasing when `scale_factor > 1`.
 > The job logged `display scale 1`, so the PNG does not prove Retina.
-> `docs/compare/selectors.png` from the same run shows the command palette
-> open in Lux, Sublime Text, and Zed. Forge rejected that Lux palette: it
-> is narrow, sits on the code, and the input, rows, and shortcuts do not
-> read. Compare run 41353967042 drew the wider card, the query, and the
-> shortcut column, and the editor behind that card was black: both render
-> passes shared one instance buffer, so the selector draw replaced the
-> editor before the GPU ran it. The editor pass is now submitted first.
-> Those PNGs are not in `docs/compare/` yet. Block 0 stays open. No release
-> is tagged. A still does not show the open animation. See [ROADMAP.md](ROADMAP.md).
+> `docs/compare/selectors.png` (compare run 41355569373) shows the command
+> palette in Lux, Sublime Text, and Zed with the query `sel`. Lux's card
+> is about half the window, sits below the tab bar with a shadow, and the
+> editor (`#272822`, line `#2C2D27`) stays visible beside it. The field
+> shows `sel`, the selected row is a light band, fuzzy hits are the accent,
+> and the keymap chords are on the right. `docs/compare/theme.png` from
+> that run shows the theme picker with `mo`. `docs/compare/retina-palette.png`
+> is the same Lux frame from the renderer at scale factor 2 (2000×1312).
+> The runner logged display scale 1, so Sublime is not in that file.
+> Go to file in that run drew only the field: the list was built before
+> the file existed. Block 0 stays open. No release is tagged. A still
+> does not show the open animation. See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
