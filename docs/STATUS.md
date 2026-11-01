@@ -9,7 +9,8 @@
 > X11, and Wayland libraries it dlopens before a window exists.
 > `release-macos.yml` is a separate one-job `macos-14` workflow
 > (`timeout-minutes: 20`, cargo cache, universal ad-hoc `.dmg` via
-> `scripts/package-macos.sh`). It starts when that GitHub Release is published,
+> `scripts/package-macos.sh`). After the upload it appends the `.dmg`
+> line to the release `SHA256SUMS`. It starts when that GitHub Release is published,
 > or on `workflow_dispatch`. It does not run on pull request, branch push, or
 > tag push, so the Linux workflow does not start a second macOS job. Private-repo
 > macOS minutes bill at 10×, so a full 20 minute job is 200 billed minutes.
