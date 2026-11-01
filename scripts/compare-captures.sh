@@ -431,7 +431,9 @@ echo "--> Opening go to file with query mon"
 kill "$lux_pid" 2>/dev/null || true
 wait "$lux_pid" 2>/dev/null || true
 lux_pid=""
-"$bin" --goto --query mon "$fixture" >"$log" 2>&1 &
+# A single file is not a folder index. Open the fixtures directory so
+# the panel lists real paths (monokai.rs matches "mon").
+"$bin" --goto --query mon "$root/docs/compare/fixtures" >"$log" 2>&1 &
 lux_pid=$!
 wait_window lux "$lux_pid" >/dev/null
 bound 15 "$subl" --command 'show_overlay {"overlay": "goto", "text": "mon"}' || true

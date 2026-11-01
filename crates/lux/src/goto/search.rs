@@ -20,8 +20,15 @@ pub(super) fn collect_candidates(app: &crate::app::App) -> Vec<String> {
         }
     }
 
-    // 2. Current document path
-    if let Some(path) = &app.documents.path {
+    // 2. Current document path, or the file the process was asked to
+    // open. Goto is built before that buffer exists, so a `--goto file`
+    // launch would otherwise list nothing.
+    if let Some(path) = app
+        .documents
+        .path
+        .as_ref()
+        .or(app.documents.initial_path.as_ref())
+    {
         let s = path.to_string_lossy().to_string();
         if !list.contains(&s) {
             list.push(s);
