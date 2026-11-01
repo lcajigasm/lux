@@ -6,10 +6,9 @@ opens `fixtures/monokai.rs` in both with Monokai, and opens
 `fixtures/characters.txt` in Lux. `screencapture -l` records the real
 windows. ImageMagick joins the Monokai pair.
 
-`selectors.png`, `theme.png`, `retina-palette.png`, `characters.png`, and
-`monokai-side-by-side.png` are copies of compare run 41355569373.
-`goto.png` from that run is not committed: Lux listed no files. A file
-that did not come from the job is not a comparison. If Sublime Text cannot be captured,
+Committed PNGs, including `goto.png`, are copies of compare run
+41357599959. A file that did not come from the job is not a comparison.
+If Sublime Text cannot be captured,
 the job fails and does not write a replacement image.
 
 `selectors.png` is the same job with a query typed: Lux

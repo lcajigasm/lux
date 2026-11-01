@@ -39,9 +39,9 @@ that produced it:
 
 The capture above is the previous build. `docs/compare/monokai-side-by-side.png`,
 `docs/compare/characters.png`, and `docs/compare/selectors.png` are the
-macos-15 windows from compare run 41355569373. 0.1 and 0.2 hold. The Lux
-palette in that file is the wider card with the query `sel`, on top of the
-editor. `retina-palette.png` is that frame at scale factor 2. The runner
+macos-15 windows from compare run 41357599959. 0.1 and 0.2 hold. The Lux
+palette in that file is the wider card with the query `sel`, under the
+tab bar. `retina-palette.png` is that frame at scale factor 2. The runner
 is 1×, so Sublime is not in the scale-2 file. Block 0 stays open. No release.
 
 1. **Monokai is the launch theme.** `workbench.colorTheme` defaults to
@@ -133,14 +133,11 @@ dark input well, and a drop shadow. Placeholders are "Execute a command…",
 foreground color, the selected row is `#75715E` with an accent bar, and
 fuzzy hits use the accent. The right-hand label is the real keymap chord
 when one exists. Compare run 41348580486 is the capture Forge rejected.
-Compare run 41355569373 shows the wider card, the query, the selected
-row, the accent hits, and the editor beside the card. Its runner logged
-display scale 1. `retina-palette.png` from that run is the scale-2
-framebuffer (2000×1312) with the same scene. Go to file in that run
-listed nothing, because the panel was built before the file was open.
-The card now rests 8px under the tab bar. A match on the beige selection
-is the foreground, drawn twice, because accent pink does not read there.
-A still does not show the open animation.
+Compare run 41357599959 shows the card under the tab bar, the query, the
+editor beside it, and go to file listing `monokai.rs`. A match on the
+beige selection is the foreground, drawn twice; other rows keep the
+accent. The runner logged display scale 1. `retina-palette.png` is the
+scale-2 framebuffer (2000×1312). A still does not show the open animation.
 
 Acceptance, on top of 0.1 and 0.2: Retina text is grayscale-antialiased (or
 otherwise correct for a 2× framebuffer), with ligatures, a stable line
@@ -162,7 +159,7 @@ before that.
 - `docs/compare/characters.png` — the Lux window on the special-character
   fixture, same resolution.
 - `docs/compare/selectors.png` — Lux, Sublime Text, and Zed with the
-  command palette open and the query `sel`. Compare run 41355569373.
+  command palette open and the query `sel`. Compare run 41357599959.
   The runner is 1×. `retina-palette.png` is Lux's renderer at scale 2.
   This row stays open until the comparison holds.
 
@@ -293,7 +290,7 @@ Each phase ends with new `docs/compare/` captures from the job above. Phase
 3 also commits the benchmark table. No release is tagged for a phase that
 missed its bar.
 
-1. **Phase 0, in progress.** 0.1 and 0.2 hold. Compare run 41355569373
+1. **Phase 0, in progress.** 0.1 and 0.2 hold. Compare run 41357599959
    shows the wider palette with the editor beside it, and
    `retina-palette.png` is the scale-2 framebuffer. The runner is 1×.
    Block 0 stays open. No release.

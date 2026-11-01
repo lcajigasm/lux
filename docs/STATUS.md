@@ -18,21 +18,17 @@
 > border. Sublime's own minimap, breadcrumb, and lighter status chrome are
 > not copied. HiDPI text uses grayscale antialiasing when `scale_factor > 1`.
 > The job logged `display scale 1`, so the PNG does not prove Retina.
-> `docs/compare/selectors.png` (compare run 41355569373) shows the command
+> `docs/compare/selectors.png` (compare run 41357599959) shows the command
 > palette in Lux, Sublime Text, and Zed with the query `sel`. Lux's card
-> is about half the window, sits below the tab bar with a shadow, and the
-> editor (`#272822`, line `#2C2D27`) stays visible beside it. The field
-> shows `sel`, the selected row is a light band, fuzzy hits are the accent,
-> and the keymap chords are on the right. `docs/compare/theme.png` from
-> that run shows the theme picker with `mo`. `docs/compare/retina-palette.png`
-> is the same Lux frame from the renderer at scale factor 2 (2000×1312).
-> The runner logged display scale 1, so Sublime is not in that file.
-> Go to file in that run drew only the field: the list was built before
-> the file existed. The card now rests 8px under the tab bar, and a
-> match on the selected row is the foreground drawn twice so it stays
-> readable on the beige band. Those two changes are not in the PNGs
-> above. Block 0 stays open. No release is tagged. A still does not
-> show the open animation. See [ROADMAP.md](ROADMAP.md).
+> sits under the tab bar, about half the window, with a shadow. The editor
+> stays visible above and beside it. The field shows `sel`. On the beige
+> selected row the matched letters are the foreground; other rows keep
+> the accent. `docs/compare/goto.png` lists `monokai.rs` for `mon`.
+> `docs/compare/theme.png` shows the theme picker with `mo`.
+> `docs/compare/retina-palette.png` is that Lux frame from the renderer
+> at scale factor 2 (2000×1312). The runner logged display scale 1, so
+> Sublime is not in that file. Block 0 stays open. No release is tagged.
+> A still does not show the open animation. See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
