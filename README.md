@@ -21,11 +21,16 @@
 **Lux** is a fast, free, open-source native text and code editor built from the ground up in Rust. It is designed to recapture and surpass the legendary ergonomics of **Sublime Text 3**: instant cold startup (< 150ms), imperceptible input latency (< 8ms), seamless editing of massive files, first-class multi-cursor workflows, and an unobtrusive, distraction-free user interface.
 
 🌐 **Website & Documentation:** [https://lcajigasm.github.io/lux/](https://lcajigasm.github.io/lux/)
-Publishing that site is manual: `.github/workflows/pages.yml` runs only on `workflow_dispatch`. A push to `main` no longer deploys it, because the Pages API returned HTTP 422 for this private repository (run 41274477945).
+`.github/workflows/pages.yml` deploys the site on every push to `main`, and on `workflow_dispatch`. A deploy while the repository was private failed with HTTP 422 (run 41274477945). The repository is public now.
 
 Unlike web-based or Electron editors, Lux is compiled directly to native machine code with hardware-accelerated WGPU rendering. It incorporates an in-process Git engine (`gix`), an integrated PTY terminal (`portable-pty`), a non-blocking Language Server Protocol client (`async-lsp`), tree-sitter incremental syntax highlighting, and sandboxed WebAssembly plugins (`wasmtime`).
 
 Target platforms, in order: **macOS**, **Windows**, **Linux**, then **iPadOS/iOS**, then **Android**.
+
+Editor pictures in this README and on the website are PNGs produced by
+`scripts/screenshots.sh` (see [CONTRIBUTING.md](CONTRIBUTING.md)). That job
+builds the real `lux` binary and captures its window. Drawings of the UI
+are not accepted.
 
 ---
 
@@ -33,7 +38,7 @@ Target platforms, in order: **macOS**, **Windows**, **Linux**, then **iPadOS/iOS
 
 Lux is a macOS editor first. Linux and Windows still build, and they are secondary.
 
-Pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml) on `ubuntu-latest` and attaches the Linux packages plus `SHA256SUMS`. That publish starts [`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml) once: one `macos-14` runner, 20 minute cap, universal `.dmg`, attached to the same release. That job appends the `.dmg` line to `SHA256SUMS`. The macOS workflow does not run on pull request, branch push, or the tag push itself, so the Linux workflow does not start a second macOS job. `workflow_dispatch` is only a manual retry. The repository is private, so a GitHub session is required to download a release. On a private repository each macOS minute is billed at 10×.
+Pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml) on `ubuntu-latest` and attaches the Linux packages plus `SHA256SUMS`. That publish starts [`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml) once: one standard `macos-14` runner, 20 minute cap, universal `.dmg`, attached to the same release. That job appends the `.dmg` line to `SHA256SUMS`. The release workflow does not run on pull request, branch push, or the tag push itself, so the Linux workflow does not start a second macOS job. `workflow_dispatch` is only a manual retry. Pull-request CI also builds the universal image on `macos-14` and uploads it as an artifact; it does not publish it. Windows stays out of CI. Runners are the standard `ubuntu-latest` and `macos-14` images.
 
 | Asset | Where it is built |
 |---|---|

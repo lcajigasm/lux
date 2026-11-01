@@ -1,21 +1,27 @@
 # Status
 
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
-> v1.3.0: macOS is the product focus. Linux and Windows are secondary.
-> Pull-request CI stays `ubuntu-latest` only. A `vX.Y.Z` tag still attaches
-> `lux-linux-x86_64` and `lux-linux-amd64.deb` from that Linux workflow. The deb
-> depends on `libfontconfig1` and `libegl1` (the EGL GPU loader named in the
-> release binary; `libvulkan.so.1` is not in that binary), plus the xkbcommon,
-> X11, and Wayland libraries it dlopens before a window exists.
-> `release-macos.yml` is a separate one-job `macos-14` workflow
+> v1.3.1: macOS is the product focus. Linux and Windows are secondary.
+> Pull-request and main CI keep the `ubuntu-latest` jobs and add one standard
+> `macos-14` job: `cargo test --workspace`, then a universal `.app` / `.dmg`
+> uploaded as a CI artifact and not published. Windows is not in CI.
+> A `vX.Y.Z` tag still attaches `lux-linux-x86_64` and `lux-linux-amd64.deb`
+> from the Linux workflow. The deb depends on `libfontconfig1` and `libegl1`
+> (the EGL GPU loader named in the release binary; `libvulkan.so.1` is not in
+> that binary), plus the xkbcommon, X11, and Wayland libraries it dlopens
+> before a window exists.
+> `release-macos.yml` is a separate one-job standard `macos-14` workflow
 > (`timeout-minutes: 20`, cargo cache, universal ad-hoc `.dmg` via
 > `scripts/package-macos.sh`). After the upload it appends the `.dmg`
 > line to the release `SHA256SUMS`. It starts when that GitHub Release is published,
 > or on `workflow_dispatch`. It does not run on pull request, branch push, or
-> tag push, so the Linux workflow does not start a second macOS job. Private-repo
-> macOS minutes bill at 10×, so a full 20 minute job is 200 billed minutes.
-> Windows `.msi` stays `scripts/package-msi.ps1` (unsigned WiX). The
-> repository stays private, so a GitHub session is required to download a release.
+> tag push, so the Linux workflow does not start a second macOS job.
+> The repository is public. These jobs use standard runners only.
+> Windows `.msi` stays `scripts/package-msi.ps1` (unsigned WiX).
+> `pages.yml` deploys `site/` on push to `main` and on `workflow_dispatch`.
+> Editor pictures on the site and in the README come only from
+> `scripts/screenshots.sh` (standard `macos-14`, `workflow_dispatch` or a
+> published release). That job builds `lux` and captures its window.
 > Appearance versus Sublime, VS Code, and Zed is [macos-parity.md](macos-parity.md).
 >
 > The Linux CI test job runs `headless_session_opens_types_saves_palette_split_and_find`
@@ -2272,7 +2278,7 @@ notarized installers stay `not-started`: no certificate is stored in the repo.
 UIKeyInput, document picker) and Kotlin `LuxActivity` (SurfaceView,
 InputConnection, SAF) live in `host-ios/` and `host-android/`. Rust FFI
 modules compile on desktop as `available() == false`. Not run on device;
-store rows stay `not-started`. Workspace version 1.3.0 is the desktop installer
+store rows stay `not-started`. Workspace version 1.3.1 is the desktop installer
 release; these phase labels are the original plan names and are still not done.
 `lux_platform::child_processes_allowed` is false on iOS.
 

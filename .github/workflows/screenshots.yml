@@ -1,0 +1,43 @@
+name: Screenshots
+
+# Standard macos-14 only. Not a pull request and not a branch push.
+# Builds lux, opens docs/screenshots/example.rs, and captures the live
+# window. Artifacts are the PNGs. Publishing them into the site is a
+# commit of those files, not this workflow. A release upload does not
+# publish a second release, because this workflow does not upload assets.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: lux-screenshots
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Capture the live window
+        run: |
+          chmod +x scripts/screenshots.sh
+          ./scripts/screenshots.sh docs/screenshots
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: lux-screenshots
+          path: docs/screenshots/*.png
+          if-no-files-found: error
