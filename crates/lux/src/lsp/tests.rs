@@ -26,20 +26,16 @@ fn lsp_language_mapping() {
 
 #[test]
 fn completion_popup_selection_and_clamping() {
-    let mut state = CompletionPopupState {
-        items: vec![
-            CompletionItem {
-                label: "alpha".into(),
-                ..Default::default()
-            },
-            CompletionItem {
-                label: "beta".into(),
-                ..Default::default()
-            },
-        ],
-        selected_index: 0,
-        rect: [0.0; 4],
-    };
+    let mut state = CompletionPopupState::showing(vec![
+        CompletionItem {
+            label: "alpha".into(),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "beta".into(),
+            ..Default::default()
+        },
+    ]);
 
     assert_eq!(state.selected_index, 0);
     state.selected_index += 1;

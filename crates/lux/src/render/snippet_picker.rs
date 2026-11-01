@@ -50,44 +50,44 @@ pub(crate) fn render_snippet_picker(
     let accent_color = [0.92, 0.65, 0.22, 1.0];
 
     // 1. Overlay main background
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, total_height],
-        color: color(theme.chrome.panel),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [left, top, width, total_height],
+        color(theme.chrome.panel),
+    ));
 
     // 2. Outer border
     let border_color = color(theme.chrome.border);
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, stroke],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top + total_height - stroke, width, stroke],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top, stroke, total_height],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left + width - stroke, top, stroke, total_height],
-        color: border_color,
-    });
+    quad_instances.push(QuadInstance::solid(
+        [left, top, width, stroke],
+        border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left, top + total_height - stroke, width, stroke],
+        border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left, top, stroke, total_height],
+        border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left + width - stroke, top, stroke, total_height],
+        border_color,
+    ));
 
     // 3. Input background & separator
-    quad_instances.push(QuadInstance {
-        rect: [
+    quad_instances.push(QuadInstance::solid(
+        [
             left + stroke,
             top + stroke,
             width - 2.0 * stroke,
             input_height,
         ],
-        color: color(theme.chrome.panel_input),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top + input_height + stroke, width, stroke],
-        color: color(theme.chrome.border),
-    });
+        color(theme.chrome.panel_input),
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left, top + input_height + stroke, width, stroke],
+        color(theme.chrome.border),
+    ));
 
     // 4. Input text & caret
     let input_baseline = (input_height - picker_font_size) * 0.5;
@@ -120,15 +120,15 @@ pub(crate) fn render_snippet_picker(
 
     if !picker.query.is_empty() {
         let caret_x = text_x + input_line.width() + 2.0 * stroke;
-        quad_instances.push(QuadInstance {
-            rect: [
+        quad_instances.push(QuadInstance::solid(
+            [
                 caret_x,
                 top + stroke + (input_height - picker_font_size) * 0.5,
                 2.0 * stroke,
                 picker_font_size,
             ],
-            color: color(theme.accent),
-        });
+            color(theme.accent),
+        ));
     }
 
     // 5. Results list
@@ -149,14 +149,14 @@ pub(crate) fn render_snippet_picker(
         let row_y = rows_top + (visible_idx as f32 * row_height);
 
         if is_selected {
-            quad_instances.push(QuadInstance {
-                rect: [left + stroke, row_y, width - 2.0 * stroke, row_height],
-                color: color(theme.chrome.panel_row),
-            });
-            quad_instances.push(QuadInstance {
-                rect: [left + stroke, row_y, 3.0 * scale_factor, row_height],
-                color: color(theme.accent),
-            });
+            quad_instances.push(QuadInstance::solid(
+                [left + stroke, row_y, width - 2.0 * stroke, row_height],
+                color(theme.chrome.panel_row),
+            ));
+            quad_instances.push(QuadInstance::solid(
+                [left + stroke, row_y, 3.0 * scale_factor, row_height],
+                color(theme.accent),
+            ));
         }
 
         // Render Trigger

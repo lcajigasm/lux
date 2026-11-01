@@ -29,7 +29,7 @@ pub(crate) fn render_all_modals(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
-    if let Some(pal) = &ui.command_palette {
+    if let Some(pal) = &mut ui.command_palette {
         super::palette::render_command_palette(
             pal,
             window_width,
@@ -68,7 +68,7 @@ pub(crate) fn render_all_modals(
         );
     }
 
-    if let Some(goto_state) = &ui.goto_anything {
+    if let Some(goto_state) = &mut ui.goto_anything {
         super::goto::render_goto(
             goto_state,
             window_width,
@@ -126,7 +126,7 @@ pub(crate) fn render_all_modals(
         );
     }
 
-    if let Some(picker) = &ui.theme_picker {
+    if let Some(picker) = &mut ui.theme_picker {
         super::theme_picker::render_theme_picker(
             picker,
             window_width,

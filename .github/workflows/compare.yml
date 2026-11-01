@@ -1,10 +1,9 @@
 name: Compare
 
-# Standard macos-15 only. Produces real window captures of Lux and
-# Sublime Text. pull_request is required because workflow_dispatch cannot
-# be started with the cloud-agent token. Zed is not installed: selector
-# captures belong to phase 0b, which is not done. The job does not publish
-# a release and does not draw a stand-in image.
+# Standard macos-15 only. Produces real window captures of Lux, Sublime
+# Text, and Zed. pull_request is required because workflow_dispatch cannot
+# be started with the cloud-agent token. The job does not publish a
+# release and does not draw a stand-in image.
 on:
   pull_request:
   workflow_dispatch:

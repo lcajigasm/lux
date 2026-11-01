@@ -58,29 +58,29 @@ pub(crate) fn render_build_picker(
     let accent = color(theme.accent);
 
     // 1. Overlay main background
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, total_height],
-        color: color(theme.chrome.panel),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [left, top, width, total_height],
+        color(theme.chrome.panel),
+    ));
 
     // 2. Outer border
     let border_color = color(theme.chrome.border);
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, stroke],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top + total_height - stroke, width, stroke],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top, stroke, total_height],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left + width - stroke, top, stroke, total_height],
-        color: border_color,
-    });
+    quad_instances.push(QuadInstance::solid(
+        [left, top, width, stroke],
+        border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left, top + total_height - stroke, width, stroke],
+        border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left, top, stroke, total_height],
+        border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left + width - stroke, top, stroke, total_height],
+        border_color,
+    ));
 
     // 3. Header title
     let title_line = editor_view
@@ -104,15 +104,15 @@ pub(crate) fn render_build_picker(
 
     // 4. Input box
     let input_top = top + header_height;
-    quad_instances.push(QuadInstance {
-        rect: [
+    quad_instances.push(QuadInstance::solid(
+        [
             left + 8.0 * scale_factor,
             input_top,
             width - 16.0 * scale_factor,
             input_height,
         ],
-        color: color(theme.chrome.panel_input),
-    });
+        color(theme.chrome.panel_input),
+    ));
 
     let display_text = if picker.query.is_empty() {
         "Type to filter build variants..."
@@ -165,24 +165,24 @@ pub(crate) fn render_build_picker(
         let is_selected = actual_idx == picker.selected;
 
         if is_selected {
-            quad_instances.push(QuadInstance {
-                rect: [
+            quad_instances.push(QuadInstance::solid(
+                [
                     left + 8.0 * scale_factor,
                     row_y,
                     width - 16.0 * scale_factor,
                     row_height - 2.0 * scale_factor,
                 ],
-                color: [accent[0], accent[1], accent[2], 0.28],
-            });
-            quad_instances.push(QuadInstance {
-                rect: [
+                [accent[0], accent[1], accent[2], 0.28],
+            ));
+            quad_instances.push(QuadInstance::solid(
+                [
                     left + 8.0 * scale_factor,
                     row_y,
                     2.0 * stroke,
                     row_height - 2.0 * scale_factor,
                 ],
-                color: accent,
-            });
+                accent,
+            ));
         }
 
         // Variant name

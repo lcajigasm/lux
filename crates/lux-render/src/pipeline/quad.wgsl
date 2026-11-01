@@ -1,5 +1,7 @@
 struct Globals {
-    // .xy = viewport size in physical pixels, .zw unused padding.
+    // .xy = viewport size in physical pixels.
+    // .z > 0 when the target is sRGB and authored colors must be decoded.
+    // .w is unused.
     viewport_size: vec4<f32>,
 };
 
@@ -13,11 +15,16 @@ struct Instance {
     @location(0) rect: vec4<f32>,
     // Straight (non-premultiplied) sRGB-space RGBA, 0..1.
     @location(1) color: vec4<f32>,
+    // Corner radius in physical pixels. Zero is a sharp rectangle.
+    @location(2) radius: f32,
 };
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec4<f32>,
+    @location(1) uv: vec2<f32>,
+    @location(2) @interpolate(flat) size: vec2<f32>,
+    @location(3) @interpolate(flat) radius: f32,
 };
 
 // A unit quad's corners, indexed by `vertex_index` — two triangles, no
@@ -42,6 +49,9 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, instance: Instance) -> Vert
     // on write, so passing the bytes through would lighten every dark
     // Monokai well (the #272822 editor became about #6D6E66).
     out.color = vec4<f32>(authored_rgb(instance.color.rgb), instance.color.a);
+    out.uv = corner;
+    out.size = instance.rect.zw;
+    out.radius = instance.radius;
     return out;
 }
 
@@ -63,7 +73,23 @@ fn authored_rgb(rgb: vec3<f32>) -> vec3<f32> {
     );
 }
 
+// Signed distance of `uv` (0..1 across the quad) from a rounded rectangle.
+// A non-positive radius skips the curve and covers the whole quad, so a
+// sharp instance stays a sharp rectangle.
+fn corner_coverage(uv: vec2<f32>, size: vec2<f32>, radius: f32) -> f32 {
+    if (radius <= 0.0) {
+        return 1.0;
+    }
+    let r = min(radius, min(size.x, size.y) * 0.5);
+    let p = uv * size;
+    let half = size * 0.5;
+    let q = abs(p - half) - (half - vec2<f32>(r, r));
+    let dist = length(max(q, vec2<f32>(0.0, 0.0))) + min(max(q.x, q.y), 0.0) - r;
+    return clamp(0.5 - dist, 0.0, 1.0);
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return in.color;
+    let coverage = corner_coverage(in.uv, in.size, in.radius);
+    return vec4<f32>(in.color.rgb, in.color.a * coverage);
 }

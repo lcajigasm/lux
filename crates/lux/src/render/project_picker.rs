@@ -64,34 +64,31 @@ pub(crate) fn render_project_picker(
     let active_badge_color = [0.25, 0.75, 0.45, 1.0];
 
     // 1. Overlay main background
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, total_height],
-        color: bg,
-    });
+    quad_instances.push(QuadInstance::solid([left, top, width, total_height], bg));
 
     // 2. Outer border
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, stroke],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top + total_height - stroke, width, stroke],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top, stroke, total_height],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left + width - stroke, top, stroke, total_height],
-        color: border_color,
-    });
+    quad_instances.push(QuadInstance::solid(
+        [left, top, width, stroke],
+        border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left, top + total_height - stroke, width, stroke],
+        border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left, top, stroke, total_height],
+        border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left + width - stroke, top, stroke, total_height],
+        border_color,
+    ));
 
     // Header bar
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, header_height],
-        color: header_bg,
-    });
+    quad_instances.push(QuadInstance::solid(
+        [left, top, width, header_height],
+        header_bg,
+    ));
 
     let header_line =
         editor_view
@@ -116,15 +113,15 @@ pub(crate) fn render_project_picker(
 
     // Input row
     let input_top = top + header_height;
-    quad_instances.push(QuadInstance {
-        rect: [
+    quad_instances.push(QuadInstance::solid(
+        [
             left + 8.0 * scale_factor,
             input_top + 4.0 * scale_factor,
             width - 16.0 * scale_factor,
             input_height - 6.0 * scale_factor,
         ],
-        color: color(theme.chrome.panel_input),
-    });
+        color(theme.chrome.panel_input),
+    ));
 
     let prompt = "> ";
     let display_query = format!("{}{}", prompt, picker.query);
@@ -151,15 +148,15 @@ pub(crate) fn render_project_picker(
     // Input cursor
     let query_width = input_line.width();
     let cursor_x = left + 16.0 * scale_factor + query_width + 1.0 * scale_factor;
-    quad_instances.push(QuadInstance {
-        rect: [
+    quad_instances.push(QuadInstance::solid(
+        [
             cursor_x,
             input_top + 8.0 * scale_factor,
             2.0 * scale_factor,
             input_height - 14.0 * scale_factor,
         ],
-        color: color(theme.chrome.panel_row),
-    });
+        color(theme.chrome.panel_row),
+    ));
 
     // Project results list
     let list_top = input_top + input_height + 2.0 * scale_factor;
@@ -180,15 +177,15 @@ pub(crate) fn render_project_picker(
         let row_y = list_top + (i as f32 * row_height);
 
         if is_selected {
-            quad_instances.push(QuadInstance {
-                rect: [
+            quad_instances.push(QuadInstance::solid(
+                [
                     left + 4.0 * scale_factor,
                     row_y,
                     width - 8.0 * scale_factor,
                     row_height - 2.0 * scale_factor,
                 ],
-                color: sel_bg,
-            });
+                sel_bg,
+            ));
         }
 
         let is_active = active_path.is_some_and(|a| a == project_path);

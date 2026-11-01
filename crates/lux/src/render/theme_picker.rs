@@ -3,7 +3,7 @@
 use swash::FontRef;
 use swash::scale::ScaleContext;
 
-use crate::render::paint::{color, push_glyph};
+use crate::render::paint::{color, fuzzy_spans, push_glyph, span_covers};
 use crate::theme_picker::ThemePickerState;
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
@@ -12,7 +12,7 @@ const MAX_VISIBLE_RESULTS: usize = 7;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_theme_picker(
-    picker: &ThemePickerState,
+    picker: &mut ThemePickerState,
     viewport_width: f32,
     tab_bar_height: f32,
     scale_factor: f32,
@@ -27,9 +27,13 @@ pub(crate) fn render_theme_picker(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
+    let now = std::time::Instant::now();
+    let reduced = crate::overlay_motion::reduced_motion();
     let width = (viewport_width * 0.52).clamp(360.0 * scale_factor, 600.0 * scale_factor);
     let left = (viewport_width - width) * 0.5;
-    let top = tab_bar_height + 12.0 * scale_factor;
+    let top = tab_bar_height
+        + 12.0 * scale_factor
+        + picker.motion.open_offset(now, reduced, -8.0 * scale_factor);
     let input_height = 36.0 * scale_factor;
     let row_height = 28.0 * scale_factor;
 
@@ -49,30 +53,28 @@ pub(crate) fn render_theme_picker(
     let muted = color(theme.muted);
     let accent = color(theme.accent);
 
-    // 1. Overlay main background
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, total_height],
-        color: color(theme.chrome.panel),
-    });
-
-    // 2. Outer border
+    let radius = 8.0 * scale_factor;
     let border_color = color(theme.chrome.border);
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, stroke],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top + total_height - stroke, width, stroke],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top, stroke, total_height],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left + width - stroke, top, stroke, total_height],
-        color: border_color,
-    });
+    super::panel::push_rounded_surface(
+        quad_instances,
+        [left, top, width, total_height],
+        radius,
+        color(theme.chrome.panel),
+        border_color,
+        6.0 * scale_factor,
+        stroke,
+    );
+    let well_inset = radius * 0.75;
+    quad_instances.push(QuadInstance::rounded(
+        [
+            left + well_inset,
+            top + well_inset * 0.4,
+            width - 2.0 * well_inset,
+            input_height - well_inset * 0.55,
+        ],
+        color(theme.chrome.panel_input),
+        5.0 * scale_factor,
+    ));
 
     // 3. Search input header
     let query_display = if picker.query.is_empty() {
@@ -108,13 +110,6 @@ pub(crate) fn render_theme_picker(
         );
     }
 
-    // Input bottom separator
-    quad_instances.push(QuadInstance {
-        rect: [left, top + input_height, width, stroke],
-        color: border_color,
-    });
-
-    // 4. Candidate theme items
     let scroll_offset = if picker.selected_index >= MAX_VISIBLE_RESULTS {
         picker.selected_index - MAX_VISIBLE_RESULTS + 1
     } else {
@@ -122,6 +117,21 @@ pub(crate) fn render_theme_picker(
     };
 
     let row_baseline = (row_height - picker_font_size) * 0.5;
+    let rows_top = top + input_height;
+    let visual = picker.motion.row(picker.selected_index, now, reduced);
+    super::panel::push_moving_row(
+        quad_instances,
+        left,
+        rows_top,
+        width,
+        row_height,
+        visual,
+        scroll_offset,
+        visible_count,
+        color(theme.chrome.panel_row),
+        accent,
+        scale_factor,
+    );
 
     for (row_idx, &theme_name) in filtered
         .iter()
@@ -132,19 +142,21 @@ pub(crate) fn render_theme_picker(
         let item_idx = scroll_offset + row_idx;
         let is_selected = item_idx == picker.selected_index;
         let row_y = top + input_height + (row_idx as f32 * row_height);
-
-        // Highlight selected row
-        if is_selected {
-            quad_instances.push(QuadInstance {
-                rect: [left + stroke, row_y, width - 2.0 * stroke, row_height],
-                color: color(theme.chrome.panel_row),
-            });
-            // Left selection accent indicator bar
-            quad_instances.push(QuadInstance {
-                rect: [left + stroke, row_y, 3.0 * stroke, row_height],
-                color: accent,
-            });
-        }
+        let icon_size = 14.0 * scale_factor;
+        let hole = if is_selected {
+            color(theme.chrome.panel_row)
+        } else {
+            color(theme.chrome.panel)
+        };
+        super::icons::push_icon(
+            super::icons::Icon::Theme,
+            quad_instances,
+            left + 12.0 * scale_factor,
+            row_y + (row_height - icon_size) * 0.5,
+            icon_size,
+            accent,
+            hole,
+        );
 
         // Theme name text
         let is_active = theme_name.eq_ignore_ascii_case(theme.name);
@@ -170,10 +182,16 @@ pub(crate) fn render_theme_picker(
         let item_layout = editor_view
             .text_layout_mut()
             .layout_line(&style, &label_text, &[]);
-        let text_x = left + 14.0 * scale_factor;
+        let text_x = left + 12.0 * scale_factor + icon_size + 8.0 * scale_factor;
         let text_y = row_y + row_baseline;
+        let hits = fuzzy_spans(&label_text, &picker.query);
 
         for cluster in item_layout.clusters() {
+            let glyph_color = if span_covers(&hits, &cluster.byte_range) {
+                accent
+            } else {
+                name_color
+            };
             push_glyph(
                 atlas,
                 atlas_dirty,
@@ -183,7 +201,7 @@ pub(crate) fn render_theme_picker(
                 &cluster,
                 text_x,
                 text_y + item_layout.baseline(),
-                name_color,
+                glyph_color,
                 glyph_instances,
             );
         }
@@ -204,20 +222,13 @@ pub(crate) fn render_theme_picker(
             let preview_colors = [c1, c2, c3, c4];
             for (i, &sc) in preview_colors.iter().enumerate() {
                 let sx = swatches_x + (i as f32 * (swatch_size + swatch_gap));
-                quad_instances.push(QuadInstance {
-                    rect: [sx, swatch_y, swatch_size, swatch_size],
-                    color: sc,
-                });
-                // Subtle border around swatch
-                quad_instances.push(QuadInstance {
-                    rect: [sx, swatch_y, swatch_size, stroke],
-                    color: color(theme.chrome.border),
-                });
-                quad_instances.push(QuadInstance {
-                    rect: [sx, swatch_y + swatch_size - stroke, swatch_size, stroke],
-                    color: color(theme.chrome.border),
-                });
+                quad_instances.push(QuadInstance::rounded(
+                    [sx, swatch_y, swatch_size, swatch_size],
+                    sc,
+                    2.0 * scale_factor,
+                ));
             }
         }
     }
+    crate::overlay_motion::note_if_animating(&picker.motion, now);
 }

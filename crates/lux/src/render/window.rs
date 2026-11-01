@@ -19,6 +19,7 @@ impl App {
 
         let size = window.inner_size();
         self.set_display_scale(window.scale_factor());
+        eprintln!("Lux: display scale {}", self.scale_factor);
         let gpu = pollster::block_on(GpuContext::new(None))
             .expect("a real GPU adapter must be available to run the Lux desktop app");
         let surface = Surface::new(&gpu.instance, &gpu.adapter, &gpu.device, window, size)

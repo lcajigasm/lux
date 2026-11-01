@@ -255,11 +255,7 @@ impl SettingsState {
             })
             .collect();
 
-        app.ui.lsp.completion_popup = Some(CompletionPopupState {
-            items: lsp_items,
-            selected_index: 0,
-            rect: [0.0; 4],
-        });
+        app.ui.lsp.completion_popup = Some(CompletionPopupState::showing(lsp_items));
         app.scheduler.invalidate_all();
         true
     }

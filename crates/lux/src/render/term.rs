@@ -36,29 +36,29 @@ pub(crate) fn render_term(
     let grid_h = (dock_h - header_h).max(1.0);
 
     // 1. Panel background
-    quad_instances.push(QuadInstance {
-        rect: [0.0, grid_y, window_width, grid_h],
-        color: color(active_theme().background),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, grid_y, window_width, grid_h],
+        color(active_theme().background),
+    ));
 
     // 2. Header background & border
-    quad_instances.push(QuadInstance {
-        rect: [0.0, dock_y, window_width, header_h],
-        color: color(active_theme().chrome.tab_bar),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, dock_y, window_width, header_h],
+        color(active_theme().chrome.tab_bar),
+    ));
     let top_border_color = if term.focused {
         color(active_theme().accent)
     } else {
         color(active_theme().chrome.border)
     };
-    quad_instances.push(QuadInstance {
-        rect: [0.0, dock_y, window_width, stroke],
-        color: top_border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [0.0, grid_y - stroke, window_width, stroke],
-        color: color(active_theme().chrome.border),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, dock_y, window_width, stroke],
+        top_border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [0.0, grid_y - stroke, window_width, stroke],
+        color(active_theme().chrome.border),
+    ));
 
     let font_size = 12.0 * scale_factor;
     let family = editor_view.family().to_string();
@@ -84,16 +84,16 @@ pub(crate) fn render_term(
             inactive_color
         };
 
-        quad_instances.push(QuadInstance {
-            rect: [tab_x, dock_y + stroke, tab_w, header_h - stroke],
-            color: tab_bg,
-        });
+        quad_instances.push(QuadInstance::solid(
+            [tab_x, dock_y + stroke, tab_w, header_h - stroke],
+            tab_bg,
+        ));
 
         if is_active {
-            quad_instances.push(QuadInstance {
-                rect: [tab_x, dock_y, tab_w, 2.0 * stroke],
-                color: color(active_theme().accent),
-            });
+            quad_instances.push(QuadInstance::solid(
+                [tab_x, dock_y, tab_w, 2.0 * stroke],
+                color(active_theme().accent),
+            ));
         }
 
         // Title text
@@ -136,15 +136,15 @@ pub(crate) fn render_term(
     }
 
     // '+' New tab button
-    quad_instances.push(QuadInstance {
-        rect: [
+    quad_instances.push(QuadInstance::solid(
+        [
             tab_x,
             dock_y + 2.0 * stroke,
             24.0 * scale_factor,
             header_h - 4.0 * stroke,
         ],
-        color: color(active_theme().chrome.panel_input),
-    });
+        color(active_theme().chrome.panel_input),
+    ));
     let plus_line = editor_view.text_layout_mut().layout_line(&style, "+", &[]);
     let plus_base = plus_line.baseline();
     for cluster in plus_line.clusters() {
@@ -169,15 +169,15 @@ pub(crate) fn render_term(
     } else {
         inactive_color
     };
-    quad_instances.push(QuadInstance {
-        rect: [
+    quad_instances.push(QuadInstance::solid(
+        [
             tab_x,
             dock_y + stroke,
             55.0 * scale_factor,
             header_h - stroke,
         ],
-        color: tasks_bg,
-    });
+        tasks_bg,
+    ));
     let tasks_line = editor_view
         .text_layout_mut()
         .layout_line(&style, "Tasks", &[]);
@@ -335,15 +335,15 @@ fn render_tasks_view(
             }
 
             // Cancel button
-            quad_instances.push(QuadInstance {
-                rect: [
+            quad_instances.push(QuadInstance::solid(
+                [
                     180.0 * scale_factor,
                     row_y - 2.0 * scale_factor,
                     60.0 * scale_factor,
                     18.0 * scale_factor,
                 ],
-                color: [0.75, 0.20, 0.20, 1.0],
-            });
+                [0.75, 0.20, 0.20, 1.0],
+            ));
             let cancel_line = editor_view
                 .text_layout_mut()
                 .layout_line(&style, "Cancel", &[]);
@@ -447,10 +447,10 @@ fn render_pty_grid(
             };
 
             if let Some(bg) = bg_color {
-                quad_instances.push(QuadInstance {
-                    rect: [start_x + cluster.x, y, char_w, row_h],
-                    color: bg,
-                });
+                quad_instances.push(QuadInstance::solid(
+                    [start_x + cluster.x, y, char_w, row_h],
+                    bg,
+                ));
             }
 
             push_glyph(
@@ -473,10 +473,10 @@ fn render_pty_grid(
     if cur_row < rows as usize && cur_col < cols as usize {
         let cur_x = start_x + cur_col as f32 * char_w;
         let cur_y = start_y + cur_row as f32 * row_h;
-        quad_instances.push(QuadInstance {
-            rect: [cur_x, cur_y, char_w, row_h],
-            color: color(active_theme().accent),
-        });
+        quad_instances.push(QuadInstance::solid(
+            [cur_x, cur_y, char_w, row_h],
+            color(active_theme().accent),
+        ));
     }
 
     // Underline detected error/file links
@@ -495,10 +495,10 @@ fn render_pty_grid(
                 let link_x = start_x + col_start as f32 * char_w;
                 let link_w = fname.len() as f32 * char_w;
                 let link_y = start_y + (r + 1) as f32 * row_h - stroke;
-                quad_instances.push(QuadInstance {
-                    rect: [link_x, link_y, link_w, stroke * 1.5],
-                    color: [0.95, 0.70, 0.25, 0.85], // Amber link underline
-                });
+                quad_instances.push(QuadInstance::solid(
+                    [link_x, link_y, link_w, stroke * 1.5],
+                    [0.95, 0.70, 0.25, 0.85],
+                ));
             }
         }
     }

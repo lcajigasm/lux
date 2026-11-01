@@ -26,10 +26,10 @@ pub(crate) fn render_about_dialog(
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
     // 1. Fullscreen dimming backdrop
-    quad_instances.push(QuadInstance {
-        rect: [0.0, 0.0, viewport_width, viewport_height],
-        color: [0.0, 0.0, 0.0, 0.45],
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, 0.0, viewport_width, viewport_height],
+        [0.0, 0.0, 0.0, 0.45],
+    ));
 
     // 2. Centered modal card geometry
     let width = (viewport_width * 0.45).clamp(380.0 * scale_factor, 480.0 * scale_factor);
@@ -39,34 +39,34 @@ pub(crate) fn render_about_dialog(
     about.card_rect = [left, top, width, height];
 
     // Card background
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, height],
-        color: color(_theme.chrome.panel),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [left, top, width, height],
+        color(_theme.chrome.panel),
+    ));
 
     // 4-side borders
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, stroke],
-        color: color(_theme.chrome.border),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top + height - stroke, width, stroke],
-        color: color(_theme.chrome.border),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top, stroke, height],
-        color: color(_theme.chrome.border),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left + width - stroke, top, stroke, height],
-        color: color(_theme.chrome.border),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [left, top, width, stroke],
+        color(_theme.chrome.border),
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left, top + height - stroke, width, stroke],
+        color(_theme.chrome.border),
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left, top, stroke, height],
+        color(_theme.chrome.border),
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left + width - stroke, top, stroke, height],
+        color(_theme.chrome.border),
+    ));
 
     // Top sublime-amber accent band
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, 3.0 * scale_factor],
-        color: [0.95, 0.55, 0.15, 1.0],
-    });
+    quad_instances.push(QuadInstance::solid(
+        [left, top, width, 3.0 * scale_factor],
+        [0.95, 0.55, 0.15, 1.0],
+    ));
 
     let family = editor_view.family().to_string();
 
@@ -150,27 +150,24 @@ pub(crate) fn render_about_dialog(
     } else {
         color(_theme.chrome.panel_input)
     };
-    quad_instances.push(QuadInstance {
-        rect: [btn_x, btn_y, btn_w, btn_h],
-        color: btn_bg,
-    });
+    quad_instances.push(QuadInstance::solid([btn_x, btn_y, btn_w, btn_h], btn_bg));
     // Button border
-    quad_instances.push(QuadInstance {
-        rect: [btn_x, btn_y, btn_w, stroke],
-        color: color(_theme.chrome.border),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [btn_x, btn_y + btn_h - stroke, btn_w, stroke],
-        color: color(_theme.chrome.border),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [btn_x, btn_y, stroke, btn_h],
-        color: color(_theme.chrome.border),
-    });
-    quad_instances.push(QuadInstance {
-        rect: [btn_x + btn_w - stroke, btn_y, stroke, btn_h],
-        color: color(_theme.chrome.border),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [btn_x, btn_y, btn_w, stroke],
+        color(_theme.chrome.border),
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [btn_x, btn_y + btn_h - stroke, btn_w, stroke],
+        color(_theme.chrome.border),
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [btn_x, btn_y, stroke, btn_h],
+        color(_theme.chrome.border),
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [btn_x + btn_w - stroke, btn_y, stroke, btn_h],
+        color(_theme.chrome.border),
+    ));
 
     // Close text inside button
     let style = lux_render::LineStyle {

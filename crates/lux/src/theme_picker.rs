@@ -11,6 +11,7 @@ pub(crate) struct ThemePickerState {
     pub(crate) selected_index: usize,
     pub(crate) original_theme_name: &'static str,
     pub(crate) candidates: Vec<&'static str>,
+    pub(crate) motion: crate::overlay_motion::OverlayMotion,
 }
 
 pub(crate) fn all_theme_names() -> Vec<&'static str> {
@@ -37,6 +38,7 @@ impl ThemePickerState {
             selected_index,
             original_theme_name: current_theme_name,
             candidates,
+            motion: crate::overlay_motion::OverlayMotion::open(),
         }
     }
 

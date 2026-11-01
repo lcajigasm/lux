@@ -36,6 +36,18 @@ pub(crate) struct CompletionPopupState {
     pub(crate) items: Vec<CompletionItem>,
     pub(crate) selected_index: usize,
     pub(crate) rect: [f32; 4],
+    pub(crate) motion: crate::overlay_motion::OverlayMotion,
+}
+
+impl CompletionPopupState {
+    pub(crate) fn showing(items: Vec<CompletionItem>) -> Self {
+        Self {
+            items,
+            selected_index: 0,
+            rect: [0.0; 4],
+            motion: crate::overlay_motion::OverlayMotion::open(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -362,11 +374,7 @@ pub(crate) fn poll_lsp_events(app: &mut App, _ctx: &dyn PlatformContext) {
             }
             LspEvent::CompletionsReady { items } => {
                 if !items.is_empty() {
-                    app.ui.lsp.completion_popup = Some(CompletionPopupState {
-                        items,
-                        selected_index: 0,
-                        rect: [0.0; 4],
-                    });
+                    app.ui.lsp.completion_popup = Some(CompletionPopupState::showing(items));
                     needs_redraw = true;
                 }
             }

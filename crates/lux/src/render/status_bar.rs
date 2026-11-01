@@ -42,16 +42,16 @@ pub(crate) fn render_status_bar(
     };
 
     // 1. Background quad
-    quad_instances.push(QuadInstance {
-        rect: [0.0, bar_y, window_width, bar_height],
-        color: color(theme.chrome.status_bar),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, bar_y, window_width, bar_height],
+        color(theme.chrome.status_bar),
+    ));
 
     // 2. Top separator border
-    quad_instances.push(QuadInstance {
-        rect: [0.0, bar_y, window_width, stroke],
-        color: color(theme.chrome.border),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, bar_y, window_width, stroke],
+        color(theme.chrome.border),
+    ));
 
     let status = build_status_bar(buffer, cursor_pos, language_id);
     let foreground = color(theme.foreground);

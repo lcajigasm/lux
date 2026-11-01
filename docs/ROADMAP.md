@@ -39,8 +39,8 @@ that produced it:
 
 The capture above is the previous build. `docs/compare/monokai-side-by-side.png`
 and `docs/compare/characters.png` are the macos-15 windows from compare run
-41338114570. 0.1 and 0.2 hold on those files. Block 0 stays open because
-0.3 is not done.
+41338114570. 0.1 and 0.2 hold on those files. Block 0 stays open until
+`selectors.png` has been looked at.
 
 1. **Monokai is the launch theme.** `workbench.colorTheme` defaults to
    `monokai`. `Chrome` starts on `Theme::MONOKAI` and does not follow the
@@ -61,9 +61,12 @@ and `docs/compare/characters.png` are the macos-15 windows from compare run
    Scale 1 still uses subpixel AA. Hinting is unchanged. A cluster paints
    every glyph parley produced, including a combining mark.
 
-4. **Selectors are still rectangles.** The palette highlights the fuzzy
-   subsequence of the query and draws an offset black shadow. It has no
-   icons, no corner radius, and no motion. Those three are still 0.3.
+4. **Selectors are rounded and move.** The command palette, goto, theme
+   picker, and completion list draw a shadowed rounded surface (radius 0
+   on every other quad is still a sharp rectangle), a geometric icon per
+   row, and a short ease. The ease uses `request_repaint_at` plus the
+   platform wakeup the caret blink already uses. Reduced motion settles
+   on the first frame. Fuzzy match highlighting stays.
 
 No font is bundled. The macOS loader tries `SFNSMono.ttf`, then the Xcode
 SF Mono files, then `Menlo.ttc` face 0. Editor ASCII in the capture is a
@@ -114,14 +117,16 @@ candidate either; the VS Code `theme-monokai` sources are MIT and are the
 first file to check. Sublime's bundled scheme is used only if its license
 allows redistribution.
 
-### 0.3 Text and selectors — parcial
+### 0.3 Text and selectors — en curso
 
 HiDPI frames (`scale_factor > 1`) rasterize grayscale masks and blend them
-with the quad already drawn for that surface. The palette highlights the
-matched subsequence and draws an offset shadow. Ligatures and the SF Mono
-fallback list were already there. Still missing, so this row is not hecho:
-icons, rounded corners, and motion. No `selectors.png` until those exist.
-Scale 1 still uses subpixel AA.
+with the quad already drawn for that surface. Scale 1 still uses subpixel
+AA. Ligatures and the SF Mono fallback list were already there. The
+command palette, goto, theme picker, and completion list now draw icons,
+rounded shadowed surfaces, fuzzy highlight, and a short ease. The compare
+job writes `docs/compare/selectors.png` from the real Lux, Sublime Text,
+and Zed windows. This row is not hecho until that file has been looked at.
+The macos-15 runner is a 1× display, so the PNG does not prove Retina.
 
 Acceptance, on top of 0.1 and 0.2: Retina text is grayscale-antialiased (or
 otherwise correct for a 2× framebuffer), with ligatures, a stable line
@@ -142,6 +147,9 @@ before that.
   Text with Monokai, same file, same window size, same display resolution.
 - `docs/compare/characters.png` — the Lux window on the special-character
   fixture, same resolution.
+- `docs/compare/selectors.png` — Lux, Sublime Text, and Zed with the
+  command palette open. Not committed until the job produces it and it
+  has been looked at.
 
 If Lux loses that comparison, the block stays open and no release is tagged.
 
@@ -153,18 +161,20 @@ standard `macos-15` job, timeout 45 minutes. `scripts/compare-captures.sh`
 builds debug `lux`, installs the Sublime Text cask, opens
 `docs/compare/fixtures/monokai.rs` in both apps with Monokai, and
 `docs/compare/fixtures/characters.txt` in Lux. `screencapture -l` captures
-the real windows. ImageMagick appends the pair. Zed is not installed in
-this job: 0.3 is not done, so there is no `selectors.png`. If Sublime
-cannot be captured, the script exits non-zero and does not write a
-stand-in image. The job uploads the PNGs. Committing them is a separate
-change. The artifact alone does not close the phase.
+the real windows. ImageMagick appends the pair. The same job then
+installs the Zed cask, opens Lux with `--palette`, asks Sublime for its
+command palette, sends Zed Cmd-Shift-P, and appends the three windows to
+`selectors.png`. If Sublime or Zed cannot be captured, the script exits
+non-zero and does not write a stand-in image. The job uploads the PNGs.
+Committing them is a separate change. The artifact alone does not close
+the phase.
 
 ## Block 1 — Interface — parcial
 
 | Surface | State on 44684ab |
 |---|---|
 | Theme | hecho for the editor and chrome wells. `docs/compare/monokai-side-by-side.png` |
-| Typography | parcial. System monospace loader works (DejaVu here, Menlo/SF Mono path on macOS). No bundled face, chrome AA is wrong. Block 0.3 |
+| Typography | parcial. System monospace loader works (DejaVu here, Menlo/SF Mono path on macOS). No bundled face. HiDPI uses grayscale masks; the committed capture is 1×. |
 | File tree | parcial. Sidebar code runs when a folder is open. The capture opened one file, so the tree was absent |
 | Tabs | parcial. One readable tab in the capture; inactive tabs use the hardcoded dark quad |
 | Status bar | parcial. Items are built and painted; the capture cannot be read |
@@ -264,12 +274,12 @@ missed its bar.
 
 1. **Phase 0, in progress.** 0.1 and 0.2 hold on
    `docs/compare/monokai-side-by-side.png` and `docs/compare/characters.png`
-   (compare run 41338114570). Block 0 stays open: 0.3 is only partly done
-   (grayscale HiDPI, combining glyphs, palette match highlight, offset
-   shadow; no icons, corners, or motion). No release.
-2. **Phase 0b.** Step 0.3: Retina text and the selectors. Commit
-   `selectors.png` and a new Monokai pair. Close block 0 only if Lux holds
-   the comparison. That close is the first release this plan allows.
+   (compare run 41338114570). 0.3 now draws selector icons, rounded
+   surfaces, and a short ease. Block 0 stays open until `selectors.png`
+   is looked at. No release.
+2. **Phase 0b.** The selector capture against Sublime and Zed. Close
+   block 0 only if Lux holds that comparison. That close is the first
+   release this plan allows.
 3. **Phase 1.** Block 1, the rest of the window (tree, tabs, status bar,
    minimap, splits, settings) on the Monokai frame from phase 0.
 4. **Phase 2.** Blocks 2 and 3 together. A command counts when its Sublime

@@ -41,17 +41,17 @@ pub(crate) fn render_search_matches(
             [0.45, 0.45, 0.15, 0.35]
         };
 
-        quad_instances.push(QuadInstance {
-            rect: [min_x, y, width, line_height],
-            color: bg_color,
-        });
+        quad_instances.push(QuadInstance::solid(
+            [min_x, y, width, line_height],
+            bg_color,
+        ));
 
         if is_current {
             // Outline border for active match
-            quad_instances.push(QuadInstance {
-                rect: [min_x, y + line_height - 2.0, width, 2.0],
-                color: [0.95, 0.80, 0.20, 1.0],
-            });
+            quad_instances.push(QuadInstance::solid(
+                [min_x, y + line_height - 2.0, width, 2.0],
+                [0.95, 0.80, 0.20, 1.0],
+            ));
         }
     }
 }
@@ -95,16 +95,16 @@ pub(crate) fn render_search_bar(
     let accent = color(theme.accent);
 
     // 1. Dock Bar Background
-    quad_instances.push(QuadInstance {
-        rect: [0.0, bar_top, bar_width, bar_height],
-        color: color(theme.chrome.panel),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, bar_top, bar_width, bar_height],
+        color(theme.chrome.panel),
+    ));
 
     // 2. Top Border
-    quad_instances.push(QuadInstance {
-        rect: [0.0, bar_top, bar_width, stroke],
-        color: color(theme.chrome.border),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, bar_top, bar_width, stroke],
+        color(theme.chrome.border),
+    ));
 
     let input_h = 24.0 * scale_factor;
     let input_w = (viewport_width * 0.35).clamp(180.0 * scale_factor, 320.0 * scale_factor);
@@ -116,31 +116,31 @@ pub(crate) fn render_search_bar(
     let find_focused = search.focused_field == SearchField::Find;
 
     // Find input box background & border
-    quad_instances.push(QuadInstance {
-        rect: [cur_x, row1_y, input_w, input_h],
-        color: color(theme.chrome.panel_input),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [cur_x, row1_y, input_w, input_h],
+        color(theme.chrome.panel_input),
+    ));
     let find_border_color = if find_focused {
         accent
     } else {
         color(theme.chrome.border)
     };
-    quad_instances.push(QuadInstance {
-        rect: [cur_x, row1_y, input_w, stroke],
-        color: find_border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [cur_x, row1_y + input_h - stroke, input_w, stroke],
-        color: find_border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [cur_x, row1_y, stroke, input_h],
-        color: find_border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [cur_x + input_w - stroke, row1_y, stroke, input_h],
-        color: find_border_color,
-    });
+    quad_instances.push(QuadInstance::solid(
+        [cur_x, row1_y, input_w, stroke],
+        find_border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [cur_x, row1_y + input_h - stroke, input_w, stroke],
+        find_border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [cur_x, row1_y, stroke, input_h],
+        find_border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [cur_x + input_w - stroke, row1_y, stroke, input_h],
+        find_border_color,
+    ));
 
     // Find text & caret
     let text_x = cur_x + 6.0 * scale_factor;
@@ -174,15 +174,15 @@ pub(crate) fn render_search_bar(
         } else {
             text_x + line.width() + 2.0 * stroke
         };
-        quad_instances.push(QuadInstance {
-            rect: [
+        quad_instances.push(QuadInstance::solid(
+            [
                 caret_x,
                 row1_y + 3.0 * scale_factor,
                 2.0 * stroke,
                 input_h - 6.0 * scale_factor,
             ],
-            color: accent,
-        });
+            accent,
+        ));
     }
 
     cur_x += input_w + 10.0 * scale_factor;
@@ -236,7 +236,7 @@ pub(crate) fn render_search_bar(
         } else {
             color(theme.chrome.panel_input)
         };
-        quads.push(QuadInstance { rect, color: bg });
+        quads.push(QuadInstance::solid(rect, bg));
         let txt_color = if active { accent } else { muted };
         let l = ed_view.text_layout_mut().layout_line(&style, label, &[]);
         let tx = rx + (rw - l.width()) * 0.5;
@@ -364,31 +364,31 @@ pub(crate) fn render_search_bar(
         search.layout.replace_input_rect = [rep_x, row2_y, input_w, input_h];
         let rep_focused = search.focused_field == SearchField::Replace;
 
-        quad_instances.push(QuadInstance {
-            rect: [rep_x, row2_y, input_w, input_h],
-            color: color(theme.chrome.panel_input),
-        });
+        quad_instances.push(QuadInstance::solid(
+            [rep_x, row2_y, input_w, input_h],
+            color(theme.chrome.panel_input),
+        ));
         let rep_border_color = if rep_focused {
             accent
         } else {
             color(theme.chrome.border)
         };
-        quad_instances.push(QuadInstance {
-            rect: [rep_x, row2_y, input_w, stroke],
-            color: rep_border_color,
-        });
-        quad_instances.push(QuadInstance {
-            rect: [rep_x, row2_y + input_h - stroke, input_w, stroke],
-            color: rep_border_color,
-        });
-        quad_instances.push(QuadInstance {
-            rect: [rep_x, row2_y, stroke, input_h],
-            color: rep_border_color,
-        });
-        quad_instances.push(QuadInstance {
-            rect: [rep_x + input_w - stroke, row2_y, stroke, input_h],
-            color: rep_border_color,
-        });
+        quad_instances.push(QuadInstance::solid(
+            [rep_x, row2_y, input_w, stroke],
+            rep_border_color,
+        ));
+        quad_instances.push(QuadInstance::solid(
+            [rep_x, row2_y + input_h - stroke, input_w, stroke],
+            rep_border_color,
+        ));
+        quad_instances.push(QuadInstance::solid(
+            [rep_x, row2_y, stroke, input_h],
+            rep_border_color,
+        ));
+        quad_instances.push(QuadInstance::solid(
+            [rep_x + input_w - stroke, row2_y, stroke, input_h],
+            rep_border_color,
+        ));
 
         let rep_text_x = rep_x + 6.0 * scale_factor;
         let (rep_disp, rep_col) = if search.replace_text.is_empty() {
@@ -420,15 +420,15 @@ pub(crate) fn render_search_bar(
             } else {
                 rep_text_x + rep_line.width() + 2.0 * stroke
             };
-            quad_instances.push(QuadInstance {
-                rect: [
+            quad_instances.push(QuadInstance::solid(
+                [
                     caret_x,
                     row2_y + 3.0 * scale_factor,
                     2.0 * stroke,
                     input_h - 6.0 * scale_factor,
                 ],
-                color: accent,
-            });
+                accent,
+            ));
         }
 
         rep_x += input_w + 10.0 * scale_factor;

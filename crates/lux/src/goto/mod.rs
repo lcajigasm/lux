@@ -68,6 +68,7 @@ pub(crate) struct GotoState {
     pub(crate) snapshot: Option<GotoSnapshot>,
     pub(crate) cached_candidates: Vec<String>,
     pub(crate) items: Vec<GotoItem>,
+    pub(crate) motion: crate::overlay_motion::OverlayMotion,
 }
 
 impl Default for GotoState {
@@ -81,6 +82,7 @@ impl Default for GotoState {
             snapshot: None,
             cached_candidates: Vec::new(),
             items: Vec::new(),
+            motion: crate::overlay_motion::OverlayMotion::open(),
         }
     }
 }
@@ -103,6 +105,7 @@ impl GotoState {
             snapshot: Some(snapshot),
             cached_candidates,
             items: Vec::new(),
+            motion: crate::overlay_motion::OverlayMotion::open(),
         };
         state.refresh_results(app);
         state
@@ -125,6 +128,7 @@ impl GotoState {
             snapshot: Some(snapshot),
             cached_candidates,
             items: Vec::new(),
+            motion: crate::overlay_motion::OverlayMotion::open(),
         };
         state.refresh_results(app);
         state

@@ -59,16 +59,16 @@ pub(crate) fn render_minimap(
     // Minimap background quad (slightly darker/contrast)
     let bg = color(theme.background);
     let bg_color = [bg[0] * 0.95, bg[1] * 0.95, bg[2] * 0.95, bg[3]];
-    quad_instances.push(QuadInstance {
-        rect: [minimap_x, minimap_y, minimap_w, minimap_h],
-        color: bg_color,
-    });
+    quad_instances.push(QuadInstance::solid(
+        [minimap_x, minimap_y, minimap_w, minimap_h],
+        bg_color,
+    ));
 
     // Left border divider stroke
-    quad_instances.push(QuadInstance {
-        rect: [minimap_x, minimap_y, stroke, minimap_h],
-        color: color(theme.muted),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [minimap_x, minimap_y, stroke, minimap_h],
+        color(theme.muted),
+    ));
 
     // Density rows
     let char_w = 1.2 * scale_factor;
@@ -87,10 +87,7 @@ pub(crate) fn render_minimap(
         let w = (row.content_columns as f32 * char_w).clamp(2.0 * scale_factor, max_density_w);
         let h = (row_h - 1.0 * stroke).max(1.0);
 
-        quad_instances.push(QuadInstance {
-            rect: [x, y, w, h],
-            color: bar_color,
-        });
+        quad_instances.push(QuadInstance::solid([x, y, w, h], bar_color));
     }
 
     // Viewport indicator overlay
@@ -101,25 +98,25 @@ pub(crate) fn render_minimap(
 
         let sel = color(theme.selection);
         let indicator_bg = [sel[0], sel[1], sel[2], 0.18];
-        quad_instances.push(QuadInstance {
-            rect: [minimap_x, vy, minimap_w, clamped_vh],
-            color: indicator_bg,
-        });
+        quad_instances.push(QuadInstance::solid(
+            [minimap_x, vy, minimap_w, clamped_vh],
+            indicator_bg,
+        ));
 
         // Indicator top and bottom borders
-        quad_instances.push(QuadInstance {
-            rect: [minimap_x, vy, minimap_w, stroke],
-            color: color(theme.selection),
-        });
-        quad_instances.push(QuadInstance {
-            rect: [
+        quad_instances.push(QuadInstance::solid(
+            [minimap_x, vy, minimap_w, stroke],
+            color(theme.selection),
+        ));
+        quad_instances.push(QuadInstance::solid(
+            [
                 minimap_x,
                 (vy + clamped_vh - stroke).max(vy),
                 minimap_w,
                 stroke,
             ],
-            color: color(theme.selection),
-        });
+            color(theme.selection),
+        ));
     }
 
     // Search match highlights on minimap (Sublime gold ticks)
@@ -139,10 +136,10 @@ pub(crate) fn render_minimap(
                     [0.85, 0.65, 0.15, 0.70]
                 };
                 let tick_h = (row_h).max(2.0 * stroke);
-                quad_instances.push(QuadInstance {
-                    rect: [minimap_x, y, minimap_w, tick_h],
-                    color: tick_color,
-                });
+                quad_instances.push(QuadInstance::solid(
+                    [minimap_x, y, minimap_w, tick_h],
+                    tick_color,
+                ));
             }
         }
     }

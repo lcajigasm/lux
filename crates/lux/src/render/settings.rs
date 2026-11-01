@@ -34,35 +34,35 @@ pub(crate) fn render_settings_panel(
         header_height + (panel.items.len() as f32 * row_height) + 12.0 * scale_factor;
 
     // 1. Dimmed backdrop
-    quad_instances.push(QuadInstance {
-        rect: [0.0, 0.0, viewport_width, viewport_height],
-        color: [0.0, 0.0, 0.0, 0.45],
-    });
+    quad_instances.push(QuadInstance::solid(
+        [0.0, 0.0, viewport_width, viewport_height],
+        [0.0, 0.0, 0.0, 0.45],
+    ));
 
     // 2. Card Background
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, total_height],
-        color: color(theme.chrome.panel),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [left, top, width, total_height],
+        color(theme.chrome.panel),
+    ));
 
     // 3. Card Border / Focus Ring
     let border_color = color(theme.accent);
-    quad_instances.push(QuadInstance {
-        rect: [left, top, width, stroke * 2.0],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top + total_height - stroke * 2.0, width, stroke * 2.0],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left, top, stroke * 2.0, total_height],
-        color: border_color,
-    });
-    quad_instances.push(QuadInstance {
-        rect: [left + width - stroke * 2.0, top, stroke * 2.0, total_height],
-        color: border_color,
-    });
+    quad_instances.push(QuadInstance::solid(
+        [left, top, width, stroke * 2.0],
+        border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left, top + total_height - stroke * 2.0, width, stroke * 2.0],
+        border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left, top, stroke * 2.0, total_height],
+        border_color,
+    ));
+    quad_instances.push(QuadInstance::solid(
+        [left + width - stroke * 2.0, top, stroke * 2.0, total_height],
+        border_color,
+    ));
 
     let header_font_size = 14.0 * scale_factor;
     let sub_font_size = 10.5 * scale_factor;
@@ -126,10 +126,10 @@ pub(crate) fn render_settings_panel(
     }
 
     // Header separator line
-    quad_instances.push(QuadInstance {
-        rect: [left, top + header_height, width, stroke],
-        color: color(theme.chrome.border),
-    });
+    quad_instances.push(QuadInstance::solid(
+        [left, top + header_height, width, stroke],
+        color(theme.chrome.border),
+    ));
 
     // 5. Items Rows
     let item_style = lux_render::LineStyle {
@@ -148,24 +148,24 @@ pub(crate) fn render_settings_panel(
         let is_selected = i == panel.selected_index;
 
         if is_selected {
-            quad_instances.push(QuadInstance {
-                rect: [
+            quad_instances.push(QuadInstance::solid(
+                [
                     left + 4.0 * scale_factor,
                     row_top,
                     width - 8.0 * scale_factor,
                     row_height - 2.0 * scale_factor,
                 ],
-                color: color(theme.chrome.panel_row),
-            });
-            quad_instances.push(QuadInstance {
-                rect: [
+                color(theme.chrome.panel_row),
+            ));
+            quad_instances.push(QuadInstance::solid(
+                [
                     left + 4.0 * scale_factor,
                     row_top,
                     3.0 * scale_factor,
                     row_height - 2.0 * scale_factor,
                 ],
-                color: accent_fg,
-            });
+                accent_fg,
+            ));
         }
 
         // Setting Label

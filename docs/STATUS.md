@@ -13,9 +13,13 @@
 > `#272822`, the tab bar `#1E1F1C`, and the status bar `#414339`, beside
 > Sublime Text on the same file. Sublime's own minimap, breadcrumb, and
 > lighter status chrome are not copied. HiDPI text uses grayscale
-> antialiasing; that capture is a 1× display, so it does not prove Retina.
-> Icons, rounded corners, and selector animation are not done, so 0.3 and
-> block 0 stay open and no release is tagged. See [ROADMAP.md](ROADMAP.md).
+> antialiasing when `scale_factor > 1`; the committed Monokai capture is a
+> 1× display, so it does not prove Retina. Selector panels (command
+> palette, goto, theme picker, completion) draw category icons, rounded
+> shadowed surfaces, and a short open/selection ease driven by the same
+> repaint wakeup as the caret. `selectors.png` is produced by the compare
+> job beside Sublime and Zed. 0.3 and block 0 stay open until that capture
+> has been looked at, and no release is tagged. See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
