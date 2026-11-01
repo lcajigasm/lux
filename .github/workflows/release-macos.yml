@@ -24,7 +24,7 @@ jobs:
   dmg:
     name: lux-macos-universal
     runs-on: macos-14
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Checkout the published release
         uses: actions/checkout@v7

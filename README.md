@@ -44,7 +44,7 @@ are not accepted.
 
 Lux is a macOS editor first. Linux and Windows still build, and they are secondary.
 
-Pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml) on `ubuntu-latest` and attaches the Linux packages plus `SHA256SUMS`. That publish starts [`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml) once: one standard `macos-14` runner, 20 minute cap, universal `.dmg`, attached to the same release. That job appends the `.dmg` line to `SHA256SUMS`. The release workflow does not run on pull request, branch push, or the tag push itself, so the Linux workflow does not start a second macOS job. `workflow_dispatch` is only a manual retry. Pull-request CI also builds the universal image on `macos-14` and uploads it as an artifact; it does not publish it. Windows stays out of CI. Runners are the standard `ubuntu-latest` and `macos-14` images.
+Pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml) on `ubuntu-latest` and attaches the Linux packages plus `SHA256SUMS`. That publish starts [`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml) once: one standard `macos-14` runner, 45 minute cap, universal `.dmg`, attached to the same release. That job appends the `.dmg` line to `SHA256SUMS`. The release workflow does not run on pull request, branch push, or the tag push itself, so the Linux workflow does not start a second macOS job. `workflow_dispatch` is only a manual retry. Pull-request CI also builds the universal image on `macos-14` and uploads it as an artifact; it does not publish it. Windows stays out of CI. Runners are the standard `ubuntu-latest` and `macos-14` images.
 
 | Asset | Where it is built |
 |---|---|
