@@ -501,5 +501,10 @@ mod tests {
         assert_eq!(t.chrome.panel_row, Color::from_hex("#49483E").unwrap());
         assert_eq!(t.chrome.line_highlight, Color::from_hex("#2C2D27").unwrap());
         assert_eq!(t.chrome.gutter, t.background);
+        assert!(
+            contrast_ratio(t.foreground, t.chrome.tab_inactive) >= 4.5,
+            "inactive tab titles must stay readable"
+        );
+        assert!(contrast_ratio(t.foreground, t.chrome.sidebar) >= 4.5);
     }
 }

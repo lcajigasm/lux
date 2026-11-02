@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 mod io;
+pub(crate) mod open_queue;
 mod save_ops;
 pub(crate) mod tab_ops;
 
@@ -132,6 +133,8 @@ pub(crate) struct Documents {
     pub(crate) message: Option<String>,
     close_when_idle: bool,
     pub(crate) initial_path: Option<PathBuf>,
+    /// Files to open after `initial_path`, one at a time, as their own tabs.
+    pub(crate) open_queue: Vec<PathBuf>,
     pub(crate) tab_context_menu: Option<tab_ops::TabContextMenu>,
 }
 
@@ -156,6 +159,7 @@ impl Default for Documents {
             message: None,
             close_when_idle: false,
             initial_path: None,
+            open_queue: Vec::new(),
             tab_context_menu: None,
         }
     }
@@ -541,6 +545,7 @@ impl App {
                         let text = self.buffer.text();
                         crate::lsp::sync_document_open(self, ctx, &doc_path, &text);
                     }
+                    open_queue::note_opened(self);
                 }
                 if close {
                     if self.documents.tabs.tabs().len() > 1 {
@@ -573,6 +578,7 @@ impl App {
             }
         }
         self.update_document_title();
+        open_queue::pump(self, ctx);
         self.refresh_accessibility();
         if let Some(gpu) = &self.gpu_window {
             gpu.window.request_redraw();

@@ -1,14 +1,10 @@
-//! Virtualized file tree explorer (Phase 4 deliverable 2): lazy
-//! per-directory loading — nothing is walked until a node is expanded, so
-//! there's no v0-style hard cap on item count (v0's explorer was a flat
-//! list capped at 400) — plus real filesystem operations for create,
-//! rename, move (the primitive a drag & drop gesture reports its drop
-//! through), delete to the system trash, and revealing the active file.
-//! Like every other `lux-ui` widget so far, this is the state a tree view
-//! would render and drive; no interactive mouse/keyboard wiring exists
-//! yet. Unlike the others, its operations are real disk I/O — whichever
-//! layer eventually wires this into the running app must dispatch them off
-//! the UI thread (golden rule #6); that wiring doesn't exist yet either.
+//! Virtualized file tree. The desktop sidebar paints `rows()`, expands and
+//! collapses on click, and reveals the active file. Loading stays lazy:
+//! `expand` reads one directory, and nothing below that is walked until
+//! the user opens it. `create`, `rename`, `move_node`, and
+//! `delete_to_trash` are real disk operations. A click that expands a
+//! folder reads that one directory on the caller; keep the read to the
+//! directory the user opened.
 
 use std::collections::HashMap;
 use std::fs;
@@ -156,6 +152,9 @@ impl FileTree {
                 NodeKind::File
             };
             let name = display_name(&path);
+            if kind == NodeKind::Directory && hidden_directory(&name) {
+                continue;
+            }
             let id = self.mint_id();
             self.nodes.insert(
                 id,
@@ -507,6 +506,12 @@ fn reject_if_exists(path: &Path) -> io::Result<()> {
         ));
     }
     Ok(())
+}
+
+/// Version-control metadata directories. Sublime's default
+/// `folder_exclude_patterns` hides the same set.
+fn hidden_directory(name: &str) -> bool {
+    matches!(name, ".git" | ".svn" | ".hg" | "CVS" | ".bzr")
 }
 
 fn display_name(path: &Path) -> String {

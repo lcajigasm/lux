@@ -112,6 +112,31 @@ fn app() -> App {
 }
 
 #[test]
+fn a_queued_path_opens_as_a_second_tab() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("monokai.rs");
+    let second = dir.path().join("characters.txt");
+    std::fs::write(&first, "fn main() {}\n").unwrap();
+    std::fs::write(&second, "note\n").unwrap();
+    let ctx = Context::new(None, None, SaveDecision::Discard);
+    let mut app = app();
+    app.documents.open_queue.push(second.clone());
+    app.request_document(&ctx, Request::Open(Some(first)));
+    ctx.complete(&mut app);
+    ctx.complete(&mut app);
+    let titles: Vec<_> = app
+        .documents
+        .tabs
+        .tabs()
+        .iter()
+        .map(|tab| tab.title.as_str())
+        .collect();
+    assert_eq!(titles, vec!["monokai.rs", "characters.txt"]);
+    assert_eq!(app.documents.path.as_ref(), Some(&second));
+    assert!(app.documents.open_queue.is_empty());
+}
+
+#[test]
 fn reopening_the_current_file_after_confirming_save_keeps_the_saved_content() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("note");

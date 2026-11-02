@@ -223,3 +223,13 @@ before that cut, the same assert passed on hosted runners at 215 µs
 a 120 ms ceiling. macos-15 debug run 41357599950 measured 82 ms while the
 typing path was unchanged. The 8 ms release assert is not raised if a
 hosted runner is slower; that result is written down instead.
+
+**2026-11-02, file tree and tabs, Linux x86_64 cloud VM (Intel Xeon, 4 threads, not the MacBook Pro reference), `--release`.** Before is `main` `3661033`. After is the tree-and-tabs change. Typing is `test_continuous_typing_latency_large_file_under_8ms` (p99 on 30 samples is the slowest sample). Scroll is lux-render `shape_one_visible_window_of_50_never_before_seen_lines` (10 samples). Open is lux-benches `load_100mb` (10 samples). Scroll and the 100 MB load live in crates this change does not modify; the after column is a second sample of those same binaries. Typing is the new `lux` binary.
+
+| Metric | Budget | Before | After |
+|---|---|---|---|
+| Typing, 30 inserts in a 20,000-line Rust buffer | < 8 ms p99 and max | 518 µs | 506 µs |
+| Scroll, shape 50 new lines | not a release gate | 349 µs mean | 353 µs mean (no change, p = 0.74) |
+| Open, load a 100 MB buffer | < 1 s | 242 ms mean | 241 ms mean |
+
+The 8 ms release ceiling holds. 242 ms to load 100 MB is this VM. There is still no GPU frame in the typing or scroll sample.

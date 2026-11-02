@@ -103,6 +103,18 @@ impl App {
 
     pub(crate) fn scroll(&mut self, delta: ScrollDelta) {
         let (dx, dy) = scroll_offset_delta(delta, self.scale_factor);
+        let mouse_x = self.mouse.position.x as f32;
+        let mouse_y = self.mouse.position.y as f32;
+        if mouse_x < self.sidebar_width() && mouse_y >= self.tab_bar_height() {
+            if let Some(sidebar) = self.ui.sidebar.as_mut() {
+                sidebar.scroll_by(dy, self.scale_factor, self.viewport.height);
+            }
+            self.scheduler.invalidate_all();
+            if let Some(gpu_window) = &self.gpu_window {
+                gpu_window.window.request_redraw();
+            }
+            return;
+        }
         if self.ui.split.is_active() {
             let primary_rect = [
                 self.sidebar_width(),
@@ -196,5 +208,22 @@ mod tests {
         app.scroll(ScrollDelta::Pixels(PhysicalPosition::new(-30.0, -40.0)));
         assert_eq!(app.viewport.scroll_x, 30.0);
         assert_eq!(app.viewport.scroll_y, 40.0);
+    }
+
+    #[test]
+    fn the_wheel_over_the_sidebar_scrolls_the_tree() {
+        let dir = std::env::temp_dir().join(format!("lux-side-scroll-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for index in 0..40 {
+            std::fs::write(dir.join(format!("file-{index:02}.txt")), "x").unwrap();
+        }
+        let mut app = app();
+        app.open_workspace(dir.clone());
+        app.mouse.position = dpi::PhysicalPosition::new(12.0, 80.0);
+        app.scroll(ScrollDelta::Pixels(PhysicalPosition::new(0.0, -40.0)));
+        let scrolled = app.ui.sidebar.unwrap().scroll_y;
+        assert!(scrolled > 0.0, "sidebar scroll_y was {scrolled}");
+        assert_eq!(app.viewport.scroll_y, 0.0);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

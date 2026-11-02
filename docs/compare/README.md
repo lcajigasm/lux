@@ -37,3 +37,12 @@ cannot be captured at scale 2 on a 1× framebuffer, and the script does
 not invent that pair. HiDPI grayscale is selected when `scale_factor > 1`.
 Selector text uses grayscale at scale 1 as well, so it composites on the
 panel.
+
+`tree.png` and `tabs.png` are copies of compare run 41394350609. The
+runner logged display scale 1. `tree.png` is Lux, Sublime Text, and Zed
+opened on `fixtures/`. Lux's header is `FIXTURES`; `notes` has a
+disclosure and a folder mark; the files are listed under it. Sublime's
+sidebar in that shot is its light chrome. `tabs.png` is the same three
+apps with `monokai.rs` and `characters.txt`. In Lux the active tab is
+`characters.txt` (editor well, accent bar) and `monokai.rs` is the
+inactive tab, with a foreground title.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Capture the real Lux, Sublime Text, and Zed windows on macOS.
 # Writes docs/compare/monokai-side-by-side.png, characters.png,
-# selectors.png, goto.png, and theme.png. Lux also writes
+# selectors.png, goto.png, theme.png, tree.png, and tabs.png. Lux also writes
 # retina-palette.png from its own renderer at scale factor 2.
 # Does not draw a stand-in if an application cannot be captured.
 # A 1× framebuffer cannot screencapture Sublime at scale 2; that file is
@@ -558,3 +558,102 @@ magick "$theme_dir/lux.png" "$theme_dir/sublime.png" "$theme_dir/zed.png" +appen
 echo "--> wrote $out/theme.png"
 echo "--> Zed's theme pane is the command palette filtered to theme."
 echo "--> This runner has no shortcut that opens Zed's theme selector itself."
+
+wait_for_log() {
+  local needle="$1"
+  local _
+  for _ in $(seq 1 40); do
+    if grep -q "$needle" "$log"; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "lux log never contained: $needle" >&2
+  cat "$log" >&2 || true
+  return 1
+}
+
+# A new window at 1100×760 is the largest for that app, so screencapture
+# records it rather than an earlier 1000×700 window.
+cat > /tmp/lux-phase1-bounds.applescript << 'APPLESCRIPT'
+tell application "System Events"
+  try
+    tell process "lux"
+      set position of window 1 to {40, 40}
+      set size of window 1 to {1100, 760}
+    end tell
+  end try
+  try
+    tell process "Sublime Text"
+      set position of window 1 to {40, 40}
+      set size of window 1 to {1100, 760}
+    end tell
+  end try
+  try
+    tell process "Zed"
+      set position of window 1 to {40, 40}
+      set size of window 1 to {1100, 760}
+    end tell
+  end try
+end tell
+APPLESCRIPT
+
+echo "--> Opening the fixtures folder so the file tree is on screen"
+kill "$lux_pid" 2>/dev/null || true
+wait "$lux_pid" 2>/dev/null || true
+lux_pid=""
+"$bin" "$root/docs/compare/fixtures" >"$log" 2>&1 &
+lux_pid=$!
+wait_window lux "$lux_pid" >/dev/null
+bound 15 "$subl" -n "$root/docs/compare/fixtures" || true
+bound 20 open -a "/Applications/Zed.app" "$root/docs/compare/fixtures" || true
+if ! wait_window "Zed" "" 30 >/dev/null; then
+  echo "Zed did not open the fixtures folder. Not writing tree.png." >&2
+  exit 1
+fi
+sleep 1
+bound 8 osascript /tmp/lux-phase1-bounds.applescript || true
+sleep 1
+tree_dir="$(mktemp -d)"
+shoot lux "$tree_dir/lux.png"
+if ! shoot "Sublime Text" "$tree_dir/sublime.png"; then
+  echo "Sublime Text's folder window could not be captured. Not writing tree.png." >&2
+  exit 1
+fi
+if ! shoot "Zed" "$tree_dir/zed.png"; then
+  echo "Zed's folder window could not be captured. Not writing tree.png." >&2
+  exit 1
+fi
+magick "$tree_dir/lux.png" "$tree_dir/sublime.png" "$tree_dir/zed.png" +append "$out/tree.png"
+echo "--> wrote $out/tree.png"
+
+echo "--> Opening two files so the tab strip shows an active and an inactive tab"
+kill "$lux_pid" 2>/dev/null || true
+wait "$lux_pid" 2>/dev/null || true
+lux_pid=""
+"$bin" "$fixture" "$characters" >"$log" 2>&1 &
+lux_pid=$!
+wait_window lux "$lux_pid" >/dev/null
+wait_for_log "monokai.rs"
+wait_for_log "characters.txt"
+bound 15 "$subl" -n "$fixture" "$characters" || true
+if [[ -x "/Applications/Zed.app/Contents/MacOS/cli" ]]; then
+  bound 20 "/Applications/Zed.app/Contents/MacOS/cli" "$fixture" "$characters" || true
+else
+  bound 20 open -a "/Applications/Zed.app" "$fixture" "$characters" || true
+fi
+sleep 1
+bound 8 osascript /tmp/lux-phase1-bounds.applescript || true
+sleep 1
+tabs_dir="$(mktemp -d)"
+shoot lux "$tabs_dir/lux.png"
+if ! shoot "Sublime Text" "$tabs_dir/sublime.png"; then
+  echo "Sublime Text's tabs could not be captured. Not writing tabs.png." >&2
+  exit 1
+fi
+if ! shoot "Zed" "$tabs_dir/zed.png"; then
+  echo "Zed's tabs could not be captured. Not writing tabs.png." >&2
+  exit 1
+fi
+magick "$tabs_dir/lux.png" "$tabs_dir/sublime.png" "$tabs_dir/zed.png" +append "$out/tabs.png"
+echo "--> wrote $out/tabs.png"

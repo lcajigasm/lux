@@ -188,7 +188,9 @@ installs the Zed cask, opens Lux with `--palette --query sel`, asks
 Sublime for its command palette with the same text, sends Zed
 Cmd-Shift-P and types `sel`, and appends the three windows to
 `selectors.png`. It then captures go to file (`--goto --query mon`) and
-the theme picker (`--theme --query mo`). Lux also writes
+the theme picker (`--theme --query mo`). It then opens the fixtures
+folder for `tree.png` and `monokai.rs` plus `characters.txt` for
+`tabs.png`. Lux also writes
 `retina-palette.png` by rendering that frame offscreen at scale factor 2.
 On a 1× runner, Sublime cannot be screencaptured at scale 2, and the
 script does not upscale a 1× shot. If Sublime or Zed cannot be captured,
@@ -203,8 +205,8 @@ the phase.
 |---|---|
 | Theme | hecho for the editor and chrome wells. `docs/compare/monokai-side-by-side.png` |
 | Typography | parcial. System monospace loader works (DejaVu here, Menlo/SF Mono path on macOS). No bundled face. HiDPI uses grayscale masks; the committed capture is 1×. |
-| File tree | parcial. Sidebar code runs when a folder is open. The capture opened one file, so the tree was absent |
-| Tabs | parcial. One readable tab in the capture; inactive tabs use the hardcoded dark quad |
+| File tree | hecho. Compare run 41394350609, `docs/compare/tree.png`. Lux, Sublime Text, and Zed are open on `docs/compare/fixtures`. Lux lists `notes` (disclosure and folder mark) and the files under the header `FIXTURES`. Names are the theme foreground on the Monokai sidebar. Sublime's sidebar in that shot is its light chrome. The runner display scale is 1 |
+| Tabs | hecho. The same run, `docs/compare/tabs.png`. `lux monokai.rs characters.txt` shows both tabs, as Sublime and Zed do. The active tab is `characters.txt`, the editor well, with the accent bar. The inactive title is foreground on `tab_inactive` |
 | Status bar | parcial. Items are built and painted; the capture cannot be read |
 | Minimap | parcial. A muted strip is in the capture. It is not a readable map of the file |
 | Splits | parcial. `split.png` shows two columns of the same file. The gutter and divider are the dark hardcoded chrome |
@@ -306,8 +308,10 @@ missed its bar.
    framebuffer. The runner is 1×. Block 0 is closed. The release is v1.4.0.
 2. **Phase 0b.** The selector capture against Sublime and Zed. Compare
    run 41363899505 holds. That close is the first release this plan allows.
-3. **Phase 1.** Block 1, the rest of the window (tree, tabs, status bar,
-   minimap, splits, settings) on the Monokai frame from phase 0.
+3. **Phase 1.** Block 1 stays parcial. File tree and tabs are hecho on
+   compare run 41394350609 (`docs/compare/tree.png`, `docs/compare/tabs.png`).
+   Status bar, minimap, splits, and settings are still open. The release
+   for the two closed rows is v1.5.0.
 4. **Phase 2.** Blocks 2 and 3 together. A command counts when its Sublime
    chord works on the Mac and the capture shows it.
 5. **Phase 3.** Block 4, on the binary phases 0–2 produced.

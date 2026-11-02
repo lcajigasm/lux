@@ -23,24 +23,24 @@ pub(crate) fn build_accessibility_tree(app: &mut App) -> TreeUpdate {
         .map(|t| (t.title.as_str(), active_id == Some(t.id)))
         .collect();
 
-    let sidebar_items = if let Some(sidebar) = &mut app.ui.sidebar
+    let sidebar_rows = if let Some(sidebar) = &mut app.ui.sidebar
         && sidebar.visible
         && let Some(tree) = &mut sidebar.tree
     {
-        let items: Vec<(&str, bool)> = tree
-            .rows()
-            .iter()
+        Some(crate::sidebar::listed_rows(tree))
+    } else {
+        None
+    };
+    let sidebar_items = sidebar_rows.as_ref().map(|rows| {
+        rows.iter()
             .map(|r| {
                 (
                     r.name.as_str(),
                     matches!(r.kind, lux_ui::file_tree::NodeKind::Directory),
                 )
             })
-            .collect();
-        Some(items)
-    } else {
-        None
-    };
+            .collect()
+    });
 
     let lang = app
         .documents
