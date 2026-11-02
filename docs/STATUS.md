@@ -39,12 +39,15 @@
 > is the settled frame.
 > `overlay_motion::the_open_animation_fades_and_slides_across_three_frames`
 > samples the start, the middle, and the end. Block 0 is closed.
-> Phase 1 file tree and tabs are implemented and still parcial until
-> `docs/compare/tree.png` and `docs/compare/tabs.png` come from the
-> macos-15 compare job. A folder argument lists that folder. `lux a b`
-> opens two tabs. Inactive tab titles use the foreground, because
-> Monokai muted on `tab_inactive` is about 2.5:1.
-> Workspace version 1.4.0 is that release. See [ROADMAP.md](ROADMAP.md).
+> Phase 1 file tree and tabs are hecho. Compare run
+> [41394350609](https://github.com/lcajigasm/lux/actions/runs/41394350609)
+> (`docs/compare/tree.png`, `docs/compare/tabs.png`) shows Lux, Sublime
+> Text, and Zed on the fixtures folder, and the same three with
+> `monokai.rs` and `characters.txt` open. Lux's inactive tab title is
+> the foreground. The runner logged display scale 1. Block 1 stays
+> parcial: status bar, minimap, splits, and settings are still open.
+> Workspace version 1.4.0 is the block 0 release. Workspace version
+> 1.5.0 is the file-tree and tabs release. See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
@@ -2331,7 +2334,7 @@ notarized installers stay `not-started`: no certificate is stored in the repo.
 UIKeyInput, document picker) and Kotlin `LuxActivity` (SurfaceView,
 InputConnection, SAF) live in `host-ios/` and `host-android/`. Rust FFI
 modules compile on desktop as `available() == false`. Not run on device;
-store rows stay `not-started`. Workspace version 1.4.0 is the desktop installer
+store rows stay `not-started`. Workspace version 1.5.0 is the desktop installer
 release; these phase labels are the original plan names and are still not done.
 `lux_platform::child_processes_allowed` is false on iOS.
 
