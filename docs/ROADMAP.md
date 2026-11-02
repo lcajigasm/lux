@@ -39,10 +39,11 @@ that produced it:
 
 The capture above is the previous build. `docs/compare/monokai-side-by-side.png`,
 `docs/compare/characters.png`, and `docs/compare/selectors.png` are the
-macos-15 windows from compare run 41357599959. 0.1 and 0.2 hold. The Lux
+macos-15 windows from compare run 41363899505. 0.1 and 0.2 hold. The Lux
 palette in that file is the wider card with the query `sel`, under the
-tab bar. `retina-palette.png` is that frame at scale factor 2. The runner
-is 1×, so Sublime is not in the scale-2 file. Block 0 stays open. No release.
+tab bar. Go to file with `mon` lists `monokai.rs`, as Sublime and Zed do.
+`retina-palette.png` is that frame at scale factor 2. The runner
+is 1×, so Sublime is not in the scale-2 file. Block 0 is closed.
 
 1. **Monokai is the launch theme.** `workbench.colorTheme` defaults to
    `monokai`. `Chrome` starts on `Theme::MONOKAI` and does not follow the
@@ -119,7 +120,7 @@ candidate either; the VS Code `theme-monokai` sources are MIT and are the
 first file to check. Sublime's bundled scheme is used only if its license
 allows redistribution.
 
-### 0.3 Text and selectors — parcial
+### 0.3 Text and selectors — hecho
 
 HiDPI frames (`scale_factor > 1`) rasterize grayscale masks and blend them
 with the quad already drawn for that surface. Scale 1 still uses subpixel
@@ -133,12 +134,12 @@ dark input well, and a drop shadow. Placeholders are "Execute a command…",
 foreground color, the selected row is `#75715E` with an accent bar, and
 fuzzy hits use the accent. The right-hand label is the real keymap chord
 when one exists. Compare run 41348580486 is the capture Forge rejected.
-Compare run 41357599959 shows the card under the tab bar, the query, the
-editor beside it, and go to file listing `monokai.rs` plus scattered
-`sample-*.bin` hits for `mon`. A match on the beige selection is the
-foreground, drawn twice; other rows keep the accent. Ranking now keeps a
-contiguous or word-initial match and drops those scattered names when
-one exists. The runner logged display scale 1. `retina-palette.png` is
+Compare run 41363899505 shows the card under the tab bar, the query, the
+editor beside it, and go to file listing only `monokai.rs` for `mon`,
+beside Sublime and Zed. A match on the beige selection is the
+foreground, drawn twice; other rows keep the accent. Ranking keeps a
+contiguous or word-initial match and drops scattered names when one
+exists. The runner logged display scale 1. `retina-palette.png` is
 the scale-2 framebuffer (2000×1312). Forge accepts that file as Lux's
 Retina render; Sublime cannot be captured at that scale on the 1× runner.
 Open motion is a 120 ms fade and an 8 px slide. The still is the settled
@@ -151,7 +152,7 @@ height, and SF Mono when the file exists, otherwise Menlo, otherwise a
 bundled monospace face. The command palette, goto-file, theme picker, and
 completion list do fuzzy match, highlight the matched characters, show
 icons, and use a rounded shadowed surface. Motion is short and does not
-block input. 0.3 stays open until a new compare capture holds.
+block input. Compare run 41363899505 holds. 0.3 holds with block 0.
 
 ### Block 0 is closed only when these captures exist
 
@@ -165,11 +166,14 @@ before that.
 - `docs/compare/characters.png` — the Lux window on the special-character
   fixture, same resolution.
 - `docs/compare/selectors.png` — Lux, Sublime Text, and Zed with the
-  command palette open and the query `sel`. Compare run 41357599959.
-  The runner is 1×. `retina-palette.png` is Lux's renderer at scale 2.
-  This row stays open until the comparison holds.
+  command palette open and the query `sel`. Compare run 41363899505.
+  `goto.png` in that run is go to file with `mon`: Lux, Sublime, and Zed
+  each list `monokai.rs`. The runner is 1×. `retina-palette.png` is Lux's
+  renderer at scale 2. Forge accepts the palette, the goto list, and that
+  framebuffer. Block 0 is closed.
 
-If Lux loses that comparison, the block stays open and no release is tagged.
+If a later capture loses the comparison, the block opens again and no
+release is tagged for that regression.
 
 ### How the compare job works
 
@@ -296,13 +300,12 @@ Each phase ends with new `docs/compare/` captures from the job above. Phase
 3 also commits the benchmark table. No release is tagged for a phase that
 missed its bar.
 
-1. **Phase 0, in progress.** 0.1 and 0.2 hold. Compare run 41357599959
-   shows the wider palette with the editor beside it, and
-   `retina-palette.png` is the scale-2 framebuffer. The runner is 1×.
-   Block 0 stays open. No release.
-2. **Phase 0b.** The selector capture against Sublime and Zed. Close
-   block 0 only if Lux holds that comparison. That close is the first
-   release this plan allows.
+1. **Phase 0, closed.** 0.1 and 0.2 hold. Compare run 41363899505
+   shows the wider palette with the editor beside it, go to file with
+   `mon` listing `monokai.rs`, and `retina-palette.png` as the scale-2
+   framebuffer. The runner is 1×. Block 0 is closed. The release is v1.4.0.
+2. **Phase 0b.** The selector capture against Sublime and Zed. Compare
+   run 41363899505 holds. That close is the first release this plan allows.
 3. **Phase 1.** Block 1, the rest of the window (tree, tabs, status bar,
    minimap, splits, settings) on the Monokai frame from phase 0.
 4. **Phase 2.** Blocks 2 and 3 together. A command counts when its Sublime

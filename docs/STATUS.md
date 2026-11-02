@@ -26,20 +26,20 @@
 > the accent. Go to file keeps a contiguous run or a word-initial match
 > and drops a scattered hit when one of those exists. `mon` on the compare
 > fixtures keeps `monokai.rs`. The `sample-*.bin` names match only as
-> `m`…`o`…`n` (`sample`, a later `o`, and the `n` in `.bin`). The committed
-> `docs/compare/goto.png` is from compare run 41357599959 and still shows
-> those bins; the next compare is the one that has to match Sublime.
-> `docs/compare/theme.png` shows the theme picker with `mo`.
-> `docs/compare/retina-palette.png` is that Lux frame from the renderer
-> at scale factor 2 (2000×1312). The runner logged display scale 1, so
-> Sublime is not in that file. Forge accepts that framebuffer as Lux's
-> Retina render and notes that the runner cannot capture Sublime in HiDPI.
-> Selector open motion is 120 ms: the card fades in and slides 8 px down
-> under the tab bar. Reduced motion skips it. The compare PNG is the
-> settled frame. `overlay_motion::the_open_animation_fades_and_slides_across_three_frames`
-> samples the start, the middle, and the end. Block 0 stays open until
-> the new goto capture matches Sublime. No release is tagged.
-> See [ROADMAP.md](ROADMAP.md).
+> `m`…`o`…`n` (`sample`, a later `o`, and the `n` in `.bin`).
+> `docs/compare/` is compare run 41363899505. `goto.png` is Lux, Sublime,
+> and Zed with `mon`; each list is `monokai.rs`. `selectors.png` is the
+> palette with `sel`, which Forge accepted. `theme.png` is the theme
+> picker with `mo`. `retina-palette.png` is that Lux frame from the
+> renderer at scale factor 2 (2000×1312). The runner logged display scale
+> 1, so Sublime is not in that file. Forge accepts that framebuffer as
+> Lux's Retina render and notes that the runner cannot capture Sublime
+> in HiDPI. Selector open motion is 120 ms: the card fades in and slides
+> 8 px down under the tab bar. Reduced motion skips it. The compare PNG
+> is the settled frame.
+> `overlay_motion::the_open_animation_fades_and_slides_across_three_frames`
+> samples the start, the middle, and the end. Block 0 is closed.
+> Workspace version 1.4.0 is that release. See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
@@ -2326,7 +2326,7 @@ notarized installers stay `not-started`: no certificate is stored in the repo.
 UIKeyInput, document picker) and Kotlin `LuxActivity` (SurfaceView,
 InputConnection, SAF) live in `host-ios/` and `host-android/`. Rust FFI
 modules compile on desktop as `available() == false`. Not run on device;
-store rows stay `not-started`. Workspace version 1.3.1 is the desktop installer
+store rows stay `not-started`. Workspace version 1.4.0 is the desktop installer
 release; these phase labels are the original plan names and are still not done.
 `lux_platform::child_processes_allowed` is false on iOS.
 

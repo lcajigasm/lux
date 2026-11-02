@@ -7,7 +7,7 @@ opens `fixtures/monokai.rs` in both with Monokai, and opens
 windows. ImageMagick joins the Monokai pair.
 
 Committed PNGs, including `goto.png`, are copies of compare run
-41357599959. A file that did not come from the job is not a comparison.
+41363899505. A file that did not come from the job is not a comparison.
 If Sublime Text cannot be captured,
 the job fails and does not write a replacement image.
 
@@ -18,8 +18,8 @@ file with `mon`. Lux opens the fixtures directory for that shot, so the
 list is the folder index, not an empty panel from a file that has not
 loaded yet. A contiguous or word-initial match drops scattered names:
 `mon` keeps `monokai.rs` and not `sample-utf8-bom.bin` (its `m`, `o`,
-and `n` are not a run). The PNG from compare run 41357599959 still shows
-the scattered rows; replace it when a later run does not. `theme.png` is Lux and Sublime's color-scheme pickers
+and `n` are not a run). `goto.png` from compare run 41363899505 shows
+that single row in Lux, Sublime, and Zed. `theme.png` is Lux and Sublime's color-scheme pickers
 with `mo`; Zed's pane is its command palette filtered to `theme`,
 because this capture has no shortcut that opens Zed's theme selector.
 Zed is installed with `brew install --cask zed` and opened
