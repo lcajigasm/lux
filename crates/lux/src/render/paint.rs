@@ -17,6 +17,35 @@ thread_local! {
     /// drawn each surface, so the mask composites against that real color
     /// instead of one editor-background uniform.
     static GRAYSCALE_TEXT: Cell<bool> = const { Cell::new(false) };
+    /// Selector open fade. 1 leaves editor ink unchanged.
+    static OVERLAY_FADE: Cell<f32> = const { Cell::new(1.0) };
+}
+
+/// Holds the selector fade for one overlay paint and restores the previous
+/// value, including on an early return.
+pub(crate) struct OverlayFade {
+    previous: f32,
+}
+
+impl Drop for OverlayFade {
+    fn drop(&mut self) {
+        OVERLAY_FADE.with(|cell| cell.set(self.previous));
+    }
+}
+
+pub(crate) fn overlay_fade(opacity: f32) -> OverlayFade {
+    OverlayFade {
+        previous: OVERLAY_FADE.with(|cell| cell.replace(opacity.clamp(0.0, 1.0))),
+    }
+}
+
+pub(crate) fn faded(color: [f32; 4]) -> [f32; 4] {
+    let opacity = OVERLAY_FADE.with(|cell| cell.get());
+    if opacity >= 1.0 {
+        color
+    } else {
+        [color[0], color[1], color[2], color[3] * opacity]
+    }
 }
 
 /// Retina and other HiDPI framebuffers (`scale_factor > 1`) rasterize
@@ -58,6 +87,24 @@ fn text_mode() -> TextRenderingMode {
         TextRenderingMode::Grayscale
     } else {
         TextRenderingMode::Subpixel
+    }
+}
+
+/// Selector glyphs composite against the panel already in the framebuffer.
+/// Scale-1 editor text stays subpixel; this guard covers only the overlay.
+pub(crate) struct OverlayText {
+    previous: bool,
+}
+
+impl Drop for OverlayText {
+    fn drop(&mut self) {
+        GRAYSCALE_TEXT.with(|cell| cell.set(self.previous));
+    }
+}
+
+pub(crate) fn overlay_text() -> OverlayText {
+    OverlayText {
+        previous: GRAYSCALE_TEXT.with(|cell| cell.replace(true)),
     }
 }
 
@@ -106,7 +153,7 @@ fn push_one_glyph(
             entry.height as f32,
         ],
         uv,
-        color,
+        faded(color),
         entry.kind,
     ));
 }
@@ -158,10 +205,59 @@ pub(super) fn push_glyph(
     }
 }
 
-pub(super) fn paint(
+/// The loaded face has no bold cut. A second copy, shifted by a
+/// fraction of the em, is the bold used for a match on the selection.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn push_bold_glyph(
+    atlas: &mut lux_render::GlyphAtlas,
+    atlas_dirty: &mut bool,
+    scale_cx: &mut swash::scale::ScaleContext,
+    font: FontRef,
+    font_size: f32,
+    cluster: &lux_render::ClusterGeometry,
+    origin_x: f32,
+    origin_y: f32,
+    color: [f32; 4],
+    out: &mut Vec<GlyphInstance>,
+) {
+    push_glyph(
+        atlas,
+        atlas_dirty,
+        scale_cx,
+        font,
+        font_size,
+        cluster,
+        origin_x,
+        origin_y,
+        color,
+        out,
+    );
+    let shift = (font_size * 0.065).clamp(0.7, 1.4);
+    push_glyph(
+        atlas,
+        atlas_dirty,
+        scale_cx,
+        font,
+        font_size,
+        cluster,
+        origin_x + shift,
+        origin_y,
+        color,
+        out,
+    );
+}
+
+/// Quads and glyphs for one draw. The selector is a second list so its
+/// card paints after the editor text instead of underneath it.
+pub(crate) struct DrawList<'a> {
+    pub quads: &'a [QuadInstance],
+    pub glyphs: &'a [GlyphInstance],
+}
+
+pub(crate) fn paint(
     gpu_window: &mut GpuWindow,
-    quads: &[QuadInstance],
-    glyphs: &[GlyphInstance],
+    base: DrawList<'_>,
+    overlay: DrawList<'_>,
     atlas: &GlyphAtlas,
     background: [f32; 4],
 ) -> Outcome {
@@ -235,13 +331,52 @@ pub(super) fn paint(
             &gpu_window.gpu.device,
             &gpu_window.gpu.queue,
             &mut pass,
-            quads,
+            base.quads,
         );
         gpu_window.text.draw(
             &gpu_window.gpu.device,
             &gpu_window.gpu.queue,
             &mut pass,
-            glyphs,
+            base.glyphs,
+        );
+    }
+    // `draw` writes one instance buffer per pipeline. A second pass in the
+    // same submit overwrites that buffer before the GPU runs the first pass,
+    // so the editor disappears and only the selector survives. Submit the
+    // editor first.
+    if !overlay.quads.is_empty() || !overlay.glyphs.is_empty() {
+        gpu_window.gpu.queue.submit(Some(encoder.finish()));
+        encoder = gpu_window
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("lux overlay"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        gpu_window.quads.draw(
+            &gpu_window.gpu.device,
+            &gpu_window.gpu.queue,
+            &mut pass,
+            overlay.quads,
+        );
+        gpu_window.text.draw(
+            &gpu_window.gpu.device,
+            &gpu_window.gpu.queue,
+            &mut pass,
+            overlay.glyphs,
         );
     }
     gpu_window.window.pre_present_notify();
@@ -323,6 +458,17 @@ mod tests {
         assert_eq!(rendering_mode_for_scale(2.0), TextRenderingMode::Grayscale);
         assert_eq!(rendering_mode_for_scale(1.5), TextRenderingMode::Grayscale);
         assert_eq!(rendering_mode_for_scale(1.0), TextRenderingMode::Subpixel);
+    }
+
+    #[test]
+    fn overlay_fade_scales_ink_and_then_restores_it() {
+        let ink = [0.2, 0.4, 0.6, 0.8];
+        assert_eq!(super::faded(ink), ink);
+        let guard = super::overlay_fade(0.5);
+        let faded = super::faded(ink);
+        assert!((faded[3] - 0.4).abs() < 1e-5);
+        drop(guard);
+        assert_eq!(super::faded(ink), ink);
     }
 
     #[test]

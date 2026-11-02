@@ -14,7 +14,7 @@ mod minimap;
 mod modals;
 pub(crate) mod paint;
 mod palette;
-mod panel;
+pub(crate) mod panel;
 mod plugin;
 mod project_picker;
 mod project_search;
@@ -35,7 +35,7 @@ use std::time::Instant;
 use crate::presentation::Outcome;
 use lux_platform::PlatformContext;
 use lux_render::QuadInstance;
-use paint::{color, paint, push_glyph, set_active_theme, set_hidpi_grayscale};
+use paint::{DrawList, color, push_glyph, set_active_theme, set_hidpi_grayscale};
 
 use crate::app::{App, BLINK_INTERVAL, FONT_SIZE, LINE_HEIGHT, TEXT_LEFT_PADDING};
 
@@ -101,7 +101,9 @@ impl App {
             0.0
         };
         let win_size = gpu_window.window.inner_size();
-        let window_width = win_size.width as f32;
+        let extent = crate::snapshot::frame_extent(win_size.width, win_size.height);
+        let window_width = extent.width;
+        let window_height = extent.height;
         let gutter_total_width = if is_df {
             0.0
         } else {
@@ -132,6 +134,8 @@ impl App {
             ));
         }
         let mut glyph_instances = Vec::new();
+        let mut overlay_quads = Vec::new();
+        let mut overlay_glyphs = Vec::new();
         let mut cursor_screen = None;
 
         if ui.split.is_active() {
@@ -337,7 +341,6 @@ impl App {
             );
         }
 
-        let window_height = win_size.height as f32;
         let language_id = documents.language();
 
         if let Some(search_state) = &mut ui.search_bar {
@@ -446,8 +449,8 @@ impl App {
             &mut atlas_state.atlas,
             &mut atlas_state.dirty,
             &mut atlas_state.scale_cx,
-            &mut quad_instances,
-            &mut glyph_instances,
+            &mut overlay_quads,
+            &mut overlay_glyphs,
         );
 
         git::render_git(
@@ -549,12 +552,19 @@ impl App {
             atlas_state.dirty = false;
         }
 
-        let outcome = paint(
+        let outcome = crate::snapshot::present_or_capture(
             gpu_window,
-            &quad_instances,
-            &glyph_instances,
+            DrawList {
+                quads: &quad_instances,
+                glyphs: &glyph_instances,
+            },
+            DrawList {
+                quads: &overlay_quads,
+                glyphs: &overlay_glyphs,
+            },
             &atlas_state.atlas,
             color(chrome.theme.background),
+            extent.capture,
         );
         if let Some(at) = presentation.finish(outcome, scheduler, Instant::now()) {
             ctx.request_wakeup(at);

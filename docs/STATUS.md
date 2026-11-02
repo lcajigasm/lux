@@ -18,11 +18,28 @@
 > border. Sublime's own minimap, breadcrumb, and lighter status chrome are
 > not copied. HiDPI text uses grayscale antialiasing when `scale_factor > 1`.
 > The job logged `display scale 1`, so the PNG does not prove Retina.
-> `docs/compare/selectors.png` from the same run shows the command palette
-> open in Lux (icons, rounded surface), Sublime Text, and Zed. A still does
-> not show the open animation. 0.1 and 0.2 hold. The selector still holds.
-> Block 0 stays open until this tree is on main and that main CI is green.
-> No release is tagged. See [ROADMAP.md](ROADMAP.md).
+> `docs/compare/selectors.png` (compare run 41357599959) shows the command
+> palette in Lux, Sublime Text, and Zed with the query `sel`. Lux's card
+> sits under the tab bar, about half the window, with a shadow. The editor
+> stays visible above and beside it. The field shows `sel`. On the beige
+> selected row the matched letters are the foreground; other rows keep
+> the accent. Go to file keeps a contiguous run or a word-initial match
+> and drops a scattered hit when one of those exists. `mon` on the compare
+> fixtures keeps `monokai.rs`. The `sample-*.bin` names match only as
+> `m`…`o`…`n` (`sample`, a later `o`, and the `n` in `.bin`).
+> `docs/compare/` is compare run 41363899505. `goto.png` is Lux, Sublime,
+> and Zed with `mon`; each list is `monokai.rs`. `selectors.png` is the
+> palette with `sel`, which Forge accepted. `theme.png` is the theme
+> picker with `mo`. `retina-palette.png` is that Lux frame from the
+> renderer at scale factor 2 (2000×1312). The runner logged display scale
+> 1, so Sublime is not in that file. Forge accepts that framebuffer as
+> Lux's Retina render and notes that the runner cannot capture Sublime
+> in HiDPI. Selector open motion is 120 ms: the card fades in and slides
+> 8 px down under the tab bar. Reduced motion skips it. The compare PNG
+> is the settled frame.
+> `overlay_motion::the_open_animation_fades_and_slides_across_three_frames`
+> samples the start, the middle, and the end. Block 0 is closed.
+> Workspace version 1.4.0 is that release. See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
@@ -70,7 +87,8 @@
 > 2026-10-31, release mode measured p99 and max at 376 µs (30 inserts; the test's
 > p99 slot is the slowest sample). A hosted run the same day, before CI was cut
 > to Linux, measured 215 µs on `ubuntu-latest` and 1.06 ms on `windows-latest`.
-> Debug CI keeps an 80 ms ceiling. The 8 ms assert is not widened.
+> Debug CI keeps a 120 ms ceiling. macos-15 debug run 41357599950 measured
+> 82 ms on that test. The 8 ms release assert is not widened.
 >
 > v1.1.1: `editor.insertFinalNewline` defaults off (Sublime / VS Code). A save the worker
 > rejects or cancels undoes that transform when the user has not typed since. Ctrl+Alt+digit
@@ -2308,7 +2326,7 @@ notarized installers stay `not-started`: no certificate is stored in the repo.
 UIKeyInput, document picker) and Kotlin `LuxActivity` (SurfaceView,
 InputConnection, SAF) live in `host-ios/` and `host-android/`. Rust FFI
 modules compile on desktop as `available() == false`. Not run on device;
-store rows stay `not-started`. Workspace version 1.3.1 is the desktop installer
+store rows stay `not-started`. Workspace version 1.4.0 is the desktop installer
 release; these phase labels are the original plan names and are still not done.
 `lux_platform::child_processes_allowed` is false on iOS.
 

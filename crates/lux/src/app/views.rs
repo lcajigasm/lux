@@ -21,12 +21,20 @@ impl App {
         if self.ui.command_palette.is_some() {
             self.ui.command_palette = None;
             self.chrome.focus.escape_to_editor();
+            self.scheduler.invalidate_all();
         } else {
-            self.ui.command_palette = Some(crate::palette::CommandPaletteState::new());
-            self.chrome
-                .focus
-                .set_focus(lux_ui::focus::FocusTarget::CommandPalette);
+            self.open_command_palette("");
         }
+    }
+
+    pub(crate) fn open_command_palette(&mut self, query: &str) {
+        let mut state = crate::palette::CommandPaletteState::new();
+        state.query = query.to_string();
+        state.shortcuts = crate::palette::shortcut_labels(&self.keymap);
+        self.ui.command_palette = Some(state);
+        self.chrome
+            .focus
+            .set_focus(lux_ui::focus::FocusTarget::CommandPalette);
         self.scheduler.invalidate_all();
     }
 

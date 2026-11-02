@@ -16,21 +16,21 @@ pub(super) fn hover_language_picker(app: &mut App, mx: f32, my: f32) -> bool {
 
 // 2. Theme Picker
 fn geom_theme_picker(m: ModalMetrics, total_items: usize, selected: usize) -> ModalGeometry {
-    let width = (m.vp_width * 0.52).clamp(360.0 * m.scale, 600.0 * m.scale);
-    let left = (m.vp_width - width) * 0.5;
-    let top = m.tab_bar_height + 12.0 * m.scale;
-    let input_h = 36.0 * m.scale;
-    let row_h = 28.0 * m.scale;
-    let visible = total_items.min(10);
-    let total_h = input_h + (visible as f32 * row_h) + 6.0 * m.scale;
-    let start = if selected >= 10 { selected - 10 + 1 } else { 0 };
+    use crate::render::panel::{self, THEME_VISIBLE};
+    let box_ = panel::selector_box(m.vp_width, m.tab_bar_height, m.scale);
+    let visible = total_items.min(THEME_VISIBLE);
+    let start = if selected >= visible {
+        selected + 1 - visible
+    } else {
+        0
+    };
     ModalGeometry {
-        left,
-        top,
-        width,
-        total_height: total_h,
-        rows_top: top + input_h,
-        row_height: row_h,
+        left: box_.left,
+        top: box_.top,
+        width: box_.width,
+        total_height: panel::panel_height(box_.input_height, box_.row_height, visible, m.scale),
+        rows_top: panel::rows_top(box_.top, box_.input_height, m.scale),
+        row_height: box_.row_height,
         visible_count: visible,
         start_idx: start,
     }

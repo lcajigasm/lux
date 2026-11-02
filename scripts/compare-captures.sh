@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Capture the real Lux, Sublime Text, and Zed windows on macOS.
-# Writes docs/compare/monokai-side-by-side.png, characters.png, and
-# selectors.png. Does not draw a stand-in if an application cannot be captured.
+# Writes docs/compare/monokai-side-by-side.png, characters.png,
+# selectors.png, goto.png, and theme.png. Lux also writes
+# retina-palette.png from its own renderer at scale factor 2.
+# Does not draw a stand-in if an application cannot be captured.
+# A 1× framebuffer cannot screencapture Sublime at scale 2; that file is
+# Lux only, and the log says so.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -304,6 +308,9 @@ func post(_ key: CGKeyCode, _ down: Bool, _ flags: CGEventFlags) {
 let escape: CGKeyCode = 0x35
 let ret: CGKeyCode = 0x24
 let p: CGKeyCode = 0x23
+let s: CGKeyCode = 0x01
+let e: CGKeyCode = 0x0E
+let l: CGKeyCode = 0x25
 // The trust dialog's default button is Return ("Trust and Continue").
 // Plain Escape does not dismiss it; the label is Option-Escape.
 post(ret, true, [])
@@ -316,13 +323,19 @@ for _ in 0..<3 {
 let chord: CGEventFlags = [.maskCommand, .maskShift]
 post(p, true, chord)
 post(p, false, chord)
+Thread.sleep(forTimeInterval: 0.4)
+for key in [s, e, l] {
+    post(key, true, [])
+    post(key, false, [])
+    Thread.sleep(forTimeInterval: 0.05)
+}
 SWIFT
 
 echo "--> Opening command palettes in Lux, Sublime Text, and Zed"
-"$bin" --palette "$fixture" >"$log" 2>&1 &
+"$bin" --palette --query sel --snapshot "$out/retina-palette.png" --snapshot-scale 2 "$fixture" >"$log" 2>&1 &
 lux_pid=$!
 wait_window lux "$lux_pid" >/dev/null
-bound 15 "$subl" --command 'show_overlay {"overlay": "command_palette"}' || true
+bound 15 "$subl" --command 'show_overlay {"overlay": "command_palette", "text": "sel"}' || true
 # `bound` returns 0 once the child exits, including when `open` failed.
 # Record the real status so a missing app is visible in the log.
 launch_zed() {
@@ -391,3 +404,157 @@ magick "$sel/lux.png" "$sel/sublime.png" "$sel/zed.png" +append "$out/selectors.
 echo "--> wrote $out/selectors.png"
 echo "--> lux display scale (1 means this runner is not Retina):"
 grep "display scale" "$log" || true
+if [[ ! -s "$out/retina-palette.png" ]]; then
+  echo "Lux did not write retina-palette.png. Not inventing a scale-2 image." >&2
+  exit 1
+fi
+retina_w="$(sips -g pixelWidth "$out/retina-palette.png" | awk '/pixelWidth/ {print $2}')"
+retina_h="$(sips -g pixelHeight "$out/retina-palette.png" | awk '/pixelHeight/ {print $2}')"
+echo "--> retina-palette.png ${retina_w}x${retina_h}"
+if [[ -z "$retina_w" || "$retina_w" -lt 1600 ]]; then
+  echo "Scale-2 snapshot is ${retina_w:-0}px wide. Refusing it." >&2
+  exit 1
+fi
+scale_line="$(grep "display scale" "$log" | awk '{print $NF}' | tail -1 || true)"
+if [[ "$scale_line" == "1" || "$scale_line" == "1.0" ]]; then
+  echo "--> Runner framebuffer is 1×. screencapture cannot record Sublime at scale 2."
+  echo "--> retina-palette.png is Lux's renderer at scale factor 2, not an upscaled screenshot."
+else
+  echo "--> Display scale ${scale_line}. Capturing Sublime's window at the runner's scale."
+  if ! shoot "Sublime Text" "$out/retina-sublime.png"; then
+    echo "Sublime Text could not be captured at this scale. Not writing a stand-in." >&2
+    exit 1
+  fi
+fi
+
+echo "--> Opening go to file with query mon"
+kill "$lux_pid" 2>/dev/null || true
+wait "$lux_pid" 2>/dev/null || true
+lux_pid=""
+# A single file is not a folder index. Open the fixtures directory so
+# the panel lists real paths (monokai.rs matches "mon").
+"$bin" --goto --query mon "$root/docs/compare/fixtures" >"$log" 2>&1 &
+lux_pid=$!
+wait_window lux "$lux_pid" >/dev/null
+bound 15 "$subl" --command 'show_overlay {"overlay": "goto", "text": "mon"}' || true
+if [[ -n "$zed_bundle_id" ]]; then
+  bound 8 osascript -e "tell application id \"$zed_bundle_id\" to activate" || true
+fi
+cat > /tmp/lux-goto-keys.swift << 'SWIFT'
+import CoreGraphics
+import Foundation
+func post(_ key: CGKeyCode, _ down: Bool, _ flags: CGEventFlags) {
+    let source = CGEventSource(stateID: .hidSystemState)
+    guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else { exit(1) }
+    event.flags = flags
+    event.post(tap: .cghidEventTap)
+}
+post(0x35, true, [])
+post(0x35, false, [])
+Thread.sleep(forTimeInterval: 0.3)
+post(0x23, true, [.maskCommand])
+post(0x23, false, [.maskCommand])
+Thread.sleep(forTimeInterval: 0.3)
+for key: CGKeyCode in [0x2E, 0x1F, 0x2D] {
+    post(key, true, [])
+    post(key, false, [])
+    Thread.sleep(forTimeInterval: 0.05)
+}
+SWIFT
+if ! swift /tmp/lux-goto-keys.swift; then
+  echo "Could not send Zed's go-to-file shortcut. Not writing goto.png." >&2
+  exit 1
+fi
+sleep 1
+bound 8 osascript /tmp/lux-selector-bounds.applescript || true
+sleep 1
+goto_dir="$(mktemp -d)"
+shoot lux "$goto_dir/lux.png"
+if ! shoot "Sublime Text" "$goto_dir/sublime.png"; then
+  echo "Sublime Text's go-to panel could not be captured. Not writing goto.png." >&2
+  exit 1
+fi
+if ! shoot "Zed" "$goto_dir/zed.png"; then
+  echo "Zed's go-to panel could not be captured. Not writing goto.png." >&2
+  exit 1
+fi
+magick "$goto_dir/lux.png" "$goto_dir/sublime.png" "$goto_dir/zed.png" +append "$out/goto.png"
+echo "--> wrote $out/goto.png"
+
+echo "--> Opening the color scheme picker with query mo"
+kill "$lux_pid" 2>/dev/null || true
+wait "$lux_pid" 2>/dev/null || true
+lux_pid=""
+"$bin" --theme --query mo "$fixture" >"$log" 2>&1 &
+lux_pid=$!
+wait_window lux "$lux_pid" >/dev/null
+bound 15 "$subl" --command "select_color_scheme" || true
+sleep 0.4
+# "mo" into whichever panel Sublime opened. Zed has no stable theme-picker
+# shortcut here; its pane is the command palette filtered to "theme".
+cat > /tmp/lux-theme-keys.swift << 'SWIFT'
+import CoreGraphics
+import Foundation
+func post(_ key: CGKeyCode, _ down: Bool, _ flags: CGEventFlags) {
+    let source = CGEventSource(stateID: .hidSystemState)
+    guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else { exit(1) }
+    event.flags = flags
+    event.post(tap: .cghidEventTap)
+}
+for key: CGKeyCode in [0x2E, 0x1F] {
+    post(key, true, [])
+    post(key, false, [])
+    Thread.sleep(forTimeInterval: 0.05)
+}
+SWIFT
+bound 8 osascript -e 'tell application "Sublime Text" to activate' || true
+sleep 0.3
+swift /tmp/lux-theme-keys.swift || true
+if [[ -n "$zed_bundle_id" ]]; then
+  bound 8 osascript -e "tell application id \"$zed_bundle_id\" to activate" || true
+fi
+sleep 0.2
+cat > /tmp/lux-zed-theme.swift << 'SWIFT'
+import CoreGraphics
+import Foundation
+func post(_ key: CGKeyCode, _ down: Bool, _ flags: CGEventFlags) {
+    let source = CGEventSource(stateID: .hidSystemState)
+    guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else { exit(1) }
+    event.flags = flags
+    event.post(tap: .cghidEventTap)
+}
+post(0x35, true, [])
+post(0x35, false, [])
+Thread.sleep(forTimeInterval: 0.2)
+let chord: CGEventFlags = [.maskCommand, .maskShift]
+post(0x23, true, chord)
+post(0x23, false, chord)
+Thread.sleep(forTimeInterval: 0.3)
+// t h e m e
+for key: CGKeyCode in [0x11, 0x04, 0x0E, 0x2E, 0x0E] {
+    post(key, true, [])
+    post(key, false, [])
+    Thread.sleep(forTimeInterval: 0.05)
+}
+SWIFT
+if ! swift /tmp/lux-zed-theme.swift; then
+  echo "Could not filter Zed's palette to theme. Not writing theme.png." >&2
+  exit 1
+fi
+sleep 1
+bound 8 osascript /tmp/lux-selector-bounds.applescript || true
+sleep 1
+theme_dir="$(mktemp -d)"
+shoot lux "$theme_dir/lux.png"
+if ! shoot "Sublime Text" "$theme_dir/sublime.png"; then
+  echo "Sublime Text's theme picker could not be captured. Not writing theme.png." >&2
+  exit 1
+fi
+if ! shoot "Zed" "$theme_dir/zed.png"; then
+  echo "Zed could not be captured. Not writing theme.png." >&2
+  exit 1
+fi
+magick "$theme_dir/lux.png" "$theme_dir/sublime.png" "$theme_dir/zed.png" +append "$out/theme.png"
+echo "--> wrote $out/theme.png"
+echo "--> Zed's theme pane is the command palette filtered to theme."
+echo "--> This runner has no shortcut that opens Zed's theme selector itself."

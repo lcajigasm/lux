@@ -5,7 +5,7 @@
 use std::cell::Cell;
 use std::time::{Duration, Instant};
 
-const OPEN: Duration = Duration::from_millis(140);
+const OPEN: Duration = Duration::from_millis(120);
 const SLIDE: Duration = Duration::from_millis(90);
 
 thread_local! {
@@ -57,7 +57,16 @@ impl OverlayMotion {
         if reduced {
             return 0.0;
         }
-        (1.0 - ease(now, self.opened_at, OPEN)) * distance
+        (1.0 - self.open_fade(now, false)) * distance
+    }
+
+    /// Opacity of the opening card. Zero at the first sample, one at 120 ms.
+    /// Reduced motion is already settled.
+    pub(crate) fn open_fade(&self, now: Instant, reduced: bool) -> f32 {
+        if reduced {
+            return 1.0;
+        }
+        ease(now, self.opened_at, OPEN)
     }
 
     /// Eases the highlight toward `index` from wherever it was last painted.
@@ -117,6 +126,28 @@ mod tests {
         assert!(motion.animating(now, false));
         assert!(!motion.animating(later, false));
         assert!(!motion.animating(now, true));
+    }
+
+    #[test]
+    fn the_open_animation_fades_and_slides_across_three_frames() {
+        assert!(OPEN <= Duration::from_millis(120));
+        let motion = OverlayMotion::open();
+        let start = motion.opened_at;
+        let middle = start + Duration::from_millis(60);
+        let end = start + OPEN;
+        let offset = |at| motion.open_offset(at, false, -8.0);
+        let fade = |at| motion.open_fade(at, false);
+        assert!((offset(start) + 8.0).abs() < 0.01);
+        assert!(offset(middle) > offset(start) && offset(middle) < -0.2);
+        assert!(offset(end).abs() < 0.01);
+        assert!(fade(start) < 0.05);
+        assert!(fade(middle) > fade(start) && fade(middle) < 0.98);
+        assert!((fade(end) - 1.0).abs() < 0.01);
+        assert!(motion.animating(start, false));
+        assert!(motion.animating(middle, false));
+        assert!(!motion.animating(end, false));
+        assert_eq!(motion.open_fade(start, true), 1.0);
+        assert_eq!(motion.open_offset(start, true, -8.0), 0.0);
     }
 
     #[test]

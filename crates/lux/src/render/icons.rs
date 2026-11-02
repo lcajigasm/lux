@@ -52,7 +52,11 @@ fn mark(
     color: [f32; 4],
     radius: f32,
 ) {
-    quads.push(QuadInstance::rounded([x, y, w, h], color, radius));
+    quads.push(QuadInstance::rounded(
+        [x, y, w, h],
+        super::paint::faded(color),
+        radius,
+    ));
 }
 
 pub(crate) fn push_icon(

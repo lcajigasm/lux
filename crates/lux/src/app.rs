@@ -338,6 +338,7 @@ impl PlatformEventHandler for App {
             }
             PlatformEvent::RedrawRequested => {
                 self.redraw(ctx);
+                crate::snapshot::capture_settled(self, ctx);
             }
             PlatformEvent::Keyboard(key_event) => {
                 self.handle_keyboard_event(ctx, &key_event);

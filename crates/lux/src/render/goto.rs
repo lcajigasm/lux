@@ -4,11 +4,11 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::goto::{GotoItemKind, GotoState};
-use crate::render::paint::{color, fuzzy_spans, push_glyph, span_covers};
+use crate::render::paint::{
+    color, faded, fuzzy_spans, overlay_fade, overlay_text, push_bold_glyph, push_glyph, span_covers,
+};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
-
-const MAX_VISIBLE_RESULTS: usize = 8;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_goto(
@@ -27,64 +27,41 @@ pub(crate) fn render_goto(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
+    let _overlay = overlay_text();
     let now = std::time::Instant::now();
     let reduced = crate::overlay_motion::reduced_motion();
-    let width = (viewport_width * 0.58).clamp(380.0 * scale_factor, 660.0 * scale_factor);
-    let left = (viewport_width - width) * 0.5;
-    let top = tab_bar_height
-        + 12.0 * scale_factor
-        + goto.motion.open_offset(now, reduced, -8.0 * scale_factor);
-    let input_height = 34.0 * scale_factor;
-    let row_height = 26.0 * scale_factor;
-
-    let visible_count = goto.items.len().min(MAX_VISIBLE_RESULTS);
-    let total_height = input_height + (visible_count as f32 * row_height) + 4.0 * stroke;
-
-    let modal_font_size = font_size * 0.82;
+    let _fade = overlay_fade(goto.motion.open_fade(now, reduced));
+    let visible_count = goto.items.len().min(super::panel::SELECTOR_VISIBLE);
+    let open_offset = goto.motion.open_offset(now, reduced, -8.0 * scale_factor);
+    let chrome = super::panel::paint_selector_chrome(
+        quad_instances,
+        viewport_width,
+        tab_bar_height,
+        scale_factor,
+        stroke,
+        visible_count,
+        open_offset,
+        theme,
+    );
+    let modal_font_size = font_size * 0.92;
     let family = editor_view.family().to_string();
     let style = lux_render::LineStyle {
         family: &family,
         font_size: modal_font_size,
         ligatures: false,
     };
-
     let foreground = color(theme.foreground);
-    let muted = color(theme.muted);
 
-    let radius = 8.0 * scale_factor;
-    super::panel::push_rounded_surface(
-        quad_instances,
-        [left, top, width, total_height],
-        radius,
-        color(theme.chrome.panel),
-        color(theme.chrome.border),
-        6.0 * scale_factor,
-        stroke,
-    );
-    let well_inset = radius * 0.75;
-    quad_instances.push(QuadInstance::rounded(
-        [
-            left + well_inset,
-            top + well_inset * 0.55,
-            width - 2.0 * well_inset,
-            input_height - well_inset * 0.45,
-        ],
-        color(theme.chrome.panel_input),
-        5.0 * scale_factor,
-    ));
-
-    // 4. Input text & caret
-    let input_baseline = (input_height - modal_font_size) * 0.5;
-    let text_x = left + 12.0 * scale_factor;
-    let text_y = top + stroke + input_baseline;
-
+    let input_baseline = (chrome.input_height - modal_font_size) * 0.5;
+    let text_x = chrome.left + 22.0 * scale_factor;
+    let text_y = chrome.top + stroke + input_baseline;
     let (display_text, text_color) = if goto.query.is_empty() {
         let placeholder = if goto.mode == crate::goto::GotoMode::ProjectSymbols {
-            "Goto Symbol in Project..."
+            "Go to symbol…"
         } else {
-            "Goto Anything (type filename, :line, @symbol, #term)..."
+            "Go to file…"
         };
-        (placeholder, muted)
+        (placeholder, super::panel::placeholder_ink(theme))
     } else {
         (goto.query.as_str(), foreground)
     };
@@ -112,18 +89,17 @@ pub(crate) fn render_goto(
         quad_instances.push(QuadInstance::solid(
             [
                 caret_x,
-                top + stroke + (input_height - modal_font_size) * 0.5,
+                chrome.top + stroke + (chrome.input_height - modal_font_size) * 0.5,
                 2.0 * stroke,
                 modal_font_size,
             ],
-            color(theme.accent),
+            faded(color(theme.accent)),
         ));
     }
 
-    // 5. Result rows
-    let rows_top = top + input_height + 2.0 * stroke;
+    let rows_top = chrome.rows_top;
+    let row_height = chrome.row_height;
     let row_baseline = (row_height - modal_font_size) * 0.5;
-
     let start_idx = if goto.selected_index >= visible_count {
         goto.selected_index + 1 - visible_count
     } else {
@@ -132,14 +108,14 @@ pub(crate) fn render_goto(
     let visual = goto.motion.row(goto.selected_index, now, reduced);
     super::panel::push_moving_row(
         quad_instances,
-        left,
+        chrome.left,
         rows_top,
-        width,
+        chrome.width,
         row_height,
         visual,
         start_idx,
         visible_count,
-        color(theme.chrome.panel_row),
+        super::panel::selected_fill(),
         color(theme.accent),
         scale_factor,
     );
@@ -159,12 +135,12 @@ pub(crate) fn render_goto(
             GotoItemKind::Symbol { .. } => super::icons::Icon::Symbol,
             GotoItemKind::Term { .. } => super::icons::Icon::Find,
         };
-        let icon_size = 14.0 * scale_factor;
-        let icon_x = left + 12.0 * scale_factor;
+        let icon_size = 16.0 * scale_factor;
+        let icon_x = chrome.left + 16.0 * scale_factor;
         let hole = if is_selected {
-            color(theme.chrome.panel_row)
+            super::panel::selected_fill()
         } else {
-            color(theme.chrome.panel)
+            super::panel::card_fill(theme)
         };
         super::icons::push_icon(
             icon,
@@ -193,7 +169,7 @@ pub(crate) fn render_goto(
             let badge_y = row_y + (row_height - badge_h) * 0.5;
             quad_instances.push(QuadInstance::rounded(
                 [offset_x, badge_y, badge_w, badge_h],
-                badge_bg,
+                faded(badge_bg),
                 3.0 * scale_factor,
             ));
             for cluster in badge_layout.clusters() {
@@ -217,16 +193,22 @@ pub(crate) fn render_goto(
         let label_line = editor_view
             .text_layout_mut()
             .layout_line(&style, &item.label, &[]);
-        let label_color = if is_selected { foreground } else { muted };
+        let label_color = foreground;
         let hits = fuzzy_spans(&item.label, &goto.query);
 
         for cluster in label_line.clusters() {
-            let glyph_color = if span_covers(&hits, &cluster.byte_range) {
-                color(theme.accent)
+            let hit = span_covers(&hits, &cluster.byte_range);
+            let glyph_color = if hit {
+                super::panel::hit_ink(is_selected, theme)
             } else {
                 label_color
             };
-            push_glyph(
+            let draw = if hit && is_selected {
+                push_bold_glyph
+            } else {
+                push_glyph
+            };
+            draw(
                 atlas,
                 atlas_dirty,
                 scale_cx,
@@ -245,7 +227,7 @@ pub(crate) fn render_goto(
             let detail_line = editor_view
                 .text_layout_mut()
                 .layout_line(&style, &item.detail, &[]);
-            let detail_x = left + width - detail_line.width() - 14.0 * scale_factor;
+            let detail_x = chrome.left + chrome.width - detail_line.width() - 18.0 * scale_factor;
             for cluster in detail_line.clusters() {
                 push_glyph(
                     atlas,
@@ -256,7 +238,7 @@ pub(crate) fn render_goto(
                     &cluster,
                     detail_x,
                     row_y + row_baseline + detail_line.baseline(),
-                    color(theme.accent),
+                    super::panel::shortcut_ink(theme),
                     glyph_instances,
                 );
             }

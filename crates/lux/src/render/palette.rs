@@ -4,12 +4,12 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::palette::CommandPaletteState;
-use crate::render::paint::{color, fuzzy_spans, push_glyph, span_covers};
+use crate::render::paint::{
+    color, faded, fuzzy_spans, overlay_fade, overlay_text, push_bold_glyph, push_glyph, span_covers,
+};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::command_palette::Context;
 use lux_ui::editor_view::EditorView;
-
-const MAX_VISIBLE_RESULTS: usize = 8;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_command_palette(
@@ -29,27 +29,32 @@ pub(crate) fn render_command_palette(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
+    let _overlay = overlay_text();
     let now = std::time::Instant::now();
     let reduced = crate::overlay_motion::reduced_motion();
-    let width = (viewport_width * 0.55).clamp(360.0 * scale_factor, 620.0 * scale_factor);
-    let left = (viewport_width - width) * 0.5;
-    let top = tab_bar_height
-        + 12.0 * scale_factor
-        + palette
-            .motion
-            .open_offset(now, reduced, -8.0 * scale_factor);
-    let input_height = 34.0 * scale_factor;
-    let row_height = 26.0 * scale_factor;
+    let _fade = overlay_fade(palette.motion.open_fade(now, reduced));
 
     let mut context = Context::new();
     context.set("editorFocus", true);
     context.set("hasSelection", has_selection);
     let visual = palette.motion.row(palette.selected_index, now, reduced);
     let results = palette.results(&context);
-    let visible_count = results.len().min(MAX_VISIBLE_RESULTS);
-    let total_height = input_height + (visible_count as f32 * row_height) + 4.0 * stroke;
+    let visible_count = results.len().min(super::panel::SELECTOR_VISIBLE);
+    let open_offset = palette
+        .motion
+        .open_offset(now, reduced, -8.0 * scale_factor);
+    let chrome = super::panel::paint_selector_chrome(
+        quad_instances,
+        viewport_width,
+        tab_bar_height,
+        scale_factor,
+        stroke,
+        visible_count,
+        open_offset,
+        theme,
+    );
 
-    let palette_font_size = font_size * 0.82;
+    let palette_font_size = font_size * 0.92;
     let family = editor_view.family().to_string();
     let style = lux_render::LineStyle {
         family: &family,
@@ -58,41 +63,14 @@ pub(crate) fn render_command_palette(
     };
 
     let foreground = color(theme.foreground);
-    let muted = color(theme.muted);
-
-    let radius = 8.0 * scale_factor;
-    super::panel::push_rounded_surface(
-        quad_instances,
-        [left, top, width, total_height],
-        radius,
-        color(theme.chrome.panel),
-        color(theme.chrome.border),
-        6.0 * scale_factor,
-        stroke,
-    );
-    let well_inset = radius * 0.75;
-    quad_instances.push(QuadInstance::rounded(
-        [
-            left + well_inset,
-            top + well_inset * 0.55,
-            width - 2.0 * well_inset,
-            input_height - well_inset * 0.45,
-        ],
-        color(theme.chrome.panel_input),
-        5.0 * scale_factor,
-    ));
-
-    // 4. Input text & caret
-    let input_baseline = (input_height - palette_font_size) * 0.5;
-    let text_x = left + 12.0 * scale_factor;
-    let text_y = top + stroke + input_baseline;
-
+    let input_baseline = (chrome.input_height - palette_font_size) * 0.5;
+    let text_x = chrome.left + 22.0 * scale_factor;
+    let text_y = chrome.top + stroke + input_baseline;
     let (display_text, text_color) = if palette.query.is_empty() {
-        ("> Type a command...", muted)
+        ("Execute a command…", super::panel::placeholder_ink(theme))
     } else {
         (palette.query.as_str(), foreground)
     };
-
     let input_line = editor_view
         .text_layout_mut()
         .layout_line(&style, display_text, &[]);
@@ -110,23 +88,19 @@ pub(crate) fn render_command_palette(
             glyph_instances,
         );
     }
-
     if !palette.query.is_empty() {
-        let caret_x = text_x + input_line.width() + 2.0 * stroke;
         quad_instances.push(QuadInstance::solid(
             [
-                caret_x,
-                top + stroke + (input_height - palette_font_size) * 0.5,
+                text_x + input_line.width() + 2.0 * stroke,
+                chrome.top + stroke + (chrome.input_height - palette_font_size) * 0.5,
                 2.0 * stroke,
                 palette_font_size,
             ],
-            color(theme.accent),
+            faded(color(theme.accent)),
         ));
     }
 
-    // 5. Result rows
-    let rows_top = top + input_height + 2.0 * stroke;
-    let row_baseline = (row_height - palette_font_size) * 0.5;
+    let row_baseline = (chrome.row_height - palette_font_size) * 0.5;
     let start_idx = if palette.selected_index >= visible_count {
         palette.selected_index + 1 - visible_count
     } else {
@@ -134,14 +108,14 @@ pub(crate) fn render_command_palette(
     };
     super::panel::push_moving_row(
         quad_instances,
-        left,
-        rows_top,
-        width,
-        row_height,
+        chrome.left,
+        chrome.rows_top,
+        chrome.width,
+        chrome.row_height,
         visual,
         start_idx,
         visible_count,
-        color(theme.chrome.panel_row),
+        super::panel::selected_fill(),
         color(theme.accent),
         scale_factor,
     );
@@ -152,44 +126,45 @@ pub(crate) fn render_command_palette(
         .take(visible_count)
         .enumerate()
     {
-        let row_y = rows_top + i as f32 * row_height;
+        let row_y = chrome.rows_top + i as f32 * chrome.row_height;
         let actual_idx = start_idx + i;
         let is_selected = actual_idx == palette.selected_index;
-
-        let icon_size = 14.0 * scale_factor;
-        let icon_x = left + 12.0 * scale_factor;
-        let icon_y = row_y + (row_height - icon_size) * 0.5;
+        let icon_size = 16.0 * scale_factor;
+        let icon_x = chrome.left + 16.0 * scale_factor;
         let hole = if is_selected {
-            color(theme.chrome.panel_row)
+            super::panel::selected_fill()
         } else {
-            color(theme.chrome.panel)
+            super::panel::card_fill(theme)
         };
         super::icons::push_icon(
             super::icons::icon_for_category(&entry.command.category),
             quad_instances,
             icon_x,
-            icon_y,
+            row_y + (chrome.row_height - icon_size) * 0.5,
             icon_size,
             color(theme.accent),
             hole,
         );
 
-        // Title
         let title_line =
             editor_view
                 .text_layout_mut()
                 .layout_line(&style, &entry.command.title, &[]);
-        let title_x = icon_x + icon_size + 8.0 * scale_factor;
-        let title_color = if is_selected { foreground } else { muted };
+        let title_x = icon_x + icon_size + 10.0 * scale_factor;
         let hits = fuzzy_spans(&entry.command.title, &palette.query);
-
         for cluster in title_line.clusters() {
-            let glyph_color = if span_covers(&hits, &cluster.byte_range) {
-                color(theme.accent)
+            let hit = span_covers(&hits, &cluster.byte_range);
+            let glyph_color = if hit {
+                super::panel::hit_ink(is_selected, theme)
             } else {
-                title_color
+                foreground
             };
-            push_glyph(
+            let draw = if hit && is_selected {
+                push_bold_glyph
+            } else {
+                push_glyph
+            };
+            draw(
                 atlas,
                 atlas_dirty,
                 scale_cx,
@@ -203,13 +178,14 @@ pub(crate) fn render_command_palette(
             );
         }
 
-        // Category
-        let cat_line =
-            editor_view
-                .text_layout_mut()
-                .layout_line(&style, &entry.command.category, &[]);
-        let cat_x = left + width - cat_line.width() - 14.0 * scale_factor;
-        for cluster in cat_line.clusters() {
+        let Some(shortcut) = palette.shortcuts.get(&entry.command.id) else {
+            continue;
+        };
+        let shortcut_line = editor_view
+            .text_layout_mut()
+            .layout_line(&style, shortcut, &[]);
+        let shortcut_x = chrome.left + chrome.width - shortcut_line.width() - 18.0 * scale_factor;
+        for cluster in shortcut_line.clusters() {
             push_glyph(
                 atlas,
                 atlas_dirty,
@@ -217,9 +193,9 @@ pub(crate) fn render_command_palette(
                 font,
                 palette_font_size,
                 &cluster,
-                cat_x,
-                row_y + row_baseline + cat_line.baseline(),
-                muted,
+                shortcut_x,
+                row_y + row_baseline + shortcut_line.baseline(),
+                super::panel::shortcut_ink(theme),
                 glyph_instances,
             );
         }
