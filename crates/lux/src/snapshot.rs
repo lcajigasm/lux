@@ -154,6 +154,9 @@ pub(crate) fn capture_settled(app: &mut App, ctx: &dyn PlatformContext) {
 }
 
 fn settled(app: &App) -> bool {
+    if crate::document::open_queue::busy(app) || !app.documents.open_queue.is_empty() {
+        return false;
+    }
     let now = std::time::Instant::now();
     let reduced = app.chrome.motion.reduced;
     let moving = |motion: &crate::overlay_motion::OverlayMotion| motion.animating(now, reduced);

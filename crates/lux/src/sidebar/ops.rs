@@ -34,7 +34,11 @@ pub(crate) fn handle_sidebar_action(
                 let row_idx = sidebar
                     .tree
                     .as_mut()
-                    .and_then(|t| t.rows().iter().position(|r| r.id == node_id))
+                    .and_then(|t| {
+                        crate::sidebar::listed_rows(t)
+                            .iter()
+                            .position(|r| r.id == node_id)
+                    })
                     .unwrap_or(0);
                 sidebar.inline_input = Some(InlineInputState {
                     mode: InlineInputMode::CreateFile { parent_id: node_id },
@@ -48,7 +52,11 @@ pub(crate) fn handle_sidebar_action(
                 let row_idx = sidebar
                     .tree
                     .as_mut()
-                    .and_then(|t| t.rows().iter().position(|r| r.id == node_id))
+                    .and_then(|t| {
+                        crate::sidebar::listed_rows(t)
+                            .iter()
+                            .position(|r| r.id == node_id)
+                    })
                     .unwrap_or(0);
                 sidebar.inline_input = Some(InlineInputState {
                     mode: InlineInputMode::CreateFolder { parent_id: node_id },
@@ -65,8 +73,7 @@ pub(crate) fn handle_sidebar_action(
                         .and_then(|p| p.file_name())
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_default();
-                    let row = tree
-                        .rows()
+                    let row = crate::sidebar::listed_rows(tree)
                         .iter()
                         .position(|r| r.id == node_id)
                         .unwrap_or(0);

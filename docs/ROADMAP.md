@@ -188,7 +188,9 @@ installs the Zed cask, opens Lux with `--palette --query sel`, asks
 Sublime for its command palette with the same text, sends Zed
 Cmd-Shift-P and types `sel`, and appends the three windows to
 `selectors.png`. It then captures go to file (`--goto --query mon`) and
-the theme picker (`--theme --query mo`). Lux also writes
+the theme picker (`--theme --query mo`). It then opens the fixtures
+folder for `tree.png` and `monokai.rs` plus `characters.txt` for
+`tabs.png`. Lux also writes
 `retina-palette.png` by rendering that frame offscreen at scale factor 2.
 On a 1× runner, Sublime cannot be screencaptured at scale 2, and the
 script does not upscale a 1× shot. If Sublime or Zed cannot be captured,
@@ -203,8 +205,8 @@ the phase.
 |---|---|
 | Theme | hecho for the editor and chrome wells. `docs/compare/monokai-side-by-side.png` |
 | Typography | parcial. System monospace loader works (DejaVu here, Menlo/SF Mono path on macOS). No bundled face. HiDPI uses grayscale masks; the committed capture is 1×. |
-| File tree | parcial. Sidebar code runs when a folder is open. The capture opened one file, so the tree was absent |
-| Tabs | parcial. One readable tab in the capture; inactive tabs use the hardcoded dark quad |
+| File tree | parcial until `docs/compare/tree.png` is a real macos-15 capture. A folder launch lists that folder's children: the root name is the header, not a second row. A directory has a disclosure and a folder mark; a file has a file mark. Names use the theme foreground. `.git`, `.svn`, `.hg`, `CVS`, and `.bzr` are skipped. A click opens a file as a tab and focuses the tree. The wheel over the tree scrolls the tree |
+| Tabs | parcial until `docs/compare/tabs.png` is a real macos-15 capture. `lux file-a file-b` opens each file as its own tab. The active tab uses the editor well and an accent bar. An inactive tab uses `tab_inactive` with foreground text: Monokai muted on that well is about 2.5:1, so the title would not be readable in the comment color |
 | Status bar | parcial. Items are built and painted; the capture cannot be read |
 | Minimap | parcial. A muted strip is in the capture. It is not a readable map of the file |
 | Splits | parcial. `split.png` shows two columns of the same file. The gutter and divider are the dark hardcoded chrome |

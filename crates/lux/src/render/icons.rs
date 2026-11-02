@@ -261,6 +261,99 @@ pub(crate) fn push_icon(
     }
 }
 
+/// Folder or file mark for a sidebar row. The left slot is the disclosure
+/// on a directory and empty on a file, so names share one column. These
+/// quads are not under the selector fade.
+pub(crate) fn push_tree_icon(
+    quads: &mut Vec<QuadInstance>,
+    x: f32,
+    y: f32,
+    size: f32,
+    ink: [f32; 4],
+    directory: bool,
+    expanded: bool,
+) {
+    let u = size / 22.0;
+    if directory {
+        if expanded {
+            mark_solid(quads, x + u, y + 8.0 * u, 8.0 * u, 1.8 * u, ink, 0.4 * u);
+            mark_solid(
+                quads,
+                x + 2.4 * u,
+                y + 10.2 * u,
+                5.2 * u,
+                1.8 * u,
+                ink,
+                0.4 * u,
+            );
+            mark_solid(
+                quads,
+                x + 3.8 * u,
+                y + 12.4 * u,
+                2.4 * u,
+                1.8 * u,
+                ink,
+                0.4 * u,
+            );
+        } else {
+            mark_solid(
+                quads,
+                x + 2.0 * u,
+                y + 6.0 * u,
+                1.8 * u,
+                8.0 * u,
+                ink,
+                0.4 * u,
+            );
+            mark_solid(
+                quads,
+                x + 4.2 * u,
+                y + 7.4 * u,
+                1.8 * u,
+                5.2 * u,
+                ink,
+                0.4 * u,
+            );
+            mark_solid(
+                quads,
+                x + 6.4 * u,
+                y + 8.8 * u,
+                1.8 * u,
+                2.4 * u,
+                ink,
+                0.4 * u,
+            );
+        }
+    }
+    let body_x = x + 10.0 * u;
+    if directory {
+        mark_solid(quads, body_x, y + 6.0 * u, 5.0 * u, 2.2 * u, ink, 0.6 * u);
+        mark_solid(quads, body_x, y + 7.8 * u, 8.0 * u, 6.5 * u, ink, 0.8 * u);
+    } else {
+        mark_solid(
+            quads,
+            body_x + u,
+            y + 4.0 * u,
+            6.5 * u,
+            12.0 * u,
+            ink,
+            0.8 * u,
+        );
+    }
+}
+
+fn mark_solid(
+    quads: &mut Vec<QuadInstance>,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    color: [f32; 4],
+    radius: f32,
+) {
+    quads.push(QuadInstance::rounded([x, y, w, h], color, radius));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

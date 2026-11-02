@@ -74,11 +74,10 @@ pub(crate) fn render_tab_bar(
                 .is_some_and(|e| e.is_dirty())
         };
 
-        let title_color = if is_active {
-            foreground
-        } else {
-            color(theme.muted)
-        };
+        // Inactive wells are `#34352F`. Monokai muted (`#75715E`) on that
+        // fill is about 2.5:1, so the title and the close mark use the
+        // foreground. The well and the accent bar distinguish the active tab.
+        let title_color = foreground;
 
         let max_title_w = (tab_width - close_btn_w - 18.0 * stroke).max(0.0);
         let layout = editor_view
@@ -140,7 +139,7 @@ pub(crate) fn render_tab_bar(
                 &cluster,
                 close_x,
                 title_y + close_layout.baseline(),
-                color(theme.muted),
+                foreground,
                 glyph_instances,
             );
         }

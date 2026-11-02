@@ -112,7 +112,7 @@ pub(crate) fn render_sidebar(
     let row_h = SIDEBAR_ROW_HEIGHT * scale_factor;
     let baseline = (row_h - sidebar_font_size) * 0.5;
 
-    let rows = tree.rows().to_vec();
+    let rows = crate::sidebar::listed_rows(tree);
     let selected_id = sidebar.selected_node;
 
     for (i, row) in rows.iter().enumerate() {
@@ -133,41 +133,24 @@ pub(crate) fn render_sidebar(
             ));
         }
 
-        let indent = 12.0 * scale_factor + (row.depth as f32 * 12.0 * scale_factor);
-
-        // Icon/Arrow indicator
-        let icon = match row.kind {
-            NodeKind::Directory => {
-                if row.expanded {
-                    "v"
-                } else {
-                    ">"
-                }
-            }
-            NodeKind::File => "-",
-        };
-        let icon_line = editor_view.text_layout_mut().layout_line(&style, icon, &[]);
+        let indent = 8.0 * scale_factor + (row.depth as f32 * 14.0 * scale_factor);
+        let icon_size = 22.0 * scale_factor;
         let icon_color = match row.kind {
             NodeKind::Directory => accent,
             NodeKind::File => muted,
         };
-        for c in icon_line.clusters() {
-            push_glyph(
-                atlas,
-                atlas_dirty,
-                scale_cx,
-                font,
-                sidebar_font_size,
-                &c,
-                indent,
-                row_y + baseline + icon_line.baseline(),
-                icon_color,
-                glyph_instances,
-            );
-        }
+        super::icons::push_tree_icon(
+            quad_instances,
+            indent,
+            row_y + (row_h - icon_size) * 0.5,
+            icon_size,
+            icon_color,
+            row.kind == NodeKind::Directory,
+            row.expanded,
+        );
 
         // Node Name or Inline Input
-        let name_x = indent + 14.0 * scale_factor;
+        let name_x = indent + icon_size + 4.0 * scale_factor;
         let is_editing = sidebar
             .inline_input
             .as_ref()
@@ -229,11 +212,7 @@ pub(crate) fn render_sidebar(
             let name_line = editor_view
                 .text_layout_mut()
                 .layout_line(&style, &row.name, &[]);
-            let text_color = if is_selected || row.kind == NodeKind::Directory {
-                foreground
-            } else {
-                muted
-            };
+            let text_color = foreground;
             for c in name_line.clusters() {
                 push_glyph(
                     atlas,

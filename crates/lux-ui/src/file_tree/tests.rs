@@ -380,6 +380,21 @@ fn reveal_expands_ancestors_and_returns_the_target_id() {
 }
 
 #[test]
+fn version_control_directories_stay_out_of_the_tree() {
+    let dir = temp_dir();
+    fs::create_dir(dir.join(".git")).unwrap();
+    fs::write(dir.join(".git").join("config"), "").unwrap();
+    fs::write(dir.join(".gitignore"), "").unwrap();
+    fs::write(dir.join("main.rs"), "").unwrap();
+    let mut tree = FileTree::open(&dir).unwrap();
+    assert_eq!(
+        names(tree.rows()),
+        vec![display_name(&dir).as_str(), ".gitignore", "main.rs"]
+    );
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn reveal_outside_the_root_returns_none() {
     let dir = temp_dir();
     let mut tree = FileTree::open(&dir).unwrap();

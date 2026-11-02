@@ -62,14 +62,14 @@ fn main() {
     let mut query = String::new();
     let mut snapshot: Option<std::path::PathBuf> = None;
     let mut snapshot_scale = 2.0_f32;
-    let mut positional: Option<std::ffi::OsString> = None;
+    let mut positionals: Vec<std::path::PathBuf> = Vec::new();
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         let arg_str = arg.to_string_lossy();
         if arg_str == "--help" || arg_str == "-h" {
             println!("Lux — Sublime-grade high-performance text editor");
             println!();
-            println!("Usage: lux [OPTIONS] [FILE_OR_DIRECTORY]");
+            println!("Usage: lux [OPTIONS] [DIRECTORY] [FILE...]");
             println!();
             println!("Options:");
             println!("  -h, --help     Print help information");
@@ -122,23 +122,11 @@ fn main() {
             snapshot_scale = value.to_string_lossy().parse().unwrap_or(2.0);
             continue;
         }
-        if positional.is_some() {
-            eprintln!("Usage: lux [--palette|--goto|--theme] [--query TEXT] [file]");
-            std::process::exit(2);
-        }
-        positional = Some(arg);
+        positionals.push(std::path::PathBuf::from(arg));
     }
-    if let Some(arg) = positional {
-        let arg_str = arg.to_string_lossy();
-        let target_path = std::path::PathBuf::from(&arg);
-        match launch_kind(&arg_str, target_path.is_dir()) {
-            LaunchKind::Workspace => app.open_workspace(target_path),
-            LaunchKind::ProjectFile => {
-                app.open_project_file(&target_path, None);
-            }
-            LaunchKind::Document => app.documents.initial_path = Some(target_path),
-            LaunchKind::Help | LaunchKind::Version => {}
-        }
+    if let Err(message) = apply_positionals(&mut app, &positionals) {
+        eprintln!("{message}");
+        std::process::exit(2);
     }
     if open_palette || (!open_goto && !open_theme && !query.is_empty()) {
         app.open_command_palette(&query);
@@ -160,6 +148,50 @@ enum LaunchKind {
     Workspace,
     ProjectFile,
     Document,
+}
+
+/// The first directory opens the workspace. Later paths are files, each
+/// opened as its own tab. A project file is only recognized when it is
+/// the sole argument.
+fn apply_positionals(app: &mut app::App, paths: &[std::path::PathBuf]) -> Result<(), String> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    if paths.len() == 1 {
+        let path = &paths[0];
+        let arg = path.to_string_lossy();
+        return match launch_kind(&arg, path.is_dir()) {
+            LaunchKind::Workspace => {
+                app.open_workspace(path.clone());
+                Ok(())
+            }
+            LaunchKind::ProjectFile => {
+                app.open_project_file(path, None);
+                Ok(())
+            }
+            LaunchKind::Document => {
+                app.documents.initial_path = Some(path.clone());
+                Ok(())
+            }
+            LaunchKind::Help | LaunchKind::Version => Ok(()),
+        };
+    }
+    let mut files = Vec::new();
+    for (index, path) in paths.iter().enumerate() {
+        if path.is_dir() {
+            if index != 0 {
+                return Err("only the first path may be a directory".into());
+            }
+            app.open_workspace(path.clone());
+        } else {
+            files.push(path.clone());
+        }
+    }
+    if let Some(first) = files.first().cloned() {
+        app.documents.initial_path = Some(first);
+        app.documents.open_queue.extend(files.into_iter().skip(1));
+    }
+    Ok(())
 }
 
 /// `lux .` and any other directory open the workspace. Finder passes a
@@ -197,5 +229,25 @@ mod tests {
             launch_kind("app.lux-project", false),
             LaunchKind::ProjectFile
         );
+    }
+
+    #[test]
+    fn two_files_queue_a_second_tab_and_a_folder_opens_the_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("monokai.rs");
+        let second = dir.path().join("characters.txt");
+        std::fs::write(&first, "fn main() {}\n").unwrap();
+        std::fs::write(&second, "note\n").unwrap();
+        let font = include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec();
+        let mut app = app::App::new(font.clone());
+        apply_positionals(&mut app, &[first.clone(), second.clone()]).unwrap();
+        assert_eq!(app.documents.initial_path.as_ref(), Some(&first));
+        assert_eq!(app.documents.open_queue, vec![second.clone()]);
+        assert!(app.ui.sidebar.is_none());
+
+        let mut app = app::App::new(font);
+        apply_positionals(&mut app, &[dir.path().to_path_buf(), first.clone()]).unwrap();
+        assert!(app.ui.sidebar.as_ref().is_some_and(|s| s.tree.is_some()));
+        assert_eq!(app.documents.initial_path.as_ref(), Some(&first));
     }
 }

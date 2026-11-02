@@ -46,11 +46,10 @@ impl Default for SidebarState {
 impl SidebarState {
     pub(crate) fn open_folder(path: PathBuf) -> Option<Self> {
         let tree = FileTree::open(&path).ok()?;
-        let selected_node = Some(tree.root());
         Some(Self {
             tree: Some(tree),
             workspace_root: Some(path),
-            selected_node,
+            selected_node: None,
             scroll_y: 0.0,
             visible: true,
             width: DEFAULT_SIDEBAR_WIDTH,
@@ -83,6 +82,71 @@ impl SidebarState {
         }
         self.selected_node = Some(id);
     }
+
+    pub(crate) fn scroll_by(&mut self, dy: f32, scale: f32, view_height: f32) {
+        let Some(tree) = self.tree.as_mut() else {
+            return;
+        };
+        let rows = listed_rows(tree).len() as f32;
+        let header = SIDEBAR_HEADER_HEIGHT * scale;
+        let list_view = (view_height - header).max(0.0);
+        let content = rows * SIDEBAR_ROW_HEIGHT * scale;
+        let max_scroll = (content - list_view).max(0.0);
+        self.scroll_y = (self.scroll_y - dy).clamp(0.0, max_scroll);
+    }
+}
+
+/// Rows the sidebar paints and hit-tests. An expanded root is the header,
+/// not a second copy of the folder name, and depths start at the children.
+pub(crate) fn listed_rows(tree: &mut FileTree) -> Vec<Row> {
+    let mut rows = tree.rows().to_vec();
+    let hide_root = rows
+        .first()
+        .is_some_and(|row| row.depth == 0 && row.kind == NodeKind::Directory && row.expanded);
+    if hide_root {
+        rows.remove(0);
+        for row in &mut rows {
+            row.depth = row.depth.saturating_sub(1);
+        }
+    }
+    rows
+}
+
+pub(crate) fn reveal_open_document(app: &mut crate::app::App) {
+    let Some(path) = app.documents.path.clone() else {
+        return;
+    };
+    let scale = app.scale_factor;
+    let view_height = app.viewport.height;
+    let Some(sidebar) = app.ui.sidebar.as_mut() else {
+        return;
+    };
+    let id = {
+        let Some(tree) = sidebar.tree.as_mut() else {
+            return;
+        };
+        match tree.reveal(&path) {
+            Ok(Some(id)) => id,
+            _ => return,
+        }
+    };
+    sidebar.selected_node = Some(id);
+    let rows = {
+        let tree = sidebar.tree.as_mut().expect("tree still open");
+        listed_rows(tree)
+    };
+    let Some(index) = rows.iter().position(|row| row.id == id) else {
+        return;
+    };
+    let row_h = SIDEBAR_ROW_HEIGHT * scale;
+    let header = SIDEBAR_HEADER_HEIGHT * scale;
+    let y = index as f32 * row_h;
+    let list_view = (view_height - header).max(row_h);
+    if y < sidebar.scroll_y {
+        sidebar.scroll_y = y;
+    } else if y + row_h > sidebar.scroll_y + list_view {
+        sidebar.scroll_y = y + row_h - list_view;
+    }
 }
 
 pub(crate) fn handle_sidebar_click(
@@ -96,6 +160,10 @@ pub(crate) fn handle_sidebar_click(
     if sidebar_w <= 0.0 || mouse_x >= sidebar_w {
         return false;
     }
+    app.chrome
+        .focus
+        .set_focus(lux_ui::focus::FocusTarget::FileTree);
+    crate::focus::sync_surface_focus(app, lux_ui::focus::FocusTarget::FileTree);
 
     // 1. If context menu is open, handle click on it
     if let Some(sidebar) = app.ui.sidebar.as_mut()
@@ -134,7 +202,7 @@ pub(crate) fn handle_sidebar_click(
         let Some(tree) = sidebar.tree.as_mut() else {
             return false;
         };
-        let rows: Vec<Row> = tree.rows().to_vec();
+        let rows: Vec<Row> = listed_rows(tree);
         if let Some(row) = rows.get(row_idx) {
             let id = row.id;
             let kind = row.kind;
@@ -237,7 +305,7 @@ pub(crate) fn handle_sidebar_key(
     let Some(tree) = sidebar.tree.as_mut() else {
         return false;
     };
-    let rows: Vec<Row> = tree.rows().to_vec();
+    let rows = listed_rows(tree);
     if rows.is_empty() {
         return false;
     }
@@ -261,13 +329,23 @@ pub(crate) fn handle_sidebar_key(
             }
         }
         lux_platform::Key::Named(lux_platform::NamedKey::ArrowDown) => {
-            if current_idx + 1 < rows.len() {
-                sidebar.selected_node = Some(rows[current_idx + 1].id);
+            let next = if sidebar.selected_node.is_none() {
+                0
+            } else if current_idx + 1 < rows.len() {
+                current_idx + 1
+            } else {
+                return false;
+            };
+            sidebar.selected_node = Some(rows[next].id);
+            app.scheduler.invalidate_all();
+            return true;
+        }
+        lux_platform::Key::Named(lux_platform::NamedKey::ArrowUp) => {
+            if sidebar.selected_node.is_none() {
+                sidebar.selected_node = Some(rows[0].id);
                 app.scheduler.invalidate_all();
                 return true;
             }
-        }
-        lux_platform::Key::Named(lux_platform::NamedKey::ArrowUp) => {
             if current_idx > 0 {
                 sidebar.selected_node = Some(rows[current_idx - 1].id);
                 app.scheduler.invalidate_all();
@@ -313,6 +391,8 @@ pub(crate) fn handle_sidebar_key(
 }
 
 #[cfg(test)]
+mod behavior_tests;
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -323,6 +403,40 @@ mod tests {
         assert!(sidebar.tree.is_some());
         assert!(sidebar.visible);
         assert_eq!(sidebar.root_name(), "lux");
+        assert!(sidebar.selected_node.is_none());
+    }
+
+    #[test]
+    fn an_expanded_root_is_the_header_not_a_row() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("notes")).unwrap();
+        std::fs::write(dir.path().join("notes").join("readme.txt"), "hi").unwrap();
+        std::fs::write(dir.path().join("a.txt"), "a").unwrap();
+        let mut sidebar = SidebarState::open_folder(dir.path().to_path_buf()).unwrap();
+        let tree = sidebar.tree.as_mut().unwrap();
+        let names: Vec<_> = listed_rows(tree)
+            .iter()
+            .map(|row| row.name.clone())
+            .collect();
+        assert_eq!(names, vec!["notes".to_string(), "a.txt".to_string()]);
+        let notes = listed_rows(sidebar.tree.as_mut().unwrap())
+            .iter()
+            .find(|row| row.name == "notes")
+            .unwrap()
+            .id;
+        sidebar.toggle_node(notes);
+        let names: Vec<_> = listed_rows(sidebar.tree.as_mut().unwrap())
+            .iter()
+            .map(|row| row.name.clone())
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "notes".to_string(),
+                "readme.txt".to_string(),
+                "a.txt".to_string()
+            ]
+        );
     }
 
     #[test]

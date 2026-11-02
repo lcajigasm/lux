@@ -39,6 +39,11 @@
 > is the settled frame.
 > `overlay_motion::the_open_animation_fades_and_slides_across_three_frames`
 > samples the start, the middle, and the end. Block 0 is closed.
+> Phase 1 file tree and tabs are implemented and still parcial until
+> `docs/compare/tree.png` and `docs/compare/tabs.png` come from the
+> macos-15 compare job. A folder argument lists that folder. `lux a b`
+> opens two tabs. Inactive tab titles use the foreground, because
+> Monokai muted on `tab_inactive` is about 2.5:1.
 > Workspace version 1.4.0 is that release. See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).

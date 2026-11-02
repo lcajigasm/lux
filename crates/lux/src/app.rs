@@ -286,7 +286,10 @@ impl PlatformEventHandler for App {
         crate::menu::init_native_menu(self);
         if let Some(path) = self.documents.initial_path.take() {
             self.request_document(ctx, crate::document::Request::Open(Some(path)));
-        } else if self.ui.sidebar.is_none() {
+        } else {
+            crate::document::open_queue::pump(self, ctx);
+        }
+        if !crate::document::open_queue::busy(self) && self.ui.sidebar.is_none() {
             let session_file = crate::session::default_session_path(None);
             if session_file.exists() {
                 let _ = crate::session::restore_session(self, &session_file);
