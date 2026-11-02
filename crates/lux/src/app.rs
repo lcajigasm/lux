@@ -223,9 +223,19 @@ impl App {
         ctx: &dyn PlatformContext,
         key_event: &KeyEvent,
     ) {
-        if !self.document_key(ctx, key_event)
-            && !crate::about::handle_about_key(self, ctx, key_event)
-            && !crate::focus::handle_focus_key(self, ctx, key_event)
+        // Key releases carry the same logical key as presses. They are useful
+        // to the platform, but Lux has no release-triggered commands; routing
+        // them through picker/search handlers used to insert every printable
+        // key a second time.
+        if key_event.state != ElementState::Pressed {
+            return;
+        }
+
+        // Floating and focused surfaces own input before the document. This
+        // prevents navigation/text intended for a modal from leaking into the
+        // editor while still allowing an unhandled global shortcut to fall
+        // through to the document/keymap dispatch below.
+        if !crate::about::handle_about_key(self, ctx, key_event)
             && !crate::conflict::handle_conflict_key(self, ctx, key_event)
             && !crate::palette::handle_palette_key(self, ctx, key_event)
             && !crate::language_picker::handle_language_picker_key(self, ctx, key_event)
@@ -236,6 +246,8 @@ impl App {
             && !crate::goto::handle_goto_key(self, ctx, key_event)
             && !crate::search::handle_search_key(self, ctx, key_event)
             && !crate::project_search::handle_project_search_key(self, ctx, key_event)
+            && !crate::focus::handle_focus_key(self, ctx, key_event)
+            && !self.document_key(ctx, key_event)
             && !crate::lsp::handle_lsp_key(self, ctx, key_event)
             && !crate::term::input::handle_term_key(self, ctx, key_event)
             && !crate::plugin::handle_plugin_key(self, ctx, key_event)
@@ -362,7 +374,9 @@ impl PlatformEventHandler for App {
                 }
             }
             PlatformEvent::MouseWheel(delta) => {
-                self.scroll(delta);
+                if !crate::language_picker::handle_language_picker_scroll(self, delta) {
+                    self.scroll(delta);
+                }
             }
             PlatformEvent::MouseMoved(position) => {
                 self.mouse.position = position;

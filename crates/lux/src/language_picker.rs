@@ -1,13 +1,14 @@
 //! Language Mode Picker modal dialog (T02).
 
 use lux_platform::event::KeyEvent;
-use lux_platform::{Key, NamedKey, PlatformContext};
+use lux_platform::{Key, NamedKey, PlatformContext, ScrollDelta};
 use lux_syntax::LanguageId;
 
 pub(crate) struct LanguagePickerState {
     pub(crate) query: String,
     pub(crate) selected_index: usize,
     pub(crate) candidates: Vec<(Option<LanguageId>, &'static str)>,
+    scroll_remainder: f32,
 }
 
 impl Default for LanguagePickerState {
@@ -22,6 +23,7 @@ impl LanguagePickerState {
             query: String::new(),
             selected_index: 0,
             candidates: all_languages(),
+            scroll_remainder: 0.0,
         }
     }
 
@@ -48,6 +50,39 @@ impl LanguagePickerState {
             self.selected_index -= 1;
         }
     }
+}
+
+/// Routes wheel/trackpad movement to the open language list instead of the
+/// editor underneath it. Line deltas move discrete rows; precise pixel
+/// deltas accumulate so a trackpad does not skip rows or lose small motions.
+pub(crate) fn handle_language_picker_scroll(app: &mut crate::app::App, delta: ScrollDelta) -> bool {
+    let Some(picker) = app.ui.language_picker.as_mut() else {
+        return false;
+    };
+
+    let total = picker.filtered().len();
+    let rows = match delta {
+        ScrollDelta::Lines { y, .. } => (-y).round() as isize,
+        ScrollDelta::Pixels(position) => {
+            let row_height = 26.0 * app.scale_factor.max(1.0);
+            picker.scroll_remainder += -(position.y as f32);
+            let rows = (picker.scroll_remainder / row_height).trunc() as isize;
+            picker.scroll_remainder -= rows as f32 * row_height;
+            rows
+        }
+    };
+
+    if total > 0 && rows != 0 {
+        picker.selected_index = picker
+            .selected_index
+            .saturating_add_signed(rows)
+            .min(total - 1);
+        app.scheduler.invalidate_all();
+        if let Some(gpu) = &app.gpu_window {
+            gpu.window.request_redraw();
+        }
+    }
+    true
 }
 
 pub(crate) fn all_languages() -> Vec<(Option<LanguageId>, &'static str)> {
@@ -129,9 +164,12 @@ pub(crate) fn handle_language_picker_key(
             app.scheduler.invalidate_all();
             true
         }
-        Key::Character(s) => {
+        Key::Character(s) if !app.modifiers.meta && !app.modifiers.control => {
             if let Some(picker) = app.ui.language_picker.as_mut() {
-                picker.query.push_str(s);
+                let text = event.text.as_deref().unwrap_or(s);
+                if !text.chars().any(char::is_control) {
+                    picker.query.push_str(text);
+                }
                 picker.selected_index = 0;
             }
             app.scheduler.invalidate_all();
