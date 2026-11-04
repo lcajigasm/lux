@@ -269,19 +269,60 @@ func children(_ element: AXUIElement) -> [AXUIElement] {
           let list = value as? [AXUIElement] else { return [] }
     return list
 }
+func characterCount(_ element: AXUIElement) -> Int {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXNumberOfCharactersAttribute as CFString, &value) == .success else {
+        return 0
+    }
+    if let number = value as? NSNumber { return number.intValue }
+    return 0
+}
+func rangedText(_ element: AXUIElement) -> String? {
+    let count = characterCount(element)
+    if count <= 0 { return nil }
+    var range = CFRange(location: 0, length: count)
+    guard let axRange = AXValueCreate(.cfRange, &range) else { return nil }
+    var result: CFTypeRef?
+    guard AXUIElementCopyParameterizedAttributeValue(
+        element,
+        kAXStringForRangeParameterizedAttribute as CFString,
+        axRange,
+        &result
+    ) == .success else { return nil }
+    return result as? String
+}
 func walk(_ element: AXUIElement, _ depth: Int, _ values: inout [String]) {
     if depth > 12 { return }
+    let role = text(element, kAXRoleAttribute as String) ?? "?"
     if let value = text(element, kAXValueAttribute as String), !value.isEmpty {
-        values.append(value)
+        values.append("\(role) \(value)")
+    }
+    if let ranged = rangedText(element), !ranged.isEmpty {
+        values.append("\(role) range \(ranged)")
     }
     for child in children(element) { walk(child, depth + 1, &values) }
+}
+func payload(_ line: String) -> String {
+    if let marker = line.range(of: " range ") {
+        return String(line[marker.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    guard let space = line.firstIndex(of: " ") else {
+        return line.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return String(line[line.index(after: space)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+func documentUntouched(_ values: [String]) -> Bool {
+    let payloads = values.map { payload($0) }
+    let hasAlpha = payloads.contains { $0 == "alpha" }
+    let grave = payloads.contains { $0.contains("`") }
+    return hasAlpha && !grave
 }
 var dumped = ""
 for _ in 0..<12 {
     var values: [String] = []
     walk(app, 0, &values)
     dumped = values.joined(separator: "\n")
-    if values.contains("alpha") && !values.contains(where: { $0.contains("`") }) {
+    if documentUntouched(values) {
         print(dumped)
         exit(0)
     }
