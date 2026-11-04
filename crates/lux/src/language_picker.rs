@@ -5,7 +5,7 @@ use lux_platform::{Key, NamedKey, PlatformContext, ScrollDelta};
 use lux_syntax::LanguageId;
 
 pub(crate) struct LanguagePickerState {
-    pub(crate) query: String,
+    pub(crate) query: crate::field::QueryField,
     pub(crate) selected_index: usize,
     pub(crate) candidates: Vec<(Option<LanguageId>, &'static str)>,
     scroll_remainder: f32,
@@ -20,7 +20,7 @@ impl Default for LanguagePickerState {
 impl LanguagePickerState {
     pub(crate) fn new() -> Self {
         Self {
-            query: String::new(),
+            query: crate::field::QueryField::new(),
             selected_index: 0,
             candidates: all_languages(),
             scroll_remainder: 0.0,
@@ -315,13 +315,13 @@ mod tests {
     #[test]
     fn language_picker_filters_by_query() {
         let mut picker = LanguagePickerState::new();
-        picker.query = "python".to_string();
+        picker.query = crate::field::QueryField::from_text("python");
         let results = picker.filtered();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].1, "Python");
         assert_eq!(results[0].0, Some(LanguageId::Python));
 
-        picker.query = "type".to_string();
+        picker.query = crate::field::QueryField::from_text("type");
         let type_results = picker.filtered();
         assert_eq!(type_results.len(), 2); // TypeScript and TypeScript (TSX)
     }

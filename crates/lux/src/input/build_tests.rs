@@ -144,7 +144,7 @@ fn test_build_picker_filtering_and_navigation() {
 
     let mut picker = BuildPickerState {
         variants,
-        query: String::new(),
+        query: crate::field::QueryField::new(),
         selected: 0,
     };
     assert_eq!(picker.filtered().len(), 3);
@@ -166,7 +166,7 @@ fn test_build_picker_filtering_and_navigation() {
     assert_eq!(picker.selected, 0);
 
     // Filtering
-    picker.query = "python".into();
+    picker.query = crate::field::QueryField::from_text("python");
     let filtered = picker.filtered();
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0].name, "Python: Run File");
@@ -211,6 +211,7 @@ fn test_build_picker_key_handling_lifecycle() {
         text: Some("t".into()),
         state: lux_platform::event::ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
     let handled = handle_build_key(&mut app, &ctx, &key_t);
     assert!(handled);
@@ -222,6 +223,7 @@ fn test_build_picker_key_handling_lifecycle() {
         text: None,
         state: lux_platform::event::ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
     handle_build_key(&mut app, &ctx, &key_bs);
     assert_eq!(app.ui.build.picker.as_ref().unwrap().query, "");
@@ -232,6 +234,7 @@ fn test_build_picker_key_handling_lifecycle() {
         text: None,
         state: lux_platform::event::ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
     handle_build_key(&mut app, &ctx, &key_esc);
     assert!(app.ui.build.picker.is_none());
@@ -252,6 +255,7 @@ fn test_build_keymap_command_dispatch() {
         text: None,
         state: lux_platform::event::ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
     handle_build_key(&mut app, &ctx, &key_esc);
     assert!(app.ui.build.picker.is_none());

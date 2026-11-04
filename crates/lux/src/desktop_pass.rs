@@ -108,6 +108,7 @@ fn press(app: &mut App, ctx: &Context, key: Key, text: Option<&str>) {
             text: text.map(str::to_owned),
             state: ElementState::Pressed,
             repeat: false,
+            physical: None,
         },
     );
 }
@@ -120,6 +121,7 @@ fn release(app: &mut App, ctx: &Context, key: Key, text: Option<&str>) {
             text: text.map(str::to_owned),
             state: ElementState::Released,
             repeat: false,
+            physical: None,
         },
     );
 }
@@ -273,6 +275,12 @@ fn configured_shortcut_runs_through_the_real_keyboard_pipeline() {
     );
 
     press(&mut app, &ctx, Key::Named(NamedKey::Escape), None);
+    assert!(app.ui.command_palette.is_none());
+    assert_eq!(
+        app.chrome.focus.current(),
+        lux_ui::focus::FocusTarget::Editor,
+        "closing the palette returns focus to the editor"
+    );
     let tabs_before = app.documents.tabs.tabs().len();
     command(&mut app, false);
     press(&mut app, &ctx, Key::Character("n".into()), Some("n"));

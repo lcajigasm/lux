@@ -72,6 +72,7 @@ fn key_event(key: Key) -> KeyEvent {
         key,
         text: None,
         repeat: false,
+        physical: None,
     }
 }
 

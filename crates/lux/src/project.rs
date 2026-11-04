@@ -67,7 +67,7 @@ impl RecentProjects {
 #[derive(Debug, Clone)]
 pub(crate) struct ProjectSwitchState {
     pub(crate) projects: Vec<PathBuf>,
-    pub(crate) query: String,
+    pub(crate) query: crate::field::QueryField,
     pub(crate) selected: usize,
 }
 
@@ -316,7 +316,7 @@ impl App {
 
         self.ui.project.picker = Some(ProjectSwitchState {
             projects,
-            query: String::new(),
+            query: crate::field::QueryField::new(),
             selected: 0,
         });
         self.scheduler.invalidate_all();

@@ -1,0 +1,44 @@
+name: Keystrokes
+
+# Real keystrokes on the free macos-15 runner, with the Spanish layout
+# when the runner allows it. No --palette or --query flags. A layout the
+# runner cannot select is recorded as layout-unavailable, not as a pass.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spanish:
+    name: spanish keystrokes (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Press keys into Lux
+        run: |
+          chmod +x scripts/macos-keystrokes.sh
+          ./scripts/macos-keystrokes.sh
+
+      - name: Upload keystroke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: keystroke-evidence
+          path: |
+            docs/compare/keystroke-result.txt
+            docs/compare/keystrokes-search.png
+            docs/compare/keystrokes-chords.png
+            docs/compare/input-sources.txt
+            docs/compare/ax-error.txt
+          if-no-files-found: warn

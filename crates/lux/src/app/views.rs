@@ -29,7 +29,7 @@ impl App {
 
     pub(crate) fn open_command_palette(&mut self, query: &str) {
         let mut state = crate::palette::CommandPaletteState::new();
-        state.query = query.to_string();
+        state.query = crate::field::QueryField::from_text(query);
         state.shortcuts = crate::palette::shortcut_labels(&self.keymap);
         self.ui.command_palette = Some(state);
         self.chrome
@@ -62,7 +62,7 @@ impl App {
 
     pub(crate) fn open_goto_anything(&mut self, initial_query: &str) {
         let mut state = crate::goto::GotoState::new(self);
-        state.query = initial_query.to_string();
+        state.query = crate::field::QueryField::from_text(initial_query);
         state.refresh_results(self);
         self.ui.goto_anything = Some(state);
         self.chrome

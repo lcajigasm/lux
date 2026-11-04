@@ -106,6 +106,7 @@ fn test_arrow_keys_skip_folded_lines() {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
 
     // Should skip hidden lines 1 and 2 and land on line 3 ("footer")
@@ -117,6 +118,7 @@ fn test_arrow_keys_skip_folded_lines() {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
 
     // Should jump back to line 0 ("header")

@@ -5,7 +5,7 @@ use lux_platform::event::KeyEvent;
 use lux_platform::{Key, NamedKey, PlatformContext};
 
 pub(crate) struct SnippetPickerState {
-    pub(crate) query: String,
+    pub(crate) query: crate::field::QueryField,
     pub(crate) selected_index: usize,
     pub(crate) candidates: Vec<Snippet>,
 }
@@ -13,7 +13,7 @@ pub(crate) struct SnippetPickerState {
 impl SnippetPickerState {
     pub(crate) fn new(candidates: Vec<Snippet>) -> Self {
         Self {
-            query: String::new(),
+            query: crate::field::QueryField::new(),
             selected_index: 0,
             candidates,
         }

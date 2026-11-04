@@ -21,9 +21,9 @@ pub(crate) enum SearchField {
 }
 
 pub(crate) struct ProjectSearchState {
-    pub(crate) find_query: String,
-    pub(crate) where_query: String,
-    pub(crate) replace_query: String,
+    pub(crate) find_query: crate::field::QueryField,
+    pub(crate) where_query: crate::field::QueryField,
+    pub(crate) replace_query: crate::field::QueryField,
     pub(crate) files_to_include: String,
     pub(crate) files_to_exclude: String,
     pub(crate) is_replace: bool,
@@ -62,9 +62,9 @@ pub(crate) fn parse_where_query(where_str: &str) -> (Vec<String>, Vec<String>) {
 impl ProjectSearchState {
     pub(crate) fn new(is_replace: bool) -> Self {
         Self {
-            find_query: String::new(),
-            where_query: String::new(),
-            replace_query: String::new(),
+            find_query: crate::field::QueryField::new(),
+            where_query: crate::field::QueryField::new(),
+            replace_query: crate::field::QueryField::new(),
             files_to_include: String::new(),
             files_to_exclude: String::new(),
             is_replace,
@@ -337,7 +337,7 @@ pub(crate) fn open_project_find(app: &mut crate::app::App) {
         String::new()
     };
     let mut state = ProjectSearchState::new(false);
-    state.find_query = initial_query;
+    state.find_query = crate::field::QueryField::from_text(initial_query);
     let root = app
         .ui
         .sidebar
@@ -356,7 +356,7 @@ pub(crate) fn open_project_replace(app: &mut crate::app::App) {
         String::new()
     };
     let mut state = ProjectSearchState::new(true);
-    state.find_query = initial_query;
+    state.find_query = crate::field::QueryField::from_text(initial_query);
     let root = app
         .ui
         .sidebar
@@ -382,7 +382,7 @@ mod tests {
         let file_path = temp_dir.path().join("test.txt");
         std::fs::write(&file_path, "apple\nbanana\napricot\n").unwrap();
 
-        state.find_query = "ap".to_string();
+        state.find_query = crate::field::QueryField::from_text("ap");
         state.start_search(temp_dir.path());
         state.wait_until_done();
         assert!(!state.matches.is_empty());
@@ -400,8 +400,8 @@ mod tests {
         let file_path = temp_dir.path().join("replace_me.txt");
         std::fs::write(&file_path, "hello world\n").unwrap();
 
-        state.find_query = "hello".to_string();
-        state.replace_query = "hi".to_string();
+        state.find_query = crate::field::QueryField::from_text("hello");
+        state.replace_query = crate::field::QueryField::from_text("hi");
         state.start_search(temp_dir.path());
         state.wait_until_done();
         assert_eq!(state.matches.len(), 1);
@@ -424,8 +424,8 @@ mod tests {
         std::fs::write(&toml_file, "find_target in toml").unwrap();
 
         let mut state = ProjectSearchState::new(false);
-        state.find_query = "find_target".to_string();
-        state.where_query = "*.toml, -*.rs".to_string();
+        state.find_query = crate::field::QueryField::from_text("find_target");
+        state.where_query = crate::field::QueryField::from_text("*.toml, -*.rs");
         state.start_search(temp_dir.path());
         state.wait_until_done();
 

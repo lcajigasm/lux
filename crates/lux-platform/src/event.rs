@@ -4,9 +4,9 @@
 //! on (press/release, preedit/commit IME, touch phases) without borrowing
 //! `winit`'s concrete types, so a future UIKit or Android backend can
 //! produce the same [`PlatformEvent`] without depending on `winit` at all.
-//! Physical, layout-independent key codes are deliberately not modelled yet
-//! — nothing before Phase 5 (keymaps) needs to bind a shortcut independent
-//! of keyboard layout, so [`Key`] only carries the layout-aware logical key.
+//! [`Key`] is the layout-aware logical key (what the user sees typed).
+//! [`PhysicalKey`] is the key position, so a shortcut such as Command+/
+//! matches the same physical key on a Spanish keyboard as on a US one.
 
 use dpi::{PhysicalPosition, PhysicalSize};
 
@@ -20,6 +20,51 @@ pub struct KeyEvent {
     pub text: Option<String>,
     pub state: ElementState,
     pub repeat: bool,
+    /// Key position, independent of the characters the layout produces.
+    /// `None` when the backend did not report one (tests that only care
+    /// about the logical key).
+    pub physical: Option<PhysicalKey>,
+}
+
+/// Layout-independent key position. Letters and digits use their US labels.
+/// Punctuation variants are the US key that occupies that position, which is
+/// what Sublime keymaps name (`cmd+/`, `cmd+[`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PhysicalKey {
+    Letter(char),
+    Digit(u8),
+    Slash,
+    BracketLeft,
+    BracketRight,
+    Backslash,
+    Minus,
+    Equal,
+    Semicolon,
+    Quote,
+    Comma,
+    Period,
+    Backquote,
+}
+
+impl PhysicalKey {
+    /// Token used by keymap chords (`"f"`, `"/"`, `"["`).
+    pub fn chord_token(self) -> String {
+        match self {
+            Self::Letter(c) => c.to_ascii_lowercase().to_string(),
+            Self::Digit(n) => n.to_string(),
+            Self::Slash => "/".to_string(),
+            Self::BracketLeft => "[".to_string(),
+            Self::BracketRight => "]".to_string(),
+            Self::Backslash => "\\".to_string(),
+            Self::Minus => "-".to_string(),
+            Self::Equal => "=".to_string(),
+            Self::Semicolon => ";".to_string(),
+            Self::Quote => "'".to_string(),
+            Self::Comma => ",".to_string(),
+            Self::Period => ".".to_string(),
+            Self::Backquote => "`".to_string(),
+        }
+    }
 }
 
 /// The logical key identity of a key event.

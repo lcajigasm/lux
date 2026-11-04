@@ -258,7 +258,7 @@ fn test_build_picker_click_and_outside() {
             args: vec!["check".into()],
             file_regex: None,
         }],
-        query: String::new(),
+        query: crate::field::QueryField::new(),
         selected: 0,
     });
 
@@ -273,7 +273,7 @@ fn test_project_picker_click_and_outside() {
     let ctx = DummyContext;
     app.ui.project.picker = Some(crate::project::ProjectSwitchState {
         projects: vec![std::path::PathBuf::from("/tmp/proj")],
-        query: String::new(),
+        query: crate::field::QueryField::new(),
         selected: 0,
     });
 

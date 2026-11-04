@@ -13,8 +13,8 @@ use lux_core::position::Position;
 use lux_core::selection::Selection;
 use lux_platform::event::KeyEvent;
 use lux_platform::{
-    ElementState, Ime, ImeComposition, ImeUpdate, Modifiers, MouseButton, PlatformContext,
-    PlatformEvent, PlatformEventHandler, WindowId,
+    ElementState, Ime, ImeComposition, ImeUpdate, Key, Modifiers, MouseButton, NamedKey,
+    PlatformContext, PlatformEvent, PlatformEventHandler, WindowId,
 };
 use lux_render::{GlyphAtlas, RepaintScheduler};
 use lux_ui::Chrome;
@@ -160,6 +160,9 @@ impl App {
     }
 
     pub(crate) fn apply_ime(&mut self, event: Ime) {
+        if crate::field::route_ime(self, &event) {
+            return;
+        }
         if self.editing_blocked() {
             return;
         }
@@ -230,6 +233,16 @@ impl App {
         if key_event.state != ElementState::Pressed {
             return;
         }
+        if crate::field::field_is_composing(self) {
+            if matches!(key_event.key, Key::Named(NamedKey::Escape)) {
+                crate::field::route_ime(self, &lux_platform::Ime::Disabled);
+            }
+            return;
+        }
+        if crate::field::edit_focused_field(self, key_event, ctx.clipboard()) {
+            self.refresh_accessibility();
+            return;
+        }
 
         // Floating and focused surfaces own input before the document. This
         // prevents navigation/text intended for a modal from leaking into the
@@ -246,6 +259,7 @@ impl App {
             && !crate::goto::handle_goto_key(self, ctx, key_event)
             && !crate::search::handle_search_key(self, ctx, key_event)
             && !crate::project_search::handle_project_search_key(self, ctx, key_event)
+            && !crate::lsp::handle_completion_popup_key(self, key_event)
             && !crate::focus::handle_focus_key(self, ctx, key_event)
             && !self.document_key(ctx, key_event)
             && !crate::lsp::handle_lsp_key(self, ctx, key_event)
@@ -374,7 +388,7 @@ impl PlatformEventHandler for App {
                 }
             }
             PlatformEvent::MouseWheel(delta) => {
-                if !crate::language_picker::handle_language_picker_scroll(self, delta) {
+                if !crate::overlay_wheel::scroll_open_overlay(self, delta) {
                     self.scroll(delta);
                 }
             }

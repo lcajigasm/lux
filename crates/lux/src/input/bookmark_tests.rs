@@ -91,6 +91,7 @@ fn test_toggle_bookmark_via_keymap() {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
     app.handle_key_with_clipboard(&toggle_key, Some(&ctx));
     assert!(app.bookmarks.contains(2));
@@ -121,6 +122,7 @@ fn test_next_and_prev_bookmark_navigation() {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
 
     // F2 -> line 1
@@ -171,6 +173,7 @@ fn test_clear_bookmarks_via_keymap() {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
 
     app.handle_key_with_clipboard(&clear_key, Some(&ctx));
@@ -193,6 +196,7 @@ fn test_select_all_bookmarks_via_keymap() {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
 
     app.handle_key_with_clipboard(&select_all_key, Some(&ctx));

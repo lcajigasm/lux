@@ -19,7 +19,7 @@ pub(crate) struct BuildVariant {
 #[derive(Debug, Clone)]
 pub(crate) struct BuildPickerState {
     pub(crate) variants: Vec<BuildVariant>,
-    pub(crate) query: String,
+    pub(crate) query: crate::field::QueryField,
     pub(crate) selected: usize,
 }
 
@@ -371,7 +371,7 @@ impl App {
 
         self.ui.build.picker = Some(BuildPickerState {
             variants,
-            query: String::new(),
+            query: crate::field::QueryField::new(),
             selected: 0,
         });
         self.scheduler.invalidate_all();

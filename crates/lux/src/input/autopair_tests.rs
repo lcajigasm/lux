@@ -18,6 +18,7 @@ fn type_char(app: &mut App, ch: char) {
         text: Some(s),
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
 }
 
@@ -27,6 +28,7 @@ fn press_backspace(app: &mut App) {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
 }
 

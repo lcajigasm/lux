@@ -534,6 +534,8 @@ mod macro_tests;
 #[cfg(test)]
 mod occurrence_tests;
 #[cfg(test)]
+mod panel_input_tests;
+#[cfg(test)]
 mod project_tests;
 #[cfg(test)]
 mod search_tests;

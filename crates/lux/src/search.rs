@@ -38,8 +38,8 @@ pub(crate) struct SearchBarLayout {
 
 pub(crate) struct SearchBarState {
     pub(crate) search_bar: SearchBar,
-    pub(crate) find_query: String,
-    pub(crate) replace_text: String,
+    pub(crate) find_query: crate::field::QueryField,
+    pub(crate) replace_text: crate::field::QueryField,
     pub(crate) replace_mode: bool,
     pub(crate) focused_field: SearchField,
     pub(crate) case_sensitive: bool,
@@ -54,8 +54,8 @@ impl SearchBarState {
     pub(crate) fn new(replace_mode: bool) -> Self {
         Self {
             search_bar: SearchBar::new(),
-            find_query: String::new(),
-            replace_text: String::new(),
+            find_query: crate::field::QueryField::new(),
+            replace_text: crate::field::QueryField::new(),
             replace_mode,
             focused_field: SearchField::Find,
             case_sensitive: false,
@@ -73,7 +73,7 @@ impl SearchBarState {
     }
 
     pub(crate) fn sync_query(&mut self, buffer: &Buffer) {
-        let query = Query::new(&self.find_query)
+        let query = Query::new(self.find_query.as_str())
             .case_sensitive(self.case_sensitive)
             .whole_word(self.whole_word)
             .regex(self.regex);
@@ -165,7 +165,7 @@ pub(crate) fn open_find(app: &mut crate::app::App, replace_mode: bool) {
     if let Some(search) = app.ui.search_bar.as_mut() {
         search.replace_mode = replace_mode;
         if !initial_query.is_empty() {
-            search.find_query = initial_query;
+            search.find_query = crate::field::QueryField::from_text(initial_query);
             search.sync_query(&app.buffer);
         }
         if in_sel {
@@ -177,7 +177,7 @@ pub(crate) fn open_find(app: &mut crate::app::App, replace_mode: bool) {
     } else {
         let mut search = SearchBarState::new(replace_mode);
         if !initial_query.is_empty() {
-            search.find_query = initial_query;
+            search.find_query = crate::field::QueryField::from_text(initial_query);
         }
         if in_sel {
             search.in_selection = true;
@@ -247,44 +247,8 @@ pub(crate) fn handle_search_key(
         (search.focused_field, search.replace_mode)
     };
 
-    // Option / Alt toggle shortcuts (Option+Cmd+R/C/W/S or Alt+R/C/W/S)
-    if let Key::Character(s) = &event.key {
-        let has_alt_or_meta = app.modifiers.alt || (app.modifiers.meta && app.modifiers.alt);
-        if has_alt_or_meta || s == "®" || s == "ç" || s == "∑" || s == "ß" {
-            let handled = if s.eq_ignore_ascii_case("r") || s == "®" {
-                app.ui
-                    .search_bar
-                    .as_mut()
-                    .map(|s| s.toggle_regex(&app.buffer))
-                    .is_some()
-            } else if s.eq_ignore_ascii_case("c") || s == "ç" {
-                app.ui
-                    .search_bar
-                    .as_mut()
-                    .map(|s| s.toggle_case(&app.buffer))
-                    .is_some()
-            } else if s.eq_ignore_ascii_case("w") || s == "∑" {
-                app.ui
-                    .search_bar
-                    .as_mut()
-                    .map(|s| s.toggle_word(&app.buffer))
-                    .is_some()
-            } else if s.eq_ignore_ascii_case("s") || s == "ß" {
-                let range =
-                    (!app.cursors.primary().is_empty()).then(|| app.cursors.primary().char_range());
-                app.ui
-                    .search_bar
-                    .as_mut()
-                    .map(|s| s.toggle_in_selection(&app.buffer, range))
-                    .is_some()
-            } else {
-                false
-            };
-            if handled {
-                app.scheduler.invalidate_all();
-                return true;
-            }
-        }
+    if crate::field::search_option_toggle(app, event) {
+        return true;
     }
 
     match &event.key {
@@ -384,7 +348,7 @@ pub(crate) fn handle_search_key(
             true
         }
         Key::Character(s) => {
-            if !app.modifiers.meta && !app.modifiers.control && !app.modifiers.alt {
+            if !app.modifiers.meta && !app.modifiers.control {
                 let next_sel = if let Some(search) = app.ui.search_bar.as_mut() {
                     match search.focused_field {
                         SearchField::Find => {
@@ -559,7 +523,7 @@ mod tests {
     fn search_bar_state_syncs_query_and_matches() {
         let buffer = Buffer::from_bytes(b"hello world hello").unwrap();
         let mut state = SearchBarState::new(false);
-        state.find_query = "hello".to_string();
+        state.find_query = crate::field::QueryField::from_text("hello");
         state.sync_query(&buffer);
         assert_eq!(state.search_bar.matches().len(), 2);
         assert_eq!(state.search_bar.current_index(), Some(0));
@@ -573,8 +537,8 @@ mod tests {
     fn search_bar_replace_current_and_all() {
         let mut buffer = Buffer::from_bytes(b"foo bar foo").unwrap();
         let mut state = SearchBarState::new(true);
-        state.find_query = "foo".to_string();
-        state.replace_text = "baz".to_string();
+        state.find_query = crate::field::QueryField::from_text("foo");
+        state.replace_text = crate::field::QueryField::from_text("baz");
         state.sync_query(&buffer);
 
         let tx = state.replace_current(&mut buffer);

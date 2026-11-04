@@ -142,6 +142,7 @@ fn test_cmd_option_number_does_not_switch_tab_and_changes_layout() {
         key: Key::Character("2".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
 
     // document_key must return false (do not consume or switch tabs)
@@ -197,6 +198,7 @@ fn test_cmd_k_followed_by_cmd_1_folds_code_without_altering_tab() {
         key: Key::Character("k".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     app.handle_keyboard_event(&ctx, &key_k);
     assert!(app.ui.pending_chord.is_some());
@@ -208,6 +210,7 @@ fn test_cmd_k_followed_by_cmd_1_folds_code_without_altering_tab() {
         key: Key::Character("1".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     app.handle_keyboard_event(&ctx, &key_1);
     assert!(app.ui.pending_chord.is_none());
@@ -244,6 +247,7 @@ fn test_cmd_k_followed_by_digit_without_cmd_folds_code() {
         key: Key::Character("k".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     app.handle_keyboard_event(&ctx, &key_k);
     assert!(app.ui.pending_chord.is_some());
@@ -255,6 +259,7 @@ fn test_cmd_k_followed_by_digit_without_cmd_folds_code() {
         key: Key::Character("1".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     app.handle_keyboard_event(&ctx, &key_1);
     assert!(app.ui.pending_chord.is_none());
@@ -277,6 +282,7 @@ fn test_cmd_k_escape_cancels_chord() {
         key: Key::Character("k".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     app.handle_keyboard_event(&ctx, &key_k);
     assert!(app.ui.pending_chord.is_some());
@@ -287,6 +293,7 @@ fn test_cmd_k_escape_cancels_chord() {
         key: Key::Named(NamedKey::Escape),
         text: None,
         repeat: false,
+        physical: None,
     };
     app.handle_keyboard_event(&ctx, &escape);
     assert!(app.ui.pending_chord.is_none());
@@ -319,6 +326,7 @@ fn test_tab_switching_strictly_requires_exclusive_modifiers() {
         key: Key::Character("2".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
 
     // Case 1: Shift is pressed (Cmd+Shift+2) -> must NOT switch tab

@@ -452,6 +452,7 @@ fn mouse_and_keyboard_tab_interactions() {
         key: Key::Character("t".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     if cfg!(target_os = "macos") {
         app.modifiers.meta = true;
@@ -503,6 +504,7 @@ fn tab_strip_2_quick_selection_and_context_menu_ops() {
         key: Key::Character("1".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     assert!(app.document_key(&ctx, &key1));
     assert_eq!(app.documents.active_tab, Some(tab1_id));
@@ -514,6 +516,7 @@ fn tab_strip_2_quick_selection_and_context_menu_ops() {
         key: Key::Character("9".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     assert!(app.document_key(&ctx, &key9));
     assert_eq!(app.documents.active_tab, Some(tab3_id));

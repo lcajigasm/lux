@@ -29,6 +29,7 @@ fn press(app: &mut App, key: Key, text: Option<&str>) {
         text: text.map(str::to_owned),
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
 }
 
@@ -61,6 +62,7 @@ fn clipboard_command(app: &mut App, clipboard: &dyn Clipboard, key: &str) {
             text: Some(key.into()),
             state: ElementState::Pressed,
             repeat: false,
+            physical: None,
         },
         Some(clipboard),
     );
@@ -181,6 +183,7 @@ fn named_space_and_crlf_enter_are_undoable_and_release_is_ignored() {
         text: Some("q".into()),
         state: ElementState::Released,
         repeat: false,
+        physical: None,
     });
     assert_eq!(app.buffer.text(), " a\r\n");
 }
@@ -494,6 +497,7 @@ fn toggle_word_wrap_shortcut_and_view_update() {
         key: Key::Character("z".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     a.modifiers.alt = true;
     a.handle_key_with_clipboard(&event, None);
@@ -514,6 +518,7 @@ fn split_editor_shortcuts_and_cycling() {
         key: Key::Character("2".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     if cfg!(target_os = "macos") {
         a.modifiers.meta = true;
@@ -534,6 +539,7 @@ fn split_editor_shortcuts_and_cycling() {
         key: Key::Named(NamedKey::F(6)),
         text: None,
         repeat: false,
+        physical: None,
     };
     a.modifiers.meta = false;
     a.modifiers.control = false;
@@ -546,6 +552,7 @@ fn split_editor_shortcuts_and_cycling() {
         key: Key::Character("w".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     if cfg!(target_os = "macos") {
         a.modifiers.meta = true;

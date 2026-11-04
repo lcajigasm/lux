@@ -3,7 +3,9 @@ use lux_core::buffer::Buffer;
 use lux_core::position::Position;
 use lux_core::selection::Selection;
 use lux_platform::event::KeyEvent;
-use lux_platform::{ElementState, FileDialogs, Key, Modifiers, NamedKey, PlatformContext};
+use lux_platform::{
+    ElementState, FileDialogs, Key, Modifiers, NamedKey, PhysicalKey, PlatformContext,
+};
 use lux_ui::focus::FocusTarget;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -67,6 +69,25 @@ fn test_app(text: &str) -> App {
     app
 }
 
+fn option_command() -> Modifiers {
+    Modifiers {
+        alt: true,
+        meta: cfg!(target_os = "macos"),
+        control: cfg!(not(target_os = "macos")),
+        shift: false,
+    }
+}
+
+fn option_letter(letter: &str) -> KeyEvent {
+    KeyEvent {
+        key: Key::Character(letter.into()),
+        text: Some(letter.into()),
+        state: ElementState::Pressed,
+        repeat: false,
+        physical: letter.chars().next().map(PhysicalKey::Letter),
+    }
+}
+
 fn send_search_key(app: &mut App, event: &KeyEvent) {
     let ctx = DummyContext;
     if app.ui.search_bar.is_some() && crate::search::handle_search_key(app, &ctx, event) {
@@ -85,6 +106,7 @@ fn type_search_str(app: &mut App, s: &str) {
                 text: Some(str_val),
                 state: ElementState::Pressed,
                 repeat: false,
+                physical: None,
             },
         );
     }
@@ -98,6 +120,7 @@ fn press_search_key(app: &mut App, key: NamedKey) {
             text: None,
             state: ElementState::Pressed,
             repeat: false,
+            physical: None,
         },
     );
 }
@@ -311,20 +334,9 @@ fn toggle_options_shortcuts() {
         3
     );
 
-    // Toggle case sensitive
-    app.modifiers = Modifiers {
-        alt: true,
-        ..Default::default()
-    };
-    send_search_key(
-        &mut app,
-        &KeyEvent {
-            key: Key::Character("c".into()),
-            text: Some("c".into()),
-            state: ElementState::Pressed,
-            repeat: false,
-        },
-    );
+    // Option+Command+C (Alt+Ctrl+C elsewhere). Alt alone is text, not a toggle.
+    app.modifiers = option_command();
+    send_search_key(&mut app, &option_letter("c"));
     app.modifiers = Modifiers::default();
     assert!(app.ui.search_bar.as_ref().unwrap().case_sensitive);
     // Matches "foo" and "foo" in "food" = 2
@@ -339,20 +351,9 @@ fn toggle_options_shortcuts() {
         2
     );
 
-    // Toggle whole word
-    app.modifiers = Modifiers {
-        alt: true,
-        ..Default::default()
-    };
-    send_search_key(
-        &mut app,
-        &KeyEvent {
-            key: Key::Character("w".into()),
-            text: Some("w".into()),
-            state: ElementState::Pressed,
-            repeat: false,
-        },
-    );
+    // Toggle whole word with the same Option+Command chord.
+    app.modifiers = option_command();
+    send_search_key(&mut app, &option_letter("w"));
     app.modifiers = Modifiers::default();
     assert!(app.ui.search_bar.as_ref().unwrap().whole_word);
     // Matches only standalone "foo" = 1

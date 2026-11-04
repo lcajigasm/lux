@@ -7,7 +7,7 @@ use lux_platform::{Key, NamedKey, PlatformContext};
 use lux_ui::command_palette::{CommandRegistry, Context, PaletteEntry};
 
 pub(crate) struct CommandPaletteState {
-    pub(crate) query: String,
+    pub(crate) query: crate::field::QueryField,
     pub(crate) selected_index: usize,
     pub(crate) registry: CommandRegistry,
     pub(crate) shortcuts: HashMap<String, String>,
@@ -25,7 +25,7 @@ impl CommandPaletteState {
         let mut registry = CommandRegistry::new();
         populate_registry(&mut registry);
         Self {
-            query: String::new(),
+            query: crate::field::QueryField::new(),
             selected_index: 0,
             registry,
             shortcuts: HashMap::new(),
@@ -151,7 +151,7 @@ mod tests {
     fn palette_search_filters_by_query() {
         let mut palette = CommandPaletteState::new();
         let ctx = Context::new();
-        palette.query = "save".to_string();
+        palette.query = crate::field::QueryField::from_text("save");
         let results = palette.results(&ctx);
         assert!(!results.is_empty());
         assert!(results[0].command.title.to_lowercase().contains("save"));
@@ -185,6 +185,7 @@ mod tests {
             text: None,
             state: lux_platform::ElementState::Pressed,
             repeat: false,
+            physical: None,
         };
 
         struct DummyDialogs;

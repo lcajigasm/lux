@@ -59,7 +59,7 @@ pub(crate) fn build_accessibility_tree(app: &mut App) -> TreeUpdate {
         let total = search.search_bar.matches().len();
         let current = search.search_bar.current_index().map_or(0, |i| i + 1);
         (
-            Some(search.find_query.clone()),
+            Some(search.find_query.to_string()),
             Some(format!("{current} of {total} matches")),
         )
     } else {
