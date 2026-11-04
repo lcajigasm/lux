@@ -128,21 +128,34 @@ wait_window() {
 shoot() {
   local owner="$1"
   local dest="$2"
-  local line id bytes
-  line="$(swift /tmp/lux-find-window.swift "$owner")"
-  id="${line%% *}"
-  echo "--> $owner window $line"
-  bound 20 screencapture -l "$id" -o "$dest"
-  if [[ ! -f "$dest" ]]; then
-    echo "screencapture produced no file for $owner" >&2
-    return 1
-  fi
-  bytes="$(wc -c < "$dest" | tr -d ' ')"
-  if [[ "$bytes" -lt 8000 ]]; then
-    echo "capture $dest is only $bytes bytes" >&2
+  local attempt line id bytes
+  # `screencapture -l` found Zed's window and then exited with no file
+  # on run 41427515909 (window 61, 20s). Resolve the id again and retry.
+  for attempt in 1 2 3; do
     rm -f "$dest"
-    return 1
-  fi
+    if ! line="$(swift /tmp/lux-find-window.swift "$owner" 2>/dev/null)"; then
+      echo "no $owner window on attempt $attempt" >&2
+      sleep 1
+      continue
+    fi
+    id="${line%% *}"
+    echo "--> $owner window $line (attempt $attempt)"
+    bound 20 screencapture -l "$id" -o "$dest"
+    if [[ ! -f "$dest" ]]; then
+      echo "screencapture produced no file for $owner (attempt $attempt)" >&2
+      sleep 1
+      continue
+    fi
+    bytes="$(wc -c < "$dest" | tr -d ' ')"
+    if [[ "$bytes" -lt 8000 ]]; then
+      echo "capture $dest is only $bytes bytes" >&2
+      rm -f "$dest"
+      sleep 1
+      continue
+    fi
+    return 0
+  done
+  return 1
 }
 
 lux_pid=""
