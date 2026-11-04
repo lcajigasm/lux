@@ -137,6 +137,26 @@ fn a_queued_path_opens_as_a_second_tab() {
 }
 
 #[test]
+fn two_queued_files_open_into_two_columns() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("left.rs");
+    let second = dir.path().join("right.rs");
+    std::fs::write(&first, "fn left() {}\n").unwrap();
+    std::fs::write(&second, "fn right() {}\n").unwrap();
+    let ctx = Context::new(None, None, SaveDecision::Discard);
+    let mut app = app();
+    app.ui.split.columns_after_open = 2;
+    app.documents.open_queue.push(second);
+    app.request_document(&ctx, Request::Open(Some(first)));
+    ctx.complete(&mut app);
+    ctx.complete(&mut app);
+    assert_eq!(app.ui.split.preset, crate::split::LayoutPreset::Columns2);
+    assert_eq!(app.ui.split.panes.len(), 2);
+    assert_ne!(app.ui.split.panes[0].tab_id, app.ui.split.panes[1].tab_id);
+    assert_eq!(app.ui.split.columns_after_open, 0);
+}
+
+#[test]
 fn reopening_the_current_file_after_confirming_save_keeps_the_saved_content() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("note");

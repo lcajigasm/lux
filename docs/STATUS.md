@@ -44,10 +44,17 @@
 > (`docs/compare/tree.png`, `docs/compare/tabs.png`) shows Lux, Sublime
 > Text, and Zed on the fixtures folder, and the same three with
 > `monokai.rs` and `characters.txt` open. Lux's inactive tab title is
-> the foreground. The runner logged display scale 1. Block 1 stays
-> parcial: status bar, minimap, splits, and settings are still open.
+> the foreground. The runner logged display scale 1. Minimap and
+> splits are hecho on compare run
+> [41820660277](https://github.com/lcajigasm/lux/actions/runs/41820660277)
+> (`docs/compare/minimap.png`, `docs/compare/split.png`). Lux's minimap
+> is syntax-theme runs on `fixtures/overview.rs`, beside Sublime Text
+> and Zed. `lux --columns 2` shows `monokai.rs` and `overview.rs` in two
+> panes. VS Code's window in those shots is the first-run welcome
+> dialog. Block 1 stays parcial: status bar and settings are still open.
 > Workspace version 1.4.0 is the block 0 release. Workspace version
-> 1.5.0 is the file-tree and tabs release. See [ROADMAP.md](ROADMAP.md).
+> 1.5.0 is the file-tree and tabs release. Workspace version 1.6.0 is
+> the minimap and two-column release. See [ROADMAP.md](ROADMAP.md).
 >
 > Current gap matrix (2026-10-31): [ROADMAP.md](ROADMAP.md). Historical audit: [AUDIT.md](AUDIT.md).
 > v1.3.1: macOS is the product focus. Linux and Windows are secondary.
@@ -2334,7 +2341,7 @@ notarized installers stay `not-started`: no certificate is stored in the repo.
 UIKeyInput, document picker) and Kotlin `LuxActivity` (SurfaceView,
 InputConnection, SAF) live in `host-ios/` and `host-android/`. Rust FFI
 modules compile on desktop as `available() == false`. Not run on device;
-store rows stay `not-started`. Workspace version 1.5.0 is the desktop installer
+store rows stay `not-started`. Workspace version 1.6.0 is the desktop installer
 release; these phase labels are the original plan names and are still not done.
 `lux_platform::child_processes_allowed` is false on iOS.
 

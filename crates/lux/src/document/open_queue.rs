@@ -25,3 +25,18 @@ pub(crate) fn pump(app: &mut App, ctx: &dyn PlatformContext) {
     let path = app.documents.open_queue.remove(0);
     app.request_document(ctx, crate::document::Request::Open(Some(path)));
 }
+
+/// `--columns 2` lays the files out once every queued open has finished.
+pub(crate) fn apply_launch_columns(app: &mut App) {
+    if app.ui.split.columns_after_open != 2 {
+        return;
+    }
+    if app.documents.pending.is_some() || !app.documents.open_queue.is_empty() {
+        return;
+    }
+    if app.documents.active_tab.is_none() {
+        return;
+    }
+    app.ui.split.columns_after_open = 0;
+    app.set_layout(crate::split::LayoutPreset::Columns2);
+}

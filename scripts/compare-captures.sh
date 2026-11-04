@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Capture the real Lux, Sublime Text, and Zed windows on macOS.
 # Writes docs/compare/monokai-side-by-side.png, characters.png,
-# selectors.png, goto.png, theme.png, tree.png, and tabs.png. Lux also writes
+# selectors.png, goto.png, theme.png, tree.png, tabs.png, minimap.png,
+# and split.png. VS Code is included in minimap.png and split.png when
+# the cask installs. Lux also writes
 # retina-palette.png from its own renderer at scale factor 2.
 # Does not draw a stand-in if an application cannot be captured.
 # A 1× framebuffer cannot screencapture Sublime at scale 2; that file is
@@ -284,6 +286,7 @@ do
   "theme": "One Dark",
   "buffer_font_family": "Menlo",
   "buffer_font_size": 15,
+  "minimap": { "show": "always" },
   "telemetry": { "diagnostics": false, "metrics": false },
   "session": { "trust_all_worktrees": true }
 }
@@ -657,3 +660,189 @@ if ! shoot "Zed" "$tabs_dir/zed.png"; then
 fi
 magick "$tabs_dir/lux.png" "$tabs_dir/sublime.png" "$tabs_dir/zed.png" +append "$out/tabs.png"
 echo "--> wrote $out/tabs.png"
+
+overview="$root/docs/compare/fixtures/overview.rs"
+if [[ ! -f "$overview" ]]; then
+  echo "missing fixture: $overview" >&2
+  exit 1
+fi
+
+echo "--> Installing Visual Studio Code (cask) for the minimap and split captures"
+code_bin=""
+if brew install --cask visual-studio-code; then
+  xattr -dr com.apple.quarantine "/Applications/Visual Studio Code.app" || true
+  if [[ -x "$lsregister" ]]; then
+    "$lsregister" -f "/Applications/Visual Studio Code.app" || true
+  fi
+  code_bin="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+  if [[ ! -x "$code_bin" ]]; then
+    code_bin="$(command -v code || true)"
+  fi
+fi
+if [[ -n "$code_bin" && -x "$code_bin" ]]; then
+  code_user="$HOME/Library/Application Support/Code/User"
+  mkdir -p "$code_user"
+  cat > "$code_user/settings.json" << 'JSON'
+{
+  "editor.minimap.enabled": true,
+  "editor.fontSize": 15,
+  "editor.fontFamily": "Menlo",
+  "workbench.colorTheme": "Default Dark Modern",
+  "window.commandCenter": false,
+  "telemetry.telemetryLevel": "off",
+  "update.mode": "none"
+}
+JSON
+  echo "--> VS Code CLI $code_bin"
+else
+  echo "--> VS Code did not install. minimap.png and split.png will be Lux, Sublime, and Zed."
+  code_bin=""
+fi
+
+cat > /tmp/lux-phase1-bounds-code.applescript << 'APPLESCRIPT'
+tell application "System Events"
+  try
+    tell process "lux"
+      set position of window 1 to {40, 40}
+      set size of window 1 to {1100, 760}
+    end tell
+  end try
+  try
+    tell process "Sublime Text"
+      set position of window 1 to {40, 40}
+      set size of window 1 to {1100, 760}
+    end tell
+  end try
+  try
+    tell process "Zed"
+      set position of window 1 to {40, 40}
+      set size of window 1 to {1100, 760}
+    end tell
+  end try
+  try
+    tell process "Code"
+      set position of window 1 to {40, 40}
+      set size of window 1 to {1100, 760}
+    end tell
+  end try
+end tell
+APPLESCRIPT
+
+append_refs() {
+  local dest="$1"
+  shift
+  magick "$@" +append "$dest"
+}
+
+echo "--> Opening overview.rs so the minimap is a map of the file"
+kill "$lux_pid" 2>/dev/null || true
+wait "$lux_pid" 2>/dev/null || true
+lux_pid=""
+"$bin" "$overview" >"$log" 2>&1 &
+lux_pid=$!
+wait_window lux "$lux_pid" >/dev/null
+wait_for_log "overview.rs"
+bound 15 "$subl" -n "$overview" || true
+if [[ -x "/Applications/Zed.app/Contents/MacOS/cli" ]]; then
+  bound 20 "/Applications/Zed.app/Contents/MacOS/cli" "$overview" || true
+else
+  bound 20 open -a "/Applications/Zed.app" "$overview" || true
+fi
+if [[ -n "$code_bin" ]]; then
+  bound 25 "$code_bin" --new-window "$overview" || true
+  wait_window "Code" "" 40 >/dev/null || echo "VS Code did not open a window" >&2
+fi
+sleep 1
+bound 8 osascript /tmp/lux-phase1-bounds-code.applescript || true
+sleep 1
+map_dir="$(mktemp -d)"
+shoot lux "$map_dir/lux.png"
+if ! shoot "Sublime Text" "$map_dir/sublime.png"; then
+  echo "Sublime Text's minimap could not be captured. Not writing minimap.png." >&2
+  exit 1
+fi
+if ! shoot "Zed" "$map_dir/zed.png"; then
+  echo "Zed's minimap could not be captured. Not writing minimap.png." >&2
+  exit 1
+fi
+map_parts=("$map_dir/lux.png" "$map_dir/sublime.png" "$map_dir/zed.png")
+if [[ -n "$code_bin" ]] && shoot "Code" "$map_dir/code.png"; then
+  map_parts+=("$map_dir/code.png")
+fi
+append_refs "$out/minimap.png" "${map_parts[@]}"
+echo "--> wrote $out/minimap.png"
+
+echo "--> Opening two files in two columns"
+kill "$lux_pid" 2>/dev/null || true
+wait "$lux_pid" 2>/dev/null || true
+lux_pid=""
+"$bin" --columns 2 "$overview" "$fixture" >"$log" 2>&1 &
+lux_pid=$!
+wait_window lux "$lux_pid" >/dev/null
+wait_for_log "overview.rs"
+wait_for_log "monokai.rs"
+bound 15 "$subl" -n "$overview" "$fixture" || true
+if [[ -x "/Applications/Zed.app/Contents/MacOS/cli" ]]; then
+  bound 20 "/Applications/Zed.app/Contents/MacOS/cli" "$overview" "$fixture" || true
+else
+  bound 20 open -a "/Applications/Zed.app" "$overview" "$fixture" || true
+fi
+if [[ -n "$code_bin" ]]; then
+  bound 25 "$code_bin" --new-window "$overview" "$fixture" || true
+fi
+sleep 1
+# Two columns in each reference. Sublime is Cmd+Option+2. Zed and VS Code
+# split the editor with Cmd+\.
+osascript << 'APPLESCRIPT' || true
+tell application "System Events"
+  try
+    tell process "Sublime Text"
+      set frontmost to true
+      keystroke "2" using {command down, option down}
+    end tell
+  end try
+end tell
+APPLESCRIPT
+sleep 0.4
+osascript << 'APPLESCRIPT' || true
+tell application "System Events"
+  try
+    tell process "Zed"
+      set frontmost to true
+      keystroke "\\" using {command down}
+    end tell
+  end try
+end tell
+APPLESCRIPT
+sleep 0.4
+if [[ -n "$code_bin" ]]; then
+  osascript << 'APPLESCRIPT' || true
+tell application "System Events"
+  try
+    tell process "Code"
+      set frontmost to true
+      keystroke "\\" using {command down}
+    end tell
+  end try
+end tell
+APPLESCRIPT
+fi
+sleep 1
+bound 8 osascript /tmp/lux-phase1-bounds-code.applescript || true
+sleep 1
+split_dir="$(mktemp -d)"
+shoot lux "$split_dir/lux.png"
+if ! shoot "Sublime Text" "$split_dir/sublime.png"; then
+  echo "Sublime Text's columns could not be captured. Not writing split.png." >&2
+  exit 1
+fi
+if ! shoot "Zed" "$split_dir/zed.png"; then
+  echo "Zed's columns could not be captured. Not writing split.png." >&2
+  exit 1
+fi
+split_parts=("$split_dir/lux.png" "$split_dir/sublime.png" "$split_dir/zed.png")
+if [[ -n "$code_bin" ]] && shoot "Code" "$split_dir/code.png"; then
+  split_parts+=("$split_dir/code.png")
+fi
+append_refs "$out/split.png" "${split_parts[@]}"
+echo "--> wrote $out/split.png"

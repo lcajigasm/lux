@@ -46,3 +46,14 @@ sidebar in that shot is its light chrome. `tabs.png` is the same three
 apps with `monokai.rs` and `characters.txt`. In Lux the active tab is
 `characters.txt` (editor well, accent bar) and `monokai.rs` is the
 inactive tab, with a foreground title.
+
+`minimap.png` and `split.png` are copies of compare run 41820660277.
+The runner logged display scale 1. `minimap.png` is Lux, Sublime Text,
+Zed, and VS Code on `fixtures/overview.rs`. Lux's strip follows the
+indent in the syntax theme (keyword, string, text). Sublime and Zed
+show their own minimaps. VS Code's window is the first-run welcome
+dialog, not an editor. `split.png` is `lux --columns 2 overview.rs
+monokai.rs`: those two files in two panes, Monokai gutters, and a theme
+divider. Sublime's window has two columns and the second group is
+empty. Zed shows two columns of `overview.rs`. VS Code is the same
+welcome dialog.

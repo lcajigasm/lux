@@ -1,10 +1,11 @@
 //! Render pass for the minimap overview widget.
 
 use crate::minimap::{MINIMAP_ROW_HEIGHT, MinimapState};
-use crate::render::paint::{color, faint_rule};
+use crate::render::paint::{color, faint_rule, syntax_color};
 use lux_core::buffer::Buffer;
 use lux_render::QuadInstance;
-use lux_ui::minimap::build_frame;
+use lux_syntax::theme::SyntaxTheme;
+use lux_ui::minimap::{MinimapInk, build_frame};
 use lux_ui::{Theme, Viewport};
 
 #[allow(clippy::too_many_arguments)]
@@ -20,6 +21,7 @@ pub(crate) fn render_minimap(
     stroke: f32,
     line_height: f32,
     theme: &Theme,
+    syntax_theme: &SyntaxTheme,
     folds: Option<&lux_core::folding::FoldState>,
     search_info: Option<(&[lux_core::selection::Selection], Option<usize>)>,
     quad_instances: &mut Vec<QuadInstance>,
@@ -70,24 +72,28 @@ pub(crate) fn render_minimap(
         faint_rule(theme),
     ));
 
-    // Density rows
-    let char_w = 1.2 * scale_factor;
-    let pad_left = 6.0 * scale_factor;
-    let max_density_w = minimap_w - pad_left - 4.0 * scale_factor;
-    let fg = color(theme.foreground);
-    let bar_color = [fg[0], fg[1], fg[2], 0.28];
+    // Column sketch. One slab per word, string, or comment, in the syntax
+    // theme's own colors, so the strip reads as the file instead of a
+    // single gray bar per line.
+    let pad_left = 4.0 * scale_factor;
+    let col_w = ((minimap_w - pad_left - 2.0 * scale_factor) / 96.0).max(scale_factor);
+    let run_h = (row_h - 0.5 * stroke).max(1.0);
+    let map_right = minimap_x + minimap_w;
 
     for (row_idx, row) in frame.rows.iter().enumerate() {
-        if row.content_columns == 0 {
-            continue;
-        }
         let y = minimap_y + row_idx as f32 * row_h;
-        let indent_x = (row.indent_columns as f32 * char_w).min(minimap_w * 0.4);
-        let x = minimap_x + pad_left + indent_x;
-        let w = (row.content_columns as f32 * char_w).clamp(2.0 * scale_factor, max_density_w);
-        let h = (row_h - 1.0 * stroke).max(1.0);
-
-        quad_instances.push(QuadInstance::solid([x, y, w, h], bar_color));
+        for run in &row.runs {
+            let x = minimap_x + pad_left + run.column as f32 * col_w;
+            if x >= map_right {
+                break;
+            }
+            let w = (run.width as f32 * col_w).max(scale_factor);
+            let w = w.min(map_right - x);
+            quad_instances.push(QuadInstance::solid(
+                [x, y, w, run_h],
+                minimap_ink_color(syntax_theme, run.ink),
+            ));
+        }
     }
 
     // Viewport indicator overlay
@@ -142,5 +148,41 @@ pub(crate) fn render_minimap(
                 ));
             }
         }
+    }
+}
+
+/// Opaque enough to read on the editor well. The old map used the
+/// foreground at 0.28 alpha, which is the muted strip the phase-1 row
+/// called unreadable.
+pub(crate) fn minimap_ink_color(theme: &SyntaxTheme, ink: MinimapInk) -> [f32; 4] {
+    let scope = match ink {
+        MinimapInk::Text => "text",
+        MinimapInk::Keyword => "keyword",
+        MinimapInk::Punct => "punctuation",
+        MinimapInk::String => "string",
+        MinimapInk::Comment => "comment",
+    };
+    let mut color = syntax_color(theme.color_for_scope(scope));
+    color[3] = 1.0;
+    color
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lux_syntax::theme::MONOKAI;
+
+    #[test]
+    fn minimap_inks_use_the_syntax_theme_and_stay_opaque() {
+        let text = minimap_ink_color(&MONOKAI, MinimapInk::Text);
+        let comment = minimap_ink_color(&MONOKAI, MinimapInk::Comment);
+        let string = minimap_ink_color(&MONOKAI, MinimapInk::String);
+        let keyword = minimap_ink_color(&MONOKAI, MinimapInk::Keyword);
+        assert!(text[3] > 0.9 && comment[3] > 0.9);
+        assert_ne!(text, comment);
+        assert_ne!(text, string);
+        assert_ne!(text, keyword);
+        assert!((keyword[0] - 249.0 / 255.0).abs() < 0.01);
+        assert!((keyword[1] - 38.0 / 255.0).abs() < 0.01);
     }
 }

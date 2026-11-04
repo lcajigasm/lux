@@ -128,7 +128,8 @@ pub(crate) fn capture_settled(app: &mut App, ctx: &dyn PlatformContext) {
     app.set_display_scale(f64::from(scale));
     let tab = app.tab_bar_height();
     let status = app.status_bar_height();
-    app.viewport.width = width as f32;
+    let chrome = app.sidebar_width() + app.minimap_width();
+    app.viewport.width = (width as f32 - chrome).max(1.0);
     app.viewport.height = (height as f32 - tab - status).max(1.0);
     PENDING.with(|slot| {
         *slot.borrow_mut() = Some(Capture {
