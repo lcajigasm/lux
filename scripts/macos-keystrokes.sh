@@ -231,9 +231,10 @@ if [[ "$observed" != *ç* ]]; then
     exit 1
 fi
 
-# Further physical chords, still with Spanish selected. The ç check above
-# is the assertion. These presses are captured; they are not extra passes.
-cat > /tmp/lux-more-chords.swift << 'SWIFT'
+# Close find, then press each command chord. Spanish ISO's physical `[`
+# is a dead grave; the following Option+Command+F used to commit that
+# grave in front of the document. The document line must stay "alpha".
+cat > /tmp/lux-one-chord.swift << 'SWIFT'
 import CoreGraphics
 import Foundation
 func post(_ key: CGKeyCode, _ down: Bool, _ flags: CGEventFlags) {
@@ -247,25 +248,126 @@ func tap(_ key: CGKeyCode, _ flags: CGEventFlags) {
     post(key, false, flags)
     Thread.sleep(forTimeInterval: 0.08)
 }
-let cmd = CGEventFlags.maskCommand
-let opt = CGEventFlags.maskAlternate
-let shift = CGEventFlags.maskShift
-tap(0x08, [cmd, opt])                 // Option+Command+C, search case
-tap(0x35, [])                         // Escape
-Thread.sleep(forTimeInterval: 0.2)
-tap(0x23, [cmd, shift])               // Command+Shift+P
-Thread.sleep(forTimeInterval: 0.25)
-tap(0x35, [])
-tap(0x2C, cmd)                        // Command+/
-tap(0x21, [cmd, opt])                 // Option+Command+[
-tap(0x1E, [cmd, opt])                 // Option+Command+]
-tap(0x03, [cmd, opt])                 // Option+Command+F
-tap(0x01, [cmd, opt])                 // Option+Command+S
-tap(0x08, [cmd, opt])                 // Option+Command+C
-tap(0x35, [])
+let key = CGKeyCode(UInt16(CommandLine.arguments[1])!)
+let flags = CGEventFlags(rawValue: UInt64(CommandLine.arguments[2])!)
+tap(key, flags)
 SWIFT
-swift /tmp/lux-more-chords.swift || true
-sleep 0.3
+
+cat > /tmp/lux-document-ok.swift << 'SWIFT'
+import ApplicationServices
+import Foundation
+let pid = pid_t(CommandLine.arguments[1])!
+let app = AXUIElementCreateApplication(pid)
+func text(_ element: AXUIElement, _ name: String) -> String? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+    return value as? String
+}
+func children(_ element: AXUIElement) -> [AXUIElement] {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value) == .success,
+          let list = value as? [AXUIElement] else { return [] }
+    return list
+}
+func characterCount(_ element: AXUIElement) -> Int {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXNumberOfCharactersAttribute as CFString, &value) == .success else {
+        return 0
+    }
+    if let number = value as? NSNumber { return number.intValue }
+    return 0
+}
+func rangedText(_ element: AXUIElement) -> String? {
+    let count = characterCount(element)
+    if count <= 0 { return nil }
+    var range = CFRange(location: 0, length: count)
+    guard let axRange = AXValueCreate(.cfRange, &range) else { return nil }
+    var result: CFTypeRef?
+    guard AXUIElementCopyParameterizedAttributeValue(
+        element,
+        kAXStringForRangeParameterizedAttribute as CFString,
+        axRange,
+        &result
+    ) == .success else { return nil }
+    return result as? String
+}
+func walk(_ element: AXUIElement, _ depth: Int, _ values: inout [String]) {
+    if depth > 12 { return }
+    let role = text(element, kAXRoleAttribute as String) ?? "?"
+    if let value = text(element, kAXValueAttribute as String), !value.isEmpty {
+        values.append("\(role) \(value)")
+    }
+    if let ranged = rangedText(element), !ranged.isEmpty {
+        values.append("\(role) range \(ranged)")
+    }
+    for child in children(element) { walk(child, depth + 1, &values) }
+}
+func payload(_ line: String) -> String {
+    if let marker = line.range(of: " range ") {
+        return String(line[marker.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    guard let space = line.firstIndex(of: " ") else {
+        return line.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return String(line[line.index(after: space)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+func documentUntouched(_ values: [String]) -> Bool {
+    let payloads = values.map { payload($0) }
+    let hasAlpha = payloads.contains { $0 == "alpha" }
+    let grave = payloads.contains { $0.contains("`") }
+    return hasAlpha && !grave
+}
+var dumped = ""
+for _ in 0..<12 {
+    var values: [String] = []
+    walk(app, 0, &values)
+    dumped = values.joined(separator: "\n")
+    if documentUntouched(values) {
+        print(dumped)
+        exit(0)
+    }
+    Thread.sleep(forTimeInterval: 0.2)
+}
+fputs(dumped.isEmpty ? "AX tree had no values\n" : dumped + "\n", stderr)
+exit(4)
+SWIFT
+
+# Close the find bar, then the six chords with no Escape between them.
+# Physical `[` (33) is the Spanish dead grave; the next chord must not
+# leave that grave in the document.
+swift /tmp/lux-one-chord.swift 53 0 || true
+sleep 0.2
+# CGEventFlags: command 1<<20, alternate 1<<19. Key codes are decimal.
+cmd=$((1 << 20))
+opt=$((1 << 19))
+chords=(
+    "slash $cmd 44"
+    "bracket-left $((cmd | opt)) 33"
+    "bracket-right $((cmd | opt)) 30"
+    "replace-f $((cmd | opt)) 3"
+    "snippet-s $((cmd | opt)) 1"
+    "cancel-c $((cmd | opt)) 8"
+)
+for spec in "${chords[@]}"; do
+    name="${spec%% *}"
+    rest="${spec#* }"
+    flags="${rest%% *}"
+    key="${rest##* }"
+    echo "--> chord $name"
+    if ! swift /tmp/lux-one-chord.swift "$key" "$flags"; then
+        echo "RESULT events-failed" | tee "$result"
+        exit 1
+    fi
+    sleep 0.25
+    if ! swift /tmp/lux-document-ok.swift "$lux_pid" >"$out/ax-document.txt" 2>"$out/ax-error.txt"; then
+        echo "RESULT document-changed" | tee "$result"
+        echo "Chord $name changed the document. Expected the line alpha and no grave."
+        echo "This is not a pass."
+        cat "$out/ax-document.txt" "$out/ax-error.txt" || true
+        screencapture -l "$window_id" -o "$out/keystrokes-chords.png" || true
+        exit 1
+    fi
+done
 screencapture -l "$window_id" -o "$out/keystrokes-chords.png" || true
 echo "RESULT assertions-passed" | tee "$result"
-echo "The focused field contained ç after a physical key press on the Spanish layout."
+echo "The focused field contained ç, and the document line stayed alpha."

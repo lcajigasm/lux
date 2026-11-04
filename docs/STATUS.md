@@ -2407,7 +2407,7 @@ _Nothing is behind an `experimental.*` flag yet._
 
 ### ST-FIX-06: Panel fields, wheel, IME, and physical shortcuts
 - **Status:** Implemented in the desktop event path. A point is accepted only after real keystrokes on a Mac with the Spanish layout. `scripts/macos-keystrokes.sh` is that probe on the free `macos-15` runner. If the runner cannot select Spanish, the script records `layout-unavailable` and does not report a pass.
-- **Components:** `crates/lux/src/field.rs`, `crates/lux/src/overlay_wheel.rs`, `crates/lux/src/app.rs`, `crates/lux/src/input/motion.rs`, `crates/lux-platform/src/desktop/convert.rs`, `crates/lux/src/search.rs`.
+- **Components:** `crates/lux/src/field.rs`, `crates/lux/src/overlay_wheel.rs`, `crates/lux/src/ime_hold.rs`, `crates/lux/src/app.rs`, `crates/lux/src/input/motion.rs`, `crates/lux-platform/src/desktop/convert.rs`, `crates/lux/src/search.rs`, `crates/lux-ui/src/accessibility.rs`.
 - **Verification Evidence:**
   - **Releases:** key-up events return before any panel or document handler.
   - **Field chords:** Command+C/V/X/A/Z (Control elsewhere), without Option, edit the open palette, goto, language, theme, snippet, search, project-search, project, or build field. The document is unchanged.
@@ -2415,7 +2415,8 @@ _Nothing is behind an `experimental.*` flag yet._
   - **Wheel:** an open overlay consumes the wheel. The editor `scroll_y` stays put. Trackpad pixels accumulate per overlay.
   - **IME:** a commit while a panel is open appends to that field. A commit while only the completion popup is open does not insert into the document.
   - **Search toggles:** Option+Command+R/C/W (Alt+Ctrl elsewhere) on the physical letter. The glyph `ç` is inserted.
-  - **Chords:** with Command, Control, or Option held, the keymap token comes from the physical key (`f`, `/`, `[`, `]`), not the glyph the layout produced.
+  - **Chords:** with Command, Control, or Option held, the keymap token comes from the physical key (`f`, `/`, `[`, `]`), not the glyph the layout produced. A dead-key commit that arrives with a command chord (Spanish `` ` `` from Option+Command+[) is discarded, so Option+Command+F does not leave a grave in the document.
+  - **Document text:** the editor's AccessKit value is the buffer. The macOS probe reads that value (and `AXStringForRange`) after Command+/, Option+Command+[, Option+Command+], Option+Command+F, Command+Option+S, and Command+Option+C. A pass needs a value that trims to `alpha` and no grave.
   - **Headless checks:** `input::panel_input_tests` and `desktop_pass::configured_shortcut_runs_through_the_real_keyboard_pipeline` (new tab, palette focus returns to the editor). These do not press keys through macOS.
   - **Compare panes:** `scripts/compare-captures.sh` types Command+Shift+P, Command+P, and the theme command into the Lux window. `retina-palette.png` stays an offscreen scale-2 frame.
 

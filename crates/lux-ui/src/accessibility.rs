@@ -130,6 +130,9 @@ fn build_editor_nodes(
 
     let mut root = Node::new(Role::MultilineTextInput);
     root.add_action(Action::SetTextSelection);
+    // macOS drops TextRun nodes from the platform tree, so the text area's
+    // own value is the string a keystroke probe and VoiceOver can read.
+    root.set_value(text);
     root.set_children(child_ids.clone());
     if let (Some(anchor), Some(focus)) = (anchor_position, focus_position) {
         root.set_text_selection(TextSelection { anchor, focus });
@@ -347,6 +350,7 @@ mod tests {
         assert_eq!(update.nodes.len(), 4, "3 lines + 1 root");
         let root = node(&update, ROOT_ID);
         assert_eq!(root.role(), Role::MultilineTextInput);
+        assert_eq!(root.value(), Some("one\ntwo\nthree"));
         assert_eq!(
             root.children(),
             &[line_node_id(0), line_node_id(1), line_node_id(2)]

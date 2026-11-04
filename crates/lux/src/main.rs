@@ -18,6 +18,7 @@ mod focus;
 mod font;
 mod git;
 mod goto;
+mod ime_hold;
 mod input;
 mod language_picker;
 mod lsp;

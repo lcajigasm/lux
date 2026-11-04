@@ -226,6 +226,10 @@ impl App {
         ctx: &dyn PlatformContext,
         key_event: &KeyEvent,
     ) {
+        // A dead-key commit is queued before this key, and before the
+        // modifiers for it are visible. Settle that commit first: a command
+        // chord drops it, plain typing keeps it.
+        crate::ime_hold::settle(self);
         // Key releases carry the same logical key as presses. They are useful
         // to the platform, but Lux has no release-triggered commands; routing
         // them through picker/search handlers used to insert every printable
@@ -381,7 +385,7 @@ impl PlatformEventHandler for App {
                 self.mouse.selection_anchor = None;
             }
             PlatformEvent::Ime(ime_event) => {
-                self.apply_ime(ime_event);
+                crate::ime_hold::observe(self, ime_event);
                 self.refresh_accessibility();
                 if let Some(gpu_window) = &self.gpu_window {
                     gpu_window.window.request_redraw();

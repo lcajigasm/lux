@@ -24,7 +24,7 @@ pub(super) fn with_primary_last(cursors: &MultiCursor) -> Vec<Selection> {
 }
 
 impl App {
-    fn command_modifier(&self) -> bool {
+    pub(crate) fn command_modifier(&self) -> bool {
         if cfg!(target_os = "macos") {
             self.modifiers.meta
         } else {
