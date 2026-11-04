@@ -130,6 +130,8 @@ if [[ -z "$found" ]]; then
 fi
 echo "--> lux window $found"
 window_id="${found%% *}"
+osascript -e 'tell application "System Events" to set frontmost of process "lux" to true' || true
+sleep 0.4
 
 # Physical ANSI positions. Command+F opens find. Backslash is ç on Spanish ISO.
 cat > /tmp/lux-type-cedilla.swift << 'SWIFT'
@@ -163,24 +165,60 @@ screencapture -l "$window_id" -o "$out/keystrokes-search.png" || true
 cat > /tmp/lux-read-ax.swift << 'SWIFT'
 import ApplicationServices
 import Foundation
+
 let pid = pid_t(CommandLine.arguments[1])!
+let needle = CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : "ç"
 let app = AXUIElementCreateApplication(pid)
-var focused: CFTypeRef?
-let err = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focused)
-if err != .success {
-    fputs("AX focused element error \(err.rawValue)\n", stderr)
-    exit(3)
+
+func text(_ element: AXUIElement, _ name: String) -> String? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else {
+        return nil
+    }
+    return value as? String
 }
-guard let focused else { exit(3) }
-let element = focused as! AXUIElement
-var value: CFTypeRef?
-let valueErr = AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value)
-if valueErr != .success {
-    fputs("AX value error \(valueErr.rawValue)\n", stderr)
-    exit(3)
+
+func children(_ element: AXUIElement) -> [AXUIElement] {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value) == .success,
+          let list = value as? [AXUIElement] else {
+        return []
+    }
+    return list
 }
-let text = (value as? String) ?? ""
-print(text)
+
+func walk(_ element: AXUIElement, _ depth: Int, _ lines: inout [String]) {
+    if depth > 12 { return }
+    let role = text(element, kAXRoleAttribute as String) ?? "?"
+    if let value = text(element, kAXValueAttribute as String), !value.isEmpty {
+        lines.append("\(role) \(value)")
+    }
+    for child in children(element) {
+        walk(child, depth + 1, &lines)
+    }
+}
+
+var dumped = ""
+for _ in 0..<12 {
+    var lines: [String] = []
+    var focused: CFTypeRef?
+    if AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+       let focused {
+        let element = focused as! AXUIElement
+        if let value = text(element, kAXValueAttribute as String) {
+            lines.append("focused \(value)")
+        }
+    }
+    walk(app, 0, &lines)
+    dumped = lines.joined(separator: "\n")
+    if lines.contains(where: { $0.contains(needle) }) {
+        print(dumped)
+        exit(0)
+    }
+    Thread.sleep(forTimeInterval: 0.25)
+}
+fputs(dumped.isEmpty ? "AX tree had no values\n" : dumped + "\n", stderr)
+exit(3)
 SWIFT
 
 observed="$(swift /tmp/lux-read-ax.swift "$lux_pid" 2>"$out/ax-error.txt" || true)"
