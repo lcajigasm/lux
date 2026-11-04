@@ -55,6 +55,8 @@ pub(crate) struct SplitLayout {
     pub(crate) active_pane: usize,
     pub(crate) panes: Vec<PaneView>,
     pub(crate) dragging_divider: Option<DraggingDivider>,
+    /// `2` asks the next idle open to lay the open tabs out in two columns.
+    pub(crate) columns_after_open: u8,
 }
 
 impl Default for SplitLayout {
@@ -68,6 +70,7 @@ impl Default for SplitLayout {
             active_pane: 0,
             panes: Vec::new(),
             dragging_divider: None,
+            columns_after_open: 0,
         }
     }
 }

@@ -428,6 +428,7 @@ impl App {
                 stroke,
                 line_height,
                 &chrome.theme,
+                crate::color_scheme::syntax_theme(&ui.settings.schemes, chrome.theme.name),
                 Some(fold_state),
                 search_info,
                 &mut quad_instances,

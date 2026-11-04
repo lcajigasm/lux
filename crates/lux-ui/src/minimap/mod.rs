@@ -1,19 +1,15 @@
 //! Minimap (`LUX_PROMPT_MAESTRO.md` Phase 3 deliverable 10, optional): a
 //! condensed, whole-document overview with a "you are here" viewport
 //! indicator and click-to-scroll. Like `EditorView`, this produces the
-//! geometry a render pass would draw, not pixels — the quad pipeline
-//! doesn't exist yet (`docs/ARCHITECTURE.md`). Unlike `EditorView`, it
-//! never shapes glyphs: a minimap showing a real glyph per character
-//! across a 50k-line document would shape the entire document every
-//! frame, defeating Phase 2 deliverable 4's whole point (virtualized,
-//! visible-range-only shaping). Each source line instead reduces to a
-//! density bar — how far its content starts (indent) and how long it
-//! runs — the same real technique production minimaps use (a blurred
-//! approximation of text, not the text itself). When the document has
-//! more lines than the minimap has pixel rows for, several source lines
-//! collapse into one row, represented by the densest line in that group
-//! (the one with the most content), so a long line is never hidden by
-//! averaging it away with its blank neighbors.
+//! geometry a render pass would draw, not pixels. Unlike `EditorView`, it
+//! never shapes glyphs: a glyph per character across a long document
+//! would shape the entire file every frame. Each source line becomes a
+//! column sketch (`sketch`): indent, then runs for comments, strings,
+//! keywords, words, and punctuation. When the document has more lines
+//! than pixel rows, several source lines collapse into one row,
+//! represented by the densest line in that group.
+
+mod sketch;
 
 use crate::editor_view::line_index::LineIndex;
 use lux_core::buffer::Buffer;
@@ -43,15 +39,35 @@ impl Minimap {
     }
 }
 
-/// One minimap row: the densest source line among the (possibly several)
-/// document lines it represents, as an indent offset and a content length,
-/// both in columns (characters, not bytes; tabs count as one column each,
-/// same simplification `editor_view::indent_guide_x` already documents).
+/// Ink of one minimap run. The renderer maps these to the syntax theme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MinimapInk {
+    Text,
+    Keyword,
+    Punct,
+    String,
+    Comment,
+}
+
+/// A horizontal slab on one minimap row. `column` is the source column
+/// where the run starts, counting leading whitespace, so an indent shows
+/// up as a gap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MinimapRun {
+    pub column: u16,
+    pub width: u16,
+    pub ink: MinimapInk,
+}
+
+/// One minimap row: the densest source line among the (possibly several)
+/// document lines it represents. Columns count characters, not bytes;
+/// tabs count as one column each.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MinimapRow {
     pub line: usize,
     pub indent_columns: usize,
     pub content_columns: usize,
+    pub runs: Vec<MinimapRun>,
 }
 
 /// The main editor's visible line range, translated into minimap rows —
@@ -87,21 +103,15 @@ pub fn build_frame(
     let index = LineIndex::build(&text);
     let total_lines = index.len();
     let total_visual = folds.map_or(total_lines, |f| f.total_visual_lines(total_lines));
-    let per_row = lines_per_row(total_visual, available_rows);
 
-    let rows = (0..row_count(total_visual, available_rows))
-        .map(|row| {
-            densest_row(
-                &index,
-                &text,
-                row,
-                per_row,
-                total_visual,
-                total_lines,
-                folds,
-            )
-        })
-        .collect();
+    let rows = sketch::build_rows(
+        &index,
+        &text,
+        total_visual,
+        total_lines,
+        available_rows,
+        folds,
+    );
 
     let viewport_rows = if visible_line_range.is_empty() {
         0..0
@@ -192,42 +202,6 @@ pub fn row_for_buffer_line(
     Some(row_for_line(total_visual, available_rows, visual_line))
 }
 
-fn densest_row(
-    index: &LineIndex,
-    text: &str,
-    row: usize,
-    per_row: usize,
-    total_visual: usize,
-    total_lines: usize,
-    folds: Option<&lux_core::folding::FoldState>,
-) -> MinimapRow {
-    let start_v = row * per_row;
-    let end_v = (start_v + per_row).min(total_visual);
-    let first_buf = folds.map_or(start_v, |f| f.visual_to_buffer_line(start_v, total_lines));
-    let mut best = MinimapRow {
-        line: first_buf,
-        indent_columns: 0,
-        content_columns: 0,
-    };
-    for v in start_v..end_v {
-        let line = folds.map_or(v, |f| f.visual_to_buffer_line(v, total_lines));
-        let line_text = &text[index.line_byte_range(text, line)];
-        let leading = line_text
-            .chars()
-            .take_while(|&c| c == ' ' || c == '\t')
-            .count();
-        let content_columns = line_text.chars().count() - leading;
-        if content_columns > best.content_columns {
-            best = MinimapRow {
-                line,
-                indent_columns: leading,
-                content_columns,
-            };
-        }
-    }
-    best
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,30 +235,16 @@ mod tests {
         // "one\n  two\nthree\n" is 4 lines (ropey counts the trailing
         // newline as one more, empty line — same convention as LineIndex).
         assert_eq!(frame.rows.len(), 4);
-        assert_eq!(
-            frame.rows[0],
-            MinimapRow {
-                line: 0,
-                indent_columns: 0,
-                content_columns: 3
-            }
-        );
-        assert_eq!(
-            frame.rows[1],
-            MinimapRow {
-                line: 1,
-                indent_columns: 2,
-                content_columns: 3
-            }
-        );
-        assert_eq!(
-            frame.rows[3],
-            MinimapRow {
-                line: 3,
-                indent_columns: 0,
-                content_columns: 0
-            }
-        );
+        assert_eq!(frame.rows[0].line, 0);
+        assert_eq!(frame.rows[0].indent_columns, 0);
+        assert_eq!(frame.rows[0].content_columns, 3);
+        assert_eq!(frame.rows[0].runs[0].ink, MinimapInk::Text);
+        assert_eq!(frame.rows[1].line, 1);
+        assert_eq!(frame.rows[1].indent_columns, 2);
+        assert_eq!(frame.rows[1].content_columns, 3);
+        assert_eq!(frame.rows[1].runs[0].column, 2);
+        assert!(frame.rows[3].runs.is_empty());
+        assert_eq!(frame.rows[3].content_columns, 0);
     }
 
     #[test]

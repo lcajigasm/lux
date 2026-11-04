@@ -579,6 +579,7 @@ impl App {
         }
         self.update_document_title();
         open_queue::pump(self, ctx);
+        open_queue::apply_launch_columns(self);
         self.refresh_accessibility();
         if let Some(gpu) = &self.gpu_window {
             gpu.window.request_redraw();

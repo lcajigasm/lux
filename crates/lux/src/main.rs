@@ -62,6 +62,7 @@ fn main() {
     let mut query = String::new();
     let mut snapshot: Option<std::path::PathBuf> = None;
     let mut snapshot_scale = 2.0_f32;
+    let mut columns: u8 = 0;
     let mut positionals: Vec<std::path::PathBuf> = Vec::new();
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
@@ -78,6 +79,7 @@ fn main() {
             println!("  --goto         Open go to file");
             println!("  --theme        Open the color scheme picker");
             println!("  --query TEXT   Prefill the open selector");
+            println!("  --columns 2    Open the files in two columns");
             println!("  --snapshot PATH  Write one offscreen PNG of this window");
             println!("  --snapshot-scale N  Scale factor for that PNG (default 2)");
             return;
@@ -106,6 +108,18 @@ fn main() {
             query = value.to_string_lossy().into_owned();
             continue;
         }
+        if arg_str == "--columns" {
+            let Some(value) = args.next() else {
+                eprintln!("Usage: lux --columns 2");
+                std::process::exit(2);
+            };
+            if value.to_string_lossy() != "2" {
+                eprintln!("Usage: lux --columns 2");
+                std::process::exit(2);
+            }
+            columns = 2;
+            continue;
+        }
         if arg_str == "--snapshot" {
             let Some(value) = args.next() else {
                 eprintln!("Usage: lux --snapshot PATH");
@@ -128,6 +142,7 @@ fn main() {
         eprintln!("{message}");
         std::process::exit(2);
     }
+    app.ui.split.columns_after_open = columns;
     if open_palette || (!open_goto && !open_theme && !query.is_empty()) {
         app.open_command_palette(&query);
     } else if open_goto {
