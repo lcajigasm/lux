@@ -2417,6 +2417,7 @@ _Nothing is behind an `experimental.*` flag yet._
   - **Search toggles:** Option+Command+R/C/W (Alt+Ctrl elsewhere) on the physical letter. The glyph `ç` is inserted.
   - **Chords:** with Command, Control, or Option held, the keymap token comes from the physical key (`f`, `/`, `[`, `]`), not the glyph the layout produced.
   - **Headless checks:** `input::panel_input_tests` and `desktop_pass::configured_shortcut_runs_through_the_real_keyboard_pipeline` (new tab, palette focus returns to the editor). These do not press keys through macOS.
+  - **Compare panes:** `scripts/compare-captures.sh` types Command+Shift+P, Command+P, and the theme command into the Lux window. `retina-palette.png` stays an offscreen scale-2 frame.
 
 ### ST-SPLIT-01: True Multi-Pane View Architecture & Bounded Split Rendering
 - **Status:** Complete & verified across macOS desktop target.

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Capture the real Lux, Sublime Text, and Zed windows on macOS.
 # Writes docs/compare/monokai-side-by-side.png, characters.png,
-# selectors.png, goto.png, theme.png, tree.png, and tabs.png. Lux also writes
-# retina-palette.png from its own renderer at scale factor 2.
+# selectors.png, goto.png, theme.png, tree.png, and tabs.png.
+# Lux's selector, go-to, and theme panes in those side-by-side images are
+# opened by physical key posts, the same way Zed's are. retina-palette.png
+# is still one offscreen frame from Lux's renderer at scale factor 2.
 # Does not draw a stand-in if an application cannot be captured.
 # A 1× framebuffer cannot screencapture Sublime at scale 2; that file is
 # Lux only, and the log says so.
@@ -176,6 +178,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# A raw debug binary has no bundle id. System Events can still raise its process.
+front() {
+  local name="$1"
+  osascript -e "tell application \"System Events\" to set frontmost of process \"$name\" to true" || true
+}
+
 echo "--> Installing Sublime Text (cask) and ImageMagick"
 export HOMEBREW_NO_AUTO_UPDATE=1
 export NONINTERACTIVE=1
@@ -344,8 +352,35 @@ for key in [s, e, l] {
 }
 SWIFT
 
-echo "--> Opening command palettes in Lux, Sublime Text, and Zed"
-"$bin" --palette --query sel --snapshot "$out/retina-palette.png" --snapshot-scale 2 "$fixture" >"$log" 2>&1 &
+echo "--> Scale-2 palette snapshot from the renderer, then a typed palette"
+"$bin" --palette --query sel --snapshot "$out/retina-palette.png" --snapshot-scale 2 "$fixture" >"$out/snapshot.log" 2>&1 &
+snap_pid=$!
+snap_ready=0
+for _ in $(seq 1 40); do
+  if [[ -s "$out/retina-palette.png" ]]; then
+    snap_ready=1
+    break
+  fi
+  if ! kill -0 "$snap_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+kill "$snap_pid" 2>/dev/null || true
+wait "$snap_pid" 2>/dev/null || true
+for _ in $(seq 1 10); do
+  if ! swift /tmp/lux-find-window.swift lux >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.5
+done
+if [[ "$snap_ready" != 1 ]]; then
+  echo "Lux did not write retina-palette.png. Not inventing a scale-2 image." >&2
+  cat "$out/snapshot.log" >&2 || true
+  exit 1
+fi
+echo "--> Opening Lux, Sublime Text, and Zed. Lux's palette is typed, not flagged."
+"$bin" "$fixture" >"$log" 2>&1 &
 lux_pid=$!
 wait_window lux "$lux_pid" >/dev/null
 bound 15 "$subl" --command 'show_overlay {"overlay": "command_palette", "text": "sel"}' || true
@@ -376,7 +411,33 @@ if ! swift /tmp/lux-keys.swift; then
   echo "Could not send Zed's command-palette shortcut. Not writing selectors.png." >&2
   exit 1
 fi
-sleep 1
+cat > /tmp/lux-own-palette.swift << 'SWIFT'
+import CoreGraphics
+import Foundation
+func post(_ key: CGKeyCode, _ down: Bool, _ flags: CGEventFlags) {
+    let source = CGEventSource(stateID: .hidSystemState)
+    guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else { exit(1) }
+    event.flags = flags
+    event.post(tap: .cghidEventTap)
+}
+let chord: CGEventFlags = [.maskCommand, .maskShift]
+post(0x23, true, chord)
+post(0x23, false, chord)
+Thread.sleep(forTimeInterval: 0.45)
+for key: CGKeyCode in [0x01, 0x0E, 0x25] {
+    post(key, true, [])
+    post(key, false, [])
+    Thread.sleep(forTimeInterval: 0.05)
+}
+SWIFT
+sleep 0.3
+front lux
+sleep 0.4
+if ! swift /tmp/lux-own-palette.swift; then
+  echo "Could not type Lux's command palette. Not writing selectors.png." >&2
+  exit 1
+fi
+sleep 0.5
 
 cat > /tmp/lux-selector-bounds.applescript << 'APPLESCRIPT'
 tell application "System Events"
@@ -416,7 +477,7 @@ fi
 magick "$sel/lux.png" "$sel/sublime.png" "$sel/zed.png" +append "$out/selectors.png"
 echo "--> wrote $out/selectors.png"
 echo "--> lux display scale (1 means this runner is not Retina):"
-grep "display scale" "$log" || true
+grep "display scale" "$log" "$out/snapshot.log" || true
 if [[ ! -s "$out/retina-palette.png" ]]; then
   echo "Lux did not write retina-palette.png. Not inventing a scale-2 image." >&2
   exit 1
@@ -428,7 +489,7 @@ if [[ -z "$retina_w" || "$retina_w" -lt 1600 ]]; then
   echo "Scale-2 snapshot is ${retina_w:-0}px wide. Refusing it." >&2
   exit 1
 fi
-scale_line="$(grep "display scale" "$log" | awk '{print $NF}' | tail -1 || true)"
+scale_line="$(grep "display scale" "$log" "$out/snapshot.log" | awk '{print $NF}' | tail -1 || true)"
 if [[ "$scale_line" == "1" || "$scale_line" == "1.0" ]]; then
   echo "--> Runner framebuffer is 1×. screencapture cannot record Sublime at scale 2."
   echo "--> retina-palette.png is Lux's renderer at scale factor 2, not an upscaled screenshot."
@@ -446,7 +507,7 @@ wait "$lux_pid" 2>/dev/null || true
 lux_pid=""
 # A single file is not a folder index. Open the fixtures directory so
 # the panel lists real paths (monokai.rs matches "mon").
-"$bin" --goto --query mon "$root/docs/compare/fixtures" >"$log" 2>&1 &
+"$bin" "$root/docs/compare/fixtures" >"$log" 2>&1 &
 lux_pid=$!
 wait_window lux "$lux_pid" >/dev/null
 bound 15 "$subl" --command 'show_overlay {"overlay": "goto", "text": "mon"}' || true
@@ -478,7 +539,34 @@ if ! swift /tmp/lux-goto-keys.swift; then
   echo "Could not send Zed's go-to-file shortcut. Not writing goto.png." >&2
   exit 1
 fi
-sleep 1
+cat > /tmp/lux-own-goto.swift << 'SWIFT'
+import CoreGraphics
+import Foundation
+func post(_ key: CGKeyCode, _ down: Bool, _ flags: CGEventFlags) {
+    let source = CGEventSource(stateID: .hidSystemState)
+    guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else { exit(1) }
+    event.flags = flags
+    event.post(tap: .cghidEventTap)
+}
+post(0x35, true, [])
+post(0x35, false, [])
+Thread.sleep(forTimeInterval: 0.25)
+post(0x23, true, [.maskCommand])
+post(0x23, false, [.maskCommand])
+Thread.sleep(forTimeInterval: 0.4)
+for key: CGKeyCode in [0x2E, 0x1F, 0x2D] {
+    post(key, true, [])
+    post(key, false, [])
+    Thread.sleep(forTimeInterval: 0.05)
+}
+SWIFT
+front lux
+sleep 0.4
+if ! swift /tmp/lux-own-goto.swift; then
+  echo "Could not type Lux's go-to panel. Not writing goto.png." >&2
+  exit 1
+fi
+sleep 0.5
 bound 8 osascript /tmp/lux-selector-bounds.applescript || true
 sleep 1
 goto_dir="$(mktemp -d)"
@@ -498,7 +586,7 @@ echo "--> Opening the color scheme picker with query mo"
 kill "$lux_pid" 2>/dev/null || true
 wait "$lux_pid" 2>/dev/null || true
 lux_pid=""
-"$bin" --theme --query mo "$fixture" >"$log" 2>&1 &
+"$bin" "$fixture" >"$log" 2>&1 &
 lux_pid=$!
 wait_window lux "$lux_pid" >/dev/null
 bound 15 "$subl" --command "select_color_scheme" || true
@@ -554,7 +642,45 @@ if ! swift /tmp/lux-zed-theme.swift; then
   echo "Could not filter Zed's palette to theme. Not writing theme.png." >&2
   exit 1
 fi
-sleep 1
+cat > /tmp/lux-own-theme.swift << 'SWIFT'
+import CoreGraphics
+import Foundation
+func post(_ key: CGKeyCode, _ down: Bool, _ flags: CGEventFlags) {
+    let source = CGEventSource(stateID: .hidSystemState)
+    guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else { exit(1) }
+    event.flags = flags
+    event.post(tap: .cghidEventTap)
+}
+func tap(_ key: CGKeyCode, _ flags: CGEventFlags) {
+    post(key, true, flags)
+    post(key, false, flags)
+    Thread.sleep(forTimeInterval: 0.05)
+}
+post(0x35, true, [])
+post(0x35, false, [])
+Thread.sleep(forTimeInterval: 0.25)
+let chord: CGEventFlags = [.maskCommand, .maskShift]
+post(0x23, true, chord)
+post(0x23, false, chord)
+Thread.sleep(forTimeInterval: 0.4)
+// "select color scheme" — the title of UI: Select Color Scheme.
+for key: CGKeyCode in [0x01, 0x0E, 0x25, 0x0E, 0x08, 0x11, 0x31, 0x08, 0x1F, 0x25, 0x0F, 0x31, 0x01, 0x08, 0x04, 0x0E, 0x2E, 0x0E] {
+    tap(key, [])
+}
+Thread.sleep(forTimeInterval: 0.2)
+post(0x24, true, [])
+post(0x24, false, [])
+Thread.sleep(forTimeInterval: 0.45)
+tap(0x2E, [])
+tap(0x1F, [])
+SWIFT
+front lux
+sleep 0.4
+if ! swift /tmp/lux-own-theme.swift; then
+  echo "Could not type Lux's theme picker. Not writing theme.png." >&2
+  exit 1
+fi
+sleep 0.5
 bound 8 osascript /tmp/lux-selector-bounds.applescript || true
 sleep 1
 theme_dir="$(mktemp -d)"
