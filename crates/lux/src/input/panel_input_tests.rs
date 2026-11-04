@@ -189,6 +189,55 @@ fn ime_commit_and_wheel_go_to_the_open_panel() {
 }
 
 #[test]
+fn a_command_chord_drops_the_grave_committed_ahead_of_its_modifiers() {
+    let mut app = app();
+    app.buffer = lux_core::buffer::Buffer::from_bytes(b"alpha\n").unwrap();
+    let ctx = Ctx;
+    // Spanish ISO: physical `[` is a dead grave. The commit is queued
+    // before Option+Command is visible, then the chord follows.
+    let chords = [
+        PhysicalKey::Letter('f'),
+        PhysicalKey::Slash,
+        PhysicalKey::BracketLeft,
+        PhysicalKey::BracketRight,
+        PhysicalKey::Letter('s'),
+        PhysicalKey::Letter('c'),
+    ];
+    for physical in chords {
+        app.ui.search_bar = None;
+        app.ui.snippets.picker = None;
+        crate::ime_hold::observe(&mut app, Ime::Commit("`".into()));
+        assert_eq!(app.buffer.text(), "alpha\n");
+        let alt = physical != PhysicalKey::Slash;
+        app.modifiers = Modifiers {
+            meta: cfg!(target_os = "macos"),
+            control: cfg!(not(target_os = "macos")),
+            alt: alt && cfg!(target_os = "macos"),
+            shift: false,
+        };
+        let key = press(Key::Character("`".into()), Some(physical));
+        app.handle_keyboard_event(&ctx, &key);
+        assert_eq!(app.buffer.text(), "alpha\n", "{physical:?}");
+    }
+}
+
+#[test]
+fn a_plain_ime_commit_lands_when_its_key_is_released() {
+    let mut app = app();
+    crate::ime_hold::observe(&mut app, Ime::Commit("á".into()));
+    assert_eq!(app.buffer.text(), "");
+    let release = KeyEvent {
+        key: Key::Character("a".into()),
+        text: None,
+        state: ElementState::Released,
+        repeat: false,
+        physical: Some(PhysicalKey::Letter('a')),
+    };
+    app.handle_keyboard_event(&Ctx, &release);
+    assert_eq!(app.buffer.text(), "á");
+}
+
+#[test]
 fn completion_popup_owns_the_wheel() {
     let mut app = app();
     app.viewport.scroll_y = 50.0;
