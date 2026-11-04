@@ -96,13 +96,73 @@ pub(super) fn key_event(
     text: Option<&str>,
     state: winit::event::ElementState,
     repeat: bool,
+    physical: Option<crate::event::PhysicalKey>,
 ) -> KeyEvent {
     KeyEvent {
         key: key(logical_key),
         text: text.map(str::to_string),
         state: element_state(state),
         repeat,
+        physical,
     }
+}
+
+pub(super) fn physical_key(key: winit::keyboard::PhysicalKey) -> Option<crate::event::PhysicalKey> {
+    use crate::event::PhysicalKey;
+    use winit::keyboard::KeyCode;
+    let winit::keyboard::PhysicalKey::Code(code) = key else {
+        return None;
+    };
+    Some(match code {
+        KeyCode::KeyA => PhysicalKey::Letter('a'),
+        KeyCode::KeyB => PhysicalKey::Letter('b'),
+        KeyCode::KeyC => PhysicalKey::Letter('c'),
+        KeyCode::KeyD => PhysicalKey::Letter('d'),
+        KeyCode::KeyE => PhysicalKey::Letter('e'),
+        KeyCode::KeyF => PhysicalKey::Letter('f'),
+        KeyCode::KeyG => PhysicalKey::Letter('g'),
+        KeyCode::KeyH => PhysicalKey::Letter('h'),
+        KeyCode::KeyI => PhysicalKey::Letter('i'),
+        KeyCode::KeyJ => PhysicalKey::Letter('j'),
+        KeyCode::KeyK => PhysicalKey::Letter('k'),
+        KeyCode::KeyL => PhysicalKey::Letter('l'),
+        KeyCode::KeyM => PhysicalKey::Letter('m'),
+        KeyCode::KeyN => PhysicalKey::Letter('n'),
+        KeyCode::KeyO => PhysicalKey::Letter('o'),
+        KeyCode::KeyP => PhysicalKey::Letter('p'),
+        KeyCode::KeyQ => PhysicalKey::Letter('q'),
+        KeyCode::KeyR => PhysicalKey::Letter('r'),
+        KeyCode::KeyS => PhysicalKey::Letter('s'),
+        KeyCode::KeyT => PhysicalKey::Letter('t'),
+        KeyCode::KeyU => PhysicalKey::Letter('u'),
+        KeyCode::KeyV => PhysicalKey::Letter('v'),
+        KeyCode::KeyW => PhysicalKey::Letter('w'),
+        KeyCode::KeyX => PhysicalKey::Letter('x'),
+        KeyCode::KeyY => PhysicalKey::Letter('y'),
+        KeyCode::KeyZ => PhysicalKey::Letter('z'),
+        KeyCode::Digit0 => PhysicalKey::Digit(0),
+        KeyCode::Digit1 => PhysicalKey::Digit(1),
+        KeyCode::Digit2 => PhysicalKey::Digit(2),
+        KeyCode::Digit3 => PhysicalKey::Digit(3),
+        KeyCode::Digit4 => PhysicalKey::Digit(4),
+        KeyCode::Digit5 => PhysicalKey::Digit(5),
+        KeyCode::Digit6 => PhysicalKey::Digit(6),
+        KeyCode::Digit7 => PhysicalKey::Digit(7),
+        KeyCode::Digit8 => PhysicalKey::Digit(8),
+        KeyCode::Digit9 => PhysicalKey::Digit(9),
+        KeyCode::Slash => PhysicalKey::Slash,
+        KeyCode::BracketLeft => PhysicalKey::BracketLeft,
+        KeyCode::BracketRight => PhysicalKey::BracketRight,
+        KeyCode::Backslash => PhysicalKey::Backslash,
+        KeyCode::Minus => PhysicalKey::Minus,
+        KeyCode::Equal => PhysicalKey::Equal,
+        KeyCode::Semicolon => PhysicalKey::Semicolon,
+        KeyCode::Quote => PhysicalKey::Quote,
+        KeyCode::Comma => PhysicalKey::Comma,
+        KeyCode::Period => PhysicalKey::Period,
+        KeyCode::Backquote => PhysicalKey::Backquote,
+        _ => return None,
+    })
 }
 
 pub(super) fn mouse_button(button: winit::event::MouseButton) -> MouseButton {
@@ -196,6 +256,7 @@ pub(super) fn window_event(event: winit::event::WindowEvent) -> Option<PlatformE
             event.text.as_deref(),
             event.state,
             event.repeat,
+            physical_key(event.physical_key),
         )),
         W::ModifiersChanged(m) => PlatformEvent::ModifiersChanged(modifiers(m.state())),
         W::Ime(e) => PlatformEvent::Ime(ime(e)),
@@ -305,6 +366,7 @@ mod tests {
             Some("a"),
             winit::event::ElementState::Pressed,
             false,
+            Some(crate::event::PhysicalKey::Letter('a')),
         );
         assert_eq!(converted.key, Key::Character("a".to_string()));
         assert_eq!(converted.text, Some("a".to_string()));

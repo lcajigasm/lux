@@ -135,7 +135,7 @@ fn test_project_switch_picker_filtering_and_navigation() {
 
     let mut picker = ProjectSwitchState {
         projects: vec![p1.clone(), p2.clone(), p3.clone()],
-        query: String::new(),
+        query: crate::field::QueryField::new(),
         selected: 0,
     };
 
@@ -153,7 +153,7 @@ fn test_project_switch_picker_filtering_and_navigation() {
     assert_eq!(picker.selected, 1);
 
     // Filter by query
-    picker.query = "engine".into();
+    picker.query = crate::field::QueryField::from_text("engine");
     let filtered = picker.filtered();
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0], &p2);
@@ -179,6 +179,7 @@ fn test_quick_switch_project_key_lifecycle() {
         text: Some("d".into()),
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
     handle_project_switch_key(&mut app, &ctx, &key_d);
     assert_eq!(app.ui.project.picker.as_ref().unwrap().query, "d");
@@ -189,6 +190,7 @@ fn test_quick_switch_project_key_lifecycle() {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
     handle_project_switch_key(&mut app, &ctx, &key_bs);
     assert_eq!(app.ui.project.picker.as_ref().unwrap().query, "");
@@ -199,6 +201,7 @@ fn test_quick_switch_project_key_lifecycle() {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
     handle_project_switch_key(&mut app, &ctx, &key_esc);
     assert!(app.ui.project.picker.is_none());
@@ -245,6 +248,7 @@ fn test_project_keymap_command_dispatch() {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
     handle_project_switch_key(&mut app, &ctx, &key_esc);
     assert!(app.ui.project.picker.is_none());

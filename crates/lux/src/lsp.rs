@@ -420,12 +420,10 @@ pub(crate) fn poll_lsp_events(app: &mut App, _ctx: &dyn PlatformContext) {
     }
 }
 
-pub(crate) fn handle_lsp_key(app: &mut App, ctx: &dyn PlatformContext, event: &KeyEvent) -> bool {
+pub(crate) fn handle_completion_popup_key(app: &mut App, event: &KeyEvent) -> bool {
     if event.state != ElementState::Pressed {
         return false;
     }
-
-    // 1. Completion popup active navigation
     if let Some(popup) = app.ui.lsp.completion_popup.as_mut() {
         match &event.key {
             Key::Named(NamedKey::ArrowDown) => {
@@ -459,8 +457,18 @@ pub(crate) fn handle_lsp_key(app: &mut App, ctx: &dyn PlatformContext, event: &K
             _ => {}
         }
     }
+    false
+}
 
-    // 2. Hover popup dismissal
+pub(crate) fn handle_lsp_key(app: &mut App, ctx: &dyn PlatformContext, event: &KeyEvent) -> bool {
+    if event.state != ElementState::Pressed {
+        return false;
+    }
+    if handle_completion_popup_key(app, event) {
+        return true;
+    }
+
+    // Hover popup dismissal
     if app.ui.lsp.hover_popup.is_some() && matches!(&event.key, Key::Named(NamedKey::Escape)) {
         app.ui.lsp.hover_popup = None;
         app.scheduler.invalidate_all();

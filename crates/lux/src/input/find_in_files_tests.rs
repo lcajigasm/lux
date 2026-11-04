@@ -79,7 +79,7 @@ fn find_in_files_opens_modal_and_executes_to_find_results_tab() {
     assert!(app.ui.project_search.is_some());
 
     if let Some(state) = app.ui.project_search.as_mut() {
-        state.find_query = "target".to_string();
+        state.find_query = crate::field::QueryField::from_text("target");
     }
 
     crate::project_search::execute_find_in_files(&mut app, Some(&ctx));
@@ -110,8 +110,8 @@ fn find_in_files_with_where_glob_filters() {
 
     crate::project_search::open_project_find(&mut app);
     if let Some(state) = app.ui.project_search.as_mut() {
-        state.find_query = "needle".to_string();
-        state.where_query = "*.rs, -*.txt".to_string();
+        state.find_query = crate::field::QueryField::from_text("needle");
+        state.where_query = crate::field::QueryField::from_text("*.rs, -*.txt");
     }
 
     crate::project_search::execute_find_in_files(&mut app, Some(&ctx));
@@ -136,7 +136,7 @@ fn enter_or_double_click_on_result_line_jumps_to_file_and_line() {
 
     crate::project_search::open_project_find(&mut app);
     if let Some(state) = app.ui.project_search.as_mut() {
-        state.find_query = "target".to_string();
+        state.find_query = crate::field::QueryField::from_text("target");
     }
     crate::project_search::execute_find_in_files(&mut app, Some(&ctx));
     assert!(app.is_find_results_active());
@@ -183,7 +183,7 @@ fn enter_or_double_click_on_file_header_line_jumps_to_line_1() {
 
     crate::project_search::open_project_find(&mut app);
     if let Some(state) = app.ui.project_search.as_mut() {
-        state.find_query = "query".to_string();
+        state.find_query = crate::field::QueryField::from_text("query");
     }
     crate::project_search::execute_find_in_files(&mut app, Some(&ctx));
 
@@ -227,7 +227,7 @@ fn f4_and_shift_f4_navigate_sequentially_through_matches() {
 
     crate::project_search::open_project_find(&mut app);
     if let Some(state) = app.ui.project_search.as_mut() {
-        state.find_query = "target_token".to_string();
+        state.find_query = crate::field::QueryField::from_text("target_token");
     }
     crate::project_search::execute_find_in_files(&mut app, Some(&ctx));
 

@@ -222,6 +222,7 @@ mod tests {
             key: Key::Named(NamedKey::Escape),
             text: None,
             repeat: false,
+            physical: None,
         };
 
         let handled = handle_about_key(&mut app, &ctx, &esc_event);

@@ -7,7 +7,7 @@ use crate::app::App;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ThemePickerState {
-    pub(crate) query: String,
+    pub(crate) query: crate::field::QueryField,
     pub(crate) selected_index: usize,
     pub(crate) original_theme_name: &'static str,
     pub(crate) candidates: Vec<&'static str>,
@@ -34,7 +34,7 @@ impl ThemePickerState {
             .position(|&c| c.eq_ignore_ascii_case(current_theme_name))
             .unwrap_or(0);
         Self {
-            query: String::new(),
+            query: crate::field::QueryField::new(),
             selected_index,
             original_theme_name: current_theme_name,
             candidates,
@@ -240,7 +240,7 @@ impl App {
     pub(crate) fn open_theme_picker_query(&mut self, query: &str) {
         self.open_theme_picker();
         if let Some(picker) = self.ui.theme_picker.as_mut() {
-            picker.query = query.to_string();
+            picker.query = crate::field::QueryField::from_text(query);
             picker.selected_index = 0;
         }
     }

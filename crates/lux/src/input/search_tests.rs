@@ -85,6 +85,7 @@ fn type_search_str(app: &mut App, s: &str) {
                 text: Some(str_val),
                 state: ElementState::Pressed,
                 repeat: false,
+                physical: None,
             },
         );
     }
@@ -98,6 +99,7 @@ fn press_search_key(app: &mut App, key: NamedKey) {
             text: None,
             state: ElementState::Pressed,
             repeat: false,
+            physical: None,
         },
     );
 }
@@ -323,6 +325,7 @@ fn toggle_options_shortcuts() {
             text: Some("c".into()),
             state: ElementState::Pressed,
             repeat: false,
+            physical: None,
         },
     );
     app.modifiers = Modifiers::default();
@@ -351,6 +354,7 @@ fn toggle_options_shortcuts() {
             text: Some("w".into()),
             state: ElementState::Pressed,
             repeat: false,
+            physical: None,
         },
     );
     app.modifiers = Modifiers::default();

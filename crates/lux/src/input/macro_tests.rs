@@ -24,6 +24,7 @@ fn press(app: &mut App, key: Key, text: Option<&str>) {
         text: text.map(str::to_owned),
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
 }
 

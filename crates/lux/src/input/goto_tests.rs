@@ -82,6 +82,7 @@ fn type_str(app: &mut App, s: &str) {
                 text: Some(str_val),
                 state: ElementState::Pressed,
                 repeat: false,
+                physical: None,
             },
         );
     }
@@ -95,6 +96,7 @@ fn press_key(app: &mut App, key: NamedKey) {
             text: None,
             state: ElementState::Pressed,
             repeat: false,
+            physical: None,
         },
     );
 }
@@ -261,6 +263,7 @@ fn goto_symbol_in_project_opens_modal_immediately() {
             text: Some("r".to_string()),
             state: ElementState::Pressed,
             repeat: false,
+            physical: None,
         },
     );
 

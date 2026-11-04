@@ -97,7 +97,13 @@ pub(super) fn key_event_to_chord(
     event: &lux_platform::event::KeyEvent,
     modifiers: &lux_platform::Modifiers,
 ) -> Option<lux_config::Chord> {
+    let shortcut = modifiers.meta || modifiers.control || modifiers.alt;
     let key = match &event.key {
+        lux_platform::Key::Character(_) | lux_platform::Key::Unidentified
+            if shortcut && event.physical.is_some() =>
+        {
+            event.physical.unwrap().chord_token()
+        }
         lux_platform::Key::Character(s) => s.to_lowercase(),
         lux_platform::Key::Named(named) => match named {
             NamedKey::Enter => "enter".to_string(),

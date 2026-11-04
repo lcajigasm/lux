@@ -75,6 +75,7 @@ mod tests {
             text: None,
             state: ElementState::Pressed,
             repeat: false,
+            physical: None,
         });
         assert_eq!(app.cursors.primary().head.line, 3);
         assert_eq!(app.cursors.primary().anchor.line, 0);

@@ -305,6 +305,7 @@ fn test_split_click_focus_and_interactive_editing() {
             key: Key::Named(NamedKey::Backspace),
             text: None,
             repeat: false,
+            physical: None,
         });
     }
     assert!(app.buffer.text().contains("RIGHT_ "));
@@ -348,6 +349,7 @@ fn test_ctrl_numbers_focus_and_move_shortcuts() {
         key: Key::Character("2".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     app.modifiers.control = true;
     app.modifiers.meta = false;
@@ -362,6 +364,7 @@ fn test_ctrl_numbers_focus_and_move_shortcuts() {
         key: Key::Character("3".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     app.handle_keyboard_event(&ctx, &event_ctrl_3);
     assert_eq!(app.ui.split.active_pane, 2, "Ctrl+3 must focus pane 2");
@@ -372,6 +375,7 @@ fn test_ctrl_numbers_focus_and_move_shortcuts() {
         key: Key::Character("4".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     app.handle_keyboard_event(&ctx, &event_ctrl_4);
     assert_eq!(app.ui.split.active_pane, 3, "Ctrl+4 must focus pane 3");
@@ -382,6 +386,7 @@ fn test_ctrl_numbers_focus_and_move_shortcuts() {
         key: Key::Character("1".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     app.handle_keyboard_event(&ctx, &event_ctrl_1);
     assert_eq!(app.ui.split.active_pane, 0, "Ctrl+1 must focus pane 0");
@@ -393,6 +398,7 @@ fn test_ctrl_numbers_focus_and_move_shortcuts() {
         key: Key::Character("2".into()),
         text: None,
         repeat: false,
+        physical: None,
     };
     app.modifiers.shift = true;
     app.handle_keyboard_event(&ctx, &event_ctrl_shift_2);

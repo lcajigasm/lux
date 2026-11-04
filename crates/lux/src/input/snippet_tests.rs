@@ -21,6 +21,7 @@ fn press(app: &mut App, key: Key, text: Option<&str>) {
         text: text.map(str::to_owned),
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
 }
 
@@ -303,6 +304,7 @@ fn test_snippet_picker_modal_and_palette_dispatch() {
         text: Some("lorem".to_string()),
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
     crate::snippets::handle_snippet_picker_key(&mut app, &ctx, &picker_key);
     assert_eq!(app.ui.snippets.picker.as_ref().unwrap().query, "lorem");
@@ -313,6 +315,7 @@ fn test_snippet_picker_modal_and_palette_dispatch() {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
     crate::snippets::handle_snippet_picker_key(&mut app, &ctx, &enter_key);
     assert!(app.ui.snippets.picker.is_none());

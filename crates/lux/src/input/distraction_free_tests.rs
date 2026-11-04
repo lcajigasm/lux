@@ -156,6 +156,7 @@ fn test_distraction_free_escape_behavior() {
         key: Key::Named(NamedKey::Escape),
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
         text: None,
     };
     app.handle_key(&esc_event);
@@ -176,6 +177,7 @@ fn test_distraction_free_keyboard_shortcuts() {
         key: Key::Named(NamedKey::F(11)),
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
         text: None,
     };
     app.modifiers.shift = true;
@@ -191,6 +193,7 @@ fn test_distraction_free_keyboard_shortcuts() {
         key: Key::Character("f".to_string()),
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
         text: Some("f".to_string()),
     };
     app.modifiers.meta = true;

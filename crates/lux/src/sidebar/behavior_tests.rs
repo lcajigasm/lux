@@ -152,6 +152,7 @@ fn arrow_down_selects_the_first_listed_row() {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     };
     assert!(handle_sidebar_key(&mut app, &ctx, &event));
     let selected = app.ui.sidebar.as_ref().unwrap().selected_node;

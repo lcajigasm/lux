@@ -57,7 +57,7 @@ pub(crate) fn render_theme_picker(
     let query_display = if picker.query.is_empty() {
         "Select a color scheme…".to_string()
     } else {
-        picker.query.clone()
+        picker.query.to_string()
     };
     let query_color = if picker.query.is_empty() {
         super::panel::placeholder_ink(theme)

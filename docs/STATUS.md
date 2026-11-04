@@ -2405,6 +2405,19 @@ _Nothing is behind an `experimental.*` flag yet._
   - **Focus restoration:** dismissing or executing the Command Palette returns focus to the editor unless the selected command opens another focused surface.
   - **Automated tests:** the four `desktop_pass` tests pass, including press/release deduplication, modal isolation, language-list scrolling, `Cmd/Ctrl+Shift+P`, and literal `Cmd/Ctrl+N` tab creation through the real keyboard pipeline. Sidebar delete (`sidebar::tests::sidebar_duplicate_and_delete_operations`) moves the file with `NSFileManager.trashItemAtURL` on macOS. The earlier failure was `trash`'s default Finder AppleScript, which returns an error when the process has no Automation permission; the file still goes to the real Trash. `cargo clippy -p lux -- -D warnings`, `cargo fmt --check`, and `scripts/check-limits.sh` pass.
 
+### ST-FIX-06: Panel fields, wheel, IME, and physical shortcuts
+- **Status:** Implemented in the desktop event path. A point is accepted only after real keystrokes on a Mac with the Spanish layout. `scripts/macos-keystrokes.sh` is that probe on the free `macos-15` runner. If the runner cannot select Spanish, the script records `layout-unavailable` and does not report a pass.
+- **Components:** `crates/lux/src/field.rs`, `crates/lux/src/overlay_wheel.rs`, `crates/lux/src/app.rs`, `crates/lux/src/input/motion.rs`, `crates/lux-platform/src/desktop/convert.rs`, `crates/lux/src/search.rs`.
+- **Verification Evidence:**
+  - **Releases:** key-up events return before any panel or document handler.
+  - **Field chords:** Command+C/V/X/A/Z (Control elsewhere), without Option, edit the open palette, goto, language, theme, snippet, search, project-search, project, or build field. The document is unchanged.
+  - **Completion:** the popup handles arrows, Enter, Tab, and Escape before document shortcuts, and a wheel moves its selection.
+  - **Wheel:** an open overlay consumes the wheel. The editor `scroll_y` stays put. Trackpad pixels accumulate per overlay.
+  - **IME:** a commit while a panel is open appends to that field. A commit while only the completion popup is open does not insert into the document.
+  - **Search toggles:** Option+Command+R/C/W (Alt+Ctrl elsewhere) on the physical letter. The glyph `ç` is inserted.
+  - **Chords:** with Command, Control, or Option held, the keymap token comes from the physical key (`f`, `/`, `[`, `]`), not the glyph the layout produced.
+  - **Headless checks:** `input::panel_input_tests` and `desktop_pass::configured_shortcut_runs_through_the_real_keyboard_pipeline` (new tab, palette focus returns to the editor). These do not press keys through macOS.
+
 ### ST-SPLIT-01: True Multi-Pane View Architecture & Bounded Split Rendering
 - **Status:** Complete & verified across macOS desktop target.
 - **Components:** `crates/lux/src/pane_view.rs`, `crates/lux/src/split.rs`, `crates/lux/src/render/split.rs`, `crates/lux/src/render.rs`, `crates/lux/src/chrome.rs`.

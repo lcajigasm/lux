@@ -21,6 +21,7 @@ fn command(app: &mut App, key: &str, shift: bool) {
         text: Some(key.into()),
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
     app.modifiers = Modifiers::default();
 }
@@ -36,6 +37,7 @@ fn ctrl_cmd(app: &mut App, key: &str) {
         text: Some(key.into()),
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
     app.modifiers = Modifiers::default();
 }
@@ -50,6 +52,7 @@ fn alt_f3(app: &mut App) {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
     app.modifiers = Modifiers::default();
 }
@@ -60,6 +63,7 @@ fn type_char(app: &mut App, ch: &str) {
         text: Some(ch.to_string()),
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
 }
 
@@ -128,6 +132,7 @@ fn escape_cancels_pending_chord() {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
     assert!(a.ui.pending_chord.is_none());
     assert!(a.ui.announcement.is_none());
@@ -256,6 +261,7 @@ fn cmd_shift_space(app: &mut App) {
         text: None,
         state: ElementState::Pressed,
         repeat: false,
+        physical: None,
     });
     app.modifiers = Modifiers::default();
 }

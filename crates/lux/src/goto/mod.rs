@@ -61,7 +61,7 @@ pub(crate) enum GotoMode {
 
 pub(crate) struct GotoState {
     pub(crate) mode: GotoMode,
-    pub(crate) query: String,
+    pub(crate) query: crate::field::QueryField,
     pub(crate) selected_index: usize,
     pub(crate) recent_files: RecentFiles,
     pub(crate) history: Vec<String>,
@@ -75,7 +75,7 @@ impl Default for GotoState {
     fn default() -> Self {
         Self {
             mode: GotoMode::default(),
-            query: String::new(),
+            query: crate::field::QueryField::new(),
             selected_index: 0,
             recent_files: RecentFiles::new(),
             history: Vec::new(),
@@ -98,7 +98,7 @@ impl GotoState {
         let cached_candidates = search::collect_candidates(app);
         let mut state = Self {
             mode: GotoMode::Anything,
-            query: String::new(),
+            query: crate::field::QueryField::new(),
             selected_index: 0,
             recent_files: RecentFiles::new(),
             history: Vec::new(),
@@ -121,7 +121,7 @@ impl GotoState {
         let cached_candidates = search::collect_candidates(app);
         let mut state = Self {
             mode: GotoMode::ProjectSymbols,
-            query: String::new(),
+            query: crate::field::QueryField::new(),
             selected_index: 0,
             recent_files: RecentFiles::new(),
             history: Vec::new(),
@@ -428,7 +428,7 @@ mod tests {
     #[test]
     fn goto_search_matches_query_and_line_number() {
         let goto = GotoState {
-            query: "main.rs:42:10".to_string(),
+            query: crate::field::QueryField::from_text("main.rs:42:10"),
             cached_candidates: vec![
                 "src/main.rs".to_string(),
                 "src/lib.rs".to_string(),
