@@ -233,3 +233,12 @@ hosted runner is slower; that result is written down instead.
 | Open, load a 100 MB buffer | < 1 s | 242 ms mean | 241 ms mean |
 
 The 8 ms release ceiling holds. 242 ms to load 100 MB is this VM. There is still no GPU frame in the typing or scroll sample.
+
+**2026-11-04, minimap and two columns, Linux x86_64 cloud VM (Intel Xeon, 4 threads, not the MacBook Pro reference), `--release`.** Before is the v1.5.0 binary (`main` `b2cd169`). After is the minimap and two-column binary. Typing is `test_continuous_typing_latency_large_file_under_8ms` (p99 on 30 samples is the slowest sample). Open is lux-benches `load_100mb` (10 samples). The 100 MB load lives in `lux-core`, which this change does not modify; the after column is a second sample of that binary. The published v1.5.0 figures (506 µs, 241 ms) are the 2026-11-02 sample on another VM. This machine's v1.5.0 binary is slower than that sample.
+
+| Metric | Budget | v1.5.0 on this VM | After |
+|---|---|---|---|
+| Typing, 30 inserts in a 20,000-line Rust buffer | < 8 ms p99 and max | 610 µs, then 656, 680, 652 µs | 661 µs, then 676, 705, 724 µs |
+| Open, load a 100 MB buffer | < 1 s | 304 ms mean (283.89–323.35), then 250 ms mean (245.07–255.10) | same binary, second sample above |
+
+The 8 ms release ceiling holds. The after typing samples sit in the same band as this VM's v1.5.0 binary. There is still no GPU frame in the typing sample.

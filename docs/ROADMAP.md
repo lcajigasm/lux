@@ -207,9 +207,9 @@ the phase.
 | Typography | parcial. System monospace loader works (DejaVu here, Menlo/SF Mono path on macOS). No bundled face. HiDPI uses grayscale masks; the committed capture is 1×. |
 | File tree | hecho. Compare run 41394350609, `docs/compare/tree.png`. Lux, Sublime Text, and Zed are open on `docs/compare/fixtures`. Lux lists `notes` (disclosure and folder mark) and the files under the header `FIXTURES`. Names are the theme foreground on the Monokai sidebar. Sublime's sidebar in that shot is its light chrome. The runner display scale is 1 |
 | Tabs | hecho. The same run, `docs/compare/tabs.png`. `lux monokai.rs characters.txt` shows both tabs, as Sublime and Zed do. The active tab is `characters.txt`, the editor well, with the accent bar. The inactive title is foreground on `tab_inactive` |
-| Status bar | parcial. Items are built and painted; the capture cannot be read |
-| Minimap | parcial. A muted strip is in the capture. It is not a readable map of the file |
-| Splits | parcial. `split.png` shows two columns of the same file. The gutter and divider are the dark hardcoded chrome |
+| Status bar | parcial. Compare run 41820660277 shows `Ln 1, Col 1`, `Spaces: 4`, `UTF-8`, `LF`, and `Rust` on the Monokai bar. This pass did not close the row |
+| Minimap | hecho. Compare run 41820660277, `docs/compare/minimap.png`. Lux, Sublime Text, and Zed are open on `fixtures/overview.rs`. Lux's strip is syntax-theme runs (keyword, string, text) following the indent. Zed's minimap is on. The VS Code window in that shot is the first-run welcome dialog, not an editor. Display scale 1 |
+| Splits | hecho. The same run, `docs/compare/split.png`. `lux --columns 2 overview.rs monokai.rs` shows those two files in two panes, with Monokai gutters and a theme divider. Sublime's window has two columns and the second group is empty. Zed shows two columns of `overview.rs`. VS Code is the welcome dialog |
 | Command palette | parcial. Compare run 41348580486 shows Lux, Sublime, and Zed with the palette open. Lux rows have icons and a rounded surface. The still does not show the ease |
 | Settings | parcial. `workbench.colorTheme` and `workbench.keymap` load from JSON. There is no settings editor that meets the visual bar |
 
@@ -310,8 +310,10 @@ missed its bar.
    run 41363899505 holds. That close is the first release this plan allows.
 3. **Phase 1.** Block 1 stays parcial. File tree and tabs are hecho on
    compare run 41394350609 (`docs/compare/tree.png`, `docs/compare/tabs.png`).
-   Status bar, minimap, splits, and settings are still open. The release
-   for the two closed rows is v1.5.0.
+   Minimap and splits are hecho on compare run 41820660277
+   (`docs/compare/minimap.png`, `docs/compare/split.png`). Status bar and
+   settings are still open. The release for the file tree and tabs is
+   v1.5.0. The release for the minimap and the two columns is v1.6.0.
 4. **Phase 2.** Blocks 2 and 3 together. A command counts when its Sublime
    chord works on the Mac and the capture shows it.
 5. **Phase 3.** Block 4, on the binary phases 0–2 produced.
