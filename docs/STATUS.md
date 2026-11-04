@@ -2394,6 +2394,17 @@ _Nothing is behind an `experimental.*` flag yet._
   - **Comprehensive Automated Tests:** Verified in `crates/lux/src/document/shortcut_tests.rs` (5 integration test scenarios for split layout preserving tab, `Cmd+K, Cmd+1` folding without altering tab, chord aliases, Escape cancellation, and strict modifier isolation).
   - **Workspace & Tooling Passes:** 247/247 tests pass in `cargo test -p lux`, `cargo test --workspace` passes cleanly, `scripts/check-limits.sh` passes (< 600 lines/file, <= 25 fields/struct), `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` pass with 0 warnings.
 
+### ST-FIX-05: Modal Keyboard and Language Picker Scroll Ownership
+- **Status:** Implemented and covered by the desktop event-path tests.
+- **Components:** `crates/lux/src/app.rs`, `crates/lux/src/language_picker.rs`, `crates/lux/src/palette.rs`, `crates/lux/src/desktop_pass.rs`.
+- **Verification Evidence:**
+  - **Single insertion per physical key press:** the application discards key-release events before routing them to text fields. Picker and search handlers can no longer append the same printable key on both press and release.
+  - **Modal-first input routing:** floating/focused surfaces receive keyboard input before document commands and editor insertion. Unhandled command chords still fall through to the configured keymap, while modal text cannot leak into the document.
+  - **Literal New File shortcut:** `Cmd/Ctrl+N` always opens a separate untitled tab, including when the current tab is still empty; only opening the first real file may reuse the initial placeholder tab.
+  - **Language picker wheel ownership:** line-wheel movement changes the selected language row; precise trackpad movement accumulates by row height. While the picker is open, the underlying editor viewport remains unchanged.
+  - **Focus restoration:** dismissing or executing the Command Palette returns focus to the editor unless the selected command opens another focused surface.
+  - **Automated tests:** the four `desktop_pass` tests pass, including press/release deduplication, modal isolation, language-list scrolling, `Cmd/Ctrl+Shift+P`, and literal `Cmd/Ctrl+N` tab creation through the real keyboard pipeline. Sidebar delete (`sidebar::tests::sidebar_duplicate_and_delete_operations`) moves the file with `NSFileManager.trashItemAtURL` on macOS. The earlier failure was `trash`'s default Finder AppleScript, which returns an error when the process has no Automation permission; the file still goes to the real Trash. `cargo clippy -p lux -- -D warnings`, `cargo fmt --check`, and `scripts/check-limits.sh` pass.
+
 ### ST-SPLIT-01: True Multi-Pane View Architecture & Bounded Split Rendering
 - **Status:** Complete & verified across macOS desktop target.
 - **Components:** `crates/lux/src/pane_view.rs`, `crates/lux/src/split.rs`, `crates/lux/src/render/split.rs`, `crates/lux/src/render.rs`, `crates/lux/src/chrome.rs`.

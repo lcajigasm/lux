@@ -12,7 +12,7 @@ use lux_platform::dialog::SaveDecision;
 use lux_platform::event::KeyEvent;
 use lux_platform::{
     Clipboard, ElementState, FileDialogOptions, FileDialogs, Key, Modifiers, NamedKey,
-    PlatformContext, PlatformError, PlatformWindow, WindowAttributes,
+    PlatformContext, PlatformError, PlatformWindow, ScrollDelta, WindowAttributes,
 };
 
 use crate::app::App;
@@ -107,6 +107,18 @@ fn press(app: &mut App, ctx: &Context, key: Key, text: Option<&str>) {
             key,
             text: text.map(str::to_owned),
             state: ElementState::Pressed,
+            repeat: false,
+        },
+    );
+}
+
+fn release(app: &mut App, ctx: &Context, key: Key, text: Option<&str>) {
+    app.handle_keyboard_event(
+        ctx,
+        &KeyEvent {
+            key,
+            text: text.map(str::to_owned),
+            state: ElementState::Released,
             repeat: false,
         },
     );
@@ -210,4 +222,63 @@ fn headless_session_opens_types_saves_palette_split_and_find() {
         .find(|(_, node)| node.role() == Role::TextInput)
         .and_then(|(_, node)| node.value());
     assert_eq!(query, Some("beta"));
+}
+
+#[test]
+fn releases_do_not_duplicate_editor_or_picker_text() {
+    let ctx = Context::new(None);
+    let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+
+    press(&mut app, &ctx, Key::Character("a".into()), Some("a"));
+    release(&mut app, &ctx, Key::Character("a".into()), Some("a"));
+    assert_eq!(app.buffer.text(), "a");
+
+    app.open_language_picker();
+    press(&mut app, &ctx, Key::Character("r".into()), Some("r"));
+    release(&mut app, &ctx, Key::Character("r".into()), Some("r"));
+    assert_eq!(app.ui.language_picker.as_ref().unwrap().query, "r");
+    assert_eq!(
+        app.buffer.text(),
+        "a",
+        "picker input must not leak to the editor"
+    );
+}
+
+#[test]
+fn language_picker_owns_wheel_scroll() {
+    let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    app.viewport.scroll_y = 120.0;
+    app.open_language_picker();
+
+    assert!(crate::language_picker::handle_language_picker_scroll(
+        &mut app,
+        ScrollDelta::Lines { x: 0.0, y: -2.0 },
+    ));
+    assert_eq!(app.ui.language_picker.as_ref().unwrap().selected_index, 2);
+    assert_eq!(app.viewport.scroll_y, 120.0);
+}
+
+#[test]
+fn configured_shortcut_runs_through_the_real_keyboard_pipeline() {
+    let ctx = Context::new(None);
+    let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    command(&mut app, true);
+
+    press(&mut app, &ctx, Key::Character("p".into()), Some("p"));
+
+    assert!(app.ui.command_palette.is_some());
+    assert_eq!(
+        app.chrome.focus.current(),
+        lux_ui::focus::FocusTarget::CommandPalette
+    );
+
+    press(&mut app, &ctx, Key::Named(NamedKey::Escape), None);
+    let tabs_before = app.documents.tabs.tabs().len();
+    command(&mut app, false);
+    press(&mut app, &ctx, Key::Character("n".into()), Some("n"));
+    ctx.complete(&mut app);
+
+    assert_eq!(app.documents.tabs.tabs().len(), tabs_before + 1);
+    assert!(app.documents.path.is_none());
+    assert_eq!(app.buffer.text(), "");
 }

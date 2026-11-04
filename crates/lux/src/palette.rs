@@ -78,6 +78,7 @@ pub(crate) fn handle_palette_key(
     match &event.key {
         Key::Named(NamedKey::Escape) => {
             app.ui.command_palette = None;
+            app.chrome.focus.escape_to_editor();
             app.scheduler.invalidate_all();
             true
         }
@@ -102,9 +103,11 @@ pub(crate) fn handle_palette_key(
                 let cmd_id = entry.command.id.clone();
                 palette.registry.record_use(&cmd_id);
                 app.ui.command_palette = None;
+                app.chrome.focus.escape_to_editor();
                 execute_command(app, ctx, &cmd_id);
             } else {
                 app.ui.command_palette = None;
+                app.chrome.focus.escape_to_editor();
             }
             app.scheduler.invalidate_all();
             true

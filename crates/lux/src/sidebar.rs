@@ -485,7 +485,11 @@ mod tests {
         assert!(copy_path.exists());
         assert_eq!(std::fs::read_to_string(&copy_path).unwrap(), "hello world");
 
-        assert!(ops::delete_sidebar_node(&mut app, file_id));
-        assert!(!file_path.exists());
+        assert!(
+            ops::delete_sidebar_node(&mut app, file_id),
+            "sidebar trash delete failed: {:?}",
+            app.documents.message
+        );
+        assert!(!file_path.exists(), "trashed file is still on disk");
     }
 }

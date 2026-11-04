@@ -406,7 +406,7 @@ impl FileTree {
         let path = node.path.clone();
         let parent = node.parent;
 
-        trash::delete(&path).map_err(io::Error::other)?;
+        move_path_to_trash(&path)?;
 
         self.remove_subtree(id);
         if let Some(parent) = parent {
@@ -506,6 +506,25 @@ fn reject_if_exists(path: &Path) -> io::Result<()> {
         ));
     }
     Ok(())
+}
+
+/// Moves `path` into the system trash. On macOS the default `trash` path
+/// asks Finder, via AppleScript, and that call fails when the process has
+/// no Automation permission (a sandboxed `cargo test`, or a terminal that
+/// has never been allowed to control Finder).
+/// `NSFileManager.trashItemAtURL` is the same Trash and does not ask.
+fn move_path_to_trash(path: &Path) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use trash::macos::{DeleteMethod, TrashContextExtMacos};
+        let mut ctx = trash::TrashContext::default();
+        ctx.set_delete_method(DeleteMethod::NsFileManager);
+        ctx.delete(path).map_err(io::Error::other)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        trash::delete(path).map_err(io::Error::other)
+    }
 }
 
 /// Version-control metadata directories. Sublime's default

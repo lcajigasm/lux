@@ -507,7 +507,12 @@ impl App {
                             .and_then(|p| p.file_name())
                             .and_then(|f| f.to_str())
                             .unwrap_or("Untitled");
-                        let is_untouched = self.documents.entries.len() == 1
+                        // Opening the first real file may reuse the initial
+                        // empty placeholder. An explicit New request must
+                        // always create a new tab: Cmd/Ctrl+N promises a new
+                        // document even when the current tab is untouched.
+                        let is_untouched = !matches!(pending.request, Request::New)
+                            && self.documents.entries.len() == 1
                             && self.documents.path.is_none()
                             && !self.document_dirty()
                             && self.buffer.text().is_empty();
