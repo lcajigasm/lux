@@ -198,3 +198,30 @@ fn test_bracket_matching_highlights_in_frame() {
     // Frame should contain 2 bracket highlight rects (touching '(' and matching ')')
     assert_eq!(frame.matching_brackets.len(), 2);
 }
+
+#[test]
+fn brackets_and_backticks_pair_step_over_and_delete_together() {
+    let mut app = test_app("");
+    type_char(&mut app, '[');
+    assert_eq!(app.buffer.text(), "[]");
+    type_char(&mut app, ']');
+    assert_eq!(app.buffer.text(), "[]");
+    assert_eq!(app.cursors.primary().head.char, 2);
+
+    type_char(&mut app, '`');
+    assert_eq!(app.buffer.text(), "[]``");
+    press_backspace(&mut app);
+    assert_eq!(app.buffer.text(), "[]");
+}
+
+#[test]
+fn two_cursors_pair_and_step_over_together() {
+    let mut app = test_app("a\nb");
+    let first = Selection::cursor(Position::from_char(&app.buffer, 1));
+    let second = Selection::cursor(Position::from_char(&app.buffer, 3));
+    app.cursors = lux_core::multicursor::MultiCursor::from_cursors(vec![first, second]);
+    type_char(&mut app, '(');
+    assert_eq!(app.buffer.text(), "a()\nb()");
+    type_char(&mut app, ')');
+    assert_eq!(app.buffer.text(), "a()\nb()");
+}

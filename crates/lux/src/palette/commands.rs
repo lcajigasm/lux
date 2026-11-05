@@ -75,6 +75,12 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         "edit.duplicate_line" => {
             app.apply_edit_operation(app.cursors.clone(), lux_core::edit_ops::duplicate_line);
         }
+        "edit.insert_line_after" => {
+            app.apply_edit_operation(app.cursors.clone(), lux_core::edit_ops::insert_line_after);
+        }
+        "edit.insert_line_before" => {
+            app.apply_edit_operation(app.cursors.clone(), lux_core::edit_ops::insert_line_before);
+        }
         "edit.delete_line" => {
             app.apply_edit_operation(app.cursors.clone(), lux_core::edit_ops::delete_line);
         }
@@ -104,6 +110,7 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
             }
         }
         "find" => crate::search::open_find(app, false),
+        "find.use_selection" => crate::search::use_selection_for_find(app),
         "find.replace" => crate::search::open_find(app, true),
         "find.next" => crate::search::find_next(app),
         "find.prev" => crate::search::find_prev(app),

@@ -125,7 +125,12 @@ impl App {
             return;
         }
 
-        self.replace_selections(self.cursors.clone(), text);
+        let chain = self.cursors.count() == 1 && text.chars().count() == 1;
+        self.record_edit(
+            self.cursors.clone(),
+            |buffer, selection| edit_ops::insert_text(buffer, selection, text),
+            chain,
+        );
     }
 
     #[allow(dead_code)]
@@ -160,6 +165,18 @@ impl App {
             Selection,
         ) -> (Vec<lux_core::edit::Edit>, Selection),
     ) {
+        self.record_edit(ranges, op, false);
+    }
+
+    fn record_edit(
+        &mut self,
+        ranges: MultiCursor,
+        op: impl FnMut(
+            &mut lux_core::buffer::Buffer,
+            Selection,
+        ) -> (Vec<lux_core::edit::Edit>, Selection),
+        chain: bool,
+    ) {
         if self.buffer.is_huge_file_mode() {
             return;
         }
@@ -179,6 +196,9 @@ impl App {
         self.cursors = MultiCursor::from_cursors(selections);
         transaction.selections_before = before;
         transaction.selections_after = with_primary_last(&self.cursors);
+        if chain {
+            transaction = transaction.chained();
+        }
         self.history.record(transaction.clone());
         // `after` is normalized, but its default primary is document-last.
         debug_assert_eq!(self.cursors.cursors(), after.cursors());
@@ -207,7 +227,12 @@ impl App {
             .collect();
         // Merge overlapping deletion ranges before applying edits so a shared
         // grapheme cannot be deleted twice by adjacent cursors.
-        self.replace_selections(MultiCursor::from_cursors(selections), "");
+        let chain = self.cursors.count() == 1 && self.cursors.primary().is_empty();
+        self.record_edit(
+            MultiCursor::from_cursors(selections),
+            |buffer, selection| edit_ops::insert_text(buffer, selection, ""),
+            chain,
+        );
     }
 
     #[cfg(test)]
@@ -538,6 +563,8 @@ mod goto_tests;
 mod layout_tests;
 #[cfg(test)]
 mod macro_tests;
+#[cfg(test)]
+mod nav_tests;
 #[cfg(test)]
 mod occurrence_tests;
 #[cfg(test)]

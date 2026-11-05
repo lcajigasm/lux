@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Command+Shift+P opens the command palette and runs the chosen command. Command+R, Command+Shift+R, and Control+G open symbol, project symbol, and line jump. Goto Anything previews `:line`, `@symbol`, and `#word` from the keyboard. Command+click adds a cursor and Option+drag selects a column. Command+Enter and Shift+Command+Enter insert a line. Command+Y redoes. Command+E uses the word under the cursor as the find query. Typing groups undo by word.
 - Sublime macOS chords: Command+T opens Goto Anything, Control+Shift+Up/Down adds a cursor, Command+] / Command+[ indent from the keymap, and Command+Option+/ toggles a block comment. Command+/ comments HTML, CSS, and Markdown with a block comment, and JSON with `//`. Command+Left stops on the first non-space character. Control+A / Control+E move to the ends of the line on macOS.
 - Enter indents from the language tree when that language has a checked body, so a brace inside a string does not add a level.
 

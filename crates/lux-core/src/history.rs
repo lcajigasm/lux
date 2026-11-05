@@ -82,7 +82,7 @@ impl Transaction {
 /// True when `next` should collapse into `prev` as one undo step, rather
 /// than becoming its own. Both must be `chainable`, and `next`'s single edit
 /// must sit exactly where `prev`'s most recent edit left off: consecutive
-/// inserts (plain typing) or consecutive deletes at the same position
+/// inserts in the same word, or consecutive deletes at the same position
 /// (holding Delete) or immediately before it (holding Backspace).
 fn should_coalesce(prev: &Transaction, next: &Transaction) -> bool {
     if !prev.chainable || !next.chainable {
@@ -101,7 +101,7 @@ fn should_coalesce(prev: &Transaction, next: &Transaction) -> bool {
                 char_idx: n_idx,
                 text: n_text,
             },
-        ) => *n_idx == p_idx + p_text.chars().count() && !n_text.is_empty(),
+        ) => *n_idx == p_idx + p_text.chars().count() && continues_typing_group(p_text, n_text),
         (
             Edit::Delete {
                 char_idx: p_idx,
@@ -117,6 +117,55 @@ fn should_coalesce(prev: &Transaction, next: &Transaction) -> bool {
             (*n_idx == *p_idx || n_idx + n_text.chars().count() == *p_idx) && !n_text.is_empty()
         }
         _ => false,
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TypingClass {
+    Word,
+    Space,
+    Mark,
+}
+
+fn typing_class(ch: char) -> TypingClass {
+    if ch.is_alphanumeric() || ch == '_' {
+        TypingClass::Word
+    } else if ch.is_whitespace() {
+        TypingClass::Space
+    } else {
+        TypingClass::Mark
+    }
+}
+
+/// Inserts coalesce inside a word, inside a run of punctuation, or when a
+/// word continues a whitespace character that opened the group (`" world"`).
+/// A newline always starts a new step. This is structural, not a timer.
+fn continues_typing_group(prev: &str, next: &str) -> bool {
+    if prev.chars().any(|ch| ch == '\n' || ch == '\r')
+        || next.chars().any(|ch| ch == '\n' || ch == '\r')
+    {
+        return false;
+    }
+    let (Some(left), Some(right)) = (prev.chars().last(), next.chars().next()) else {
+        return false;
+    };
+    match (typing_class(left), typing_class(right)) {
+        (TypingClass::Word, TypingClass::Word) | (TypingClass::Mark, TypingClass::Mark) => true,
+        (TypingClass::Space, TypingClass::Word | TypingClass::Space) => {
+            prev.chars().all(char::is_whitespace)
+        }
+        _ => false,
+    }
+}
+
+impl Transaction {
+    /// Marks a one-edit transaction as eligible to coalesce. Multi-edit
+    /// transactions stay their own undo step.
+    pub fn chained(mut self) -> Self {
+        if self.edits.len() == 1 {
+            self.chainable = true;
+        }
+        self
     }
 }
 
@@ -304,12 +353,34 @@ mod tests {
         let mut history = History::new();
         record_insert(&mut history, &mut buffer, 0, "h");
         record_insert(&mut history, &mut buffer, 1, "i");
-        record_insert(&mut history, &mut buffer, 2, "!");
 
-        assert_eq!(buffer.text(), "hi!");
+        assert_eq!(buffer.text(), "hi");
         let restored = history.undo(&mut buffer).unwrap();
         assert_eq!(buffer.text(), "");
         assert_eq!(restored, vec![cursor_at(&buffer, 0)]);
+        assert!(!history.can_undo());
+    }
+
+    #[test]
+    fn punctuation_and_a_new_word_start_their_own_undo_steps() {
+        let mut buffer = Buffer::from_bytes(b"").unwrap();
+        let mut history = History::new();
+        record_insert(&mut history, &mut buffer, 0, "h");
+        record_insert(&mut history, &mut buffer, 1, "i");
+        record_insert(&mut history, &mut buffer, 2, "!");
+        history.undo(&mut buffer);
+        assert_eq!(buffer.text(), "hi");
+        history.undo(&mut buffer);
+        assert_eq!(buffer.text(), "");
+
+        for (idx, ch) in ["h", "e", "l", "l", "o", " ", "w"].into_iter().enumerate() {
+            record_insert(&mut history, &mut buffer, idx, ch);
+        }
+        assert_eq!(buffer.text(), "hello w");
+        history.undo(&mut buffer);
+        assert_eq!(buffer.text(), "hello");
+        history.undo(&mut buffer);
+        assert_eq!(buffer.text(), "");
         assert!(!history.can_undo());
     }
 

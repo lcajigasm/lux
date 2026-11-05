@@ -69,6 +69,32 @@ pub fn duplicate_line(buffer: &mut Buffer, selection: Selection) -> (Vec<Edit>, 
     (vec![edit], Selection::new(new_anchor, new_head))
 }
 
+/// Inserts a blank line after the last line the selection touches and
+/// leaves the cursor at column 0 of that new line.
+pub fn insert_line_after(buffer: &mut Buffer, selection: Selection) -> (Vec<Edit>, Selection) {
+    let line = *touched_lines(selection, buffer.rope()).end();
+    let at = line_range(buffer.rope(), line).end;
+    let edit = Edit::insert(at, buffer.eol().as_str());
+    edit.apply(buffer);
+    (
+        vec![edit],
+        Selection::cursor(Position::from_char(buffer, at)),
+    )
+}
+
+/// Inserts a blank line before the first line the selection touches and
+/// leaves the cursor at column 0 of that new line.
+pub fn insert_line_before(buffer: &mut Buffer, selection: Selection) -> (Vec<Edit>, Selection) {
+    let line = *touched_lines(selection, buffer.rope()).start();
+    let at = buffer.rope().line_to_char(line);
+    let edit = Edit::insert(at, buffer.eol().as_str());
+    edit.apply(buffer);
+    (
+        vec![edit],
+        Selection::cursor(Position::from_char(buffer, at)),
+    )
+}
+
 struct SwapResult {
     edits: Vec<Edit>,
     /// Where `first_text`'s own content now starts in the buffer.

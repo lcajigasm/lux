@@ -416,17 +416,33 @@ fn syntax_synchronization_on_open_and_edit() {
 }
 
 #[test]
-fn option_click_adds_secondary_cursor() {
-    let mut app = app("hello world\nsecond line\n");
+fn command_click_adds_a_cursor_and_option_drag_selects_a_column() {
+    let mut app = app("1234\n5678\n9012");
     assert_eq!(app.cursors.count(), 1);
 
-    app.modifiers.alt = true;
+    if cfg!(target_os = "macos") {
+        app.modifiers.meta = true;
+    } else {
+        app.modifiers.control = true;
+    }
     app.mouse.position = dpi::PhysicalPosition::new(
         10_000.0,
         app.tab_bar_height() as f64 + LINE_HEIGHT as f64 + 1.0,
     );
     app.begin_mouse_selection();
     assert_eq!(app.cursors.count(), 2);
+    app.modifiers = Modifiers::default();
+
+    app.modifiers.alt = true;
+    app.mouse.position = dpi::PhysicalPosition::new(10_000.0, app.tab_bar_height() as f64 + 1.0);
+    app.begin_mouse_selection();
+    assert_eq!(app.cursors.count(), 1);
+    app.mouse.position = dpi::PhysicalPosition::new(
+        10_000.0,
+        app.tab_bar_height() as f64 + LINE_HEIGHT as f64 * 2.0 + 1.0,
+    );
+    app.update_mouse_selection();
+    assert!(app.cursors.count() >= 2);
 }
 
 #[test]
