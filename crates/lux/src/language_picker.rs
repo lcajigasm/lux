@@ -28,15 +28,14 @@ impl LanguagePickerState {
     }
 
     pub(crate) fn filtered(&self) -> Vec<&(Option<LanguageId>, &'static str)> {
-        let q = self.query.trim().to_lowercase();
+        let q = self.query.trim();
         if q.is_empty() {
-            self.candidates.iter().collect()
-        } else {
-            self.candidates
-                .iter()
-                .filter(|(_, name)| name.to_lowercase().contains(&q))
-                .collect()
+            return self.candidates.iter().collect();
         }
+        lux_search::fuzzy::rank_by(q, &self.candidates, |item| item.1)
+            .into_iter()
+            .map(|(item, _)| item)
+            .collect()
     }
 
     pub(crate) fn select_next(&mut self, total: usize) {

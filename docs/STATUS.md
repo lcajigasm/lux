@@ -18,6 +18,11 @@
 > border. Sublime's own minimap, breadcrumb, and lighter status chrome are
 > not copied. HiDPI text uses grayscale antialiasing when `scale_factor > 1`.
 > The job logged `display scale 1`, so the PNG does not prove Retina.
+> The language picker uses that same card, ranks names with the palette's
+> fuzzy matcher, scrolls its own list, and applies the language on Enter
+> or a row click. Shift+Command+M and the status-bar language label open
+> it. A chained typing undo groups one word; a one-second gap before the
+> next edit starts another step, and undo restores the earlier selections.
 > `docs/compare/selectors.png` (compare run 41357599959) shows the command
 > palette in Lux, Sublime Text, and Zed with the query `sel`. Lux's card
 > sits under the tab bar, about half the window, with a shadow. The editor

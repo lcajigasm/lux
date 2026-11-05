@@ -184,3 +184,108 @@ fn by_name_resolves_all_syntax_themes() {
     );
     assert!(by_name("unknown-theme").is_none());
 }
+
+fn monokai_token(lang: crate::LanguageId, source: &str, needle: &str, scope: &str) {
+    let mut doc = crate::Document::new(lang);
+    doc.set_text(source);
+    let tokens = doc.highlight(source);
+    let start = source
+        .find(needle)
+        .unwrap_or_else(|| panic!("{}: fixture has no {needle:?}", lang.name()));
+    let end = start + needle.len();
+    let token = tokens
+        .iter()
+        .find(|token| {
+            token.start_byte <= start
+                && token.end_byte >= end
+                && (token.kind == scope || token.kind.starts_with(&format!("{scope}.")))
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "{}: {needle:?} is not scope {scope}. tokens: {:?}",
+                lang.name(),
+                tokens
+                    .iter()
+                    .map(|token| {
+                        format!("{}..{} {}", token.start_byte, token.end_byte, token.kind)
+                    })
+                    .collect::<Vec<_>>()
+            )
+        });
+    assert_eq!(
+        MONOKAI.color_for_token(token),
+        MONOKAI.color_for_scope(scope),
+        "{}: Monokai should color {scope}",
+        lang.name()
+    );
+}
+
+#[test]
+fn f1_monokai_colors_current_language_tokens() {
+    use crate::LanguageId::*;
+    let cases = [
+        (Rust, "fn main() {}\n", "fn", "keyword"),
+        (TypeScript, "function main() {}\n", "function", "keyword"),
+        (Tsx, "const A = <div />;\n", "const", "keyword"),
+        (JavaScript, "function main() {}\n", "function", "keyword"),
+        (Python, "def main():\n    return \"hi\"\n", "def", "keyword"),
+        (Go, "package main\n", "package", "keyword"),
+        (C, "int main() { return 0; }\n", "return", "keyword"),
+        (Cpp, "int main() { return 0; }\n", "return", "keyword"),
+        (Java, "class Main {}\n", "class", "keyword"),
+        (Kotlin, "fun main() {}\n", "fun", "keyword"),
+        (Swift, "func main() {}\n", "func", "keyword"),
+        (Html, "<div>hi</div>\n", "div", "tag"),
+        (Css, "/* note */\n", "note", "comment"),
+        (Json, "{ \"name\": 1 }\n", "name", "string"),
+        (Yaml, "name: \"hi\"\n", "hi", "string"),
+        (Markdown, "# Title\n", "Title", "text.title"),
+        (Bash, "# note\n", "note", "comment"),
+        (Toml, "name = \"hi\"\n", "hi", "string"),
+        (Php, "<?php echo \"hi\";\n", "echo", "keyword"),
+        (Ruby, "def main\nend\n", "def", "keyword"),
+        (Sql, "SELECT 1;\n", "SELECT", "keyword"),
+        (Xml, "<note>hi</note>\n", "note", "tag"),
+        (Dockerfile, "FROM alpine\n", "FROM", "keyword"),
+        (Make, "export CC=gcc\n", "export", "keyword"),
+        (Lua, "local function main() end\n", "function", "keyword"),
+        (CSharp, "class Main {}\n", "class", "keyword"),
+        (Diff, "index 1111111..2222222 100644\n", "index", "keyword"),
+        (Zig, "pub fn main() void {}\n", "fn", "keyword"),
+        (Graphql, "# note\n", "note", "comment"),
+        (Ini, "; note\n", "note", "comment"),
+        (Proto, "syntax = \"proto3\";\n", "syntax", "keyword"),
+        (Hcl, "# note\n", "note", "comment"),
+        (Nix, "# note\n", "note", "comment"),
+        (Cmake, "# note\n", "note", "comment"),
+        (Gitignore, "# note\n", "note", "comment"),
+        (Scss, "// note\n", "note", "comment"),
+        (Prisma, "// note\n", "note", "comment"),
+        (Fish, "# note\n", "note", "comment"),
+        (Scheme, "; note\n", "note", "comment"),
+        (Clojure, "; note\n", "note", "comment"),
+        (Regex, "z+\n", "z", "string"),
+        (Erlang, "% note\n", "note", "comment"),
+        (Gleam, "// note\n", "note", "comment"),
+        (R, "# note\n", "note", "comment"),
+        (Elixir, "# note\n", "note", "comment"),
+        (Scala, "// note\n", "note", "comment"),
+        (Dart, "void main() {}\n", "void", "keyword"),
+        (Julia, "# note\n", "note", "comment"),
+        (Haskell, "-- note\n", "note", "comment"),
+        (Ocaml, "(* note *)\n", "note", "comment"),
+        (CommonLisp, "; note\n", "note", "comment"),
+    ];
+    let mut seen = Vec::new();
+    for (lang, source, needle, scope) in cases {
+        monokai_token(lang, source, needle, scope);
+        seen.push(lang);
+    }
+    for lang in crate::LanguageId::ALL {
+        assert!(
+            seen.contains(lang),
+            "{} has no Monokai token fixture",
+            lang.name()
+        );
+    }
+}

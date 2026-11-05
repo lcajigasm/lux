@@ -215,6 +215,32 @@ fn brackets_and_backticks_pair_step_over_and_delete_together() {
 }
 
 #[test]
+fn c2_pairs_skip_over_and_pair_delete() {
+    let mut app = test_app("");
+    for open in ['(', '[', '{', '"', '\''] {
+        let close = match open {
+            '(' => ')',
+            '[' => ']',
+            '{' => '}',
+            quote => quote,
+        };
+        type_char(&mut app, open);
+        assert_eq!(app.buffer.text(), format!("{open}{close}"));
+        assert_eq!(app.cursors.primary().head.char, 1);
+        press_backspace(&mut app);
+        assert_eq!(app.buffer.text(), "", "{open} deletes the empty pair");
+
+        type_char(&mut app, open);
+        type_char(&mut app, close);
+        assert_eq!(app.buffer.text(), format!("{open}{close}"));
+        assert_eq!(app.cursors.primary().head.char, 2);
+        app.buffer = Buffer::from_bytes(b"").unwrap();
+        app.cursors =
+            lux_core::multicursor::MultiCursor::new(Selection::cursor(Position::document_start()));
+    }
+}
+
+#[test]
 fn two_cursors_pair_and_step_over_together() {
     let mut app = test_app("a\nb");
     let first = Selection::cursor(Position::from_char(&app.buffer, 1));
