@@ -11,11 +11,15 @@ pub(crate) fn handle_term_key(app: &mut App, _ctx: &dyn PlatformContext, event: 
         return false;
     }
 
-    // 1. Toggle shortcut: Ctrl+` or Cmd+`
-    let is_toggle = match &event.key {
-        Key::Character(c) if c == "`" || c == "~" => app.modifiers.control || app.modifiers.meta,
-        _ => false,
+    // Ctrl+` / Cmd+` toggles the dock. A Spanish Shift+Command+[ can report
+    // the same grave character while the physical key is the bracket, and
+    // that chord switches tabs.
+    let is_grave = match event.physical {
+        Some(lux_platform::event::PhysicalKey::Backquote) => true,
+        Some(_) => false,
+        None => matches!(&event.key, Key::Character(c) if c == "`" || c == "~"),
     };
+    let is_toggle = is_grave && (app.modifiers.control || app.modifiers.meta);
 
     if is_toggle {
         app.ui.term.visible = !app.ui.term.visible;

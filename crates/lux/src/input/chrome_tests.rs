@@ -215,6 +215,35 @@ fn mac_shift_command_bracket_uses_the_physical_key() {
 }
 
 #[test]
+fn command_backtick_toggles_the_terminal_and_a_bracket_does_not() {
+    let mut app = app("");
+    app.modifiers.meta = true;
+    press(
+        &mut app,
+        Key::Character("`".into()),
+        Some("`"),
+        Some(PhysicalKey::Backquote),
+    );
+    assert!(app.ui.term.visible);
+    press(
+        &mut app,
+        Key::Character("`".into()),
+        Some("`"),
+        Some(PhysicalKey::Backquote),
+    );
+    assert!(!app.ui.term.visible);
+    app.modifiers.shift = true;
+    press(
+        &mut app,
+        Key::Character("`".into()),
+        Some("`"),
+        Some(PhysicalKey::BracketLeft),
+    );
+    assert!(!app.ui.term.visible);
+    app.modifiers = Modifiers::default();
+}
+
+#[test]
 fn find_counter_reports_n_of_m_and_advances() {
     let mut app = app("one two one");
     chord(&mut app, "f", false, false);
