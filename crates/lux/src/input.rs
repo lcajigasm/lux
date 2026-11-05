@@ -329,15 +329,7 @@ impl App {
                     self.apply_edit_operation(self.cursors.clone(), edit_ops::delete_line);
                 }
                 "j" => self.apply_edit_operation(self.cursors.clone(), edit_ops::join_lines),
-                "]" => self.apply_edit_operation(self.cursors.clone(), edit_ops::indent),
-                "[" => self.apply_edit_operation(self.cursors.clone(), edit_ops::dedent),
-                "/" => {
-                    if let Some(token) = self.line_comment_token() {
-                        self.apply_edit_operation(self.cursors.clone(), |buffer, selection| {
-                            edit_ops::toggle_line_comment(buffer, selection, token)
-                        });
-                    }
-                }
+                "/" => comment::toggle_line_or_block(self),
                 "p" if self.modifiers.shift => self.toggle_command_palette(),
                 "p" => self.toggle_goto_anything(),
                 "r" if self.modifiers.shift => self.open_goto_project_symbols(),
@@ -378,7 +370,10 @@ impl App {
                 self.apply_edit_operation(self.cursors.clone(), op);
                 return;
             }
-            if self.modifiers.alt && matches!(key, NamedKey::ArrowUp | NamedKey::ArrowDown) {
+            if self.modifiers.alt
+                && !self.command_modifier()
+                && matches!(key, NamedKey::ArrowUp | NamedKey::ArrowDown)
+            {
                 let op = if key == NamedKey::ArrowUp {
                     edit_ops::move_line_up
                 } else {
@@ -470,6 +465,25 @@ impl App {
             }
             return;
         }
+        if cfg!(target_os = "macos")
+            && self.modifiers.control
+            && !self.modifiers.meta
+            && !self.modifiers.alt
+            && let Key::Character(key) = &event.key
+        {
+            let lower = key.to_lowercase();
+            if lower == "a" || lower == "e" {
+                let saved = self.modifiers.meta;
+                self.modifiers.meta = true;
+                self.move_cursors(if lower == "a" {
+                    NamedKey::ArrowLeft
+                } else {
+                    NamedKey::ArrowRight
+                });
+                self.modifiers.meta = saved;
+                return;
+            }
+        }
         if !self.command_modifier()
             && let Some(text) = &event.text
         {
@@ -498,6 +512,7 @@ impl App {
 }
 
 mod autopair;
+mod comment;
 pub(crate) mod dispatch;
 mod indent;
 mod motion;
@@ -525,6 +540,8 @@ mod layout_tests;
 mod macro_tests;
 #[cfg(test)]
 mod occurrence_tests;
+#[cfg(test)]
+mod p0_tests;
 #[cfg(test)]
 mod panel_input_tests;
 #[cfg(test)]

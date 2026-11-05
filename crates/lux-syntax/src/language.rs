@@ -258,7 +258,8 @@ impl LanguageId {
             | Self::Prisma
             | Self::Gleam
             | Self::Scala
-            | Self::Dart => Some("//"),
+            | Self::Dart
+            | Self::Json => Some("//"),
             Self::Python
             | Self::Bash
             | Self::Toml
@@ -279,7 +280,6 @@ impl LanguageId {
             Self::Scheme | Self::Clojure | Self::CommonLisp => Some(";"),
             Self::Html
             | Self::Css
-            | Self::Json
             | Self::Markdown
             | Self::Xml
             | Self::Diff

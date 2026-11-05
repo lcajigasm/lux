@@ -29,10 +29,128 @@ pub(crate) fn insert_tab(app: &mut App) {
 
 /// Inserts a newline with smart indentation preserving leading whitespace and
 /// incrementing indentation if a block opening delimiter was typed.
+/// Languages with a checked body kind take the extra level from the parse
+/// tree, so a brace inside a string does not indent and Python does.
 pub(crate) fn insert_newline(app: &mut App) {
     if app.buffer.is_huge_file_mode() || app.editing_blocked() {
         return;
     }
+    if let Some(lang) = app.documents.language()
+        && lux_syntax::indent_rules::has_body_kinds(lang)
+    {
+        insert_newline_from_tree(app, lang);
+        return;
+    }
+    insert_newline_heuristic(app);
+}
+
+fn insert_newline_from_tree(app: &mut App, lang: lux_syntax::LanguageId) {
+    let eol = app.buffer.eol().as_str().to_string();
+    let unit = indent_unit(&app.buffer.indent());
+    app.apply_edit_operation(app.cursors.clone(), move |buffer, selection| {
+        let (start, end) = selection.ordered();
+        let line = buffer.line_content(start.line).unwrap_or_default();
+        let chars: Vec<char> = line.chars().collect();
+        let col = start.column.min(chars.len());
+        let prefix: String = chars[..col].iter().collect();
+        let suffix: String = chars[col..].iter().collect();
+        let between = (prefix.trim_end().ends_with('{') && suffix.trim_start().starts_with('}'))
+            || (prefix.trim_end().ends_with('(') && suffix.trim_start().starts_with(')'))
+            || (prefix.trim_end().ends_with('[') && suffix.trim_start().starts_with(']'));
+        let leading: String = line
+            .chars()
+            .take_while(|&c| c == ' ' || c == '\t')
+            .collect();
+        // A column-0 token after `if True:` is not inside the suite. A
+        // second probe, one indent wider, is. The wider level is used only
+        // when the tree actually nests it. Neither probe is inserted.
+        let suffix_blank = suffix.trim().is_empty();
+        let (same_probe, deep_probe) = if between {
+            (
+                format!("{eol}{leading}x{eol}"),
+                format!("{eol}{leading}{unit}x{eol}"),
+            )
+        } else if suffix_blank {
+            (format!("{eol}{leading}x"), format!("{eol}{leading}{unit}x"))
+        } else {
+            (eol.clone(), eol.clone())
+        };
+        let same_text = splice_range(&buffer.text(), start.char, end.char, &same_probe);
+        let deep_text = splice_range(&buffer.text(), start.char, end.char, &deep_probe);
+        let open_level = tree_level(lang, &same_text, start.line);
+        let new_level = tree_level(lang, &same_text, start.line + 1).max(tree_level(
+            lang,
+            &deep_text,
+            start.line + 1,
+        ));
+        let mid = shift_indent(&leading, new_level - open_level, &unit);
+        let inserted = if between {
+            let closer_level = tree_level(lang, &same_text, start.line + 2);
+            let closer = shift_indent(&leading, closer_level - open_level, &unit);
+            format!("{eol}{mid}{eol}{closer}")
+        } else {
+            format!("{eol}{mid}")
+        };
+        let cursor_chars = if between {
+            eol.chars().count() + mid.chars().count()
+        } else {
+            inserted.chars().count()
+        };
+        let (edits, _) = edit_ops::insert_text(buffer, selection, &inserted);
+        let new_pos = Position::from_char(buffer, start.char + cursor_chars);
+        (edits, Selection::cursor(new_pos))
+    });
+}
+
+fn tree_level(lang: lux_syntax::LanguageId, source: &str, row: usize) -> i32 {
+    let mut doc = lux_syntax::Document::new(lang);
+    doc.set_text(source);
+    lux_syntax::indent_rules::indent_level(&doc, source, row) as i32
+}
+
+fn indent_unit(indent: &lux_core::buffer::Indent) -> String {
+    match indent.style {
+        IndentStyle::Tabs => "\t".to_string(),
+        IndentStyle::Spaces => " ".repeat((indent.width as usize).max(1)),
+    }
+}
+
+fn shift_indent(leading: &str, delta: i32, unit: &str) -> String {
+    if delta >= 0 {
+        let mut out = leading.to_string();
+        for _ in 0..delta {
+            out.push_str(unit);
+        }
+        return out;
+    }
+    let mut out = leading.to_string();
+    for _ in 0..(-delta) {
+        if let Some(stripped) = out.strip_suffix(unit) {
+            out = stripped.to_string();
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+fn splice_range(text: &str, start: usize, end: usize, insert: &str) -> String {
+    let mut out = String::with_capacity(text.len() + insert.len());
+    let mut chars = text.chars();
+    for _ in 0..start {
+        if let Some(ch) = chars.next() {
+            out.push(ch);
+        }
+    }
+    out.push_str(insert);
+    for _ in start..end {
+        chars.next();
+    }
+    out.extend(chars);
+    out
+}
+
+fn insert_newline_heuristic(app: &mut App) {
     let eol = app.buffer.eol().as_str().to_string();
     let indent = app.buffer.indent();
     let indent_unit = match indent.style {

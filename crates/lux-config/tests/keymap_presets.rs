@@ -116,14 +116,19 @@ mod keymap {
             "add_cursor_above",
             "ctrl+alt+up",
         );
-        assert_binding(&preset, Platform::Mac, "add_cursor_above", "cmd+alt+up");
+        assert_binding(&preset, Platform::Mac, "add_cursor_above", "ctrl+shift+up");
         assert_binding(
             &preset,
             Platform::Windows,
             "add_cursor_below",
             "ctrl+alt+down",
         );
-        assert_binding(&preset, Platform::Mac, "add_cursor_below", "cmd+alt+down");
+        assert_binding(
+            &preset,
+            Platform::Mac,
+            "add_cursor_below",
+            "ctrl+shift+down",
+        );
         assert_binding(&preset, Platform::Windows, "expand_to_line", "ctrl+l");
         assert_binding(&preset, Platform::Mac, "expand_to_line", "cmd+l");
         assert_binding(

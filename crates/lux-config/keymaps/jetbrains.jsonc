@@ -14,6 +14,8 @@
   { "command": "duplicate_line", "key": "ctrl+d", "mac": "cmd+d" },
   { "command": "delete_line", "key": "ctrl+y", "mac": "cmd+backspace" },
   { "command": "toggle_comment", "key": "ctrl+/", "mac": "cmd+/" },
+  { "command": "indent", "key": "ctrl+]", "mac": "cmd+]" },
+  { "command": "dedent", "key": "ctrl+[", "mac": "cmd+[" },
   { "command": "markdown_preview", "key": "ctrl+shift+v", "mac": "cmd+shift+v" },
   // Ctrl, not Cmd, even on mac.
   { "command": "select_next_occurrence", "key": "alt+j", "mac": "ctrl+g" },

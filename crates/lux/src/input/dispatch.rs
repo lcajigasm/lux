@@ -174,11 +174,10 @@ pub(crate) fn execute_keymap_command(app: &mut App, cmd: &str, clipboard: Option
             crate::markdown_preview::toggle(app);
         }
         "toggle_comment" => {
-            if let Some(token) = app.line_comment_token() {
-                app.apply_edit_operation(app.cursors.clone(), |buffer, selection| {
-                    edit_ops::toggle_line_comment(buffer, selection, token)
-                });
-            }
+            super::comment::toggle_line_or_block(app);
+        }
+        "toggle_block_comment" => {
+            super::comment::toggle_block(app);
         }
         "fold" => {
             app.fold_at_cursor();
