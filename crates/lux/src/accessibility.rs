@@ -49,10 +49,27 @@ pub(crate) fn build_accessibility_tree(app: &mut App) -> TreeUpdate {
         .and_then(|p| p.extension())
         .and_then(|e| e.to_str())
         .and_then(lux_syntax::LanguageId::from_extension);
-    let sb = crate::status_bar::build_status_bar(&app.buffer, app.cursors.primary().head, lang);
+    let primary = app.cursors.primary();
+    let sb = crate::status_bar::build_status_bar(
+        &app.buffer,
+        primary.head,
+        lang,
+        crate::status_bar::selected_chars(primary),
+        app.ui.git.branch_name.as_deref(),
+    );
+    let branch = sb
+        .branch
+        .as_ref()
+        .map(|item| item.label.as_str())
+        .unwrap_or("");
     let status_telemetry = Some(format!(
-        "{}  {}  {}  {}  {}",
-        sb.cursor.label, sb.language.label, sb.encoding.label, sb.eol.label, sb.indent.label
+        "{}  {}  {}  {}  {}  {}",
+        sb.cursor.label,
+        branch,
+        sb.language.label,
+        sb.encoding.label,
+        sb.eol.label,
+        sb.indent.label
     ));
 
     let (search_query, search_matches) = if let Some(search) = &app.ui.search_bar {

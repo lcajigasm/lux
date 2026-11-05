@@ -218,7 +218,7 @@ pub(crate) fn execute_find_in_files(app: &mut crate::app::App, _ctx: Option<&dyn
     open_find_results_tab(app, &content);
     app.ui.find_results_nav = FindResultsNav::new(matches);
     app.ui.project_search = None;
-    app.chrome.focus.escape_to_editor();
+    crate::focus::focus_editor(app);
     app.scheduler.invalidate_all();
 }
 

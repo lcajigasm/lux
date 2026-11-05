@@ -190,7 +190,7 @@ pub(crate) fn handle_goto_key(
                 app.viewport.scroll_y = snapshot.scroll_y;
                 app.reset_goal_columns();
             }
-            app.chrome.focus.escape_to_editor();
+            crate::focus::focus_editor(app);
             app.scheduler.invalidate_all();
             true
         }
@@ -237,7 +237,7 @@ pub(crate) fn handle_goto_key(
                 goto.record_open(&target_path);
                 execute_goto(app, ctx, &target_path, line, col);
             }
-            app.chrome.focus.escape_to_editor();
+            crate::focus::focus_editor(app);
             app.scheduler.invalidate_all();
             true
         }

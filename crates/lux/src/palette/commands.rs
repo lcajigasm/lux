@@ -157,11 +157,24 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         "view.toggle_encoding" | lux_ui::status_bar::CHANGE_ENCODING_COMMAND => {
             crate::status_bar::toggle_encoding(&mut app.buffer);
         }
+        lux_ui::status_bar::SHOW_BRANCH_COMMAND => {
+            if let Some(name) = app.ui.git.branch_name.clone() {
+                app.documents.message = Some(format!("Git branch {name}"));
+            }
+        }
         "view.change_language_mode" | lux_ui::status_bar::CHANGE_LANGUAGE_COMMAND => {
             app.open_language_picker();
         }
         "view.toggle_side_bar" => {
             app.toggle_sidebar();
+        }
+        "view.reveal_active_file" => {
+            crate::sidebar::reveal_open_document(app);
+            app.chrome
+                .focus
+                .set_focus(lux_ui::focus::FocusTarget::FileTree);
+            crate::focus::sync_surface_focus(app, lux_ui::focus::FocusTarget::FileTree);
+            app.scheduler.invalidate_all();
         }
         "view.toggle_minimap" => {
             app.toggle_minimap();

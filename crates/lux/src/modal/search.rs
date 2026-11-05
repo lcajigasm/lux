@@ -47,7 +47,7 @@ pub(super) fn click_project_search(
 
     if !geom.contains(mx, my) {
         app.ui.project_search = None;
-        app.chrome.focus.escape_to_editor();
+        crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
         return true;
     }
@@ -84,7 +84,7 @@ pub(super) fn click_project_search(
         let match_item = state.matches[idx].clone();
         app.ui.project_search = None;
         crate::find_results::open_match_in_editor(app, Some(ctx), &match_item);
-        app.chrome.focus.escape_to_editor();
+        crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
     }
     true

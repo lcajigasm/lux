@@ -20,7 +20,7 @@ impl App {
     pub(crate) fn toggle_command_palette(&mut self) {
         if self.ui.command_palette.is_some() {
             self.ui.command_palette = None;
-            self.chrome.focus.escape_to_editor();
+            crate::focus::focus_editor(self);
             self.scheduler.invalidate_all();
         } else {
             self.open_command_palette("");
@@ -57,7 +57,7 @@ impl App {
                 self.viewport.scroll_y = snapshot.scroll_y;
                 self.reset_goal_columns();
             }
-            self.chrome.focus.escape_to_editor();
+            crate::focus::focus_editor(self);
             self.scheduler.invalidate_all();
         } else {
             self.open_goto_anything("");

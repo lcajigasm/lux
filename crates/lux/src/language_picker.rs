@@ -64,7 +64,8 @@ pub(crate) fn handle_language_picker_scroll(app: &mut crate::app::App, delta: Sc
     let rows = match delta {
         ScrollDelta::Lines { y, .. } => (-y).round() as isize,
         ScrollDelta::Pixels(position) => {
-            let row_height = 26.0 * app.scale_factor.max(1.0);
+            let row_height = crate::render::panel::selector_box(1.0, 0.0, 1.0).row_height
+                * app.scale_factor.max(1.0);
             picker.scroll_remainder += -(position.y as f32);
             let rows = (picker.scroll_remainder / row_height).trunc() as isize;
             picker.scroll_remainder -= rows as f32 * row_height;
@@ -113,6 +114,7 @@ pub(crate) fn handle_language_picker_key(
     match &event.key {
         Key::Named(NamedKey::Escape) => {
             app.ui.language_picker = None;
+            crate::focus::focus_editor(app);
             app.scheduler.invalidate_all();
             true
         }
@@ -147,6 +149,7 @@ pub(crate) fn handle_language_picker_key(
                 filtered.get(picker.selected_index).map(|(lang, _)| *lang)
             };
             app.ui.language_picker = None;
+            crate::focus::focus_editor(app);
             if let Some(lang) = selected_lang {
                 app.set_language_mode(lang);
             }
@@ -168,64 +171,87 @@ pub(crate) fn handle_language_picker_key(
     }
 }
 
+struct PickerCard {
+    left: f32,
+    top: f32,
+    width: f32,
+    height: f32,
+    rows_top: f32,
+    row_height: f32,
+    visible: usize,
+    start: usize,
+}
+
+fn picker_card(app: &crate::app::App, selected: usize, total: usize) -> PickerCard {
+    use crate::render::panel::{self, SELECTOR_VISIBLE};
+    let width = app
+        .gpu_window
+        .as_ref()
+        .map(|g| g.window.inner_size().width as f32)
+        .unwrap_or(app.viewport.width);
+    let scale = app.scale_factor;
+    let box_ = panel::selector_box(width, app.tab_bar_height(), scale);
+    let visible = total.min(SELECTOR_VISIBLE);
+    let start = if selected >= visible {
+        selected + 1 - visible
+    } else {
+        0
+    };
+    PickerCard {
+        left: box_.left,
+        top: box_.top,
+        width: box_.width,
+        height: panel::panel_height(box_.input_height, box_.row_height, visible, scale),
+        rows_top: panel::rows_top(box_.top, box_.input_height, scale),
+        row_height: box_.row_height,
+        visible,
+        start,
+    }
+}
+
 pub(crate) fn handle_language_picker_click(
     app: &mut crate::app::App,
     mouse_x: f32,
     mouse_y: f32,
 ) -> bool {
-    let Some(picker) = app.ui.language_picker.as_ref() else {
-        return false;
-    };
-
-    let window_width = app
-        .gpu_window
-        .as_ref()
-        .map(|g| g.window.inner_size().width as f32)
-        .unwrap_or(app.viewport.width);
-    let tab_bar_height = app.tab_bar_height();
-    let scale_factor = app.scale_factor;
-    let stroke = scale_factor;
-
-    let width = (window_width * 0.52).clamp(340.0 * scale_factor, 560.0 * scale_factor);
-    let left = (window_width - width) * 0.5;
-    let top = tab_bar_height + 12.0 * scale_factor;
-    let input_height = 34.0 * scale_factor;
-    let row_height = 26.0 * scale_factor;
-
-    let filtered = picker.filtered();
-    let visible_count = filtered.len().min(9);
-    let total_height = input_height + (visible_count as f32 * row_height) + 4.0 * stroke;
-
-    let in_bounds = mouse_x >= left
-        && mouse_x <= left + width
-        && mouse_y >= top
-        && mouse_y <= top + total_height;
-
-    if !in_bounds {
-        app.ui.language_picker = None;
-        app.scheduler.invalidate_all();
-        return true;
-    }
-
-    let rows_top = top + input_height + 2.0 * stroke;
-    if mouse_y >= rows_top {
-        let display_idx = ((mouse_y - rows_top) / row_height) as usize;
-        let start_idx = if picker.selected_index >= visible_count {
-            picker.selected_index + 1 - visible_count
-        } else {
-            0
+    let choice = {
+        let Some(picker) = app.ui.language_picker.as_ref() else {
+            return false;
         };
-        let actual_idx = start_idx + display_idx;
-        if actual_idx < filtered.len() {
-            let (chosen_lang, _) = filtered[actual_idx];
-            let lang = *chosen_lang;
+        let filtered = picker.filtered();
+        let card = picker_card(app, picker.selected_index, filtered.len());
+        let inside = mouse_x >= card.left
+            && mouse_x <= card.left + card.width
+            && mouse_y >= card.top
+            && mouse_y <= card.top + card.height;
+        if !inside {
+            None
+        } else if mouse_y >= card.rows_top && card.row_height > 0.0 {
+            let display_idx = ((mouse_y - card.rows_top) / card.row_height) as usize;
+            let actual_idx = card.start + display_idx;
+            if display_idx < card.visible && actual_idx < filtered.len() {
+                Some(Some(filtered[actual_idx].0))
+            } else {
+                Some(None)
+            }
+        } else {
+            Some(None)
+        }
+    };
+    match choice {
+        None => {
             app.ui.language_picker = None;
+            crate::focus::focus_editor(app);
+            app.scheduler.invalidate_all();
+        }
+        Some(Some(lang)) => {
+            app.ui.language_picker = None;
+            crate::focus::focus_editor(app);
             app.set_language_mode(lang);
             app.scheduler.invalidate_all();
-            return true;
         }
+        Some(None) => {}
     }
-
     true
 }
 
@@ -234,45 +260,30 @@ pub(crate) fn handle_language_picker_hover(
     mouse_x: f32,
     mouse_y: f32,
 ) -> bool {
-    let window_width = app
-        .gpu_window
-        .as_ref()
-        .map(|g| g.window.inner_size().width as f32)
-        .unwrap_or(app.viewport.width);
-    let tab_bar_height = app.tab_bar_height();
-    let scale_factor = app.scale_factor;
-    let stroke = scale_factor;
-
-    let Some(picker) = app.ui.language_picker.as_mut() else {
-        return false;
-    };
-
-    let width = (window_width * 0.52).clamp(340.0 * scale_factor, 560.0 * scale_factor);
-    let left = (window_width - width) * 0.5;
-    let top = tab_bar_height + 12.0 * scale_factor;
-    let input_height = 34.0 * scale_factor;
-    let row_height = 26.0 * scale_factor;
-
-    let filtered = picker.filtered();
-    let visible_count = filtered.len().min(9);
-    let rows_top = top + input_height + 2.0 * stroke;
-    let rows_bottom = rows_top + (visible_count as f32 * row_height);
-
-    if mouse_x >= left && mouse_x <= left + width && mouse_y >= rows_top && mouse_y <= rows_bottom {
-        let display_idx = ((mouse_y - rows_top) / row_height) as usize;
-        let start_idx = if picker.selected_index >= visible_count {
-            picker.selected_index + 1 - visible_count
-        } else {
-            0
+    let (total, selected) = {
+        let Some(picker) = app.ui.language_picker.as_ref() else {
+            return false;
         };
-        let actual_idx = start_idx + display_idx;
-        if actual_idx < filtered.len() && actual_idx != picker.selected_index {
-            picker.selected_index = actual_idx;
-            app.scheduler.invalidate_all();
-            return true;
-        }
+        (picker.filtered().len(), picker.selected_index)
+    };
+    let card = picker_card(app, selected, total);
+    let rows_bottom = card.rows_top + card.visible as f32 * card.row_height;
+    if mouse_x < card.left
+        || mouse_x > card.left + card.width
+        || mouse_y < card.rows_top
+        || mouse_y >= rows_bottom
+        || card.row_height <= 0.0
+    {
+        return false;
     }
-
+    let actual_idx = card.start + ((mouse_y - card.rows_top) / card.row_height) as usize;
+    if actual_idx < total && actual_idx != selected {
+        if let Some(picker) = app.ui.language_picker.as_mut() {
+            picker.selected_index = actual_idx;
+        }
+        app.scheduler.invalidate_all();
+        return true;
+    }
     false
 }
 
@@ -338,11 +349,16 @@ mod tests {
         app.open_language_picker();
         assert!(app.ui.language_picker.is_some());
 
-        // Modal top is 44px (tab_bar_height=32, offset=12).
-        // Input height is 34. Row 0 starts at 44 + 34 + 2 = 80. Row height is 26.
-        // Row 1 (Rust) is at 106..132 (midpoint 119.0).
-        // Horizontal center is 500.0 (viewport width 1000).
-        let clicked = handle_language_picker_click(&mut app, 500.0, 119.0);
+        // The language list uses the same card as the command palette.
+        // Row 1 is Rust. Its midpoint sits on the shared row pitch.
+        let card = picker_card(
+            &app,
+            0,
+            app.ui.language_picker.as_ref().unwrap().filtered().len(),
+        );
+        let y = card.rows_top + card.row_height * 1.5;
+        let x = card.left + card.width * 0.5;
+        let clicked = handle_language_picker_click(&mut app, x, y);
         assert!(clicked);
         assert!(app.ui.language_picker.is_none());
         assert_eq!(app.documents.language(), Some(LanguageId::Rust));

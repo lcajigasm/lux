@@ -74,6 +74,7 @@ pub(crate) fn click_about(app: &mut App, mouse_x: f32, mouse_y: f32) -> bool {
 
     if inside_btn || !inside_card {
         app.ui.dialogs.about = None;
+        crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
         if let Some(gpu) = &app.gpu_window {
             gpu.window.request_redraw();

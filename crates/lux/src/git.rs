@@ -62,6 +62,11 @@ impl GitState {
 }
 
 pub(crate) fn discover_repo(start: &Path) -> Option<lux_git::gix::Repository> {
+    let start = if start.is_file() {
+        start.parent().unwrap_or(start)
+    } else {
+        start
+    };
     lux_git::gix::discover(start).ok()
 }
 
@@ -465,6 +470,17 @@ pub(crate) fn handle_git_click(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discover_repo_walks_up_from_a_file() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/git.rs");
+        let repo = discover_repo(&file).expect("repository");
+        let state = status(&repo).expect("status");
+        assert!(matches!(
+            state.branch,
+            lux_git::status::BranchState::Named(_)
+        ));
+    }
 
     #[test]
     fn parse_conflict_blocks_detects_standard_markers() {

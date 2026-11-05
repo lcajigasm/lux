@@ -62,40 +62,35 @@ pub(crate) fn handle_mouse_click_on_chrome(
     }
 
     if mouse_y < app.tab_bar_height() {
-        let sidebar_w = app.sidebar_width();
-        let tab_mouse_x = mouse_x - sidebar_w;
-        if tab_mouse_x >= 0.0 {
-            let tab_w = app.tab_width();
-            let tabs = app.documents.tabs.tabs().to_vec();
-            let tab_idx = (tab_mouse_x / tab_w) as usize;
-            if let Some(tab) = tabs.get(tab_idx) {
-                let tab_x = sidebar_w + tab_idx as f32 * tab_w;
-                let close_w = TAB_CLOSE_BTN_WIDTH * app.scale_factor;
-                let on_close = mouse_x >= tab_x + tab_w - close_w;
-                match button {
-                    MouseButton::Left => {
-                        if on_close {
-                            app.close_tab(ctx, tab.id);
-                        } else {
-                            app.switch_to_tab(tab.id);
-                        }
+        if let Some((index, on_close)) = tab_at(app, mouse_x) {
+            let tab_id = app.documents.tabs.tabs()[index].id;
+            let pinned = app.documents.tabs.tabs()[index].pinned;
+            match button {
+                MouseButton::Left => {
+                    if on_close {
+                        app.close_tab(ctx, tab_id);
+                        app.documents.tab_drag = None;
+                    } else {
+                        app.switch_to_tab(tab_id);
+                        app.documents.tab_drag = Some((tab_id, mouse_x));
                     }
-                    MouseButton::Middle => {
-                        app.close_tab(ctx, tab.id);
-                    }
-                    MouseButton::Right => {
-                        app.documents.tab_context_menu =
-                            Some(crate::document::tab_ops::TabContextMenu::new(
-                                tab.id,
-                                tab.pinned,
-                                mouse_x,
-                                mouse_y,
-                                app.scale_factor,
-                            ));
-                        app.scheduler.invalidate_all();
-                    }
-                    _ => {}
                 }
+                MouseButton::Middle => {
+                    app.close_tab(ctx, tab_id);
+                    app.documents.tab_drag = None;
+                }
+                MouseButton::Right => {
+                    app.documents.tab_context_menu =
+                        Some(crate::document::tab_ops::TabContextMenu::new(
+                            tab_id,
+                            pinned,
+                            mouse_x,
+                            mouse_y,
+                            app.scale_factor,
+                        ));
+                    app.scheduler.invalidate_all();
+                }
+                _ => {}
             }
         }
         return true;
@@ -238,6 +233,54 @@ pub(crate) fn handle_mouse_click_on_chrome(
     false
 }
 
+pub(crate) fn tab_at(app: &App, mouse_x: f32) -> Option<(usize, bool)> {
+    let count = app.documents.tabs.tabs().len();
+    if count == 0 {
+        return None;
+    }
+    let width = app.tab_width().max(1.0);
+    let origin = app.sidebar_width() - app.documents.tabs.scroll();
+    let local = mouse_x - origin;
+    if local < 0.0 {
+        return None;
+    }
+    let index = (local / width) as usize;
+    if index >= count {
+        return None;
+    }
+    let close_w = TAB_CLOSE_BTN_WIDTH * app.scale_factor;
+    let on_close = local - index as f32 * width >= width - close_w;
+    Some((index, on_close))
+}
+
+pub(crate) fn scroll_tabs(app: &mut App, delta_x: f32) {
+    let count = app.documents.tabs.tabs().len() as f32;
+    let width = app.tab_width();
+    let max_scroll = (count * width - app.viewport.width).max(0.0);
+    let next = (app.documents.tabs.scroll() - delta_x).clamp(0.0, max_scroll);
+    app.documents.tabs.set_scroll(next);
+    app.scheduler.invalidate_all();
+}
+
+pub(crate) fn drag_tab(app: &mut App) -> bool {
+    let Some((id, origin_x)) = app.documents.tab_drag else {
+        return false;
+    };
+    let mouse_x = app.mouse.position.x as f32;
+    if (mouse_x - origin_x).abs() < 6.0 {
+        return false;
+    }
+    let Some((index, _)) = tab_at(app, mouse_x) else {
+        return false;
+    };
+    if app.reorder_tab(id, index) {
+        app.documents.tab_drag = Some((id, mouse_x));
+        true
+    } else {
+        false
+    }
+}
+
 pub(crate) fn handle_status_bar_click(app: &mut App, mouse_x: f32, mouse_y: f32) {
     let layout = app.ui.status_bar.layout.clone();
     if layout.eol_rect.contains(mouse_x, mouse_y) {
@@ -249,8 +292,14 @@ pub(crate) fn handle_status_bar_click(app: &mut App, mouse_x: f32, mouse_y: f32)
     } else if layout.encoding_rect.contains(mouse_x, mouse_y) {
         crate::status_bar::toggle_encoding(&mut app.buffer);
         app.scheduler.invalidate_all();
+    } else if layout.branch_rect.contains(mouse_x, mouse_y) {
+        if let Some(name) = app.ui.git.branch_name.clone() {
+            app.documents.message = Some(format!("Git branch {name}"));
+        }
+        crate::focus::focus_editor(app);
+        app.scheduler.invalidate_all();
     } else if layout.cursor_rect.contains(mouse_x, mouse_y) {
-        app.toggle_command_palette();
+        app.open_goto_anything(":");
     } else if layout.language_rect.contains(mouse_x, mouse_y) {
         app.open_language_picker();
     }

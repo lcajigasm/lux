@@ -58,6 +58,12 @@ pub(crate) fn sync_surface_focus(app: &mut App, target: FocusTarget) {
     app.ui.lsp.problems.focused = target == FocusTarget::Problems;
 }
 
+/// Puts the caret back in the editor after a floating panel closes.
+pub(crate) fn focus_editor(app: &mut App) {
+    app.chrome.focus.escape_to_editor();
+    sync_surface_focus(app, FocusTarget::Editor);
+}
+
 /// Untraps focus from any panel and immediately returns focus to the active Editor view,
 /// dismissing any active floating popups or overlays.
 pub(crate) fn escape_to_editor(app: &mut App) -> bool {

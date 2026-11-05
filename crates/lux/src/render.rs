@@ -288,6 +288,7 @@ impl App {
                 documents,
                 is_current_dirty,
                 sidebar_width,
+                viewport.width,
                 tab_width,
                 tab_bar_height,
                 *scale_factor,
@@ -331,9 +332,8 @@ impl App {
                     &mut glyph_instances,
                 );
             }
-            // A thin underline distinguishes in-progress composition from
-            // already-committed text — the same visual convention every
-            // desktop IME candidate UI already uses.
+            // A thin underline marks in-progress composition, the same
+            // convention a desktop IME uses for uncommitted text.
             quad_instances.push(QuadInstance::solid(
                 [
                     x,
@@ -412,9 +412,10 @@ impl App {
                 &mut atlas_state.scale_cx,
                 &chrome.theme,
                 buffer,
-                cursors.primary().head,
+                cursors.primary(),
                 language_id,
                 ui.macros.is_recording,
+                ui.git.branch_name.as_deref(),
                 &mut quad_instances,
                 &mut glyph_instances,
             );

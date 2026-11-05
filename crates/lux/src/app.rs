@@ -246,6 +246,7 @@ impl App {
         if self.ui.settings.panel.is_some() && matches!(key_event.key, Key::Named(NamedKey::Escape))
         {
             self.ui.settings.panel = None;
+            crate::focus::focus_editor(self);
             self.scheduler.invalidate_all();
             self.refresh_accessibility();
             return;
@@ -399,13 +400,28 @@ impl PlatformEventHandler for App {
                 }
             }
             PlatformEvent::MouseWheel(delta) => {
-                if !crate::overlay_wheel::scroll_open_overlay(self, delta) {
+                let on_tabs = self.mouse.position.y < self.tab_bar_height() as f64
+                    && self.mouse.position.x >= self.sidebar_width() as f64;
+                if on_tabs && self.ui.command_palette.is_none() && self.ui.goto_anything.is_none() {
+                    let pixels = match delta {
+                        lux_platform::ScrollDelta::Lines { x, y } => (x + y) * self.tab_width(),
+                        lux_platform::ScrollDelta::Pixels(position) => {
+                            position.x as f32 + position.y as f32
+                        }
+                    };
+                    crate::chrome::scroll_tabs(self, pixels);
+                } else if !crate::overlay_wheel::scroll_open_overlay(self, delta) {
                     self.scroll(delta);
                 }
             }
             PlatformEvent::MouseMoved(position) => {
                 self.mouse.position = position;
                 if crate::modal::handle_modal_hover(self, position.x as f32, position.y as f32)
+                    && let Some(gpu_window) = &self.gpu_window
+                {
+                    gpu_window.window.request_redraw();
+                }
+                if crate::chrome::drag_tab(self)
                     && let Some(gpu_window) = &self.gpu_window
                 {
                     gpu_window.window.request_redraw();
@@ -433,6 +449,7 @@ impl PlatformEventHandler for App {
                         self.ui.project.picker = None;
                         self.ui.theme_picker = None;
                         self.ui.snippets.picker = None;
+                        crate::focus::focus_editor(self);
 
                         let pos = self.position_at_mouse();
                         let now = std::time::Instant::now();
@@ -457,6 +474,7 @@ impl PlatformEventHandler for App {
                     }
                 } else if button == MouseButton::Left {
                     self.mouse.selection_anchor = None;
+                    self.documents.tab_drag = None;
                     self.end_divider_drag();
                 }
                 self.refresh_accessibility();

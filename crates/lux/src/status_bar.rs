@@ -27,6 +27,7 @@ impl Rect {
 pub(crate) struct StatusBarLayout {
     pub(crate) bar_rect: Rect,
     pub(crate) cursor_rect: Rect,
+    pub(crate) branch_rect: Rect,
     pub(crate) indent_rect: Rect,
     pub(crate) encoding_rect: Rect,
     pub(crate) eol_rect: Rect,
@@ -46,8 +47,25 @@ pub(crate) fn build_status_bar(
     buffer: &Buffer,
     cursor: Position,
     language: Option<LanguageId>,
+    selected_chars: usize,
+    branch: Option<&str>,
 ) -> StatusBar {
-    status_bar::build(buffer, cursor, language_name(language))
+    status_bar::build(
+        buffer,
+        cursor,
+        language_name(language),
+        selected_chars,
+        branch,
+    )
+}
+
+pub(crate) fn selected_chars(selection: lux_core::selection::Selection) -> usize {
+    if selection.is_empty() {
+        0
+    } else {
+        let (start, end) = selection.ordered();
+        end.char.saturating_sub(start.char)
+    }
 }
 
 pub(crate) fn toggle_eol(buffer: &mut Buffer) -> Eol {
@@ -192,6 +210,12 @@ mod tests {
                 width: 80.0,
                 height: 24.0,
             },
+            branch_rect: Rect {
+                x: 100.0,
+                y: 676.0,
+                width: 48.0,
+                height: 24.0,
+            },
             indent_rect: Rect {
                 x: 700.0,
                 y: 676.0,
@@ -233,5 +257,16 @@ mod tests {
         assert_eq!(app.buffer.encoding(), Encoding::Utf8);
         app.handle_status_bar_click(790.0, 680.0);
         assert_eq!(app.buffer.encoding(), Encoding::Latin1);
+
+        app.handle_status_bar_click(40.0, 680.0);
+        assert!(app.ui.goto_anything.is_some());
+        assert_eq!(app.ui.goto_anything.as_ref().unwrap().query.as_str(), ":");
+        app.ui.git.branch_name = Some("main".into());
+        app.handle_status_bar_click(110.0, 680.0);
+        assert_eq!(app.documents.message.as_deref(), Some("Git branch main"));
+        assert_eq!(
+            app.chrome.focus.current(),
+            lux_ui::focus::FocusTarget::Editor
+        );
     }
 }

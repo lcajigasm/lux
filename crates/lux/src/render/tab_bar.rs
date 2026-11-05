@@ -12,6 +12,7 @@ pub(crate) fn render_tab_bar(
     documents: &Documents,
     is_current_dirty: bool,
     sidebar_width: f32,
+    strip_width: f32,
     tab_width: f32,
     tab_bar_height: f32,
     scale_factor: f32,
@@ -36,8 +37,13 @@ pub(crate) fn render_tab_bar(
     };
     let close_btn_w = crate::app::TAB_CLOSE_BTN_WIDTH * scale_factor;
 
+    let origin = sidebar_width - documents.tabs.scroll();
+    let strip_right = sidebar_width + strip_width;
     for (i, tab) in documents.tabs.tabs().iter().enumerate() {
-        let tab_x = sidebar_width + i as f32 * tab_width;
+        let tab_x = origin + i as f32 * tab_width;
+        if tab_x + tab_width <= sidebar_width || tab_x >= strip_right {
+            continue;
+        }
         let is_active = Some(tab.id) == documents.active_tab;
         let tab_bg = if is_active {
             color(theme.background)
