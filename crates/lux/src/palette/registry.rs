@@ -39,6 +39,12 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
         ("edit.paste", "Edit: Paste", "Edit"),
         ("edit.select_all", "Edit: Select All", "Edit"),
         ("edit.duplicate_line", "Edit: Duplicate Line", "Edit"),
+        ("edit.insert_line_after", "Edit: Insert Line After", "Edit"),
+        (
+            "edit.insert_line_before",
+            "Edit: Insert Line Before",
+            "Edit",
+        ),
         ("edit.delete_line", "Edit: Delete Line", "Edit"),
         ("edit.swap_line_up", "Edit: Swap Line Up", "Edit"),
         ("edit.swap_line_down", "Edit: Swap Line Down", "Edit"),

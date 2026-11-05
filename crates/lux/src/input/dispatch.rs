@@ -125,6 +125,15 @@ pub(crate) fn execute_keymap_command(app: &mut App, cmd: &str, clipboard: Option
         "duplicate_line" => {
             app.apply_edit_operation(app.cursors.clone(), edit_ops::duplicate_line);
         }
+        "insert_line_after" => {
+            app.apply_edit_operation(app.cursors.clone(), edit_ops::insert_line_after);
+        }
+        "insert_line_before" => {
+            app.apply_edit_operation(app.cursors.clone(), edit_ops::insert_line_before);
+        }
+        "use_selection_for_find" => {
+            crate::search::use_selection_for_find(app);
+        }
         "select_next_occurrence" => {
             app.select_next_occurrence();
         }

@@ -246,7 +246,7 @@ find.
 | Chord | Command | State |
 |---|---|---|
 | `Cmd+P` | `quick_open` | parcial |
-| `Cmd+Shift+P` | `command_palette` | parcial. Headless session opens it |
+| `Cmd+Shift+P` | `command_palette` | parcial. `input::nav_tests` opens it and runs Undo |
 | `Cmd+D` | `select_next_occurrence` | parcial |
 | `Cmd+K Cmd+D` | `skip_next_occurrence` | parcial |
 | `Cmd+Shift+L` | `split_selection_into_lines` | parcial |
@@ -257,7 +257,7 @@ find.
 | `Cmd+Alt+F` | `replace` | parcial |
 | `Cmd+Shift+F` | `find_in_files` | parcial |
 | `Cmd+G` / `Cmd+Shift+G` | `find_next` / `find_prev` | parcial |
-| `Cmd+R` / `Cmd+Shift+R` | `goto_symbol` / `goto_symbol_in_project` | parcial |
+| `Cmd+R` / `Cmd+Shift+R` | `goto_symbol` / `goto_symbol_in_project` | parcial. `input::nav_tests` jumps to `@symbol` |
 | `Cmd+S` | `save` | parcial. Headless session saves |
 | `Cmd+Z` / `Cmd+Shift+Z` | `undo` / `redo` | parcial |
 | `Cmd+Alt+2` | `set_layout_columns_2` | parcial. Headless session splits |

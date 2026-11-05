@@ -379,6 +379,16 @@ extra=(
     "ctrl-shift-up $((ctrl | shift)) 126"
     "cmd-t $cmd 17"
     "escape 0 53"
+    "cmd-shift-p $((cmd | shift)) 35"
+    "escape 0 53"
+    "cmd-r $cmd 15"
+    "escape 0 53"
+    "ctrl-g $ctrl 5"
+    "escape 0 53"
+    "cmd-d $cmd 2"
+    "cmd-e $cmd 14"
+    "escape 0 53"
+    "cmd-y $cmd 16"
 )
 for spec in "${extra[@]}"; do
     name="${spec%% *}"

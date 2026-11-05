@@ -196,6 +196,30 @@ pub(crate) fn open_find(app: &mut crate::app::App, replace_mode: bool) {
     app.scheduler.invalidate_all();
 }
 
+/// Sublime's Use Selection for Find. An empty cursor contributes the word
+/// under it. A selection on one line is already copied by `open_find`.
+pub(crate) fn use_selection_for_find(app: &mut crate::app::App) {
+    let primary = app.cursors.primary();
+    let word = if primary.is_empty() {
+        let word = lux_core::selection_ops::expand_to_word(&app.buffer, primary);
+        if word.is_empty() {
+            String::new()
+        } else {
+            app.buffer.text_range(word.char_range())
+        }
+    } else {
+        String::new()
+    };
+    open_find(app, false);
+    if word.is_empty() {
+        return;
+    }
+    if let Some(search) = app.ui.search_bar.as_mut() {
+        search.find_query = crate::field::QueryField::from_text(word);
+        search.sync_query(&app.buffer);
+    }
+}
+
 pub(crate) fn find_next(app: &mut crate::app::App) {
     if let Some(search) = app.ui.search_bar.as_mut() {
         if let Some(sel) = search.next_match() {

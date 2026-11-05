@@ -104,15 +104,18 @@ impl App {
                 return;
             }
         }
-        let anchor = if self.modifiers.shift {
+        let anchor = if self.modifiers.shift && !self.command_modifier() {
             self.cursors.primary().anchor
         } else {
             position
         };
         self.mouse.selection_anchor = Some(anchor);
         if self.modifiers.alt {
+            // Option starts a column selection. The drag replaces it.
+            self.cursors = MultiCursor::new(Selection::new(anchor, position));
+        } else if self.command_modifier() {
             let mut cursors = self.cursors.cursors().to_vec();
-            cursors.push(Selection::new(anchor, position));
+            cursors.push(Selection::cursor(position));
             self.cursors = MultiCursor::from_cursors(cursors);
         } else {
             self.cursors = MultiCursor::new(Selection::new(anchor, position));
@@ -128,6 +131,16 @@ impl App {
         let position = self.position_at_mouse();
         if self.modifiers.alt {
             self.cursors = selection_ops::box_select(&self.buffer, anchor, position);
+        } else if self.command_modifier() {
+            let mut cursors: Vec<_> = self
+                .cursors
+                .cursors()
+                .iter()
+                .copied()
+                .filter(|selection| selection.anchor != anchor)
+                .collect();
+            cursors.push(Selection::new(anchor, position));
+            self.cursors = MultiCursor::from_cursors(cursors);
         } else {
             self.cursors = MultiCursor::new(Selection::new(anchor, position));
         }
