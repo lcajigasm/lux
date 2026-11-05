@@ -430,3 +430,49 @@ fn palette_shows_shortcuts_and_floats_the_last_command() {
     let top = again.results(&lux_ui::command_palette::Context::new());
     assert_eq!(top[0].command.id, "edit.swap_line_up");
 }
+
+#[test]
+fn escape_and_a_click_outside_return_focus_to_the_editor() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app("alpha");
+    app.ui.sidebar = crate::sidebar::SidebarState::open_folder(dir.path().to_path_buf());
+    app.chrome
+        .focus
+        .set_focus(lux_ui::focus::FocusTarget::FileTree);
+    crate::focus::sync_surface_focus(&mut app, lux_ui::focus::FocusTarget::FileTree);
+    assert!(app.ui.sidebar.as_ref().unwrap().focused);
+
+    app.open_command_palette("");
+    press(&mut app, Key::Named(NamedKey::Escape), None, None);
+    assert!(app.ui.command_palette.is_none());
+    assert_eq!(
+        app.chrome.focus.current(),
+        lux_ui::focus::FocusTarget::Editor
+    );
+    assert!(!app.ui.sidebar.as_ref().unwrap().focused);
+
+    app.chrome
+        .focus
+        .set_focus(lux_ui::focus::FocusTarget::FileTree);
+    crate::focus::sync_surface_focus(&mut app, lux_ui::focus::FocusTarget::FileTree);
+    app.ui.language_picker = Some(crate::language_picker::LanguagePickerState::new());
+    app.mouse.position = dpi::PhysicalPosition::new(4.0, 400.0);
+    assert!(app.handle_mouse_click_on_chrome(&Ctx, lux_platform::MouseButton::Left));
+    assert!(app.ui.language_picker.is_none());
+    assert_eq!(
+        app.chrome.focus.current(),
+        lux_ui::focus::FocusTarget::Editor
+    );
+    assert!(!app.ui.sidebar.as_ref().unwrap().focused);
+
+    app.ui.settings.open_settings_ui();
+    app.chrome
+        .focus
+        .set_focus(lux_ui::focus::FocusTarget::FileTree);
+    press(&mut app, Key::Named(NamedKey::Escape), None, None);
+    assert!(app.ui.settings.panel.is_none());
+    assert_eq!(
+        app.chrome.focus.current(),
+        lux_ui::focus::FocusTarget::Editor
+    );
+}

@@ -48,6 +48,7 @@ pub(super) fn click_theme_picker(app: &mut App, mx: f32, my: f32) -> bool {
         let orig = picker.original_theme_name;
         app.set_theme(orig);
         app.ui.theme_picker = None;
+        crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
         return true;
     }
@@ -56,6 +57,7 @@ pub(super) fn click_theme_picker(app: &mut App, mx: f32, my: f32) -> bool {
     {
         app.confirm_theme(candidate);
         app.ui.theme_picker = None;
+        crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
     }
     true
@@ -123,6 +125,7 @@ pub(super) fn click_snippet_picker(app: &mut App, mx: f32, my: f32) -> bool {
 
     if !geom.contains(mx, my) {
         app.ui.snippets.picker = None;
+        crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
         return true;
     }
@@ -131,6 +134,7 @@ pub(super) fn click_snippet_picker(app: &mut App, mx: f32, my: f32) -> bool {
     {
         let tmpl = snip.content.clone();
         app.ui.snippets.picker = None;
+        crate::focus::focus_editor(app);
         app.expand_snippet(&tmpl);
         app.scheduler.invalidate_all();
     }
@@ -203,6 +207,7 @@ pub(super) fn click_build_picker(
 
     if !geom.contains(mx, my) {
         app.ui.build.picker = None;
+        crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
         return true;
     }
@@ -210,6 +215,7 @@ pub(super) fn click_build_picker(
         && let Some(variant) = filtered.get(idx).copied().cloned()
     {
         app.ui.build.picker = None;
+        crate::focus::focus_editor(app);
         app.execute_build_variant(variant, Some(ctx));
         app.scheduler.invalidate_all();
     }
@@ -278,6 +284,7 @@ pub(super) fn click_project_picker(
 
     if !geom.contains(mx, my) {
         app.ui.project.picker = None;
+        crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
         return true;
     }
@@ -285,6 +292,7 @@ pub(super) fn click_project_picker(
         && let Some(path) = filtered.get(idx).copied().cloned()
     {
         app.ui.project.picker = None;
+        crate::focus::focus_editor(app);
         app.open_project_file(&path, Some(ctx));
         app.scheduler.invalidate_all();
     }

@@ -22,13 +22,15 @@ pub const CHANGE_LANGUAGE_COMMAND: &str = "status_bar.change_language";
 pub const CHANGE_ENCODING_COMMAND: &str = "status_bar.change_encoding";
 pub const CHANGE_EOL_COMMAND: &str = "status_bar.change_eol";
 pub const CHANGE_INDENTATION_COMMAND: &str = "status_bar.change_indentation";
+pub const SHOW_BRANCH_COMMAND: &str = "status_bar.show_branch";
 
-const COMMANDS: [(&str, &str); 5] = [
+const COMMANDS: [(&str, &str); 6] = [
     (GOTO_LINE_COMMAND, "Go to Line"),
     (CHANGE_LANGUAGE_COMMAND, "Change Language Mode"),
     (CHANGE_ENCODING_COMMAND, "Change File Encoding"),
     (CHANGE_EOL_COMMAND, "Change Line Ending"),
     (CHANGE_INDENTATION_COMMAND, "Change Indentation"),
+    (SHOW_BRANCH_COMMAND, "Show Git Branch"),
 ];
 
 /// Registers every status bar item's command into `registry`, under the
@@ -57,16 +59,27 @@ pub struct StatusBar {
     pub encoding: StatusBarItem,
     pub eol: StatusBarItem,
     pub indent: StatusBarItem,
+    pub branch: Option<StatusBarItem>,
 }
 
 /// Builds a status bar snapshot from `buffer`'s already-detected
 /// encoding/EOL/indent, `cursor`'s position, and a caller-supplied
 /// `language` label (language detection isn't wired into `lux-ui` yet —
 /// that's `lux-syntax`, not this deliverable's job).
-pub fn build(buffer: &Buffer, cursor: Position, language: &str) -> StatusBar {
+pub fn build(
+    buffer: &Buffer,
+    cursor: Position,
+    language: &str,
+    selected_chars: usize,
+    branch: Option<&str>,
+) -> StatusBar {
+    let mut cursor_label = format!("Ln {}, Col {}", cursor.line + 1, cursor.column + 1);
+    if selected_chars > 0 {
+        cursor_label.push_str(&format!(" · {selected_chars} selected"));
+    }
     StatusBar {
         cursor: StatusBarItem {
-            label: format!("Ln {}, Col {}", cursor.line + 1, cursor.column + 1),
+            label: cursor_label,
             command_id: GOTO_LINE_COMMAND,
         },
         language: StatusBarItem {
@@ -85,6 +98,12 @@ pub fn build(buffer: &Buffer, cursor: Position, language: &str) -> StatusBar {
             label: indent_label(buffer),
             command_id: CHANGE_INDENTATION_COMMAND,
         },
+        branch: branch
+            .filter(|name| !name.is_empty())
+            .map(|name| StatusBarItem {
+                label: name.to_string(),
+                command_id: SHOW_BRANCH_COMMAND,
+            }),
     }
 }
 
@@ -152,7 +171,7 @@ mod tests {
     fn build_formats_cursor_position_as_one_based() {
         let buffer = Buffer::from_bytes(b"hello\nworld\n").unwrap();
         let cursor = Position::from_char(&buffer, 6); // start of "world", line 1 col 0 (0-based)
-        let status = build(&buffer, cursor, "Rust");
+        let status = build(&buffer, cursor, "Rust", 0, None);
         assert_eq!(status.cursor.label, "Ln 2, Col 1");
         assert_eq!(status.cursor.command_id, GOTO_LINE_COMMAND);
     }
@@ -160,7 +179,7 @@ mod tests {
     #[test]
     fn build_uses_the_buffers_detected_eol_and_encoding() {
         let buffer = Buffer::from_bytes(b"a\r\nb\r\n").unwrap();
-        let status = build(&buffer, Position::document_start(), "Plain Text");
+        let status = build(&buffer, Position::document_start(), "Plain Text", 0, None);
         assert_eq!(status.eol.label, "CRLF");
         assert_eq!(status.encoding.label, "UTF-8");
     }
@@ -168,8 +187,13 @@ mod tests {
     #[test]
     fn build_uses_the_caller_supplied_language_label() {
         let buffer = Buffer::from_bytes(b"fn main() {}\n").unwrap();
-        let status = build(&buffer, Position::document_start(), "Rust");
+        let status = build(&buffer, Position::document_start(), "Rust", 4, Some("main"));
         assert_eq!(status.language.label, "Rust");
+        assert_eq!(status.cursor.label, "Ln 1, Col 1 · 4 selected");
+        assert_eq!(
+            status.branch.as_ref().map(|item| item.label.as_str()),
+            Some("main")
+        );
         assert_eq!(status.language.command_id, CHANGE_LANGUAGE_COMMAND);
     }
 
@@ -196,7 +220,7 @@ mod tests {
         register_commands(&mut registry).unwrap();
 
         let buffer = Buffer::from_bytes(b"fn main() {}\n").unwrap();
-        let status = build(&buffer, Position::document_start(), "Rust");
+        let status = build(&buffer, Position::document_start(), "Rust", 0, Some("main"));
         let registered_ids: Vec<&str> = registry.commands().map(|c| c.id.as_str()).collect();
 
         for item in [
@@ -205,6 +229,7 @@ mod tests {
             &status.encoding,
             &status.eol,
             &status.indent,
+            status.branch.as_ref().unwrap(),
         ] {
             assert!(
                 registered_ids.contains(&item.command_id),

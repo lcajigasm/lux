@@ -25,9 +25,10 @@ pub(crate) fn render_status_bar(
     scale_cx: &mut ScaleContext,
     theme: &lux_ui::Theme,
     buffer: &lux_core::buffer::Buffer,
-    cursor_pos: lux_core::position::Position,
+    cursor: lux_core::selection::Selection,
     language_id: Option<lux_syntax::LanguageId>,
     is_recording_macro: bool,
+    branch: Option<&str>,
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) -> StatusBarLayout {
@@ -53,7 +54,13 @@ pub(crate) fn render_status_bar(
         color(theme.chrome.border),
     ));
 
-    let status = build_status_bar(buffer, cursor_pos, language_id);
+    let status = build_status_bar(
+        buffer,
+        cursor.head,
+        language_id,
+        crate::status_bar::selected_chars(cursor),
+        branch,
+    );
     let foreground = color(theme.foreground);
 
     let mut layout = StatusBarLayout {
@@ -95,11 +102,44 @@ pub(crate) fn render_status_bar(
         width: cursor_w + 8.0 * stroke,
         height: bar_height,
     };
+    if let Some(branch_item) = &status.branch {
+        let branch_x = cursor_x + cursor_w + STATUS_BAR_ITEM_SPACING * scale_factor;
+        let branch_line =
+            editor_view
+                .text_layout_mut()
+                .layout_line(&style, &branch_item.label, &[]);
+        let branch_w = branch_line.width();
+        let branch_baseline = branch_line.baseline();
+        for cluster in branch_line.clusters() {
+            push_glyph(
+                atlas,
+                atlas_dirty,
+                scale_cx,
+                font,
+                status_font_size,
+                &cluster,
+                branch_x,
+                bar_y + text_baseline_offset + branch_baseline,
+                foreground,
+                glyph_instances,
+            );
+        }
+        layout.branch_rect = Rect {
+            x: branch_x - 4.0 * stroke,
+            y: bar_y,
+            width: branch_w + 8.0 * stroke,
+            height: bar_height,
+        };
+    }
 
     // Recording Macro indicator (Sublime Text 3 parity)
     if is_recording_macro {
         let macro_text = "● Recording Macro";
-        let macro_x = cursor_x + cursor_w + STATUS_BAR_ITEM_SPACING * scale_factor;
+        let macro_x = if layout.branch_rect.width > 0.0 {
+            layout.branch_rect.x + layout.branch_rect.width
+        } else {
+            cursor_x + cursor_w
+        } + STATUS_BAR_ITEM_SPACING * scale_factor;
         let macro_line = editor_view
             .text_layout_mut()
             .layout_line(&style, macro_text, &[]);

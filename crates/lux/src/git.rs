@@ -62,7 +62,23 @@ impl GitState {
 }
 
 pub(crate) fn discover_repo(start: &Path) -> Option<lux_git::gix::Repository> {
+    let start = if start.is_file() {
+        start.parent().unwrap_or(start)
+    } else {
+        start
+    };
     lux_git::gix::discover(start).ok()
+}
+
+fn head_label(repo: &lux_git::gix::Repository) -> Option<String> {
+    if let Some(name) = repo.head_name().ok().flatten() {
+        let short = name.shorten().to_string();
+        if !short.is_empty() {
+            return Some(short);
+        }
+    }
+    let hex = repo.head_id().ok()?.to_string();
+    Some(hex.chars().take(7).collect())
 }
 
 pub(crate) fn refresh_git_state(app: &mut App) {
@@ -77,6 +93,23 @@ pub(crate) fn refresh_git_state(app: &mut App) {
                 .and_then(|s| s.workspace_root.clone())
         })
         .unwrap_or_else(|| PathBuf::from("."));
+
+    // A file open only needs the branch name. Walking the worktree here
+    // blocks the UI thread; that walk stays on a directory target.
+    if target_path.is_file() {
+        app.ui.git.hunks.clear();
+        app.ui.git.markers.clear();
+        app.ui.git.changed_files.clear();
+        app.ui.git.conflict_blocks.clear();
+        let Some(repo) = discover_repo(&target_path) else {
+            app.ui.git.repo_root = None;
+            app.ui.git.branch_name = None;
+            return;
+        };
+        app.ui.git.repo_root = repo.workdir().map(Path::to_path_buf);
+        app.ui.git.branch_name = head_label(&repo);
+        return;
+    }
 
     let Some(repo) = discover_repo(&target_path) else {
         app.ui.git.repo_root = None;
@@ -465,6 +498,14 @@ pub(crate) fn handle_git_click(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discover_repo_walks_up_from_a_file() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/git.rs");
+        let repo = discover_repo(&file).expect("repository");
+        let label = head_label(&repo).expect("head");
+        assert!(!label.is_empty());
+    }
 
     #[test]
     fn parse_conflict_blocks_detects_standard_markers() {

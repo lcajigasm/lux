@@ -299,6 +299,26 @@ pub(crate) fn handle_sidebar_key(
         return false;
     }
 
+    if let lux_platform::Key::Character(text) = &event.key
+        && text.eq_ignore_ascii_case("n")
+        && !app.modifiers.meta
+        && !app.modifiers.control
+        && !app.modifiers.alt
+    {
+        let parent = app.ui.sidebar.as_ref().and_then(|sidebar| {
+            let tree = sidebar.tree.as_ref()?;
+            let selected = sidebar.selected_node;
+            let directory = selected.filter(|id| tree.node_kind(*id) == Some(NodeKind::Directory));
+            directory
+                .or_else(|| selected.and_then(|id| tree.parent(id)))
+                .or(Some(tree.root()))
+        });
+        if let Some(parent) = parent {
+            ops::handle_sidebar_action(app, ctx, menu::SidebarAction::NewFile, parent);
+            return true;
+        }
+    }
+
     let Some(sidebar) = app.ui.sidebar.as_mut() else {
         return false;
     };

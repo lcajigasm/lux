@@ -162,3 +162,115 @@ fn arrow_down_selects_the_first_listed_row() {
         .map(|row| row.name);
     assert_eq!(name.as_deref(), Some("a.txt"));
 }
+
+#[test]
+fn the_keyboard_creates_renames_and_trashes_and_reveal_selects_the_open_file() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("notes")).unwrap();
+    std::fs::write(dir.path().join("notes").join("readme.txt"), "nested\n").unwrap();
+    let mut app = app();
+    app.ui.sidebar = SidebarState::open_folder(dir.path().to_path_buf());
+    let ctx = Context::new();
+    app.documents.path = Some(dir.path().join("notes").join("readme.txt"));
+    crate::palette::execute_command(&mut app, &ctx, "view.reveal_active_file");
+    let selected = app.ui.sidebar.as_ref().unwrap().selected_node;
+    let name = listed_rows(app.ui.sidebar.as_mut().unwrap().tree.as_mut().unwrap())
+        .into_iter()
+        .find(|row| Some(row.id) == selected)
+        .map(|row| row.name);
+    assert_eq!(name.as_deref(), Some("readme.txt"));
+    assert_eq!(
+        app.chrome.focus.current(),
+        lux_ui::focus::FocusTarget::FileTree
+    );
+
+    let down = KeyEvent {
+        key: Key::Named(NamedKey::ArrowUp),
+        text: None,
+        state: ElementState::Pressed,
+        repeat: false,
+        physical: None,
+    };
+    assert!(handle_sidebar_key(&mut app, &ctx, &down));
+    let new_file = KeyEvent {
+        key: Key::Character("n".into()),
+        text: Some("n".into()),
+        state: ElementState::Pressed,
+        repeat: false,
+        physical: None,
+    };
+    assert!(handle_sidebar_key(&mut app, &ctx, &new_file));
+    assert!(app.ui.sidebar.as_ref().unwrap().inline_input.is_some());
+    for ch in ["b", ".", "t", "x", "t"] {
+        let key = KeyEvent {
+            key: Key::Character(ch.into()),
+            text: Some(ch.into()),
+            state: ElementState::Pressed,
+            repeat: false,
+            physical: None,
+        };
+        assert!(handle_sidebar_key(&mut app, &ctx, &key));
+    }
+    let enter = KeyEvent {
+        key: Key::Named(NamedKey::Enter),
+        text: None,
+        state: ElementState::Pressed,
+        repeat: false,
+        physical: None,
+    };
+    assert!(handle_sidebar_key(&mut app, &ctx, &enter));
+    ctx.complete(&mut app);
+    assert!(dir.path().join("notes").join("b.txt").is_file());
+    let created = listed_rows(app.ui.sidebar.as_mut().unwrap().tree.as_mut().unwrap())
+        .into_iter()
+        .find(|row| row.name == "b.txt")
+        .map(|row| row.id);
+    app.ui.sidebar.as_mut().unwrap().selected_node = created;
+    let rename = KeyEvent {
+        key: Key::Named(NamedKey::F(2)),
+        text: None,
+        state: ElementState::Pressed,
+        repeat: false,
+        physical: None,
+    };
+    assert!(handle_sidebar_key(&mut app, &ctx, &rename));
+    for _ in 0..5 {
+        let backspace = KeyEvent {
+            key: Key::Named(NamedKey::Backspace),
+            text: None,
+            state: ElementState::Pressed,
+            repeat: false,
+            physical: None,
+        };
+        assert!(handle_sidebar_key(&mut app, &ctx, &backspace));
+    }
+    for ch in ["c", ".", "t", "x", "t"] {
+        let key = KeyEvent {
+            key: Key::Character(ch.into()),
+            text: Some(ch.into()),
+            state: ElementState::Pressed,
+            repeat: false,
+            physical: None,
+        };
+        assert!(handle_sidebar_key(&mut app, &ctx, &key));
+    }
+    assert!(handle_sidebar_key(&mut app, &ctx, &enter));
+    assert!(dir.path().join("notes").join("c.txt").is_file());
+    assert!(!dir.path().join("notes").join("b.txt").exists());
+
+    let delete = KeyEvent {
+        key: Key::Named(NamedKey::Delete),
+        text: None,
+        state: ElementState::Pressed,
+        repeat: false,
+        physical: None,
+    };
+    assert!(handle_sidebar_key(&mut app, &ctx, &delete));
+    assert!(!dir.path().join("notes").join("c.txt").exists());
+    assert!(
+        app.documents
+            .message
+            .as_deref()
+            .is_some_and(|message| message.contains("Moved to trash"))
+    );
+}

@@ -45,7 +45,7 @@
 > Text, and Zed on the fixtures folder, and the same three with
 > `monokai.rs` and `characters.txt` open. Lux's inactive tab title is
 > the foreground. The runner logged display scale 1. Block 1 stays
-> parcial: status bar, minimap, splits, and settings are still open.
+> parcial: the status bar labels and clicks are in ST-FIX-12. Minimap and splits stay parked. Settings remains a separate surface.
 > Workspace version 1.4.0 is the block 0 release. Workspace version
 > 1.5.0 is the file-tree and tabs release. See [ROADMAP.md](ROADMAP.md).
 >
@@ -2404,6 +2404,11 @@ _Nothing is behind an `experimental.*` flag yet._
   - **Language picker wheel ownership:** line-wheel movement changes the selected language row; precise trackpad movement accumulates by row height. While the picker is open, the underlying editor viewport remains unchanged.
   - **Focus restoration:** dismissing or executing the Command Palette returns focus to the editor unless the selected command opens another focused surface.
   - **Automated tests:** the four `desktop_pass` tests pass, including press/release deduplication, modal isolation, language-list scrolling, `Cmd/Ctrl+Shift+P`, and literal `Cmd/Ctrl+N` tab creation through the real keyboard pipeline. Sidebar delete (`sidebar::tests::sidebar_duplicate_and_delete_operations`) moves the file with `NSFileManager.trashItemAtURL` on macOS. The earlier failure was `trash`'s default Finder AppleScript, which returns an error when the process has no Automation permission; the file still goes to the real Trash. `cargo clippy -p lux -- -D warnings`, `cargo fmt --check`, and `scripts/check-limits.sh` pass.
+
+### ST-FIX-12: Panels, sidebar, tabs, and the status bar
+
+- **Status:** Escape and a click outside the command palette, language picker, and settings panel return focus to the editor and clear the sidebar highlight. The same focus return is on the other floating panels. In the sidebar, Arrow keys move the selection, Enter opens the row, N starts a new file, F2 renames it, and Delete moves it to the Trash. View: Reveal Active File expands to the open file and focuses the tree. A dirty tab draws a dot. Middle-click closes the tab under the pointer. Dragging a tab reorders the strip. A wheel over the strip scrolls tabs that do not fit. The status bar shows one-based Ln/Col, the selection size, language, encoding, EOL, indent, and the git branch already known to the app. Ln/Col opens Goto Line. Language opens the language picker. EOL, indent, and encoding still toggle. The branch click reports the known name and does not run git. Opening a file reads `HEAD` for that name and does not walk the worktree. The language picker uses the shared selector card. Monokai gutter matches the editor background (`#272822`) and the split border is `#3E3D32`.
+- **Verification:** `input::chrome_tests::escape_and_a_click_outside_return_focus_to_the_editor` goes through `handle_keyboard_event` and `handle_mouse_click_on_chrome`. `sidebar::behavior_tests::the_keyboard_creates_renames_and_trashes_and_reveal_selects_the_open_file` creates, renames, and trashes a real file. `document::tab_strip_tests` covers middle-click, overflow hit-testing, and drag reorder. `status_bar::tests::app_status_bar_clicks_dispatch_toggles` covers the clicks. `language_picker::tests::language_picker_click_selects_language_and_dismisses` uses the shared card geometry. `lux-ui` `monokai_chrome_uses_the_classic_wells` locks the gutter and border. This is not a Mac keystroke pass. Minimap and splits are unchanged.
 
 ### ST-FIX-11: Find, save all, tabs, zoom, and palette order
 

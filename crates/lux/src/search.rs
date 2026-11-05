@@ -253,7 +253,7 @@ pub(crate) fn find_all(app: &mut crate::app::App) {
         app.reveal_primary_cursor();
         crate::accessibility::announce(app, format!("Selected {count} matches"));
         app.ui.search_bar = None;
-        app.chrome.focus.escape_to_editor();
+        crate::focus::focus_editor(app);
         app.update_viewport_dimensions();
         app.scheduler.invalidate_all();
     }
@@ -278,7 +278,7 @@ pub(crate) fn handle_search_key(
     match &event.key {
         Key::Named(NamedKey::Escape) => {
             app.ui.search_bar = None;
-            app.chrome.focus.escape_to_editor();
+            crate::focus::focus_editor(app);
             app.update_viewport_dimensions();
             app.reveal_primary_cursor();
             app.scheduler.invalidate_all();
@@ -415,7 +415,7 @@ pub(crate) fn handle_search_click(app: &mut crate::app::App, mouse_x: f32, mouse
 
     if rect_contains(layout.close_btn_rect, mouse_x, mouse_y) {
         app.ui.search_bar = None;
-        app.chrome.focus.escape_to_editor();
+        crate::focus::focus_editor(app);
         app.update_viewport_dimensions();
         app.reveal_primary_cursor();
         app.scheduler.invalidate_all();

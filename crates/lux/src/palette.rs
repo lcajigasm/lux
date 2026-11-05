@@ -78,7 +78,7 @@ pub(crate) fn handle_palette_key(
     match &event.key {
         Key::Named(NamedKey::Escape) => {
             app.ui.command_palette = None;
-            app.chrome.focus.escape_to_editor();
+            crate::focus::focus_editor(app);
             app.scheduler.invalidate_all();
             true
         }
@@ -106,11 +106,11 @@ pub(crate) fn handle_palette_key(
                 app.ui.settings.palette_uses = uses;
                 app.ui.settings.palette_clock = clock;
                 app.ui.command_palette = None;
-                app.chrome.focus.escape_to_editor();
+                crate::focus::focus_editor(app);
                 execute_command(app, ctx, &cmd_id);
             } else {
                 app.ui.command_palette = None;
-                app.chrome.focus.escape_to_editor();
+                crate::focus::focus_editor(app);
             }
             app.scheduler.invalidate_all();
             true

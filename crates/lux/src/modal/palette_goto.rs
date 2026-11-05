@@ -45,6 +45,7 @@ pub(super) fn click_command_palette(
 
     if !geom.contains(mx, my) {
         app.ui.command_palette = None;
+        crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
         return true;
     }
@@ -137,7 +138,7 @@ pub(super) fn click_goto_anything(
             app.viewport.scroll_y = snap.scroll_y;
             app.reset_goal_columns();
         }
-        app.chrome.focus.escape_to_editor();
+        crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
         return true;
     }
@@ -152,7 +153,7 @@ pub(super) fn click_goto_anything(
             g.record_open(&target);
             crate::goto::execute_goto(app, ctx, &target, line, col);
         }
-        app.chrome.focus.escape_to_editor();
+        crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
     }
     true

@@ -161,6 +161,11 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
             "View",
         ),
         ("view.toggle_side_bar", "View: Toggle Side Bar", "View"),
+        (
+            "view.reveal_active_file",
+            "View: Reveal Active File",
+            "View",
+        ),
         ("view.zoom_in", "View: Zoom In", "View"),
         ("view.zoom_out", "View: Zoom Out", "View"),
         ("view.zoom_reset", "View: Reset Zoom", "View"),

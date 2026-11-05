@@ -28,6 +28,7 @@ pub struct TabBar {
     active: Option<TabId>,
     closed_stack: Vec<Tab>,
     next_id: u64,
+    scroll: f32,
 }
 
 impl TabBar {
@@ -38,6 +39,14 @@ impl TabBar {
     /// Every open tab, in display order.
     pub fn tabs(&self) -> &[Tab] {
         &self.tabs
+    }
+
+    pub fn scroll(&self) -> f32 {
+        self.scroll
+    }
+
+    pub fn set_scroll(&mut self, value: f32) {
+        self.scroll = value.max(0.0);
     }
 
     pub fn active(&self) -> Option<&Tab> {

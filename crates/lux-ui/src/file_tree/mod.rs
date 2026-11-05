@@ -99,6 +99,10 @@ impl FileTree {
         self.root
     }
 
+    pub fn parent(&self, id: NodeId) -> Option<NodeId> {
+        self.nodes.get(&id).and_then(|node| node.parent)
+    }
+
     pub fn node_path(&self, id: NodeId) -> Option<&Path> {
         self.nodes.get(&id).map(|n| n.path.as_path())
     }

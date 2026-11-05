@@ -560,6 +560,7 @@ impl SettingsState {
         if mouse_x < left || mouse_x > left + width || mouse_y < top || mouse_y > top + total_height
         {
             self.panel = None;
+            crate::focus::focus_editor(app);
             app.scheduler.invalidate_all();
             return true;
         }

@@ -232,7 +232,6 @@ impl App {
     }
 
     /// Reorders a tab to a new display index (Drag & Drop).
-    #[allow(dead_code)]
     pub(crate) fn reorder_tab(&mut self, target_id: TabId, to_index: usize) -> bool {
         let moved = self.documents.tabs.move_tab(target_id, to_index);
         if moved {
