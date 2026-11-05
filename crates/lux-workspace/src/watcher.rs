@@ -58,6 +58,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use notify_debouncer_full::notify::{RecommendedWatcher, RecursiveMode};
@@ -90,6 +91,8 @@ pub struct FileChange {
     pub kind: ChangeKind,
 }
 
+type Wake = Arc<dyn Fn() + Send + Sync>;
+
 /// One drained batch: classified file changes, plus any watcher-level
 /// errors from that same batch (kept separate from `changes` since they
 /// aren't necessarily about one path).
@@ -108,6 +111,9 @@ pub struct FileWatcher {
     /// distinguishes a genuinely new file from macOS's spurious
     /// re-`Create` on an existing file's first edit (see module docs).
     known: HashSet<PathBuf>,
+    /// Shared with the debouncer thread. Set after `new` so a real OS
+    /// event can wake the editor loop without a timer.
+    waker: Arc<Mutex<Option<Wake>>>,
 }
 
 impl FileWatcher {
@@ -116,13 +122,31 @@ impl FileWatcher {
     /// the same path to settle before emitting one.
     pub fn new(debounce: Duration) -> notify::Result<Self> {
         let (tx, rx) = mpsc::channel();
-        let debouncer = new_debouncer(debounce, None, tx)?;
+        let waker: Arc<Mutex<Option<Wake>>> = Arc::new(Mutex::new(None));
+        let slot = Arc::clone(&waker);
+        let debouncer = new_debouncer(debounce, None, move |event| {
+            let _ = tx.send(event);
+            if let Ok(guard) = slot.lock()
+                && let Some(wake) = guard.as_ref()
+            {
+                wake();
+            }
+        })?;
         Ok(FileWatcher {
             debouncer,
             events: rx,
             dirty: HashSet::new(),
             known: HashSet::new(),
+            waker,
         })
+    }
+
+    /// Called when the debouncer emits an event. The editor registers the
+    /// platform loop's waker so an external save is applied without polling.
+    pub fn set_waker(&mut self, wake: Wake) {
+        if let Ok(mut guard) = self.waker.lock() {
+            *guard = Some(wake);
+        }
     }
 
     /// Watches `root` and everything below it. See [`is_watch_limit_reached`]
@@ -504,6 +528,31 @@ mod tests {
         let batch = watcher.recv(Duration::from_millis(500));
         assert!(batch.changes.is_empty());
 
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn an_external_edit_invokes_the_registered_waker() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let dir = temp_dir();
+        let file = dir.join("wake.txt");
+        fs::write(&file, "a").unwrap();
+        let mut watcher = watch_dir(&dir);
+        let hit = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&hit);
+        watcher.set_waker(Arc::new(move || flag.store(true, Ordering::SeqCst)));
+
+        fs::write(&file, "b").unwrap();
+        let deadline = std::time::Instant::now() + RECV_TIMEOUT;
+        while !hit.load(Ordering::SeqCst) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the waker was not called after an external edit"
+            );
+            thread::sleep(Duration::from_millis(20));
+        }
         fs::remove_dir_all(&dir).ok();
     }
 

@@ -45,7 +45,7 @@
 > Text, and Zed on the fixtures folder, and the same three with
 > `monokai.rs` and `characters.txt` open. Lux's inactive tab title is
 > the foreground. The runner logged display scale 1. Block 1 stays
-> parcial: the status bar labels and clicks are in ST-FIX-12. Minimap and splits stay parked. Settings remains a separate surface.
+> parcial: the status bar labels and clicks are in ST-FIX-12. External reload, hot exit, and Command+/ are in ST-FIX-13. Minimap and splits stay parked. Settings remains a separate surface.
 > Workspace version 1.4.0 is the block 0 release. Workspace version
 > 1.5.0 is the file-tree and tabs release. See [ROADMAP.md](ROADMAP.md).
 >
@@ -2404,6 +2404,11 @@ _Nothing is behind an `experimental.*` flag yet._
   - **Language picker wheel ownership:** line-wheel movement changes the selected language row; precise trackpad movement accumulates by row height. While the picker is open, the underlying editor viewport remains unchanged.
   - **Focus restoration:** dismissing or executing the Command Palette returns focus to the editor unless the selected command opens another focused surface.
   - **Automated tests:** the four `desktop_pass` tests pass, including press/release deduplication, modal isolation, language-list scrolling, `Cmd/Ctrl+Shift+P`, and literal `Cmd/Ctrl+N` tab creation through the real keyboard pipeline. Sidebar delete (`sidebar::tests::sidebar_duplicate_and_delete_operations`) moves the file with `NSFileManager.trashItemAtURL` on macOS. The earlier failure was `trash`'s default Finder AppleScript, which returns an error when the process has no Automation permission; the file still goes to the real Trash. `cargo clippy -p lux -- -D warnings`, `cargo fmt --check`, and `scripts/check-limits.sh` pass.
+
+### ST-FIX-13: Reload, hot exit, comments, scroll, and menu chords
+
+- **Status:** An external edit of a clean open file reloads that buffer. The same edit of a dirty file opens the conflict dialog and leaves the buffer alone. The watcher wakes the editor loop from the debouncer thread. Closing with a dirty named file and another tab restores both, and the named tab comes back as the draft rather than the bytes on disk. `lux .` and a directory argument open that folder. The macOS bundle lists `public.folder`, so Finder can pass the same path. A drop onto the window is not a platform event yet. Command+/ comments every built-in language that has a comment, including an OCaml block comment. Diff and Regex have none. The native menu key letters for save, undo, redo, comment, duplicate, delete line, join, add next, find, and preferences are the Sublime keymap chords. The menu action and the keymap command share one claim, so the pair runs once. Trackpad pixel deltas, including a short momentum tail, move both axes by those pixels. A wheel over the sidebar scrolls the tree. Full-window cold start, key-to-pixel, and a 10 MB open are still not measured on a release binary, so no figure is recorded here. The side-by-side compare frames are typed; the scale-2 palette frame is still a renderer snapshot because the macOS runner framebuffer is 1×.
+- **Verification:** `lux_workspace::watcher::tests::an_external_edit_invokes_the_registered_waker` and `session::tests::an_external_edit_reloads_a_clean_file_and_asks_when_dirty`. `session::tests::hot_exit_restores_a_dirty_named_file_beside_a_clean_tab`. `main::tests::dot_opens_a_workspace_and_flags_stay_flags` and `two_files_queue_a_second_tab_and_a_folder_opens_the_tree`. `input::p0_tests::command_slash_comments_every_language_that_has_one`. `menu::chords::tests::menu_letters_match_the_sublime_keymap`, `menu::chords::tests::the_other_source_is_swallowed_and_a_repeat_is_not`, and `menu::tests::a_menu_comment_and_the_keymap_comment_run_once`. `render::window::tests::a_momentum_tail_keeps_each_pixel_delta`. This is not a Mac keystroke pass and not a 120 Hz measurement.
 
 ### ST-FIX-12: Panels, sidebar, tabs, and the status bar
 

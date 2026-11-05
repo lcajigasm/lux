@@ -202,12 +202,20 @@ impl MenuAction {
     }
 }
 
+mod chords;
 mod queue;
+
+#[cfg(test)]
+pub(crate) use chords::clear_claim;
+pub(crate) use chords::{action_for_command, claim_document_request, claim_key};
 #[cfg_attr(not(target_os = "macos"), allow(unused_imports))]
 pub(crate) use queue::post_action;
 pub(crate) use queue::{poll_actions, register_waker};
 
 pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, action: MenuAction) {
+    if !chords::claim_menu(action) {
+        return;
+    }
     match action {
         MenuAction::About => {
             app.open_about_dialog();
@@ -290,11 +298,7 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
             app.reset_goal_columns();
         }
         MenuAction::ToggleComment => {
-            if let Some(token) = app.line_comment_token() {
-                app.apply_edit_operation(app.cursors.clone(), |buffer, selection| {
-                    lux_core::edit_ops::toggle_line_comment(buffer, selection, token)
-                });
-            }
+            crate::input::comment::toggle_line_or_block(app);
         }
         MenuAction::DuplicateLine => {
             app.apply_edit_operation(app.cursors.clone(), lux_core::edit_ops::duplicate_line);

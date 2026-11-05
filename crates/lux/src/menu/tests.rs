@@ -190,3 +190,22 @@ fn test_handle_menu_action_open_folder() {
         Some(temp.path().to_path_buf())
     );
 }
+
+#[test]
+fn a_menu_comment_and_the_keymap_comment_run_once() {
+    use lux_core::buffer::Buffer;
+    use lux_syntax::LanguageId;
+
+    super::chords::clear_claim();
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    app.buffer = Buffer::from_bytes(b"alpha\n").unwrap();
+    app.documents.entries[0].language = Some(LanguageId::Rust);
+    let ctx = TestCtx {
+        folder_to_pick: None,
+    };
+    super::handle_menu_action(&mut app, &ctx, MenuAction::ToggleComment);
+    crate::input::dispatch::execute_keymap_command(&mut app, "toggle_comment", None, None);
+    let text = app.buffer.text();
+    assert!(text.contains("//"), "{text}");
+    assert!(text.contains("alpha"), "{text}");
+}

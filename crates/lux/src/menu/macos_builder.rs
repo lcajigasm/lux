@@ -106,6 +106,7 @@ pub(crate) fn add_submenu(
 }
 
 pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
+    use super::chords::key;
     // 1. Lux App Menu
     let app_menu_item = NSMenuItem::new(mtm);
     let app_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str("Lux"));
@@ -115,7 +116,7 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         mtm,
         &app_menu,
         "Preferences...",
-        ",",
+        key(MenuAction::Preferences),
         Some(MenuAction::Preferences),
     );
     add_item(
@@ -140,12 +141,18 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
     // 2. File Menu
     let file_menu_item = NSMenuItem::new(mtm);
     let file_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str("File"));
-    add_item(mtm, &file_menu, "New File", "n", Some(MenuAction::NewFile));
+    add_item(
+        mtm,
+        &file_menu,
+        "New File",
+        key(MenuAction::NewFile),
+        Some(MenuAction::NewFile),
+    );
     add_item(
         mtm,
         &file_menu,
         "Open File...",
-        "o",
+        key(MenuAction::OpenFile),
         Some(MenuAction::OpenFile),
     );
     add_item_with_mask(
@@ -157,12 +164,18 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         Some(MenuAction::OpenFolder),
     );
     add_separator(mtm, &file_menu);
-    add_item(mtm, &file_menu, "Save", "s", Some(MenuAction::Save));
+    add_item(
+        mtm,
+        &file_menu,
+        "Save",
+        key(MenuAction::Save),
+        Some(MenuAction::Save),
+    );
     add_item_with_mask(
         mtm,
         &file_menu,
         "Save As...",
-        "S",
+        key(MenuAction::SaveAs),
         1048576 | 131072,
         Some(MenuAction::SaveAs),
     );
@@ -186,7 +199,7 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         mtm,
         &file_menu,
         "Close Tab",
-        "w",
+        key(MenuAction::CloseTab),
         Some(MenuAction::CloseTab),
     );
     main_menu.addItem(&file_menu_item);
@@ -195,12 +208,18 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
     // 3. Edit Menu
     let edit_menu_item = NSMenuItem::new(mtm);
     let edit_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str("Edit"));
-    add_item(mtm, &edit_menu, "Undo", "z", Some(MenuAction::Undo));
+    add_item(
+        mtm,
+        &edit_menu,
+        "Undo",
+        key(MenuAction::Undo),
+        Some(MenuAction::Undo),
+    );
     add_item_with_mask(
         mtm,
         &edit_menu,
         "Redo",
-        "Z",
+        key(MenuAction::Redo),
         1048576 | 131072,
         Some(MenuAction::Redo),
     );
@@ -209,10 +228,14 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         mtm,
         &edit_menu,
         &[
-            ("Cut", "x", MenuAction::Cut),
-            ("Copy", "c", MenuAction::Copy),
-            ("Paste", "v", MenuAction::Paste),
-            ("Select All", "a", MenuAction::SelectAll),
+            ("Cut", key(MenuAction::Cut), MenuAction::Cut),
+            ("Copy", key(MenuAction::Copy), MenuAction::Copy),
+            ("Paste", key(MenuAction::Paste), MenuAction::Paste),
+            (
+                "Select All",
+                key(MenuAction::SelectAll),
+                MenuAction::SelectAll,
+            ),
         ],
     );
     add_separator(mtm, &edit_menu);
@@ -220,7 +243,7 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         mtm,
         &edit_menu,
         "Toggle Line Comment",
-        "/",
+        key(MenuAction::ToggleComment),
         Some(MenuAction::ToggleComment),
     );
     add_separator(mtm, &edit_menu);
@@ -228,7 +251,7 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         mtm,
         &edit_menu,
         "Duplicate Line",
-        "D",
+        key(MenuAction::DuplicateLine),
         1048576 | 131072,
         Some(MenuAction::DuplicateLine),
     );
@@ -236,7 +259,7 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         mtm,
         &edit_menu,
         "Delete Line",
-        "K",
+        key(MenuAction::DeleteLine),
         1048576 | 131072,
         Some(MenuAction::DeleteLine),
     );
@@ -244,7 +267,11 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         mtm,
         &edit_menu,
         &[
-            ("Join Lines", "j", MenuAction::JoinLines),
+            (
+                "Join Lines",
+                key(MenuAction::JoinLines),
+                MenuAction::JoinLines,
+            ),
             ("Swap Line Up", "", MenuAction::SwapLineUp),
             ("Swap Line Down", "", MenuAction::SwapLineDown),
         ],
@@ -284,7 +311,11 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         mtm,
         &sel_menu,
         &[
-            ("Add Next Occurrence", "d", MenuAction::AddNextOccurrence),
+            (
+                "Add Next Occurrence",
+                key(MenuAction::AddNextOccurrence),
+                MenuAction::AddNextOccurrence,
+            ),
             ("Skip Occurrence", "", MenuAction::SkipOccurrence),
         ],
     );
@@ -352,7 +383,13 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
     // 5. Find Menu
     let find_menu_item = NSMenuItem::new(mtm);
     let find_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str("Find"));
-    add_item(mtm, &find_menu, "Find...", "f", Some(MenuAction::Find));
+    add_item(
+        mtm,
+        &find_menu,
+        "Find...",
+        key(MenuAction::Find),
+        Some(MenuAction::Find),
+    );
     add_item(
         mtm,
         &find_menu,

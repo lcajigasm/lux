@@ -213,6 +213,18 @@ mod tests {
     }
 
     #[test]
+    fn a_momentum_tail_keeps_each_pixel_delta() {
+        let mut app = app();
+        let tail = [12.0_f64, 7.0, 3.0, 1.0];
+        for dy in tail {
+            app.scroll(ScrollDelta::Pixels(PhysicalPosition::new(-2.0, -dy)));
+        }
+        assert_eq!(app.viewport.scroll_x, 8.0);
+        assert_eq!(app.viewport.scroll_y, 23.0);
+        assert_ne!(app.viewport.scroll_y % LINE_HEIGHT, 0.0);
+    }
+
+    #[test]
     fn the_wheel_over_the_sidebar_scrolls_the_tree() {
         let dir = std::env::temp_dir().join(format!("lux-side-scroll-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

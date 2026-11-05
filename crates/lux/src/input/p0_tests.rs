@@ -103,6 +103,22 @@ fn html_css_markdown_and_json_comment_from_the_keyboard() {
 }
 
 #[test]
+fn command_slash_comments_every_language_that_has_one() {
+    for lang in LanguageId::ALL {
+        let mut app = app("alpha\n");
+        app.documents.entries[0].language = Some(*lang);
+        command(&mut app, "/", false);
+        let text = app.buffer.text();
+        if matches!(*lang, LanguageId::Diff | LanguageId::Regex) {
+            assert_eq!(text, "alpha\n", "{lang:?}");
+        } else {
+            assert_ne!(text, "alpha\n", "{lang:?}");
+            assert!(text.contains("alpha"), "{lang:?}: {text}");
+        }
+    }
+}
+
+#[test]
 fn option_command_slash_toggles_a_block_comment() {
     let mut app = app("let x = 1;\n");
     app.documents.entries[0].language = Some(LanguageId::Rust);
