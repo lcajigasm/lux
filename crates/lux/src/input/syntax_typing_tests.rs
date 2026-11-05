@@ -1,14 +1,20 @@
 //! ST-FIX-03 Acceptance Tests:
 //! Continuous typing latency < 8ms on 20,000-line files and non-blocking incremental syntax sync.
 
-use std::time::Instant;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use lux_core::buffer::Buffer;
 use lux_core::multicursor::MultiCursor;
 use lux_core::position::Position;
 use lux_core::selection::Selection;
+use lux_platform::event::KeyEvent;
+use lux_platform::{ElementState, Key, NamedKey};
 use lux_syntax::LanguageId;
 
+use super::dispatch::execute_keymap_command;
 use crate::app::App;
 
 fn large_test_app(line_count: usize) -> App {
@@ -111,4 +117,183 @@ fn test_incremental_syntax_edits_preserve_cached_tokens() {
     let _ = syn.highlighter.recv();
     app.poll_syntax_highlighter();
     assert!(app.syntax.as_ref().unwrap().tokens.len() >= initial_token_count);
+}
+
+fn app_with(text: &str) -> App {
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    app.buffer = Buffer::from_bytes(text.as_bytes()).unwrap();
+    app.cursors = MultiCursor::new(Selection::cursor(Position::document_end(&app.buffer)));
+    app
+}
+
+fn press(app: &mut App, key: NamedKey) {
+    app.handle_key(&KeyEvent {
+        key: Key::Named(key),
+        text: None,
+        state: ElementState::Pressed,
+        repeat: false,
+        physical: None,
+    });
+}
+
+fn prefer_tabs(app: &mut App) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    std::fs::write(&path, "{\n  \"editor.indentStyle\": \"tab\"\n}\n").unwrap();
+    app.ui.settings = crate::settings::SettingsState::new(path);
+    let style = app.ui.settings.config.lock().unwrap().resolved()["editor.indentStyle"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(style, "tab");
+    dir
+}
+
+fn undo(app: &mut App) {
+    execute_keymap_command(app, "undo", None, None);
+}
+
+fn redo(app: &mut App) {
+    execute_keymap_command(app, "redo", None, None);
+}
+
+#[test]
+fn tab_from_settings_undo_restores_a_tab_not_spaces() {
+    let mut app = app_with("");
+    let _settings = prefer_tabs(&mut app);
+
+    press(&mut app, NamedKey::Tab);
+    assert_eq!(
+        app.buffer.text(),
+        "\t",
+        "Tab inserted {:?}",
+        app.buffer.text()
+    );
+    assert_eq!(app.cursors.primary().head.column, 1);
+
+    undo(&mut app);
+    assert_eq!(app.buffer.text(), "");
+    redo(&mut app);
+    assert_eq!(app.buffer.text(), "\t");
+
+    app.delete_at_cursors(true);
+    assert_eq!(app.buffer.text(), "");
+    undo(&mut app);
+    assert_eq!(app.buffer.text(), "\t");
+}
+
+#[test]
+fn enter_on_a_flat_file_uses_the_tab_indent_setting() {
+    let mut app = app_with("{");
+    let _settings = prefer_tabs(&mut app);
+    press(&mut app, NamedKey::Enter);
+    assert_eq!(app.buffer.text(), "{\n\t");
+    undo(&mut app);
+    assert_eq!(app.buffer.text(), "{");
+    redo(&mut app);
+    assert_eq!(app.buffer.text(), "{\n\t");
+}
+
+#[test]
+fn detected_tabs_round_trip_through_tab_and_undo() {
+    let original = "fn main() {\n\tlet x = 1;\n}\n";
+    let mut app = app_with(original);
+    assert_eq!(
+        app.buffer.indent().style,
+        lux_core::buffer::IndentStyle::Tabs
+    );
+    app.cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
+    press(&mut app, NamedKey::Tab);
+    assert_eq!(app.buffer.text(), format!("\t{original}"));
+    undo(&mut app);
+    assert_eq!(app.buffer.text(), original);
+    redo(&mut app);
+    assert_eq!(app.buffer.text(), format!("\t{original}"));
+}
+
+#[test]
+fn detected_spaces_round_trip_through_tab_and_undo() {
+    let original = "fn main() {\n    let x = 1;\n}\n";
+    let mut app = app_with(original);
+    app.cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
+    press(&mut app, NamedKey::Tab);
+    assert_eq!(app.buffer.text(), format!("    {original}"));
+    assert!(!app.buffer.text().contains('\t'));
+    undo(&mut app);
+    assert_eq!(app.buffer.text(), original);
+}
+
+fn wake_counter(app: &mut App) -> Arc<AtomicUsize> {
+    let hits = Arc::new(AtomicUsize::new(0));
+    let hits_w = Arc::clone(&hits);
+    app.ui.session.register_waker(Arc::new(move || {
+        hits_w.fetch_add(1, Ordering::SeqCst);
+    }));
+    hits
+}
+
+fn wait_until(hits: &AtomicUsize, before: usize, mut done: impl FnMut() -> bool) -> bool {
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(3) {
+        if hits.load(Ordering::SeqCst) > before && done() {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    false
+}
+
+fn kind_covering(app: &App, needle: &str) -> Option<String> {
+    let text = app.buffer.text();
+    let start = text.find(needle)?;
+    let end = start + needle.len();
+    app.syntax.as_ref()?.tokens.iter().find_map(|token| {
+        (token.start_byte <= start && token.end_byte >= end).then(|| token.kind.clone())
+    })
+}
+
+#[test]
+fn typing_and_backspace_recolor_without_a_selection() {
+    let mut app = app_with("fn main() {\n    \n}\n");
+    let hits = wake_counter(&mut app);
+    app.set_language_mode(Some(LanguageId::Rust));
+
+    let opened = Instant::now();
+    while hits.load(Ordering::SeqCst) == 0 && opened.elapsed() < Duration::from_secs(2) {
+        thread::sleep(Duration::from_millis(10));
+    }
+    let before_type = hits.load(Ordering::SeqCst);
+
+    let line_start = app.buffer.rope().line_to_char(1);
+    let line = app.buffer.rope().line(1).to_string();
+    let content = line.trim_end_matches(['\n', '\r']).chars().count();
+    app.cursors = MultiCursor::new(Selection::cursor(Position::from_char(
+        &app.buffer,
+        line_start + content,
+    )));
+    app.insert_at_cursor("let");
+
+    let colored = wait_until(&hits, before_type, || {
+        app.poll_syntax_highlighter();
+        kind_covering(&app, "let").is_some_and(|kind| kind.starts_with("keyword"))
+    });
+    assert!(
+        colored,
+        "typed `let` was not highlighted; tokens={:?}",
+        app.syntax.as_ref().map(|syntax| &syntax.tokens)
+    );
+
+    let before_delete = hits.load(Ordering::SeqCst);
+    app.delete_at_cursors(true);
+    assert!(app.buffer.text().contains("le"));
+    assert!(!app.buffer.text().contains("let"));
+    let cleared = wait_until(&hits, before_delete, || {
+        app.poll_syntax_highlighter();
+        !kind_covering(&app, "le").is_some_and(|kind| kind.starts_with("keyword"))
+    });
+    assert!(
+        cleared,
+        "backspace left a keyword token on `le`; tokens={:?}",
+        app.syntax.as_ref().map(|syntax| &syntax.tokens)
+    );
 }

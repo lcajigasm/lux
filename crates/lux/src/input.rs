@@ -456,7 +456,7 @@ impl App {
                         self.reset_goal_columns();
                         return;
                     }
-                    self.apply_edit_operation(self.cursors.clone(), edit_ops::dedent);
+                    crate::input::indent::dedent_selection(self);
                 }
                 NamedKey::Tab if self.snippet_session.is_some() => {
                     if let Some(session) = &mut self.snippet_session {
@@ -470,7 +470,7 @@ impl App {
                     }
                 }
                 NamedKey::Tab if self.cursors.cursors().iter().any(|s| !s.is_empty()) => {
-                    self.apply_edit_operation(self.cursors.clone(), edit_ops::indent);
+                    crate::input::indent::indent_selection(self);
                 }
                 NamedKey::Tab => {
                     if !crate::snippets::dispatch::try_expand_snippet_trigger(self) {

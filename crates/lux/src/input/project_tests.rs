@@ -113,6 +113,10 @@ fn test_open_sublime_project_loads_folders_and_settings() {
     assert_eq!(app.ui.project.active_project_path, Some(proj_file.clone()));
     assert_eq!(app.workspace_root(), Some(dir.path().to_path_buf()));
     assert_eq!(app.buffer.indent().width, 2);
+    assert_eq!(
+        app.buffer.indent().style,
+        lux_core::buffer::IndentStyle::Spaces
+    );
 
     let custom_builds = app.ui.project.custom_build_systems();
     assert_eq!(custom_builds.len(), 1);
@@ -125,6 +129,40 @@ fn test_open_sublime_project_loads_folders_and_settings() {
     assert_eq!(variants[0].name, "Custom Make");
     assert_eq!(variants[0].command, "make");
     assert_eq!(variants[0].args, vec!["check"]);
+}
+
+#[test]
+fn project_tab_size_keeps_detected_tabs() {
+    let dir = tempdir().unwrap();
+    let proj_file = dir.path().join("tabs.sublime-project");
+    std::fs::write(
+        &proj_file,
+        r#"{ "folders": [{ "path": "." }], "settings": { "tab_size": 2 } }"#,
+    )
+    .unwrap();
+
+    let mut app = create_test_app();
+    let original = "fn main() {\n\tlet x = 1;\n}\n";
+    app.buffer = Buffer::from_bytes(original.as_bytes()).unwrap();
+    assert_eq!(
+        app.buffer.indent().style,
+        lux_core::buffer::IndentStyle::Tabs
+    );
+    assert!(app.open_project_file(&proj_file, Some(&DummyContext)));
+    assert_eq!(
+        app.buffer.indent().style,
+        lux_core::buffer::IndentStyle::Tabs
+    );
+
+    app.cursors = lux_core::multicursor::MultiCursor::new(lux_core::selection::Selection::cursor(
+        lux_core::position::Position::document_start(),
+    ));
+    crate::input::indent::insert_tab(&mut app);
+    assert_eq!(app.buffer.text(), format!("\t{original}"));
+    execute_keymap_command(&mut app, "undo", None, None);
+    assert_eq!(app.buffer.text(), original);
+    execute_keymap_command(&mut app, "redo", None, None);
+    assert_eq!(app.buffer.text(), format!("\t{original}"));
 }
 
 #[test]

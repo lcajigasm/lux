@@ -220,10 +220,19 @@ impl App {
             if k == "tab_size"
                 && let Some(n) = v.as_u64()
             {
-                self.buffer.set_indent(lux_core::buffer::Indent {
-                    style: lux_core::buffer::IndentStyle::Spaces,
-                    width: n as u8,
-                });
+                // `tab_size` is the space width. It does not convert a
+                // tab-indented file into spaces.
+                let width = n.clamp(1, 16) as u8;
+                if self.buffer.indent_from_content() {
+                    if self.buffer.indent().style == lux_core::buffer::IndentStyle::Spaces {
+                        self.buffer.set_indent_width(width);
+                    }
+                } else if !self.buffer.indent_is_explicit() {
+                    self.buffer.set_indent(lux_core::buffer::Indent {
+                        style: lux_core::buffer::IndentStyle::Spaces,
+                        width,
+                    });
+                }
             }
         }
 

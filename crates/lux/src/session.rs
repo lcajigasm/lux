@@ -46,6 +46,11 @@ impl WorkspaceSession {
         self.waker = Some(waker);
     }
 
+    /// The platform waker registered in `resumed`, if the window exists yet.
+    pub(crate) fn waker(&self) -> Option<Arc<dyn Fn() + Send + Sync>> {
+        self.waker.clone()
+    }
+
     pub(crate) fn mark_dirty(&mut self, path: &Path) {
         if let Some(watcher) = &mut self.watcher {
             watcher.mark_dirty(path);

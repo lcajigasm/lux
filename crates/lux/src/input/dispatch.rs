@@ -185,10 +185,10 @@ pub(crate) fn execute_keymap_command(
             app.apply_edit_operation(app.cursors.clone(), edit_ops::join_lines);
         }
         "indent" => {
-            app.apply_edit_operation(app.cursors.clone(), edit_ops::indent);
+            super::indent::indent_selection(app);
         }
         "dedent" => {
-            app.apply_edit_operation(app.cursors.clone(), edit_ops::dedent);
+            super::indent::dedent_selection(app);
         }
         "markdown_preview" => {
             crate::markdown_preview::toggle(app);
