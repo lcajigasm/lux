@@ -17,7 +17,7 @@ impl Clipboard for TestClipboard {
     }
 }
 
-fn app(text: &str) -> App {
+pub(super) fn app(text: &str) -> App {
     let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
     app.buffer = Buffer::from_bytes(text.as_bytes()).unwrap();
     app
@@ -33,13 +33,13 @@ fn press(app: &mut App, key: Key, text: Option<&str>) {
     });
 }
 
-fn named(app: &mut App, key: NamedKey) {
+pub(super) fn named(app: &mut App, key: NamedKey) {
     press(app, Key::Named(key), None);
 }
 fn text(app: &mut App, text: &str) {
     press(app, Key::Character(text.into()), Some(text));
 }
-fn command(app: &mut App, key: &str, shift: bool) {
+pub(super) fn command(app: &mut App, key: &str, shift: bool) {
     app.modifiers = Modifiers {
         meta: cfg!(target_os = "macos"),
         control: !cfg!(target_os = "macos"),

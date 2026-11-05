@@ -520,6 +520,8 @@ mod bookmark_tests;
 #[cfg(test)]
 mod build_tests;
 #[cfg(test)]
+mod caret_tests;
+#[cfg(test)]
 mod distraction_free_tests;
 #[cfg(test)]
 mod find_in_files_tests;

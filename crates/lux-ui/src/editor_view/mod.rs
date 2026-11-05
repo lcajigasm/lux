@@ -456,7 +456,13 @@ fn x_for_byte(layout: &LineLayout, byte_in_line: usize) -> f32 {
             return cluster.x + cluster.advance * (offset / span);
         }
     }
-    layout.width()
+    // `LineLayout::width` omits trailing whitespace, so a caret after a tab
+    // or trailing spaces would paint at the last non-space. The shaped
+    // cluster end is the buffer position.
+    clusters
+        .last()
+        .map(|cluster| cluster.x + cluster.advance)
+        .unwrap_or(0.0)
 }
 
 /// Chooses the source boundary nearest a horizontal point. Cluster
