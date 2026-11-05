@@ -306,6 +306,7 @@ impl App {
 
 impl PlatformEventHandler for App {
     fn background_event(&mut self, ctx: &dyn PlatformContext) {
+        crate::session::poll_file_watcher(self);
         crate::menu::poll_and_dispatch(self, ctx);
         self.finish_document_operation(ctx);
         crate::lsp::poll_lsp_events(self, ctx);
@@ -316,6 +317,7 @@ impl PlatformEventHandler for App {
     }
     fn resumed(&mut self, ctx: &dyn PlatformContext) {
         crate::menu::register_waker(ctx.background_waker());
+        self.ui.session.register_waker(ctx.background_waker());
         if self.gpu_window.is_some() {
             return;
         }

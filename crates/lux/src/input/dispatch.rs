@@ -86,6 +86,11 @@ pub(crate) fn execute_keymap_command(
     clipboard: Option<&dyn Clipboard>,
     ctx: Option<&dyn PlatformContext>,
 ) {
+    if let Some(action) = crate::menu::action_for_command(cmd)
+        && !crate::menu::claim_key(action)
+    {
+        return;
+    }
     match cmd {
         "copy" => {
             app.copy_to_clipboard(clipboard);

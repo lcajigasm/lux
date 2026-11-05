@@ -547,7 +547,7 @@ impl App {
 }
 
 mod autopair;
-mod comment;
+pub(crate) mod comment;
 pub(crate) mod dispatch;
 mod indent;
 mod motion;

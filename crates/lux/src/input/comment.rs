@@ -8,7 +8,7 @@ use lux_syntax::LanguageId;
 
 use crate::app::App;
 
-pub(super) fn toggle_line_or_block(app: &mut App) {
+pub(crate) fn toggle_line_or_block(app: &mut App) {
     if let Some(token) = app.line_comment_token() {
         app.apply_edit_operation(app.cursors.clone(), |buffer, selection| {
             edit_ops::toggle_line_comment(buffer, selection, token)
@@ -50,6 +50,7 @@ fn block_tokens(lang: LanguageId) -> Option<(&'static str, &'static str)> {
         Css | Scss | Json | Sql | Rust | TypeScript | Tsx | JavaScript | Go | C | Cpp | Java
         | Kotlin | Swift | Php | CSharp | Zig | Graphql | Proto | Hcl | Prisma | Gleam | Scala
         | Dart => Some(("/*", "*/")),
+        Ocaml => Some(("(*", "*)")),
         _ => None,
     }
 }

@@ -41,6 +41,7 @@ fn text(app: &mut App, text: &str) {
     press(app, Key::Character(text.into()), Some(text));
 }
 pub(super) fn command(app: &mut App, key: &str, shift: bool) {
+    crate::menu::clear_claim();
     app.modifiers = Modifiers {
         meta: cfg!(target_os = "macos"),
         control: !cfg!(target_os = "macos"),

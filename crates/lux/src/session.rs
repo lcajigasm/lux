@@ -3,6 +3,7 @@
 //! Watches opened folders/files and classifies external disk changes into clean auto-reloads vs. dirty conflicts.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use lux_core::buffer::Buffer;
@@ -21,6 +22,7 @@ pub(crate) struct WorkspaceSession {
     pub(crate) watcher: Option<FileWatcher>,
     pub(crate) session_path: Option<PathBuf>,
     pub(crate) symbol_index: lux_workspace::SymbolIndex,
+    waker: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl WorkspaceSession {
@@ -28,8 +30,20 @@ impl WorkspaceSession {
         self.symbol_index.set_root(root);
         if let Ok(mut watcher) = FileWatcher::new(Duration::from_millis(150)) {
             let _ = watcher.watch(root);
+            if let Some(waker) = &self.waker {
+                watcher.set_waker(Arc::clone(waker));
+            }
             self.watcher = Some(watcher);
         }
+    }
+
+    /// Keeps the platform loop's waker so a later `init_watcher` still wakes
+    /// the editor when a file changes. No timer: the debouncer thread calls it.
+    pub(crate) fn register_waker(&mut self, waker: Arc<dyn Fn() + Send + Sync>) {
+        if let Some(watcher) = &mut self.watcher {
+            watcher.set_waker(Arc::clone(&waker));
+        }
+        self.waker = Some(waker);
     }
 
     pub(crate) fn mark_dirty(&mut self, path: &Path) {
@@ -412,5 +426,102 @@ mod tests {
             "# My Scratchpad\nDraft notes here"
         );
         assert!(app2.document_dirty());
+    }
+
+    #[test]
+    fn hot_exit_restores_a_dirty_named_file_beside_a_clean_tab() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_file = dir.path().join(SESSION_FILE_NAME);
+        let named = dir.path().join("saved.txt");
+        std::fs::write(&named, "on disk\n").unwrap();
+        let other = dir.path().join("other.txt");
+        std::fs::write(&other, "clean\n").unwrap();
+
+        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+        app.ui.session.session_path = Some(session_file.clone());
+        app.documents.entries[0].path = Some(named.clone());
+        app.documents.entries[0].buffer = Buffer::from_bytes(b"draft text\n").unwrap();
+        app.documents.entries[0].saved_version = 1;
+        app.buffer = app.documents.entries[0].buffer.clone();
+        let tab = app.documents.tabs.open("other.txt");
+        app.documents.entries.push(DocumentEntry::new(
+            tab,
+            Some(other.clone()),
+            Buffer::from_bytes(b"clean\n").unwrap(),
+        ));
+
+        save_session(&app, true).unwrap();
+
+        let mut app2 =
+            App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+        assert!(restore_session(&mut app2, &session_file).unwrap());
+        assert_eq!(app2.documents.entries.len(), 2);
+        let dirty = app2
+            .documents
+            .entries
+            .iter()
+            .find(|entry| entry.path.as_ref() == Some(&named))
+            .unwrap();
+        assert_eq!(dirty.buffer.text(), "draft text\n");
+        assert!(dirty.is_dirty());
+        assert_eq!(app2.buffer.text(), "draft text\n");
+        let clean = app2
+            .documents
+            .entries
+            .iter()
+            .find(|entry| entry.path.as_ref() == Some(&other))
+            .unwrap();
+        assert_eq!(clean.buffer.text(), "clean\n");
+        assert!(!clean.is_dirty());
+    }
+
+    #[test]
+    fn an_external_edit_reloads_a_clean_file_and_asks_when_dirty() {
+        let dir = tempfile::tempdir().unwrap();
+        let raw = dir.path().join("note.txt");
+        std::fs::write(&raw, "disk\n").unwrap();
+        let file = std::fs::canonicalize(&raw).unwrap();
+
+        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+        let buf = Buffer::from_bytes(b"disk\n").unwrap();
+        app.documents.entries[0].path = Some(file.clone());
+        app.documents.entries[0].buffer = buf.clone();
+        app.buffer = buf;
+        app.ui.session.init_watcher(dir.path());
+
+        std::fs::write(&file, "fresh\n").unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(4);
+        loop {
+            poll_file_watcher(&mut app);
+            if app.buffer.text() == "fresh\n" {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "clean buffer was not reloaded"
+            );
+            std::thread::sleep(Duration::from_millis(40));
+        }
+        assert!(app.ui.dialogs.conflict_prompt.is_none());
+
+        app.buffer = Buffer::from_bytes(b"local\n").unwrap();
+        app.documents.entries[0].buffer = app.buffer.clone();
+        app.documents.entries[0].saved_version =
+            app.documents.entries[0].history.state_id().wrapping_add(1);
+        app.ui.session.mark_dirty(&file);
+        std::fs::write(&file, "other\n").unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(4);
+        loop {
+            poll_file_watcher(&mut app);
+            if app.ui.dialogs.conflict_prompt.is_some() {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "dirty buffer did not ask before reload"
+            );
+            std::thread::sleep(Duration::from_millis(40));
+        }
+        assert_eq!(app.buffer.text(), "local\n");
     }
 }

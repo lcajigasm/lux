@@ -272,6 +272,9 @@ impl App {
             "w" | "q" if !self.modifiers.shift => Request::Close,
             _ => return false,
         };
+        if !crate::menu::claim_document_request(&request) {
+            return true;
+        }
         self.request_document(ctx, request);
         true
     }
