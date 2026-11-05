@@ -7,11 +7,10 @@
 //! Consecutive transactions are coalesced when they're structurally a
 //! continuation of each other (typing right after the last insert,
 //! backspacing/deleting right where the last delete left off) — see
-//! `should_coalesce`. This is deliberately *not* wall-clock-based: grouping
-//! by elapsed time would mean sampling a clock to decide something about the
-//! world, which is the polling pattern this project's rules rule out (see
-//! `CLAUDE.md` rule 5). Structural adjacency is decidable from the edits
-//! alone.
+//! `should_coalesce`. A pause is the gap since the previous chained edit,
+//! measured when the next edit arrives. Nothing wakes up to watch the clock.
+
+use std::time::{Duration, Instant};
 
 use crate::buffer::Buffer;
 use crate::edit::Edit;
@@ -169,12 +168,16 @@ impl Transaction {
     }
 }
 
+/// Gap after which the next chained edit starts its own undo step.
+pub const TYPING_PAUSE: Duration = Duration::from_secs(1);
+
 #[derive(Debug, Default, Clone)]
 pub struct History {
     undo_stack: Vec<HistoryEntry>,
     redo_stack: Vec<HistoryEntry>,
     state: u64,
     next_state: u64,
+    last_chained_at: Option<Instant>,
 }
 
 #[derive(Debug, Clone)]
@@ -194,9 +197,25 @@ impl History {
     /// continuation (see `should_coalesce`); otherwise pushes a new step.
     /// Recording anything clears the redo stack, since redoing past it would
     /// no longer replay onto the buffer state it was computed against.
+    /// Places the last chained edit at `at`. The next chained edit at least
+    /// [`TYPING_PAUSE`] later starts a new undo step.
+    pub fn note_typing_instant(&mut self, at: Instant) {
+        self.last_chained_at = Some(at);
+    }
+
     pub fn record(&mut self, transaction: Transaction) {
         if transaction.edits.is_empty() {
             return;
+        }
+        if transaction.chainable {
+            let now = Instant::now();
+            if self
+                .last_chained_at
+                .is_some_and(|prev| now.saturating_duration_since(prev) >= TYPING_PAUSE)
+            {
+                self.checkpoint();
+            }
+            self.last_chained_at = Some(now);
         }
         self.next_state = self
             .next_state
@@ -436,5 +455,24 @@ mod tests {
         history.undo(&mut buffer);
         assert_eq!(buffer.text(), "hello");
         assert!(!history.can_undo());
+    }
+
+    #[test]
+    fn c4_word_and_pause_groups_restore_selections() {
+        let mut buffer = Buffer::from_bytes(b"").unwrap();
+        let mut history = History::new();
+        record_insert(&mut history, &mut buffer, 0, "a");
+        record_insert(&mut history, &mut buffer, 1, "b");
+        history.note_typing_instant(
+            std::time::Instant::now() - (TYPING_PAUSE + std::time::Duration::from_millis(1)),
+        );
+        record_insert(&mut history, &mut buffer, 2, "c");
+        assert_eq!(buffer.text(), "abc");
+        let after_word = history.undo(&mut buffer).unwrap();
+        assert_eq!(buffer.text(), "ab");
+        assert_eq!(after_word, vec![cursor_at(&buffer, 2)]);
+        let origin = history.undo(&mut buffer).unwrap();
+        assert_eq!(buffer.text(), "");
+        assert_eq!(origin, vec![cursor_at(&buffer, 0)]);
     }
 }

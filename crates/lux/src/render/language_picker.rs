@@ -4,7 +4,7 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::language_picker::LanguagePickerState;
-use crate::render::paint::{color, push_glyph};
+use crate::render::paint::{color, fuzzy_spans, push_bold_glyph, push_glyph, span_covers};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
 
@@ -93,13 +93,27 @@ pub(crate) fn render_language_picker(
         );
     }
     let row_baseline = (chrome.row_height - picker_font_size) * 0.5;
+    let query = picker.query.as_str();
     for (offset, item) in filtered.iter().skip(start).take(visible_count).enumerate() {
-        let y = chrome.rows_top + offset as f32 * chrome.row_height + row_baseline;
+        let row_y = chrome.rows_top + offset as f32 * chrome.row_height;
+        let is_selected = start + offset == picker.selected_index;
         let line = editor_view
             .text_layout_mut()
             .layout_line(&style, item.1, &[]);
+        let hits = fuzzy_spans(item.1, query);
         for cluster in line.clusters() {
-            push_glyph(
+            let hit = span_covers(&hits, &cluster.byte_range);
+            let glyph_color = if hit {
+                super::panel::hit_ink(is_selected, theme)
+            } else {
+                foreground
+            };
+            let draw = if hit && is_selected {
+                push_bold_glyph
+            } else {
+                push_glyph
+            };
+            draw(
                 atlas,
                 atlas_dirty,
                 scale_cx,
@@ -107,8 +121,8 @@ pub(crate) fn render_language_picker(
                 picker_font_size,
                 &cluster,
                 text_x,
-                y + line.baseline(),
-                foreground,
+                row_y + row_baseline + line.baseline(),
+                glyph_color,
                 glyph_instances,
             );
         }
