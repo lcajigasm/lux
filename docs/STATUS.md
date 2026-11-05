@@ -2405,6 +2405,11 @@ _Nothing is behind an `experimental.*` flag yet._
   - **Focus restoration:** dismissing or executing the Command Palette returns focus to the editor unless the selected command opens another focused surface.
   - **Automated tests:** the four `desktop_pass` tests pass, including press/release deduplication, modal isolation, language-list scrolling, `Cmd/Ctrl+Shift+P`, and literal `Cmd/Ctrl+N` tab creation through the real keyboard pipeline. Sidebar delete (`sidebar::tests::sidebar_duplicate_and_delete_operations`) moves the file with `NSFileManager.trashItemAtURL` on macOS. The earlier failure was `trash`'s default Finder AppleScript, which returns an error when the process has no Automation permission; the file still goes to the real Trash. `cargo clippy -p lux -- -D warnings`, `cargo fmt --check`, and `scripts/check-limits.sh` pass.
 
+### ST-FIX-07: Tab stops and the painted caret
+
+- **Status:** A tab advances to the next 4-column stop and is not drawn as a missing-glyph box. The caret x is the shaped cluster end, including trailing tabs and spaces. `LineLayout::width` still omits that trailing whitespace, so it is not the caret position.
+- **Verification:** `text_layout::tests::a_tab_advances_to_the_next_stop_and_is_not_a_glyph` and `input::caret_tests::tab_shift_tab_and_bracket_indent_paint_the_caret_on_the_buffer` (Tab, Shift+Tab, Command+] / Command+[).
+
 ### ST-FIX-06: Panel fields, wheel, IME, and physical shortcuts
 - **Status:** Implemented in the desktop event path. A point is accepted only after real keystrokes on a Mac with the Spanish layout. `scripts/macos-keystrokes.sh` is that probe on the free `macos-15` runner. If the runner cannot select Spanish, the script records `layout-unavailable` and does not report a pass.
 - **Components:** `crates/lux/src/field.rs`, `crates/lux/src/overlay_wheel.rs`, `crates/lux/src/ime_hold.rs`, `crates/lux/src/app.rs`, `crates/lux/src/input/motion.rs`, `crates/lux-platform/src/desktop/convert.rs`, `crates/lux/src/search.rs`, `crates/lux-ui/src/accessibility.rs`.

@@ -12,6 +12,7 @@ pub mod glyph_atlas;
 pub mod pipeline;
 pub mod schedule;
 pub mod surface;
+mod tab_stops;
 pub mod text_layout;
 pub mod text_rendering_mode;
 

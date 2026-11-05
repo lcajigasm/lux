@@ -125,6 +125,7 @@ impl LineLayout {
             let Some(line) = self.layout.get(line_index) else {
                 continue;
             };
+            let mut line_clusters = Vec::new();
             for item in line.items() {
                 let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
                     continue;
@@ -136,21 +137,26 @@ impl LineLayout {
                     let mut glyphs = cluster.glyphs();
                     let first = glyphs.next();
                     let extra_glyphs = glyphs.map(|glyph| (glyph.id, glyph.x, glyph.y)).collect();
-                    out.push(ClusterGeometry {
-                        byte_range: cluster.text_range(),
-                        x,
-                        advance,
-                        is_ligature_start: cluster.is_ligature_start(),
-                        is_ligature_continuation: cluster.is_ligature_continuation(),
-                        glyph_id: first.map(|glyph| glyph.id),
-                        glyph_dx: first.map(|glyph| glyph.x).unwrap_or(0.0),
-                        glyph_dy: first.map(|glyph| glyph.y).unwrap_or(0.0),
-                        extra_glyphs,
-                        font_id,
-                    });
+                    line_clusters.push((
+                        ClusterGeometry {
+                            byte_range: cluster.text_range(),
+                            x,
+                            advance,
+                            is_ligature_start: cluster.is_ligature_start(),
+                            is_ligature_continuation: cluster.is_ligature_continuation(),
+                            glyph_id: first.map(|glyph| glyph.id),
+                            glyph_dx: first.map(|glyph| glyph.x).unwrap_or(0.0),
+                            glyph_dy: first.map(|glyph| glyph.y).unwrap_or(0.0),
+                            extra_glyphs,
+                            font_id,
+                        },
+                        cluster.source_char() == '\t',
+                    ));
                     x += advance;
                 }
             }
+            crate::tab_stops::apply(&mut line_clusters);
+            out.extend(line_clusters.into_iter().map(|(cluster, _)| cluster));
         }
         out
     }
@@ -523,5 +529,32 @@ mod tests {
         let mapped = face.charmap().map('中');
         assert_ne!(mapped, 0, "fallback face must contain U+4E2D");
         assert!(cluster.glyph_id.unwrap() <= u32::from(u16::MAX));
+    }
+
+    #[test]
+    fn a_tab_advances_to_the_next_stop_and_is_not_a_glyph() {
+        let (mut cx, family) = context_with_ahem();
+        let style = LineStyle {
+            family: &family,
+            font_size: 16.0,
+            ligatures: false,
+        };
+        let cell = cx.layout_line(&style, "a", &[]).clusters()[0].advance;
+        let tab = cx.layout_line(&style, "\t", &[]);
+        let clusters = tab.clusters();
+        assert_eq!(clusters.len(), 1);
+        assert!(
+            clusters[0].glyph_id.is_none(),
+            "a tab is whitespace, not .notdef"
+        );
+        assert!((clusters[0].advance - cell * 4.0).abs() < 0.01);
+        // Parley's line width drops trailing whitespace, which used to
+        // pull the caret back to x=0. The cluster end is the caret.
+        assert!(tab.width() + cell < clusters[0].x + clusters[0].advance);
+
+        let mixed = cx.layout_line(&style, "a\tb", &[]).clusters();
+        assert!((mixed[1].x - cell).abs() < 0.01);
+        assert!((mixed[1].advance - cell * 3.0).abs() < 0.01);
+        assert!((mixed[2].x - cell * 4.0).abs() < 0.01);
     }
 }
