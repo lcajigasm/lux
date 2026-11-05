@@ -130,4 +130,49 @@ mod highlight {
     fn toml() {
         check(LanguageId::Toml, "toml/sample.toml");
     }
+
+    #[test]
+    fn php() {
+        check(LanguageId::Php, "php/sample.php");
+    }
+
+    #[test]
+    fn ruby() {
+        check(LanguageId::Ruby, "ruby/sample.rb");
+    }
+
+    #[test]
+    fn sql() {
+        check(LanguageId::Sql, "sql/sample.sql");
+    }
+
+    #[test]
+    fn xml() {
+        check(LanguageId::Xml, "xml/sample.xml");
+    }
+
+    #[test]
+    fn dockerfile() {
+        check(LanguageId::Dockerfile, "dockerfile/sample.dockerfile");
+    }
+
+    #[test]
+    fn make() {
+        check(LanguageId::Make, "make/sample.mk");
+    }
+
+    #[test]
+    fn lua() {
+        check(LanguageId::Lua, "lua/sample.lua");
+    }
+
+    #[test]
+    fn c_sharp() {
+        check(LanguageId::CSharp, "c_sharp/sample.cs");
+    }
+
+    #[test]
+    fn diff() {
+        check(LanguageId::Diff, "diff/sample.diff");
+    }
 }

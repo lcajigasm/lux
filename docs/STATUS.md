@@ -2405,6 +2405,11 @@ _Nothing is behind an `experimental.*` flag yet._
   - **Focus restoration:** dismissing or executing the Command Palette returns focus to the editor unless the selected command opens another focused surface.
   - **Automated tests:** the four `desktop_pass` tests pass, including press/release deduplication, modal isolation, language-list scrolling, `Cmd/Ctrl+Shift+P`, and literal `Cmd/Ctrl+N` tab creation through the real keyboard pipeline. Sidebar delete (`sidebar::tests::sidebar_duplicate_and_delete_operations`) moves the file with `NSFileManager.trashItemAtURL` on macOS. The earlier failure was `trash`'s default Finder AppleScript, which returns an error when the process has no Automation permission; the file still goes to the real Trash. `cargo clippy -p lux -- -D warnings`, `cargo fmt --check`, and `scripts/check-limits.sh` pass.
 
+### ST-FIX-08: Grammar coverage and Markdown preview
+
+- **Status:** The languages in `crates/lux-syntax/vendor/SOURCES.md` highlight from vendored Tree-sitter grammars. Markdown paragraphs highlight emphasis, strong text, code spans, and links, and Command+Shift+V (Control+Shift+V) toggles a preview built from that parse tree.
+- **Verification:** `lux-syntax` tests `coverage`, `golden_tokens`, and `input::syntax_tests` (Makefile, Dockerfile, PHP, a Ruby shebang, Command+/ on PHP, Command+Shift+V on a Markdown buffer).
+
 ### ST-FIX-07: Tab stops and the painted caret
 
 - **Status:** A tab advances to the next 4-column stop and is not drawn as a missing-glyph box. The caret x is the shaped cluster end, including trailing tabs and spaces. `LineLayout::width` still omits that trailing whitespace, so it is not the caret position.

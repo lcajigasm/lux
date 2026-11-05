@@ -55,6 +55,10 @@ fn block_kinds(language: crate::LanguageId) -> &'static [&'static str] {
         // proves wrong in practice.
         Bash => &["if_statement", "do_group"],
         Toml => &["array"],
+        // New grammars indent from the parse tree once a body kind has been
+        // checked against a real sample. Until then they stay flat rather
+        // than guessing from braces.
+        _ => &[],
     }
 }
 

@@ -224,6 +224,7 @@ fn goto_file_colon_line_transient_preview_and_escape() {
         snippet_session: None,
         fold_state: lux_core::folding::FoldState::new(),
         bookmarks: lux_core::bookmarks::BookmarkState::new(),
+        markdown_preview: false,
     });
 
     // Make sure we are on tab1 at line 1
@@ -302,6 +303,7 @@ fn goto_symbol_in_project_finds_symbols_across_open_tabs() {
         snippet_session: None,
         fold_state: lux_core::folding::FoldState::new(),
         bookmarks: lux_core::bookmarks::BookmarkState::new(),
+        markdown_preview: false,
     });
 
     // Open Goto Symbol in Project
@@ -402,6 +404,7 @@ fn goto_symbol_in_project_escape_restores_snapshot() {
         snippet_session: None,
         fold_state: lux_core::folding::FoldState::new(),
         bookmarks: lux_core::bookmarks::BookmarkState::new(),
+        markdown_preview: false,
     });
 
     assert_eq!(app.documents.active_tab, Some(tab1_id));

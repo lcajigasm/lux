@@ -1,0 +1,7 @@
+0..5 variable
+0..5 function.call
+0..5 function.builtin
+5..6 punctuation.bracket
+6..10 string
+10..11 punctuation.bracket
+12..19 comment

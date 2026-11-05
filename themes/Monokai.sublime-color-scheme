@@ -51,6 +51,12 @@
     { "scope": "delimiter", "foreground": "#8F908A" },
     { "scope": "embedded", "foreground": "#F8F8F2" },
     { "scope": "spell", "foreground": "#F8F8F2" },
-    { "scope": "text", "foreground": "#F8F8F2" }
+    { "scope": "text", "foreground": "#F8F8F2" },
+    { "scope": "text.title", "foreground": "#A6E22E" },
+    { "scope": "text.strong", "foreground": "#FD971F" },
+    { "scope": "text.emphasis", "foreground": "#66D9EF" },
+    { "scope": "text.literal", "foreground": "#E6DB74" },
+    { "scope": "text.uri", "foreground": "#66D9EF" },
+    { "scope": "text.reference", "foreground": "#AE81FF" }
   ]
 }

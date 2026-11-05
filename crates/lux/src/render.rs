@@ -10,6 +10,7 @@ mod goto;
 mod icons;
 mod language_picker;
 mod lsp;
+mod markdown;
 mod minimap;
 mod modals;
 pub(crate) mod paint;
@@ -40,12 +41,7 @@ use paint::{DrawList, color, push_glyph, set_active_theme, set_hidpi_grayscale};
 use crate::app::{App, BLINK_INTERVAL, FONT_SIZE, LINE_HEIGHT, TEXT_LEFT_PADDING};
 
 impl App {
-    /// Paints one real frame: shapes only the visible lines (virtualized,
-    /// same as `EditorView`'s own tests verify), rasterizes every visible
-    /// glyph through the real atlas, and draws the background, selection,
-    /// cursor, column rulers, indent guides, and — when IME composition is
-    /// in progress — the real inline preedit text at the actual cursor
-    /// position, all in one real `wgpu` submit + present.
+    /// Paints one frame: the editor or the Markdown preview, then chrome.
     pub(crate) fn redraw(&mut self, ctx: &dyn PlatformContext) {
         crate::overlay_motion::begin_frame(self.chrome.motion.reduced);
         if !self.presentation.ready(Instant::now()) {
@@ -194,79 +190,96 @@ impl App {
                 ));
             }
 
-            for cursor in &frame.cursors {
-                if cursor.primary {
-                    let cur_y =
-                        editor_top + cursor.visual_row as f32 * line_height - viewport.scroll_y;
-                    if cur_y >= editor_top && cur_y < editor_top + viewport.height {
-                        let h_x = if is_df {
-                            0.0
-                        } else {
-                            sidebar_width + gutter_total_width
-                        };
-                        let h_w = if is_df {
-                            window_width
-                        } else {
-                            viewport.width - gutter_total_width
-                        };
-                        quad_instances.push(QuadInstance::solid(
-                            [h_x, cur_y, h_w, line_height],
-                            color(chrome.theme.chrome.line_highlight),
-                        ));
+            let show_preview = documents.active_entry().is_some_and(|entry| {
+                entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Markdown)
+            });
+            if !show_preview {
+                for cursor in &frame.cursors {
+                    if cursor.primary {
+                        let cur_y =
+                            editor_top + cursor.visual_row as f32 * line_height - viewport.scroll_y;
+                        if cur_y >= editor_top && cur_y < editor_top + viewport.height {
+                            let h_x = if is_df {
+                                0.0
+                            } else {
+                                sidebar_width + gutter_total_width
+                            };
+                            let h_w = if is_df {
+                                window_width
+                            } else {
+                                viewport.width - gutter_total_width
+                            };
+                            quad_instances.push(QuadInstance::solid(
+                                [h_x, cur_y, h_w, line_height],
+                                color(chrome.theme.chrome.line_highlight),
+                            ));
+                        }
                     }
                 }
-            }
-
-            text::render_text_lines(
-                &frame,
-                buffer,
-                syntax.as_ref(),
-                Some(bookmarks),
-                viewport,
-                editor_top,
-                line_height,
-                sidebar_width,
-                text_left,
-                stroke,
-                !is_df,
-                &chrome.theme,
-                atlas_state,
-                font,
-                font_size,
-                &mut quad_instances,
-                &mut glyph_instances,
-            );
-
-            if let Some(search_state) = &ui.search_bar {
-                search::render_search_matches(
-                    search_state,
+                text::render_text_lines(
+                    &frame,
                     buffer,
-                    editor_view,
+                    syntax.as_ref(),
+                    Some(bookmarks),
                     viewport,
                     editor_top,
                     line_height,
-                    TEXT_LEFT_PADDING * *scale_factor,
+                    sidebar_width,
+                    text_left,
+                    stroke,
+                    !is_df,
+                    &chrome.theme,
+                    atlas_state,
+                    font,
+                    font_size,
                     &mut quad_instances,
+                    &mut glyph_instances,
                 );
-            }
-
-            let line_pad_y = (line_height - font_size) * 0.5;
-            let caret_h = font_size + 2.0 * stroke;
-            for cursor_glyph in &frame.cursors {
-                let x = text_left + cursor_glyph.x - viewport.scroll_x;
-                let y = editor_top + cursor_glyph.visual_row as f32 * line_height
-                    - viewport.scroll_y
-                    + line_pad_y
-                    - stroke;
-                if cursor_glyph.primary {
-                    cursor_screen = Some((x, y));
+                if let Some(search_state) = &ui.search_bar {
+                    search::render_search_matches(
+                        search_state,
+                        buffer,
+                        editor_view,
+                        viewport,
+                        editor_top,
+                        line_height,
+                        TEXT_LEFT_PADDING * *scale_factor,
+                        &mut quad_instances,
+                    );
                 }
-                if cursor_glyph.visible {
-                    quad_instances.push(QuadInstance::solid(
-                        [x, y, 2.0 * stroke, caret_h],
-                        color(chrome.theme.accent),
-                    ));
+                let line_pad_y = (line_height - font_size) * 0.5;
+                let caret_h = font_size + 2.0 * stroke;
+                for cursor_glyph in &frame.cursors {
+                    let x = text_left + cursor_glyph.x - viewport.scroll_x;
+                    let y = editor_top + cursor_glyph.visual_row as f32 * line_height
+                        - viewport.scroll_y
+                        + line_pad_y
+                        - stroke;
+                    if cursor_glyph.primary {
+                        cursor_screen = Some((x, y));
+                    }
+                    if cursor_glyph.visible {
+                        quad_instances.push(QuadInstance::solid(
+                            [x, y, 2.0 * stroke, caret_h],
+                            color(chrome.theme.accent),
+                        ));
+                    }
                 }
+            } else {
+                markdown::render_preview(
+                    buffer,
+                    editor_view,
+                    atlas_state,
+                    font,
+                    font_size,
+                    line_height,
+                    text_left,
+                    editor_top,
+                    viewport.height,
+                    &chrome.theme,
+                    &mut quad_instances,
+                    &mut glyph_instances,
+                );
             }
         }
 
@@ -340,9 +353,7 @@ impl App {
                 dpi::PhysicalSize::new((2.0 * stroke) as u32, line_height as u32),
             );
         }
-
         let language_id = documents.language();
-
         if let Some(search_state) = &mut ui.search_bar {
             let search_bar_top = editor_top + viewport.height;
             search::render_search_bar(

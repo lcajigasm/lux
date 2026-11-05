@@ -251,6 +251,12 @@ fn lux_scope(scope: &str) -> Option<&'static str> {
         "embedded",
         "spell",
         "text",
+        "text.title",
+        "text.strong",
+        "text.emphasis",
+        "text.literal",
+        "text.uri",
+        "text.reference",
     ];
     if let Some(found) = SHORT.iter().find(|name| **name == scope) {
         return Some(found);

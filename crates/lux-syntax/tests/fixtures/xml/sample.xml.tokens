@@ -1,0 +1,14 @@
+0..1 punctuation.delimiter
+1..5 tag
+5..6 punctuation.delimiter
+6..19 comment
+19..20 punctuation.delimiter
+20..21 tag
+21..22 punctuation.delimiter
+22..24 markup
+24..26 punctuation.delimiter
+26..27 tag
+27..28 punctuation.delimiter
+28..30 punctuation.delimiter
+30..34 tag
+34..35 punctuation.delimiter

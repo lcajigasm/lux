@@ -53,40 +53,15 @@ pub(crate) struct DocumentEntry {
     pub(crate) language: Option<lux_syntax::LanguageId>,
     pub(crate) fold_state: lux_core::folding::FoldState,
     pub(crate) bookmarks: lux_core::bookmarks::BookmarkState,
+    pub(crate) markdown_preview: bool,
 }
 
 pub(crate) fn detect_language(
     path: Option<&std::path::Path>,
     buffer: &Buffer,
 ) -> Option<lux_syntax::LanguageId> {
-    if let Some(path) = path {
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            match name {
-                "Makefile" | "makefile" | "Dockerfile" | "dockerfile" | ".gitignore" => {
-                    return Some(lux_syntax::LanguageId::Bash);
-                }
-                "Cargo.toml" => return Some(lux_syntax::LanguageId::Toml),
-                _ => {}
-            }
-        }
-        if let Some(lang) = path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .and_then(lux_syntax::LanguageId::from_extension)
-        {
-            return Some(lang);
-        }
-    }
-    if let Some(line) = buffer.line_content(0).filter(|l| l.starts_with("#!")) {
-        if line.contains("python") {
-            return Some(lux_syntax::LanguageId::Python);
-        } else if line.contains("bash") || line.contains("sh") || line.contains("zsh") {
-            return Some(lux_syntax::LanguageId::Bash);
-        } else if line.contains("node") || line.contains("deno") {
-            return Some(lux_syntax::LanguageId::JavaScript);
-        }
-    }
-    None
+    let first = buffer.line_content(0);
+    lux_syntax::LanguageId::detect(path, first.as_deref())
 }
 
 impl DocumentEntry {
@@ -115,6 +90,7 @@ impl DocumentEntry {
             snippet_session: None,
             fold_state: lux_core::folding::FoldState::new(),
             bookmarks: lux_core::bookmarks::BookmarkState::new(),
+            markdown_preview: false,
         }
     }
 }

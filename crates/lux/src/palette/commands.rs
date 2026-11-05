@@ -93,6 +93,9 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         "edit.dedent" => {
             app.apply_edit_operation(app.cursors.clone(), lux_core::edit_ops::dedent);
         }
+        "markdown.toggle_preview" => {
+            crate::markdown_preview::toggle(app);
+        }
         "edit.toggle_comment" => {
             if let Some(token) = app.line_comment_token() {
                 app.apply_edit_operation(app.cursors.clone(), |buffer, selection| {

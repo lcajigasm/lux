@@ -1,0 +1,11 @@
+0..3 punctuation.special
+0..10 diff.minus
+4..10 string.special.path
+11..14 punctuation.special
+11..21 diff.plus
+15..21 string.special.path
+22..33 attribute
+34..35 punctuation.special
+34..38 diff.minus
+39..40 punctuation.special
+39..43 diff.plus

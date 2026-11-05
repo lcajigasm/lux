@@ -39,27 +39,7 @@ pub(crate) struct StatusBarState {
 }
 
 pub(crate) fn language_name(lang: Option<LanguageId>) -> &'static str {
-    match lang {
-        Some(LanguageId::Rust) => "Rust",
-        Some(LanguageId::TypeScript) => "TypeScript",
-        Some(LanguageId::Tsx) => "TypeScript (TSX)",
-        Some(LanguageId::JavaScript) => "JavaScript",
-        Some(LanguageId::Python) => "Python",
-        Some(LanguageId::Go) => "Go",
-        Some(LanguageId::C) => "C",
-        Some(LanguageId::Cpp) => "C++",
-        Some(LanguageId::Java) => "Java",
-        Some(LanguageId::Kotlin) => "Kotlin",
-        Some(LanguageId::Swift) => "Swift",
-        Some(LanguageId::Html) => "HTML",
-        Some(LanguageId::Css) => "CSS",
-        Some(LanguageId::Json) => "JSON",
-        Some(LanguageId::Yaml) => "YAML",
-        Some(LanguageId::Markdown) => "Markdown",
-        Some(LanguageId::Bash) => "Shell Script",
-        Some(LanguageId::Toml) => "TOML",
-        None => "Plain Text",
-    }
+    lang.map(LanguageId::name).unwrap_or("Plain Text")
 }
 
 pub(crate) fn build_status_bar(

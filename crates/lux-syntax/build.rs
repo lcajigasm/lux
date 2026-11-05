@@ -5,99 +5,73 @@
 
 use std::path::Path;
 
-/// One vendored grammar: directory name under `vendor/`, and whether it
-/// ships an external scanner (`scanner.c`, alongside the generated parser).
-struct Grammar {
-    dir: &'static str,
-    has_scanner: bool,
-}
-
-const GRAMMARS: &[Grammar] = &[
-    Grammar {
-        dir: "rust",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "typescript",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "tsx",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "javascript",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "python",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "go",
-        has_scanner: false,
-    },
-    Grammar {
-        dir: "c",
-        has_scanner: false,
-    },
-    Grammar {
-        dir: "cpp",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "java",
-        has_scanner: false,
-    },
-    Grammar {
-        dir: "kotlin",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "swift",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "html",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "css",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "json",
-        has_scanner: false,
-    },
-    Grammar {
-        dir: "yaml",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "markdown",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "bash",
-        has_scanner: true,
-    },
-    Grammar {
-        dir: "toml",
-        has_scanner: true,
-    },
+/// Directory names under `vendor/`. A grammar that ships `src/scanner.c`
+/// is compiled in alongside `parser.c`.
+const GRAMMARS: &[&str] = &[
+    "rust",
+    "typescript",
+    "tsx",
+    "javascript",
+    "python",
+    "go",
+    "c",
+    "cpp",
+    "java",
+    "kotlin",
+    "swift",
+    "html",
+    "css",
+    "json",
+    "yaml",
+    "markdown",
+    "markdown_inline",
+    "bash",
+    "toml",
+    "php",
+    "ruby",
+    "sql",
+    "xml",
+    "dockerfile",
+    "make",
+    "lua",
+    "c_sharp",
+    "diff",
+    "zig",
+    "graphql",
+    "ini",
+    "proto",
+    "hcl",
+    "nix",
+    "cmake",
+    "gitignore",
+    "scss",
+    "prisma",
+    "fish",
+    "scheme",
+    "clojure",
+    "regex",
+    "erlang",
+    "gleam",
+    "r",
+    "elixir",
+    "scala",
+    "dart",
+    "julia",
+    "haskell",
+    "ocaml",
+    "commonlisp",
 ];
 
 fn main() {
-    for grammar in GRAMMARS {
-        let src = Path::new("vendor").join(grammar.dir).join("src");
+    for dir in GRAMMARS {
+        let src = Path::new("vendor").join(dir).join("src");
         let mut build = cc::Build::new();
         build.include(&src).std("c11").file(src.join("parser.c"));
-        if grammar.has_scanner {
-            build.file(src.join("scanner.c"));
+        let scanner = src.join("scanner.c");
+        if scanner.exists() {
+            build.file(scanner);
         }
-        build
-            .warnings(false)
-            .compile(&format!("tree-sitter-{}", grammar.dir));
+        build.warnings(false).compile(&format!("tree-sitter-{dir}"));
         println!("cargo:rerun-if-changed={}", src.display());
     }
 }
