@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- A dead key commits into the open panel (`´` + `a` is `á`) and is not typed again as the base letter. Search inserts `ç`; regex, case, and word toggles are Option+Command (Ctrl+Alt elsewhere) on the physical key, once per press. Command+C/V/X/A/Z edit the panel field. Command+S/W/P stay global. Option chords use the physical key, including while a panel is open.
+
 ## 1.5.3 — 2026-11-05
 
 Test build for Mac. Not a closed release.
