@@ -70,6 +70,17 @@ pub(crate) fn discover_repo(start: &Path) -> Option<lux_git::gix::Repository> {
     lux_git::gix::discover(start).ok()
 }
 
+fn head_label(repo: &lux_git::gix::Repository) -> Option<String> {
+    if let Some(name) = repo.head_name().ok().flatten() {
+        let short = name.shorten().to_string();
+        if !short.is_empty() {
+            return Some(short);
+        }
+    }
+    let hex = repo.head_id().ok()?.to_string();
+    Some(hex.chars().take(7).collect())
+}
+
 pub(crate) fn refresh_git_state(app: &mut App) {
     let target_path = app
         .documents
@@ -96,11 +107,7 @@ pub(crate) fn refresh_git_state(app: &mut App) {
             return;
         };
         app.ui.git.repo_root = repo.workdir().map(Path::to_path_buf);
-        app.ui.git.branch_name = repo
-            .head_name()
-            .ok()
-            .flatten()
-            .map(|name| name.shorten().to_string());
+        app.ui.git.branch_name = head_label(&repo);
         return;
     }
 
@@ -496,8 +503,8 @@ mod tests {
     fn discover_repo_walks_up_from_a_file() {
         let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/git.rs");
         let repo = discover_repo(&file).expect("repository");
-        let name = repo.head_name().ok().flatten().expect("named head");
-        assert!(!name.shorten().is_empty());
+        let label = head_label(&repo).expect("head");
+        assert!(!label.is_empty());
     }
 
     #[test]
