@@ -86,27 +86,16 @@ pub(crate) fn handle_language_picker_scroll(app: &mut crate::app::App, delta: Sc
 }
 
 pub(crate) fn all_languages() -> Vec<(Option<LanguageId>, &'static str)> {
-    vec![
-        (None, "Plain Text"),
-        (Some(LanguageId::Rust), "Rust"),
-        (Some(LanguageId::TypeScript), "TypeScript"),
-        (Some(LanguageId::Tsx), "TypeScript (TSX)"),
-        (Some(LanguageId::JavaScript), "JavaScript"),
-        (Some(LanguageId::Python), "Python"),
-        (Some(LanguageId::Go), "Go"),
-        (Some(LanguageId::C), "C"),
-        (Some(LanguageId::Cpp), "C++"),
-        (Some(LanguageId::Java), "Java"),
-        (Some(LanguageId::Kotlin), "Kotlin"),
-        (Some(LanguageId::Swift), "Swift"),
-        (Some(LanguageId::Html), "HTML"),
-        (Some(LanguageId::Css), "CSS"),
-        (Some(LanguageId::Json), "JSON"),
-        (Some(LanguageId::Yaml), "YAML"),
-        (Some(LanguageId::Markdown), "Markdown"),
-        (Some(LanguageId::Bash), "Shell Script (Bash)"),
-        (Some(LanguageId::Toml), "TOML"),
-    ]
+    let mut languages = vec![(None, "Plain Text")];
+    for language in LanguageId::ALL {
+        let name = if *language == LanguageId::Bash {
+            "Shell Script (Bash)"
+        } else {
+            language.name()
+        };
+        languages.push((Some(*language), name));
+    }
+    languages
 }
 
 pub(crate) fn handle_language_picker_key(

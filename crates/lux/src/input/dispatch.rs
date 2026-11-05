@@ -170,6 +170,9 @@ pub(crate) fn execute_keymap_command(app: &mut App, cmd: &str, clipboard: Option
         "dedent" => {
             app.apply_edit_operation(app.cursors.clone(), edit_ops::dedent);
         }
+        "markdown_preview" => {
+            crate::markdown_preview::toggle(app);
+        }
         "toggle_comment" => {
             if let Some(token) = app.line_comment_token() {
                 app.apply_edit_operation(app.cursors.clone(), |buffer, selection| {

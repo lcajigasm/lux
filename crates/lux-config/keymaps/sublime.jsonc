@@ -27,6 +27,7 @@
   { "command": "swap_line_down", "key": "ctrl+shift+down", "mac": "ctrl+cmd+down" },
   { "command": "join_lines", "key": "ctrl+j", "mac": "cmd+j" },
   { "command": "toggle_comment", "key": "ctrl+/", "mac": "cmd+/" },
+  { "command": "markdown_preview", "key": "ctrl+shift+v", "mac": "cmd+shift+v" },
   { "command": "select_next_occurrence", "key": "ctrl+d", "mac": "cmd+d" },
   { "command": "skip_next_occurrence", "key": "ctrl+k ctrl+d", "mac": "cmd+k cmd+d" },
   { "command": "select_all_occurrences", "key": "alt+f3", "mac": "ctrl+cmd+g" },

@@ -27,26 +27,7 @@ pub(crate) fn current_document_scope(app: &App) -> Option<&'static str> {
 }
 
 fn current_document_scope_for_lang(lang: LanguageId) -> Option<&'static str> {
-    Some(match lang {
-        LanguageId::Rust => "source.rust",
-        LanguageId::TypeScript => "source.ts",
-        LanguageId::Tsx => "source.tsx",
-        LanguageId::JavaScript => "source.js",
-        LanguageId::Python => "source.python",
-        LanguageId::Go => "source.go",
-        LanguageId::C => "source.c",
-        LanguageId::Cpp => "source.cpp",
-        LanguageId::Java => "source.java",
-        LanguageId::Kotlin => "source.kotlin",
-        LanguageId::Swift => "source.swift",
-        LanguageId::Html => "text.html",
-        LanguageId::Css => "source.css",
-        LanguageId::Json => "source.json",
-        LanguageId::Yaml => "source.yaml",
-        LanguageId::Markdown => "text.markdown",
-        LanguageId::Bash => "source.shell",
-        LanguageId::Toml => "source.toml",
-    })
+    Some(lang.scope())
 }
 
 /// Attempts to expand a snippet trigger preceding the cursor when Tab is pressed.

@@ -16,6 +16,7 @@ const MAP: &[(&str, &str)] = &[
     ("edit.swap_line_down", "swap_line_down"),
     ("edit.join_lines", "join_lines"),
     ("edit.toggle_comment", "toggle_comment"),
+    ("markdown.toggle_preview", "markdown_preview"),
     ("find", "find"),
     ("find.find", "find"),
     ("find.replace", "replace"),

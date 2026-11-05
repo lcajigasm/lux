@@ -23,6 +23,7 @@ mod input;
 mod language_picker;
 mod lsp;
 mod macros;
+mod markdown_preview;
 mod menu;
 mod minimap;
 mod modal;

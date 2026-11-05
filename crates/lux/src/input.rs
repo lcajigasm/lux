@@ -54,23 +54,13 @@ impl App {
 
     pub(crate) fn line_comment_token(&self) -> Option<&'static str> {
         if let Some(lang) = self.documents.language() {
-            use lux_syntax::LanguageId::*;
-            return match lang {
-                Rust | TypeScript | Tsx | JavaScript | C | Cpp | Java | Kotlin | Swift | Go => {
-                    Some("//")
-                }
-                Python | Bash | Toml | Yaml => Some("#"),
-                _ => None,
-            };
+            return lang.line_comment();
         }
         let extension = self.documents.path.as_ref()?.extension()?.to_str()?;
-        match extension.to_ascii_lowercase().as_str() {
-            "rs" | "c" | "h" | "cc" | "cpp" | "cxx" | "hpp" | "js" | "jsx" | "ts" | "tsx"
-            | "java" | "kt" | "kts" | "swift" | "go" => Some("//"),
-            "py" | "rb" | "sh" | "bash" | "zsh" | "toml" | "yaml" | "yml" => Some("#"),
-            "sql" | "lua" => Some("--"),
-            _ => None,
+        if extension.eq_ignore_ascii_case("zsh") {
+            return Some("#");
         }
+        lux_syntax::LanguageId::from_extension(extension)?.line_comment()
     }
 
     pub(crate) fn reset_goal_columns(&mut self) {
@@ -543,6 +533,8 @@ mod project_tests;
 mod search_tests;
 #[cfg(test)]
 mod snippet_tests;
+#[cfg(test)]
+mod syntax_tests;
 #[cfg(test)]
 mod syntax_typing_tests;
 #[cfg(test)]

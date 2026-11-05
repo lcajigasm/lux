@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Tree-sitter highlighting for PHP, Ruby, SQL, XML, Dockerfile, Makefile, Lua, C#, Diff, Zig, GraphQL, INI, Protocol Buffers, HCL, Nix, CMake, Gitignore, SCSS, Prisma, Fish, Scheme, Clojure, Regex, Erlang, Gleam, R, Elixir, Scala, Dart, Julia, Haskell, OCaml, and Common Lisp. File name, extension, and shebang select the grammar. Command+/ comments a line where the language has a line comment.
+- Markdown inline highlighting (emphasis, strong, code spans, links) and a preview of the parsed note on Command+Shift+V (Control+Shift+V elsewhere).
+
+Already highlighted on 1.5.1: Rust, TypeScript, TSX, JavaScript, Python, Go, C, C++, Java, Kotlin, Swift, HTML, CSS, JSON, YAML, Markdown, Bash, and TOML.
+
+Left out: Perl, PowerShell, and LaTeX (no committed parser), Vue/Svelte/Astro (embedded host injections), JSONC and Solidity (no usable grammar repo), reStructuredText (scanner does not compile on this clang), Vim (brittle query), Sass/Less (SCSS only), OCaml interfaces (separate grammars), and Zsh (a zsh shebang still uses Bash). See `crates/lux-syntax/vendor/SOURCES.md`.
+
 ## 1.5.1 — 2026-11-05
 
 ### Fixed

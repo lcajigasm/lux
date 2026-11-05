@@ -46,6 +46,11 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
         ("edit.indent", "Edit: Indent Line", "Edit"),
         ("edit.dedent", "Edit: Outdent Line", "Edit"),
         ("edit.toggle_comment", "Edit: Toggle Line Comment", "Edit"),
+        (
+            "markdown.toggle_preview",
+            "Markdown: Toggle Preview",
+            "Markdown",
+        ),
         ("find", "Find: Find in Buffer", "Find"),
         ("find.replace", "Find: Replace in Buffer", "Find"),
         ("find.next", "Find: Find Next", "Find"),

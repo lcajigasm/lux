@@ -7,14 +7,18 @@
 //! grammar crates).
 
 use std::ops::Range;
-use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator, Tree};
+use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator, Tree};
 
 pub mod brackets;
 pub mod folding;
 pub mod indent_rules;
+pub mod language;
+pub mod markdown;
 pub mod symbols;
 pub mod theme;
 
+pub use language::LanguageId;
+pub use markdown::{PreviewBlock, PreviewSpan, preview_document};
 pub use symbols::{
     DocumentSymbol, SymbolKind, document_symbols, extract_fallback_symbols,
     extract_symbols_from_source,
@@ -28,134 +32,6 @@ pub struct Token {
     pub start_byte: usize,
     pub end_byte: usize,
     pub kind: String,
-}
-
-/// A language with a grammar compiled into this binary. Phase 3's fixed set
-/// (see `docs/adr/0008-tree-sitter-grammars-compiled-in.md`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LanguageId {
-    Rust,
-    TypeScript,
-    Tsx,
-    JavaScript,
-    Python,
-    Go,
-    C,
-    Cpp,
-    Java,
-    Kotlin,
-    Swift,
-    Html,
-    Css,
-    Json,
-    Yaml,
-    Markdown,
-    Bash,
-    Toml,
-}
-
-impl LanguageId {
-    /// Maps a file extension (without the leading dot) to its language, if
-    /// this build has a grammar for it.
-    #[must_use]
-    pub fn from_extension(ext: &str) -> Option<Self> {
-        match ext {
-            "rs" => Some(Self::Rust),
-            "ts" | "mts" | "cts" => Some(Self::TypeScript),
-            "tsx" => Some(Self::Tsx),
-            "js" | "mjs" | "cjs" | "jsx" => Some(Self::JavaScript),
-            "py" | "pyi" => Some(Self::Python),
-            "go" => Some(Self::Go),
-            "c" | "h" => Some(Self::C),
-            "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => Some(Self::Cpp),
-            "java" => Some(Self::Java),
-            "kt" | "kts" => Some(Self::Kotlin),
-            "swift" => Some(Self::Swift),
-            "html" | "htm" => Some(Self::Html),
-            "css" => Some(Self::Css),
-            "json" => Some(Self::Json),
-            "yaml" | "yml" => Some(Self::Yaml),
-            "md" | "markdown" => Some(Self::Markdown),
-            "sh" | "bash" => Some(Self::Bash),
-            "toml" => Some(Self::Toml),
-            _ => None,
-        }
-    }
-
-    fn ts_language(self) -> Language {
-        macro_rules! lang_fn {
-            ($name:ident) => {{
-                unsafe extern "C" {
-                    fn $name() -> *const ();
-                }
-                Language::new(unsafe { tree_sitter_language::LanguageFn::from_raw($name) })
-            }};
-        }
-        match self {
-            Self::Rust => lang_fn!(tree_sitter_rust),
-            Self::TypeScript => lang_fn!(tree_sitter_typescript),
-            Self::Tsx => lang_fn!(tree_sitter_tsx),
-            Self::JavaScript => lang_fn!(tree_sitter_javascript),
-            Self::Python => lang_fn!(tree_sitter_python),
-            Self::Go => lang_fn!(tree_sitter_go),
-            Self::C => lang_fn!(tree_sitter_c),
-            Self::Cpp => lang_fn!(tree_sitter_cpp),
-            Self::Java => lang_fn!(tree_sitter_java),
-            Self::Kotlin => lang_fn!(tree_sitter_kotlin),
-            Self::Swift => lang_fn!(tree_sitter_swift),
-            Self::Html => lang_fn!(tree_sitter_html),
-            Self::Css => lang_fn!(tree_sitter_css),
-            Self::Json => lang_fn!(tree_sitter_json),
-            Self::Yaml => lang_fn!(tree_sitter_yaml),
-            Self::Markdown => lang_fn!(tree_sitter_markdown),
-            Self::Bash => lang_fn!(tree_sitter_bash),
-            Self::Toml => lang_fn!(tree_sitter_toml),
-        }
-    }
-
-    /// The highlight query source for this language. TypeScript, TSX and
-    /// C++ ship grammar-repo `highlights.scm` files that only cover their
-    /// *own* additions on top of a base grammar (JavaScript, JavaScript,
-    /// and C respectively) — the same layering nvim-treesitter/helix apply
-    /// at their query-loader level, done here at compile time instead via
-    /// `concat!`, since both base and extension grammars share the same
-    /// underlying node-type names.
-    fn highlights_query(self) -> &'static str {
-        match self {
-            Self::Rust => include_str!("../queries/rust/highlights.scm"),
-            Self::TypeScript => concat!(
-                include_str!("../queries/javascript/highlights.scm"),
-                "\n",
-                include_str!("../queries/typescript/highlights.scm"),
-            ),
-            Self::Tsx => concat!(
-                include_str!("../queries/javascript/highlights.scm"),
-                "\n",
-                include_str!("../queries/typescript/highlights.scm"),
-                "\n",
-                include_str!("../queries/tsx/highlights.scm"),
-            ),
-            Self::JavaScript => include_str!("../queries/javascript/highlights.scm"),
-            Self::Python => include_str!("../queries/python/highlights.scm"),
-            Self::Go => include_str!("../queries/go/highlights.scm"),
-            Self::C => include_str!("../queries/c/highlights.scm"),
-            Self::Cpp => concat!(
-                include_str!("../queries/c/highlights.scm"),
-                "\n",
-                include_str!("../queries/cpp/highlights.scm"),
-            ),
-            Self::Java => include_str!("../queries/java/highlights.scm"),
-            Self::Kotlin => include_str!("../queries/kotlin/highlights.scm"),
-            Self::Swift => include_str!("../queries/swift/highlights.scm"),
-            Self::Html => include_str!("../queries/html/highlights.scm"),
-            Self::Css => include_str!("../queries/css/highlights.scm"),
-            Self::Json => include_str!("../queries/json/highlights.scm"),
-            Self::Yaml => include_str!("../queries/yaml/highlights.scm"),
-            Self::Markdown => include_str!("../queries/markdown/highlights.scm"),
-            Self::Bash => include_str!("../queries/bash/highlights.scm"),
-            Self::Toml => include_str!("../queries/toml/highlights.scm"),
-        }
-    }
 }
 
 /// An incrementally-parsed document: owns the parser, the last parse tree
@@ -172,6 +48,7 @@ pub struct Document {
     parser: Parser,
     tree: Option<Tree>,
     highlight_query: Query,
+    markdown_inline: Option<std::cell::RefCell<markdown::InlineHighlighter>>,
 }
 
 impl Document {
@@ -180,10 +57,15 @@ impl Document {
         let mut parser = Parser::new();
         parser
             .set_language(&language.ts_language())
-            .expect("vendored grammar ABI must match the compiled-in tree-sitter core version");
+            .unwrap_or_else(|err| {
+                panic!("{} grammar ABI: {err}", language.name());
+            });
         let highlight_query = Query::new(&language.ts_language(), language.highlights_query())
-            .expect("vendored highlights.scm must be valid for its own grammar");
+            .unwrap_or_else(|err| {
+                panic!("{} highlights.scm: {err}", language.name());
+            });
         Self {
+            markdown_inline: markdown::inline_for(language),
             language,
             parser,
             tree: None,
@@ -294,6 +176,9 @@ impl Document {
                 kind: self.highlight_query.capture_names()[capture.index as usize].to_string(),
             });
         }
+        if let Some(inline) = &self.markdown_inline {
+            markdown::append_inline_tokens(inline, tree.root_node(), source, &mut tokens);
+        }
         tokens.sort_by_key(|t| (t.start_byte, t.end_byte));
         tokens
     }
@@ -327,6 +212,10 @@ impl Document {
                 end_byte: capture.node.end_byte(),
                 kind: self.highlight_query.capture_names()[capture.index as usize].to_string(),
             });
+        }
+        if let Some(inline) = &self.markdown_inline {
+            let text = rope.slice(..).to_string();
+            markdown::append_inline_tokens(inline, tree.root_node(), &text, &mut tokens);
         }
         tokens.sort_by_key(|t| (t.start_byte, t.end_byte));
         tokens

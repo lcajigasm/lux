@@ -10,6 +10,7 @@
   { "command": "find", "key": "ctrl+f", "mac": "cmd+f" },
   { "command": "find_in_files", "key": "ctrl+shift+f", "mac": "cmd+shift+f" },
   { "command": "toggle_comment", "key": "ctrl+/", "mac": "cmd+/" },
+  { "command": "markdown_preview", "key": "ctrl+shift+v", "mac": "cmd+shift+v" },
   { "command": "delete_line", "key": "ctrl+shift+k", "mac": "cmd+shift+k" },
   // Same physical modifier key (Alt/Option) on every platform.
   { "command": "duplicate_line", "key": "shift+alt+down" },
