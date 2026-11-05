@@ -83,6 +83,27 @@ pub(crate) fn refresh_git_state(app: &mut App) {
         })
         .unwrap_or_else(|| PathBuf::from("."));
 
+    // A file open only needs the branch name. Walking the worktree here
+    // blocks the UI thread; that walk stays on a directory target.
+    if target_path.is_file() {
+        app.ui.git.hunks.clear();
+        app.ui.git.markers.clear();
+        app.ui.git.changed_files.clear();
+        app.ui.git.conflict_blocks.clear();
+        let Some(repo) = discover_repo(&target_path) else {
+            app.ui.git.repo_root = None;
+            app.ui.git.branch_name = None;
+            return;
+        };
+        app.ui.git.repo_root = repo.workdir().map(Path::to_path_buf);
+        app.ui.git.branch_name = repo
+            .head_name()
+            .ok()
+            .flatten()
+            .map(|name| name.shorten().to_string());
+        return;
+    }
+
     let Some(repo) = discover_repo(&target_path) else {
         app.ui.git.repo_root = None;
         app.ui.git.branch_name = None;
@@ -475,11 +496,8 @@ mod tests {
     fn discover_repo_walks_up_from_a_file() {
         let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/git.rs");
         let repo = discover_repo(&file).expect("repository");
-        let state = status(&repo).expect("status");
-        assert!(matches!(
-            state.branch,
-            lux_git::status::BranchState::Named(_)
-        ));
+        let name = repo.head_name().ok().flatten().expect("named head");
+        assert!(!name.shorten().is_empty());
     }
 
     #[test]
