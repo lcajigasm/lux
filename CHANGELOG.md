@@ -2,11 +2,14 @@
 
 ## Unreleased
 
+## 1.5.4 — 2026-11-05
+
+Test build for Mac. Not a closed release.
+
 ### Fixed
 
-- A dead key commits into the open panel (`´` + `a` is `á`) and is not typed again as the base letter. Search inserts `ç`; regex, case, and word toggles are Option+Command (Ctrl+Alt elsewhere) on the physical key, once per press. Command+C/V/X/A/Z edit the panel field. Command+S/W/P stay global. Option chords use the physical key, including while a panel is open.
-- The language picker ranks with the same fuzzy matcher as the command palette and draws matched letters on that card. Shift+Command+M and the status-bar language label open it. Enter and a row click apply the language immediately.
-- Typing undo still groups a word, and a one-second gap before the next chained edit starts a new step. Undo restores the selections from before the group.
+- A dead key commits into the open panel (`´` + `a` is `á`) and is not typed again as the base letter. Search inserts `ç`. Regex, case, and word toggles are Option+Command on the physical key, once per press. Command+C/V/X/A/Z edit the panel field. Command+S/W/P stay global. Option chords use the physical key, including while a panel is open. Keyboard-path tests cover press versus release, a dead key, `ç`, an Option glyph, and a command shortcut with the editor focused and with a panel open (#44).
+- One physical key types one character in every text field. Arrows and Enter in a selector move or confirm once per press. The language picker ranks with the palette fuzzy matcher, uses that card, scrolls its own list, and applies the language on Enter or a row click. Monokai colors a real token in each shipped language. `()[]{}""''` close, skip the closer, and delete an empty pair. Typing undo groups a word, a one-second gap starts the next step, and undo restores the selections from before the group (#45).
 
 ## 1.5.3 — 2026-11-05
 
