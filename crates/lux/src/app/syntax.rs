@@ -127,7 +127,8 @@ impl App {
         if let Some(lang) = language {
             self.documents.set_language(Some(lang));
             let rope = self.buffer.rope().clone();
-            let highlighter = lux_syntax::BackgroundHighlighter::spawn(lang, None);
+            let highlighter =
+                lux_syntax::BackgroundHighlighter::spawn(lang, self.ui.session.waker());
             highlighter.submit(lux_syntax::Job::SetRope { rope, version: 0 });
             let initial_res = highlighter.recv();
             let (tokens, fold_ranges) = match initial_res {
@@ -165,7 +166,8 @@ impl App {
         }
         if let Some(lang) = language {
             let rope = self.buffer.rope().clone();
-            let highlighter = lux_syntax::BackgroundHighlighter::spawn(lang, None);
+            let highlighter =
+                lux_syntax::BackgroundHighlighter::spawn(lang, self.ui.session.waker());
             highlighter.submit(lux_syntax::Job::SetRope { rope, version: 0 });
             let initial_res = highlighter.recv();
             let (tokens, fold_ranges) = match initial_res {

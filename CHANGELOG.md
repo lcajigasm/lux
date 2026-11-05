@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Syntax colors update while typing and deleting, without selecting text.
+- Tab follows a file's detected indentation, and otherwise `editor.indentStyle` / `editor.tabWidth`. Undo and redo restore the inserted tab or spaces. A project `tab_size` no longer turns a tab-indented file into spaces.
+
 ## 1.5.2 — 2026-11-05
 
 Test build for Mac. Not a closed release.

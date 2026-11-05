@@ -28,6 +28,10 @@ pub struct Buffer {
     rope: Rope,
     eol: Eol,
     indent: Indent,
+    /// `detect` saw a line with leading whitespace. Settings do not override it.
+    indent_from_content: bool,
+    /// The user or a project chose this indent. Settings do not override it.
+    indent_explicit: bool,
     encoding: Encoding,
     huge_file_mode: bool,
 }
@@ -37,15 +41,7 @@ impl Buffer {
     /// detects its line-ending and indent style.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, DecodeError> {
         let (text, encoding) = encoding::decode(bytes)?;
-        let eol = Eol::detect(&text);
-        let indent = Indent::detect(&text);
-        Ok(Buffer {
-            rope: Rope::from_str(&text),
-            eol,
-            indent,
-            encoding,
-            huge_file_mode: false,
-        })
+        Ok(Self::from_decoded(text, encoding))
     }
 
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
@@ -63,15 +59,20 @@ impl Buffer {
     /// fast path.
     fn from_owned_bytes(bytes: Vec<u8>) -> Result<Self, DecodeError> {
         let (text, encoding) = encoding::decode_owned(bytes)?;
-        let eol = Eol::detect(&text);
-        let indent = Indent::detect(&text);
-        Ok(Buffer {
+        Ok(Self::from_decoded(text, encoding))
+    }
+
+    fn from_decoded(text: String, encoding: Encoding) -> Self {
+        let indent_from_content = Indent::has_sample(&text);
+        Buffer {
             rope: Rope::from_str(&text),
-            eol,
-            indent,
+            eol: Eol::detect(&text),
+            indent: Indent::detect(&text),
+            indent_from_content,
+            indent_explicit: false,
             encoding,
             huge_file_mode: false,
-        })
+        }
     }
 
     /// Opens `path` the same way `open` does, but first checks — without
@@ -135,6 +136,25 @@ impl Buffer {
 
     pub fn set_indent(&mut self, indent: Indent) {
         self.indent = indent;
+        self.indent_explicit = true;
+    }
+
+    /// Changes the width without changing the style or locking the choice.
+    pub fn set_indent_width(&mut self, width: u8) {
+        self.indent.width = width.max(1);
+    }
+
+    /// Applies a settings fallback. A detected file and [`set_indent`] win.
+    pub fn set_fallback_indent(&mut self, indent: Indent) {
+        self.indent = indent;
+    }
+
+    pub fn indent_from_content(&self) -> bool {
+        self.indent_from_content
+    }
+
+    pub fn indent_is_explicit(&self) -> bool {
+        self.indent_explicit
     }
 
     pub fn encoding(&self) -> Encoding {

@@ -58,6 +58,14 @@ impl Indent {
         };
         Indent { style, width }
     }
+
+    /// True when at least one line has leading whitespace, so [`detect`]
+    /// saw a real sample. A flat file is false and the editor may use the
+    /// indent settings instead.
+    pub fn has_sample(text: &str) -> bool {
+        text.lines()
+            .any(|line| matches!(line.chars().next(), Some(' ' | '\t')))
+    }
 }
 
 #[cfg(test)]

@@ -588,7 +588,13 @@ parsing (`Document::edit` applies a `tree_sitter::InputEdit` to the previous
 tree, then reparses so only the changed range's subtrees are rebuilt), a
 background worker (`BackgroundHighlighter`, a dedicated thread driven by a
 blocking channel receive, never polled), and highlight-query-based token
-extraction (`Document::highlight`). All 18 grammars from
+extraction (`Document::highlight`). A finished parse wakes the editor, which
+applies the new tokens, so typing and Backspace recolor the visible buffer
+without selecting text. Tab inserts a tab when the file's leading whitespace
+is tabs or `editor.indentStyle` is `"tab"`, and spaces otherwise
+(`editor.tabWidth`, or the detected width). Undo and redo restore those
+exact characters. A project `tab_size` sets the space width and does not
+turn a tab-indented buffer into spaces. All 18 grammars from
 `docs/adr/0008-tree-sitter-grammars-compiled-in.md`'s fixed set are vendored,
 compiled in, and pass a per-language golden token test: `cargo test
 -p lux-syntax highlight:: --test golden_tokens`. **Note on the count**: ADR

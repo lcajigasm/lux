@@ -6,11 +6,61 @@ use lux_core::{buffer::IndentStyle, edit_ops};
 
 use crate::app::App;
 
-/// Inserts a tab stop or soft spaces according to document indentation settings.
+/// A file with leading whitespace keeps its detected indent. A flat file
+/// takes `editor.indentStyle` and `editor.tabWidth`. An explicit choice
+/// (status bar, or a project `tab_size` on a flat buffer) wins over both.
+pub(crate) fn sync_edit_indent(app: &mut App) {
+    if app.buffer.indent_is_explicit() || app.buffer.indent_from_content() {
+        return;
+    }
+    let Ok(config) = app.ui.settings.config.lock() else {
+        return;
+    };
+    let resolved = config.resolved();
+    let style = resolved
+        .get("editor.indentStyle")
+        .and_then(|value| value.as_str())
+        .unwrap_or("space");
+    let width = resolved
+        .get("editor.tabWidth")
+        .and_then(|value| {
+            value
+                .as_u64()
+                .or_else(|| value.as_f64().map(|number| number as u64))
+        })
+        .unwrap_or(4)
+        .clamp(1, 16) as u8;
+    let indent = if style.eq_ignore_ascii_case("tab") {
+        lux_core::buffer::Indent {
+            style: IndentStyle::Tabs,
+            width: 1,
+        }
+    } else {
+        lux_core::buffer::Indent {
+            style: IndentStyle::Spaces,
+            width,
+        }
+    };
+    drop(config);
+    app.buffer.set_fallback_indent(indent);
+}
+
+pub(crate) fn indent_selection(app: &mut App) {
+    sync_edit_indent(app);
+    app.apply_edit_operation(app.cursors.clone(), edit_ops::indent);
+}
+
+pub(crate) fn dedent_selection(app: &mut App) {
+    sync_edit_indent(app);
+    app.apply_edit_operation(app.cursors.clone(), edit_ops::dedent);
+}
+
+/// Inserts a tab or spaces according to the file indent and the settings.
 pub(crate) fn insert_tab(app: &mut App) {
     if app.buffer.is_huge_file_mode() || app.editing_blocked() {
         return;
     }
+    sync_edit_indent(app);
     let indent = app.buffer.indent();
     if indent.style == IndentStyle::Tabs {
         app.apply_edit_operation(app.cursors.clone(), |buffer, selection| {
@@ -35,6 +85,7 @@ pub(crate) fn insert_newline(app: &mut App) {
     if app.buffer.is_huge_file_mode() || app.editing_blocked() {
         return;
     }
+    sync_edit_indent(app);
     if let Some(lang) = app.documents.language()
         && lux_syntax::indent_rules::has_body_kinds(lang)
     {
