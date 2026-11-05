@@ -3,6 +3,7 @@
 
 mod importers;
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -88,6 +89,8 @@ pub(crate) struct SettingsState {
     pub(crate) settings_path: PathBuf,
     pub(crate) panel: Option<SettingsPanelState>,
     pub(crate) schemes: Vec<crate::color_scheme::LoadedScheme>,
+    pub(crate) palette_uses: HashMap<String, u64>,
+    pub(crate) palette_clock: u64,
 }
 
 impl Default for SettingsState {
@@ -123,6 +126,8 @@ impl SettingsState {
             settings_path,
             panel: None,
             schemes,
+            palette_uses: HashMap::new(),
+            palette_clock: 0,
         }
     }
 

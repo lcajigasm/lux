@@ -243,6 +243,13 @@ impl App {
             }
             return;
         }
+        if self.ui.settings.panel.is_some() && matches!(key_event.key, Key::Named(NamedKey::Escape))
+        {
+            self.ui.settings.panel = None;
+            self.scheduler.invalidate_all();
+            self.refresh_accessibility();
+            return;
+        }
         if crate::field::edit_focused_field(self, key_event, ctx.clipboard()) {
             self.refresh_accessibility();
             return;
@@ -270,7 +277,7 @@ impl App {
             && !crate::term::input::handle_term_key(self, ctx, key_event)
             && !crate::plugin::handle_plugin_key(self, ctx, key_event)
         {
-            self.handle_key_with_clipboard(key_event, Some(ctx.clipboard()));
+            self.dispatch_key(key_event, Some(ctx.clipboard()), Some(ctx));
         }
         if self.is_dirty()
             && let Some(path) = &self.documents.path

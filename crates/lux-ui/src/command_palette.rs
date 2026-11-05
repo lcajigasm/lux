@@ -310,6 +310,15 @@ impl CommandRegistry {
         self.last_used.insert(id.to_string(), self.clock);
     }
 
+    pub fn export_usage(&self) -> (HashMap<String, u64>, u64) {
+        (self.last_used.clone(), self.clock)
+    }
+
+    pub fn import_usage(&mut self, uses: HashMap<String, u64>, clock: u64) {
+        self.last_used = uses;
+        self.clock = clock;
+    }
+
     /// Searches enabled commands (`when` satisfied by `ctx`) by `query`,
     /// highest score first. An empty query lists every enabled command,
     /// most-recently-used first, then never-used commands in registration

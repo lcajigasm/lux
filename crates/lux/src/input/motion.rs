@@ -3,7 +3,7 @@ use lux_core::multicursor::MultiCursor;
 use lux_core::position::Position;
 use lux_platform::NamedKey;
 
-use crate::app::{App, LINE_HEIGHT};
+use crate::app::App;
 
 impl App {
     pub(super) fn move_cursors(&mut self, key: NamedKey) -> bool {
@@ -23,7 +23,8 @@ impl App {
         let command = self.command_modifier();
         let primary = self.cursors.primary();
         let mut primary_after = None;
-        let pages = (self.viewport.height / (LINE_HEIGHT * self.scale_factor)).max(1.0) as usize;
+        let pages = (self.viewport.height / self.editor_view.metrics().line_height.max(1.0))
+            .max(1.0) as usize;
         let mut selections = Vec::new();
         for (index, &selection) in self.cursors.cursors().iter().enumerate() {
             let pos = selection.head;

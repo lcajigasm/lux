@@ -2,7 +2,7 @@ use dpi::{LogicalSize, PhysicalSize};
 use lux_platform::{PlatformContext, PlatformWindow, ScrollDelta, WindowAttributes};
 use lux_render::{GpuContext, QuadPipeline, Surface, TextPipeline};
 
-use crate::app::{ATLAS_SIDE, App, GpuWindow, LINE_HEIGHT};
+use crate::app::{ATLAS_SIDE, App, GpuWindow};
 use crate::render::paint::color;
 
 impl App {
@@ -102,7 +102,7 @@ impl App {
     }
 
     pub(crate) fn scroll(&mut self, delta: ScrollDelta) {
-        let (dx, dy) = scroll_offset_delta(delta, self.scale_factor);
+        let (dx, dy) = scroll_offset_delta(delta, self.editor_view.metrics().line_height.max(1.0));
         let mouse_x = self.mouse.position.x as f32;
         let mouse_y = self.mouse.position.y as f32;
         if mouse_x < self.sidebar_width() && mouse_y >= self.tab_bar_height() {
@@ -165,18 +165,18 @@ impl App {
 
 /// Physical-pixel movement for one wheel event.
 ///
-/// `scroll_x` / `scroll_y` share the window's physical pixel space (`LINE_HEIGHT`
-/// times the scale factor). winit's macOS backend already converts precise
-/// trackpad deltas, including the momentum phase, into physical pixels, so
-/// those are applied as-is. A notch is one line at the current scale.
-pub(crate) fn scroll_offset_delta(delta: ScrollDelta, scale: f32) -> (f32, f32) {
-    let scale = if scale.is_finite() && scale > 0.0 {
-        scale
+/// `scroll_x` / `scroll_y` share the window's physical pixel space. winit's
+/// macOS backend already converts precise trackpad deltas, including the
+/// momentum phase, into physical pixels, so those are applied as-is. A notch
+/// is one editor line at the current zoom and display scale.
+pub(crate) fn scroll_offset_delta(delta: ScrollDelta, line_height: f32) -> (f32, f32) {
+    let line_height = if line_height.is_finite() && line_height > 0.0 {
+        line_height
     } else {
         1.0
     };
     match delta {
-        ScrollDelta::Lines { x, y } => (x * LINE_HEIGHT * scale, y * LINE_HEIGHT * scale),
+        ScrollDelta::Lines { x, y } => (x * line_height, y * line_height),
         ScrollDelta::Pixels(p) => (p.x as f32, p.y as f32),
     }
 }
@@ -194,10 +194,12 @@ mod tests {
 
     #[test]
     fn trackpad_pixels_stay_physical_while_lines_follow_scale() {
-        let line = scroll_offset_delta(ScrollDelta::Lines { x: 0.0, y: -1.0 }, 2.0);
+        let line = scroll_offset_delta(ScrollDelta::Lines { x: 0.0, y: -1.0 }, LINE_HEIGHT * 2.0);
         assert!((line.1 + LINE_HEIGHT * 2.0).abs() < f32::EPSILON);
-        let pixels =
-            scroll_offset_delta(ScrollDelta::Pixels(PhysicalPosition::new(4.0, -20.0)), 2.0);
+        let pixels = scroll_offset_delta(
+            ScrollDelta::Pixels(PhysicalPosition::new(4.0, -20.0)),
+            LINE_HEIGHT * 2.0,
+        );
         assert_eq!(pixels, (4.0, -20.0));
     }
 

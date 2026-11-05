@@ -19,7 +19,7 @@ pub(crate) mod panel;
 mod plugin;
 mod project_picker;
 mod project_search;
-mod search;
+pub(crate) mod search;
 mod settings;
 mod sidebar;
 mod snippet_picker;
@@ -38,7 +38,7 @@ use lux_platform::PlatformContext;
 use lux_render::QuadInstance;
 use paint::{DrawList, color, push_glyph, set_active_theme, set_hidpi_grayscale};
 
-use crate::app::{App, BLINK_INTERVAL, FONT_SIZE, LINE_HEIGHT, TEXT_LEFT_PADDING};
+use crate::app::{App, BLINK_INTERVAL, TEXT_LEFT_PADDING};
 
 impl App {
     /// Paints one frame: the editor or the Markdown preview, then chrome.
@@ -80,8 +80,8 @@ impl App {
         let font = *font;
         set_hidpi_grayscale(*scale_factor);
         set_active_theme(chrome.theme);
-        let font_size = FONT_SIZE * *scale_factor;
-        let line_height = LINE_HEIGHT * *scale_factor;
+        let font_size = editor_view.metrics().font_size;
+        let line_height = editor_view.metrics().line_height;
         let stroke = *scale_factor;
 
         let elapsed = Instant::now().duration_since(*start);

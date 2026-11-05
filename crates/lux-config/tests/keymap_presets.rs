@@ -220,8 +220,29 @@ mod keymap {
             "toggle_distraction_free",
             "cmd+ctrl+shift+f",
         );
-        assert_binding(&preset, Platform::Windows, "insert_snippet", "ctrl+alt+s");
-        assert_binding(&preset, Platform::Mac, "insert_snippet", "cmd+alt+s");
+        assert_binding(&preset, Platform::Windows, "save_all", "ctrl+alt+s");
+        assert_binding(&preset, Platform::Mac, "save_all", "cmd+alt+s");
+        assert_binding(
+            &preset,
+            Platform::Windows,
+            "reopen_closed_tab",
+            "ctrl+shift+t",
+        );
+        assert_binding(&preset, Platform::Mac, "reopen_closed_tab", "cmd+shift+t");
+        assert_binding(&preset, Platform::Windows, "prev_tab", "ctrl+pageup");
+        assert_binding(&preset, Platform::Mac, "prev_tab", "cmd+shift+[");
+        assert_binding(&preset, Platform::Windows, "next_tab", "ctrl+pagedown");
+        assert_binding(&preset, Platform::Mac, "next_tab", "cmd+shift+]");
+        assert_binding(&preset, Platform::Windows, "zoom_in", "ctrl+=");
+        assert_binding(&preset, Platform::Mac, "zoom_in", "cmd+=");
+        assert_binding(&preset, Platform::Windows, "zoom_out", "ctrl+-");
+        assert_binding(&preset, Platform::Mac, "zoom_out", "cmd+-");
+        assert_binding(&preset, Platform::Windows, "zoom_reset", "ctrl+0");
+        assert_binding(&preset, Platform::Mac, "zoom_reset", "cmd+0");
+        assert_binding(&preset, Platform::Windows, "open_settings", "ctrl+,");
+        assert_binding(&preset, Platform::Mac, "open_settings", "cmd+,");
+        assert_binding(&preset, Platform::Windows, "insert_snippet", "ctrl+alt+j");
+        assert_binding(&preset, Platform::Mac, "insert_snippet", "cmd+alt+j");
         assert_binding(&preset, Platform::Windows, "toggle_record_macro", "ctrl+q");
         assert_binding(&preset, Platform::Mac, "toggle_record_macro", "ctrl+q");
         assert_binding(&preset, Platform::Windows, "playback_macro", "ctrl+shift+q");

@@ -5,8 +5,10 @@ use std::path::PathBuf;
 use lux_core::multicursor::MultiCursor;
 use lux_core::selection::Selection;
 
-use super::io::recovery_store;
+use super::io::{execute, recovery_store};
+use super::{NamedSave, Pending, Request};
 use crate::app::App;
+use lux_platform::PlatformContext;
 
 impl App {
     /// Applies on-save transformations according to user/workspace settings:
@@ -157,6 +159,100 @@ impl App {
         {
             let _ = store.save(path, &self.buffer.text());
         }
+    }
+
+    pub(crate) fn save_all(&mut self, ctx: &dyn PlatformContext) {
+        if self.documents.pending.is_some() {
+            return;
+        }
+        self.apply_on_save_transforms();
+        self.sync_active_document_to_entry();
+        let active = self.documents.active_tab;
+        let mut files = Vec::new();
+        let mut untitled = 0usize;
+        for entry in &self.documents.entries {
+            if !entry.is_dirty() {
+                continue;
+            }
+            let Some(path) = entry.path.clone() else {
+                untitled += 1;
+                continue;
+            };
+            files.push(NamedSave {
+                path,
+                buffer: entry.buffer.clone(),
+                disk: entry.disk_snapshot.clone(),
+                state_id: entry.history.state_id(),
+                active: Some(entry.tab_id) == active,
+            });
+        }
+        if untitled > 0 {
+            self.documents.message = Some(format!(
+                "{untitled} untitled document(s) still need Save As"
+            ));
+        }
+        if files.is_empty() {
+            return;
+        }
+        let version = self.history.state_id();
+        self.documents.pending = Some(Pending {
+            request: Request::SaveAll(files.clone()),
+            version,
+            revert_transform: false,
+        });
+        let sender = self.documents.sender.clone();
+        let wake = ctx.background_waker();
+        let dialogs = ctx.background_dialogs();
+        let request = Request::SaveAll(files);
+        let spawned = std::thread::Builder::new()
+            .name("lux-document-io".into())
+            .spawn(move || {
+                let snapshot = super::io::Snapshot {
+                    buffer: lux_core::buffer::Buffer::from_bytes(b"").expect("empty"),
+                    path: None,
+                    dirty: false,
+                    disk: None,
+                };
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    execute(request, snapshot, dialogs.as_ref())
+                }))
+                .unwrap_or_else(|_| Err("File operation failed unexpectedly".into()));
+                if sender.send(outcome).is_ok() {
+                    wake();
+                }
+            });
+        if let Err(error) = spawned {
+            self.documents.pending = None;
+            self.documents.message = Some(format!("Cannot start file operation: {error}"));
+        }
+    }
+
+    pub(super) fn mark_named_saves(&mut self, pending: &Pending, saved_paths: &[PathBuf]) {
+        let Request::SaveAll(files) = &pending.request else {
+            return;
+        };
+        for file in files {
+            if !saved_paths.iter().any(|path| path == &file.path) {
+                continue;
+            }
+            if file.active && self.history.state_id() == file.state_id {
+                self.documents.saved_version = file.state_id;
+                self.documents.disk_snapshot = Some(self.buffer.clone());
+                self.documents.path = Some(file.path.clone());
+            }
+            if !file.active
+                && let Some(entry) = self
+                    .documents
+                    .entries
+                    .iter_mut()
+                    .find(|entry| entry.path.as_ref() == Some(&file.path))
+                && entry.history.state_id() == file.state_id
+            {
+                entry.saved_version = file.state_id;
+                entry.disk_snapshot = Some(entry.buffer.clone());
+            }
+        }
+        self.sync_active_document_to_entry();
     }
 
     pub(crate) fn recoverable_documents() -> Vec<PathBuf> {

@@ -21,9 +21,19 @@ use lux_ui::tabs::TabId;
 use crate::app::App;
 
 #[derive(Clone)]
+pub(crate) struct NamedSave {
+    pub(crate) path: PathBuf,
+    pub(crate) buffer: Buffer,
+    pub(crate) disk: Option<Buffer>,
+    pub(crate) state_id: u64,
+    pub(crate) active: bool,
+}
+
+#[derive(Clone)]
 pub(crate) enum Request {
     Open(Option<PathBuf>),
     Save { save_as: bool },
+    SaveAll(Vec<NamedSave>),
     New,
     Close,
 }
@@ -201,6 +211,7 @@ impl App {
                 self,
                 event,
                 Some(ctx.clipboard()),
+                Some(ctx),
             );
         }
         let command = if cfg!(target_os = "macos") {
@@ -444,7 +455,9 @@ impl App {
                 saved,
                 opened,
                 close,
+                saved_paths,
             }) => {
+                self.mark_named_saves(&pending, &saved_paths);
                 if let Some((path, snapshot)) = saved {
                     if let Some(store) = recovery_store() {
                         let _ = store.clear(&path);
@@ -567,6 +580,8 @@ impl App {
     }
 }
 
+#[cfg(test)]
+mod save_all_tests;
 #[cfg(test)]
 mod shortcut_tests;
 #[cfg(test)]

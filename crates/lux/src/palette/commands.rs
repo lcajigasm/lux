@@ -9,6 +9,7 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         "file.new" => app.request_document(ctx, crate::document::Request::New),
         "file.open" => app.request_document(ctx, crate::document::Request::Open(None)),
         "file.save" => app.request_document(ctx, crate::document::Request::Save { save_as: false }),
+        "file.save_all" => app.save_all(ctx),
         "file.save_as" => {
             app.request_document(ctx, crate::document::Request::Save { save_as: true })
         }
@@ -422,6 +423,9 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
             settings.open_settings_json(app, ctx);
             app.ui.settings = settings;
         }
+        "view.zoom_in" => app.zoom_font(1.0),
+        "view.zoom_out" => app.zoom_font(-1.0),
+        "view.zoom_reset" => app.reset_font_zoom(),
         "preferences.open_settings_ui" => {
             let mut settings = std::mem::take(&mut app.ui.settings);
             settings.open_settings_ui();

@@ -246,7 +246,7 @@ fn test_build_keymap_command_dispatch() {
     let ctx = DummyContext;
 
     // Dispatch build_with command
-    execute_keymap_command(&mut app, "build_with", Some(&ctx));
+    execute_keymap_command(&mut app, "build_with", Some(&ctx), None);
     assert!(app.ui.build.picker.is_some());
 
     // Cancel / dismiss via Escape
@@ -261,9 +261,9 @@ fn test_build_keymap_command_dispatch() {
     assert!(app.ui.build.picker.is_none());
 
     // Dispatch cancel_build command
-    execute_keymap_command(&mut app, "cancel_build", Some(&ctx));
+    execute_keymap_command(&mut app, "cancel_build", Some(&ctx), None);
 
     // Test error navigation commands
-    execute_keymap_command(&mut app, "next_build_error", Some(&ctx));
-    execute_keymap_command(&mut app, "prev_build_error", Some(&ctx));
+    execute_keymap_command(&mut app, "next_build_error", Some(&ctx), None);
+    execute_keymap_command(&mut app, "prev_build_error", Some(&ctx), None);
 }

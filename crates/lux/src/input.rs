@@ -7,7 +7,7 @@ use lux_core::{edit_ops, selection_ops};
 use lux_platform::event::KeyEvent;
 use lux_platform::{Clipboard, ElementState, Key, NamedKey};
 
-use crate::app::{App, LINE_HEIGHT};
+use crate::app::App;
 
 // History stores ordered vectors. Put the primary last so reconstructing a
 // MultiCursor restores the active selection as well as its text ranges.
@@ -74,7 +74,7 @@ impl App {
     }
 
     pub(crate) fn reveal_primary_cursor(&mut self) {
-        let line_height = LINE_HEIGHT * self.scale_factor;
+        let line_height = self.editor_view.metrics().line_height.max(1.0);
         let primary = self.cursors.primary().head;
         let y = primary.line as f32 * line_height;
         if y < self.viewport.scroll_y {
@@ -240,16 +240,26 @@ impl App {
         self.handle_key_with_clipboard(event, None);
     }
 
+    #[cfg(test)]
     pub(crate) fn handle_key_with_clipboard(
         &mut self,
         event: &KeyEvent,
         clipboard: Option<&dyn Clipboard>,
     ) {
+        self.dispatch_key(event, clipboard, None);
+    }
+
+    pub(crate) fn dispatch_key(
+        &mut self,
+        event: &KeyEvent,
+        clipboard: Option<&dyn Clipboard>,
+        ctx: Option<&dyn lux_platform::PlatformContext>,
+    ) {
         if event.state != ElementState::Pressed || self.ime.is_composing() {
             return;
         }
 
-        if dispatch::dispatch_keymap_or_chord(self, event, clipboard) {
+        if dispatch::dispatch_keymap_or_chord(self, event, clipboard, ctx) {
             return;
         }
 
@@ -551,6 +561,8 @@ mod bookmark_tests;
 mod build_tests;
 #[cfg(test)]
 mod caret_tests;
+#[cfg(test)]
+mod chrome_tests;
 #[cfg(test)]
 mod distraction_free_tests;
 #[cfg(test)]

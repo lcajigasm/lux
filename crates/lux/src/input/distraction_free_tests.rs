@@ -211,10 +211,10 @@ fn test_distraction_free_command_palette_and_keymap_dispatch() {
     let mut app = App::new(test_font());
 
     // Dispatch via keymap command name
-    crate::input::dispatch::execute_keymap_command(&mut app, "toggle_distraction_free", None);
+    crate::input::dispatch::execute_keymap_command(&mut app, "toggle_distraction_free", None, None);
     assert!(app.is_distraction_free());
 
-    crate::input::dispatch::execute_keymap_command(&mut app, "toggle_distraction_free", None);
+    crate::input::dispatch::execute_keymap_command(&mut app, "toggle_distraction_free", None, None);
     assert!(!app.is_distraction_free());
 
     // Dispatch via palette command id

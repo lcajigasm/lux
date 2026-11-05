@@ -84,7 +84,7 @@ pub(crate) fn handle_minimap_click(app: &mut crate::app::App, mouse_x: f32, mous
         Some(&app.fold_state),
     );
 
-    let line_height = crate::app::LINE_HEIGHT * scale;
+    let line_height = app.editor_view.metrics().line_height.max(1.0);
     let visual_row = app
         .fold_state
         .buffer_to_visual_line(target_line)

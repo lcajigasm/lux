@@ -204,6 +204,7 @@ fn a_command_chord_drops_the_grave_committed_ahead_of_its_modifiers() {
         PhysicalKey::Letter('c'),
     ];
     for physical in chords {
+        app.buffer = lux_core::buffer::Buffer::from_bytes(b"alpha\n").unwrap();
         app.ui.search_bar = None;
         app.ui.snippets.picker = None;
         crate::ime_hold::observe(&mut app, Ime::Commit("`".into()));
@@ -217,7 +218,15 @@ fn a_command_chord_drops_the_grave_committed_ahead_of_its_modifiers() {
         };
         let key = press(Key::Character("`".into()), Some(physical));
         app.handle_keyboard_event(&ctx, &key);
-        assert_eq!(app.buffer.text(), "alpha\n", "{physical:?}");
+        // Control+] is indent. Option+Command+] on macOS is unfold, so the
+        // line stays put. Either way the queued grave is not inserted.
+        let expected = if physical == PhysicalKey::BracketRight && cfg!(not(target_os = "macos")) {
+            "    alpha\n"
+        } else {
+            "alpha\n"
+        };
+        assert_eq!(app.buffer.text(), expected, "{physical:?}");
+        assert!(!app.buffer.text().contains('`'), "{physical:?}");
     }
 }
 

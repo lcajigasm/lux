@@ -29,6 +29,10 @@ impl App {
 
     pub(crate) fn open_command_palette(&mut self, query: &str) {
         let mut state = crate::palette::CommandPaletteState::new();
+        state.registry.import_usage(
+            self.ui.settings.palette_uses.clone(),
+            self.ui.settings.palette_clock,
+        );
         state.query = crate::field::QueryField::from_text(query);
         state.shortcuts = crate::palette::shortcut_labels(&self.keymap);
         self.ui.command_palette = Some(state);

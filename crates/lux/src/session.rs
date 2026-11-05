@@ -12,7 +12,7 @@ use lux_core::selection::Selection;
 use lux_workspace::session::{CursorState, SESSION_FILE_NAME, Session, TabState};
 use lux_workspace::watcher::{ChangeKind, FileWatcher};
 
-use crate::app::{App, LINE_HEIGHT};
+use crate::app::App;
 use crate::conflict::ConflictPrompt;
 use crate::document::DocumentEntry;
 
@@ -96,7 +96,8 @@ pub(crate) fn save_session(app: &App, clean: bool) -> std::io::Result<()> {
                 char_offset: s.head.char,
             })
             .collect();
-        let scroll_line = (entry.scroll_y / LINE_HEIGHT).floor() as usize;
+        let scroll_line =
+            (entry.scroll_y / app.editor_view.metrics().line_height.max(1.0)).floor() as usize;
         let title = app
             .documents
             .tabs
@@ -222,7 +223,8 @@ pub(crate) fn restore_session(app: &mut App, session_path: &Path) -> std::io::Re
                 .collect();
             entry.cursors = MultiCursor::from_cursors(sels);
         }
-        entry.scroll_y = tab_state.scroll_line as f32 * LINE_HEIGHT;
+        entry.scroll_y =
+            tab_state.scroll_line as f32 * app.editor_view.metrics().line_height.max(1.0);
         app.documents.entries.push(entry);
         restored_any = true;
     }
