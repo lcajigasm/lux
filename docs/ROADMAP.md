@@ -251,8 +251,8 @@ find.
 | `Cmd+K Cmd+D` | `skip_next_occurrence` | parcial |
 | `Cmd+Shift+L` | `split_selection_into_lines` | parcial |
 | `Cmd+/` | `toggle_comment` | parcial |
-| `Cmd+Alt+Down` | `add_cursor_below` | parcial |
-| `Cmd+Alt+Up` | `add_cursor_above` | parcial |
+| `Ctrl+Shift+Down` | `add_cursor_below` | parcial. Sublime macOS chord. `input::p0_tests` |
+| `Ctrl+Shift+Up` | `add_cursor_above` | parcial. Sublime macOS chord. `input::p0_tests` |
 | `Cmd+F` | `find` | parcial. Headless session drives it |
 | `Cmd+Alt+F` | `replace` | parcial |
 | `Cmd+Shift+F` | `find_in_files` | parcial |

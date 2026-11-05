@@ -25,6 +25,13 @@ use tree_sitter::{Node, Point};
 /// safe to extend: an unrecognized kind here simply never matches, so
 /// indent falls back to one level less than it ideally would, never to
 /// wrong/negative output.
+/// Whether Enter can take an indent level from this language's tree.
+/// Languages without a checked body kind stay on the brace heuristic.
+#[must_use]
+pub fn has_body_kinds(language: crate::LanguageId) -> bool {
+    !block_kinds(language).is_empty()
+}
+
 fn block_kinds(language: crate::LanguageId) -> &'static [&'static str] {
     use crate::LanguageId::*;
     match language {

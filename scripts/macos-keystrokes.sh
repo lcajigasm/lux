@@ -368,6 +368,38 @@ for spec in "${chords[@]}"; do
         exit 1
     fi
 done
+# Motions and Goto Anything must not rewrite the line. Command+T is closed
+# with Escape so the panel does not stay in front of the document.
+ctrl=$((1 << 18))
+shift=$((1 << 17))
+extra=(
+    "cmd-left $cmd 123"
+    "ctrl-a $ctrl 0"
+    "ctrl-e $ctrl 14"
+    "ctrl-shift-up $((ctrl | shift)) 126"
+    "cmd-t $cmd 17"
+    "escape 0 53"
+)
+for spec in "${extra[@]}"; do
+    name="${spec%% *}"
+    rest="${spec#* }"
+    flags="${rest%% *}"
+    key="${rest##* }"
+    echo "--> chord $name"
+    if ! swift /tmp/lux-one-chord.swift "$key" "$flags"; then
+        echo "RESULT events-failed" | tee "$result"
+        exit 1
+    fi
+    sleep 0.25
+    if ! swift /tmp/lux-document-ok.swift "$lux_pid" >"$out/ax-document.txt" 2>"$out/ax-error.txt"; then
+        echo "RESULT document-changed" | tee "$result"
+        echo "Chord $name changed the document. Expected the line alpha and no grave."
+        echo "This is not a pass."
+        cat "$out/ax-document.txt" "$out/ax-error.txt" || true
+        screencapture -l "$window_id" -o "$out/keystrokes-chords.png" || true
+        exit 1
+    fi
+done
 screencapture -l "$window_id" -o "$out/keystrokes-chords.png" || true
 echo "RESULT assertions-passed" | tee "$result"
 echo "The focused field contained ç, and the document line stayed alpha."

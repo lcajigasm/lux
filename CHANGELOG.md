@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Sublime macOS chords: Command+T opens Goto Anything, Control+Shift+Up/Down adds a cursor, Command+] / Command+[ indent from the keymap, and Command+Option+/ toggles a block comment. Command+/ comments HTML, CSS, and Markdown with a block comment, and JSON with `//`. Command+Left stops on the first non-space character. Control+A / Control+E move to the ends of the line on macOS.
+- Enter indents from the language tree when that language has a checked body, so a brace inside a string does not add a level.
+
 ### Added
 
 - Tree-sitter highlighting for PHP, Ruby, SQL, XML, Dockerfile, Makefile, Lua, C#, Diff, Zig, GraphQL, INI, Protocol Buffers, HCL, Nix, CMake, Gitignore, SCSS, Prisma, Fish, Scheme, Clojure, Regex, Erlang, Gleam, R, Elixir, Scala, Dart, Julia, Haskell, OCaml, and Common Lisp. File name, extension, and shebang select the grammar. Command+/ comments a line where the language has a line comment.
