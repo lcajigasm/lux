@@ -270,3 +270,6 @@ fn completion_popup_owns_the_wheel() {
     );
     assert_eq!(app.viewport.scroll_y, 50.0);
 }
+
+#[path = "panel_event_tests.rs"]
+mod panel_event_tests;

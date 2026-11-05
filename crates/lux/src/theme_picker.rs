@@ -133,7 +133,9 @@ pub(crate) fn handle_theme_picker_key(
             app.scheduler.invalidate_all();
             true
         }
-        Key::Character(text) if !text.chars().any(char::is_control) => {
+        Key::Character(text)
+            if !crate::field::is_shortcut_chord(app) && !text.chars().any(char::is_control) =>
+        {
             if let Some(picker) = app.ui.theme_picker.as_mut() {
                 picker.query.push_str(text);
                 picker.selected_index = 0;

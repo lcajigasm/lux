@@ -326,7 +326,7 @@ pub(crate) fn handle_build_key(app: &mut App, ctx: &dyn PlatformContext, event: 
             app.scheduler.invalidate_all();
             true
         }
-        Key::Character(s) if !event.repeat => {
+        Key::Character(s) if !event.repeat && !crate::field::is_shortcut_chord(app) => {
             if let Some(picker) = app.ui.build.picker.as_mut() {
                 picker.query.push_str(s);
                 picker.selected = 0;
@@ -334,6 +334,7 @@ pub(crate) fn handle_build_key(app: &mut App, ctx: &dyn PlatformContext, event: 
             app.scheduler.invalidate_all();
             true
         }
+        Key::Character(_) => false,
         _ => true,
     }
 }

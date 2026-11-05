@@ -229,12 +229,18 @@ impl App {
         // A dead-key commit is queued before this key, and before the
         // modifiers for it are visible. Settle that commit first: a command
         // chord drops it, plain typing keeps it.
-        crate::ime_hold::settle(self);
+        let committed = crate::ime_hold::settle(self);
         // Key releases carry the same logical key as presses. They are useful
         // to the platform, but Lux has no release-triggered commands; routing
         // them through picker/search handlers used to insert every printable
         // key a second time.
         if key_event.state != ElementState::Pressed {
+            return;
+        }
+        // The dead key already produced its commit. Typing the base key as
+        // well would turn `á` into `áa` in the panel or the document.
+        if committed {
+            self.refresh_accessibility();
             return;
         }
         if crate::field::field_is_composing(self) {

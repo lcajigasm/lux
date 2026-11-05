@@ -172,7 +172,7 @@ pub(crate) fn handle_project_switch_key(
             }
             true
         }
-        Key::Character(s) => {
+        Key::Character(s) if !crate::field::is_shortcut_chord(app) => {
             let text = event.text.as_deref().unwrap_or(s.as_str());
             if !text.is_empty() && !text.chars().any(char::is_control) {
                 if let Some(picker) = app.ui.project.picker.as_mut() {

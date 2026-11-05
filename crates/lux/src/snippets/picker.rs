@@ -105,7 +105,7 @@ pub(crate) fn handle_snippet_picker_key(
             app.scheduler.invalidate_all();
             true
         }
-        Key::Character(s) => {
+        Key::Character(s) if !crate::field::is_shortcut_chord(app) => {
             if let Some(picker) = app.ui.snippets.picker.as_mut() {
                 picker.query.push_str(s);
                 picker.selected_index = 0;

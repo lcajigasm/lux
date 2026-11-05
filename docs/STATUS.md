@@ -546,6 +546,10 @@ and Home/End cursor movement, mouse-wheel scroll) mutates a real
 `lux-core::Buffer`. Real inline IME composition renders at the actual
 cursor screen position (not the window title bar, the earlier deliverable's
 own honest stand-in) — confirmed with a live accented dead-key sequence.
+A dead-key commit goes to the open panel and is not typed a second time.
+Search `ç` is text. Regex, case, and word toggle once, on press, from the
+physical key with Option+Command. Command+C/V/X/A/Z edit that field.
+Command+S/W/P stay global. Option chords match the physical key.
 Real `accesskit` tree updates are pushed through a new `lux-platform`
 mechanism (`docs/adr/0013-platform-accessibility-adapter-wiring.md`) and
 confirmed end-to-end with VoiceOver. Lux Dark's background/accent colors

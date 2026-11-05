@@ -219,6 +219,13 @@ pub(crate) fn shortcut_letter(event: &KeyEvent) -> Option<char> {
     Some(ch.to_ascii_lowercase())
 }
 
+/// Command or Control. Those chords are shortcuts, not panel text.
+/// Alt alone still types (an Option glyph). Ctrl+Alt is AltGr and is left
+/// for the keymap rather than inserted as a panel character.
+pub(crate) fn is_shortcut_chord(app: &App) -> bool {
+    app.modifiers.meta || app.modifiers.control
+}
+
 fn command_held(app: &App) -> bool {
     if cfg!(target_os = "macos") {
         app.modifiers.meta && !app.modifiers.control

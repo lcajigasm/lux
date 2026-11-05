@@ -5,7 +5,8 @@
 //! physical `[` key as a dead grave. Option+Command+[ therefore commits `` ` ``
 //! into the document, and the following Option+Command+F (replace) is what
 //! makes the grave show up in front of the existing text. A command chord
-//! drops that commit. Plain typing inserts it when the key is released.
+//! drops that commit. Plain typing inserts it once, on the key that carried
+//! it, and that key's own character is not typed as well.
 
 use std::cell::RefCell;
 
@@ -26,15 +27,20 @@ pub(crate) fn observe(app: &mut App, event: Ime) {
 }
 
 /// Inserts a held commit, or drops it when this key is a command chord.
-pub(crate) fn settle(app: &mut App) {
+///
+/// Returns true when the commit was typed. The key event that carried it
+/// must not also insert its own character, so `` ´ `` + `a` is one `á`.
+pub(crate) fn settle(app: &mut App) -> bool {
     let held = HELD.with(|slot| slot.borrow_mut().take());
     if app.command_modifier() {
         if held.is_some() || app.ime.is_composing() {
             app.apply_ime(Ime::Disabled);
         }
-        return;
+        return false;
     }
     if let Some(text) = held {
         app.apply_ime(Ime::Commit(text));
+        return true;
     }
+    false
 }
