@@ -1,7 +1,7 @@
 //! All editor geometry and GPU uniforms use physical pixels. Convert the
 //! logical defaults together whenever the platform reports a new scale.
 
-use crate::app::{App, FONT_SIZE, LINE_HEIGHT};
+use crate::app::{App, FONT_SIZE};
 
 impl App {
     pub(crate) fn set_display_scale(&mut self, scale: f64) {
@@ -13,8 +13,27 @@ impl App {
         self.scale_factor = scale;
         self.viewport.scroll_x *= ratio;
         self.viewport.scroll_y *= ratio;
+        let metrics = self.editor_view.metrics();
         self.editor_view
-            .set_text_dimensions(FONT_SIZE * scale, LINE_HEIGHT * scale);
+            .set_text_dimensions(metrics.font_size * ratio, metrics.line_height * ratio);
+        self.scheduler.invalidate_all();
+    }
+
+    /// Changes the logical font size by `delta` points and keeps the line
+    /// height at 1.4×. Display scale stays applied on top.
+    pub(crate) fn zoom_font(&mut self, delta: f32) {
+        let logical = self.editor_view.metrics().font_size / self.scale_factor;
+        self.apply_logical_font((logical + delta).clamp(8.0, 48.0));
+    }
+
+    pub(crate) fn reset_font_zoom(&mut self) {
+        self.apply_logical_font(FONT_SIZE);
+    }
+
+    fn apply_logical_font(&mut self, logical: f32) {
+        let scale = self.scale_factor;
+        self.editor_view
+            .set_text_dimensions(logical * scale, logical * 1.4 * scale);
         self.scheduler.invalidate_all();
     }
 }
@@ -22,6 +41,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::LINE_HEIGHT;
     use lux_core::buffer::Buffer;
     use std::time::Duration;
 

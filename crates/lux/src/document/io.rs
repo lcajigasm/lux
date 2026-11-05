@@ -6,7 +6,7 @@ use lux_core::{buffer::Buffer, huge_file::HugeFilePolicy};
 use lux_platform::dialog::SaveDecision;
 use lux_platform::{FileDialogOptions, FileDialogs};
 
-use super::Request;
+use super::{NamedSave, Request};
 
 pub(crate) enum Outcome {
     Cancelled,
@@ -14,6 +14,7 @@ pub(crate) enum Outcome {
         saved: Option<(PathBuf, Buffer)>,
         opened: Option<(Option<PathBuf>, Buffer)>,
         close: bool,
+        saved_paths: Vec<PathBuf>,
     },
 }
 
@@ -69,12 +70,16 @@ pub(crate) fn execute(
     snapshot: Snapshot,
     dialogs: &dyn FileDialogs,
 ) -> Result<Outcome, String> {
+    if let Request::SaveAll(files) = &request {
+        return save_named_files(files, dialogs);
+    }
     if let Request::Save { save_as } = request {
         return Ok(match save_snapshot(&snapshot, save_as, dialogs)? {
             Some(saved) => Outcome::Finished {
                 saved: Some(saved),
                 opened: None,
                 close: false,
+                saved_paths: Vec::new(),
             },
             None => Outcome::Cancelled,
         });
@@ -140,6 +145,34 @@ pub(crate) fn execute(
         saved,
         opened,
         close: matches!(request, Request::Close),
+        saved_paths: Vec::new(),
+    })
+}
+
+fn save_named_files(files: &[NamedSave], dialogs: &dyn FileDialogs) -> Result<Outcome, String> {
+    let mut saved_paths = Vec::new();
+    let mut errors = Vec::new();
+    for file in files {
+        let snapshot = Snapshot {
+            buffer: file.buffer.clone(),
+            path: Some(file.path.clone()),
+            dirty: true,
+            disk: file.disk.clone(),
+        };
+        match save_snapshot(&snapshot, false, dialogs) {
+            Ok(Some((path, _))) => saved_paths.push(path),
+            Ok(None) => {}
+            Err(error) => errors.push(error),
+        }
+    }
+    if saved_paths.is_empty() && !errors.is_empty() {
+        return Err(errors.join("; "));
+    }
+    Ok(Outcome::Finished {
+        saved: None,
+        opened: None,
+        close: false,
+        saved_paths,
     })
 }
 

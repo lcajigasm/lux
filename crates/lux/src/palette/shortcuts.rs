@@ -8,6 +8,8 @@ use lux_config::keymap::Platform;
 
 const MAP: &[(&str, &str)] = &[
     ("file.save", "save"),
+    ("file.save_all", "save_all"),
+    ("file.reopen_closed_tab", "reopen_closed_tab"),
     ("edit.undo", "undo"),
     ("edit.redo", "redo"),
     ("edit.duplicate_line", "duplicate_line"),
@@ -61,6 +63,11 @@ const MAP: &[(&str, &str)] = &[
     ("goto.symbol_in_project", "goto_symbol_in_project"),
     ("goto.word", "goto_word"),
     ("view.toggle_side_bar", "toggle_sidebar"),
+    ("view.next_tab", "next_tab"),
+    ("view.prev_tab", "prev_tab"),
+    ("view.zoom_in", "zoom_in"),
+    ("view.zoom_out", "zoom_out"),
+    ("view.zoom_reset", "zoom_reset"),
     ("view.layout_single", "set_layout_single"),
     ("view.layout_columns_2", "set_layout_columns_2"),
     ("view.layout_columns_3", "set_layout_columns_3"),
@@ -82,6 +89,7 @@ const MAP: &[(&str, &str)] = &[
     ("build.cancel", "cancel_build"),
     ("project.quick_switch", "quick_switch_project"),
     ("snippet.insert", "insert_snippet"),
+    ("preferences.open_settings_ui", "open_settings"),
     ("macro.toggle_record", "toggle_record_macro"),
     ("macro.playback", "playback_macro"),
     ("macro.save_as", "save_macro"),

@@ -72,7 +72,7 @@ fn execute_macro_command(app: &mut App, command: &MacroCommand) {
             execute_move_to(app, *to, *extend);
         }
         MacroCommand::Action { name, .. } => {
-            crate::input::dispatch::execute_keymap_command(app, name, None);
+            crate::input::dispatch::execute_keymap_command(app, name, None, None);
         }
     }
 }

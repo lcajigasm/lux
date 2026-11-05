@@ -171,7 +171,7 @@ fn test_record_and_playback_with_editor_commands() {
 
     // Record macro that duplicates line
     ctrl_q(&mut app);
-    crate::input::dispatch::execute_keymap_command(&mut app, "duplicate_line", None);
+    crate::input::dispatch::execute_keymap_command(&mut app, "duplicate_line", None, None);
     ctrl_q(&mut app);
 
     assert_eq!(app.buffer.text(), "hello\nhello\n");

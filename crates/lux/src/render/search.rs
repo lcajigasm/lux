@@ -187,17 +187,12 @@ pub(crate) fn render_search_bar(
 
     cur_x += input_w + 10.0 * scale_factor;
 
-    // Match Counter Badge
-    let total_matches = search.search_bar.matches().len();
-    let counter_text = if search.find_query.is_empty() {
-        String::new()
-    } else if total_matches == 0 {
-        "No matches".to_string()
-    } else {
-        let cur = search.search_bar.current_index().map_or(1, |i| i + 1);
-        let in_sel = if search.in_selection { " in sel" } else { "" };
-        format!("{cur} of {total_matches} matches{in_sel}")
-    };
+    let counter_text = match_counter_label(
+        search.find_query.is_empty(),
+        search.search_bar.matches().len(),
+        search.search_bar.current_index(),
+        search.in_selection,
+    );
     if !counter_text.is_empty() {
         let count_line = editor_view
             .text_layout_mut()
@@ -491,5 +486,22 @@ pub(crate) fn render_search_bar(
             false,
             search.layout.replace_all_btn_rect,
         );
+    }
+}
+
+pub(crate) fn match_counter_label(
+    query_empty: bool,
+    total: usize,
+    current: Option<usize>,
+    in_selection: bool,
+) -> String {
+    if query_empty {
+        String::new()
+    } else if total == 0 {
+        "No matches".to_string()
+    } else {
+        let cur = current.map_or(1, |i| i + 1);
+        let in_sel = if in_selection { " in sel" } else { "" };
+        format!("{cur} of {total} matches{in_sel}")
     }
 }

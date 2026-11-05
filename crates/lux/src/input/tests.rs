@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::LINE_HEIGHT;
 use lux_core::buffer::Buffer;
 use lux_platform::{Ime, Modifiers, PlatformError};
 use std::cell::RefCell;

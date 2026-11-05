@@ -6,12 +6,12 @@
 use accesskit::TreeUpdate;
 use lux_ui::{AccessibilityContext, build_full_window_tree};
 
-use crate::app::{App, FONT_SIZE};
+use crate::app::App;
 
 /// Builds the comprehensive application accessibility tree.
 pub(crate) fn build_accessibility_tree(app: &mut App) -> TreeUpdate {
     let family = app.editor_view.family().to_string();
-    let font_size = FONT_SIZE * app.scale_factor;
+    let font_size = app.editor_view.metrics().font_size;
     let is_dirty = app.document_dirty();
 
     let active_id = app.documents.tabs.active().map(|t| t.id);

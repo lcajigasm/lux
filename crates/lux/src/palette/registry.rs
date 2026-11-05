@@ -10,6 +10,7 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
         ("file.open", "File: Open File...", "File"),
         ("file.save", "File: Save", "File"),
         ("file.save_as", "File: Save As...", "File"),
+        ("file.save_all", "File: Save All", "File"),
         (
             "file.trim_trailing_whitespace",
             "File: Trim Trailing Whitespace",
@@ -160,6 +161,9 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
             "View",
         ),
         ("view.toggle_side_bar", "View: Toggle Side Bar", "View"),
+        ("view.zoom_in", "View: Zoom In", "View"),
+        ("view.zoom_out", "View: Zoom Out", "View"),
+        ("view.zoom_reset", "View: Reset Zoom", "View"),
         ("view.toggle_minimap", "View: Toggle Minimap", "View"),
         ("view.toggle_word_wrap", "View: Toggle Word Wrap", "View"),
         (

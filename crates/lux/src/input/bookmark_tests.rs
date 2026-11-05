@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::LINE_HEIGHT;
 use lux_core::buffer::Buffer;
 use lux_core::position::Position;
 use lux_core::selection::Selection;

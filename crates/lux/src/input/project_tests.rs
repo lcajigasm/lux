@@ -239,7 +239,7 @@ fn test_project_keymap_command_dispatch() {
     app.ui.project.active_project_path = Some(proj);
 
     // Dispatch quick_switch_project
-    execute_keymap_command(&mut app, "quick_switch_project", Some(&ctx));
+    execute_keymap_command(&mut app, "quick_switch_project", Some(&ctx), None);
     assert!(app.ui.project.picker.is_some());
 
     // Dismiss
@@ -254,7 +254,7 @@ fn test_project_keymap_command_dispatch() {
     assert!(app.ui.project.picker.is_none());
 
     // Dispatch close_project
-    execute_keymap_command(&mut app, "close_project", Some(&ctx));
+    execute_keymap_command(&mut app, "close_project", Some(&ctx), None);
     assert!(app.ui.project.active_project_path.is_none());
 }
 

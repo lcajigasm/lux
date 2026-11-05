@@ -406,7 +406,7 @@ pub(crate) fn jump_to_line_and_col(
     app.cursors = lux_core::multicursor::MultiCursor::new(Selection::cursor(pos));
     app.reset_goal_columns();
 
-    let line_height = crate::app::LINE_HEIGHT * app.scale_factor;
+    let line_height = app.editor_view.metrics().line_height.max(1.0);
     let target_y = target_line as f32 * line_height;
     let half_h = app.viewport.height * 0.4;
     app.viewport.scroll_y = (target_y - half_h).max(0.0);

@@ -102,6 +102,9 @@ pub(crate) fn handle_palette_key(
             if let Some(entry) = results.get(palette.selected_index) {
                 let cmd_id = entry.command.id.clone();
                 palette.registry.record_use(&cmd_id);
+                let (uses, clock) = palette.registry.export_usage();
+                app.ui.settings.palette_uses = uses;
+                app.ui.settings.palette_clock = clock;
                 app.ui.command_palette = None;
                 app.chrome.focus.escape_to_editor();
                 execute_command(app, ctx, &cmd_id);

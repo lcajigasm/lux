@@ -345,7 +345,7 @@ chords=(
     "bracket-left $((cmd | opt)) 33"
     "bracket-right $((cmd | opt)) 30"
     "replace-f $((cmd | opt)) 3"
-    "snippet-s $((cmd | opt)) 1"
+    "save-all-s $((cmd | opt)) 1"
     "cancel-c $((cmd | opt)) 8"
 )
 for spec in "${chords[@]}"; do
@@ -389,6 +389,22 @@ extra=(
     "cmd-e $cmd 14"
     "escape 0 53"
     "cmd-y $cmd 16"
+    "cmd-f $cmd 3"
+    "escape 0 53"
+    "cmd-shift-f $((cmd | shift)) 3"
+    "escape 0 53"
+    "cmd-opt-f $((cmd | opt)) 3"
+    "escape 0 53"
+    "cmd-k $cmd 40"
+    "cmd-b $cmd 11"
+    "cmd-comma $cmd 43"
+    "escape 0 53"
+    "cmd-equal $cmd 24"
+    "cmd-minus $cmd 27"
+    "cmd-zero $cmd 29"
+    "cmd-shift-t $((cmd | shift)) 17"
+    "cmd-shift-bracket $((cmd | shift)) 33"
+    "cmd-shift-bracket-right $((cmd | shift)) 30"
 )
 for spec in "${extra[@]}"; do
     name="${spec%% *}"

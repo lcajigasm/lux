@@ -122,7 +122,7 @@ pub(crate) fn handle_mouse_click_on_chrome(
         let gutter_w = app.editor_view.reference_width(&"0".repeat(digits));
         let gutter_end = sidebar_w + gutter_w + 16.0 * app.scale_factor;
         if mouse_x >= sidebar_w && mouse_x < gutter_end {
-            let line_h = crate::app::LINE_HEIGHT * app.scale_factor;
+            let line_h = app.editor_view.metrics().line_height.max(1.0);
             let visual_line =
                 ((mouse_y - app.tab_bar_height() + app.viewport.scroll_y) / line_h) as usize;
             let total_lines = app.buffer.len_lines();

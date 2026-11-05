@@ -5,7 +5,7 @@ use lux_core::multicursor::MultiCursor;
 use lux_core::position::Position;
 use lux_core::selection::Selection;
 use lux_platform::event::KeyEvent;
-use lux_platform::{Clipboard, Key, NamedKey};
+use lux_platform::{Clipboard, Key, NamedKey, PlatformContext};
 
 use crate::app::App;
 use crate::input::motion;
@@ -14,6 +14,7 @@ pub(crate) fn dispatch_keymap_or_chord(
     app: &mut App,
     event: &KeyEvent,
     clipboard: Option<&dyn Clipboard>,
+    ctx: Option<&dyn PlatformContext>,
 ) -> bool {
     let Some(chord) = motion::key_event_to_chord(event, &app.modifiers) else {
         return false;
@@ -38,7 +39,7 @@ pub(crate) fn dispatch_keymap_or_chord(
         let seq = lux_config::ChordSequence(vec![first_chord, chord.clone()]);
         if let Some(cmd) = app.keymap.command_for(&seq, platform).map(str::to_owned) {
             app.ui.announcement = None;
-            execute_keymap_command(app, &cmd, clipboard);
+            execute_keymap_command(app, &cmd, clipboard, ctx);
             return true;
         }
 
@@ -48,7 +49,7 @@ pub(crate) fn dispatch_keymap_or_chord(
         // Fall back to attempting the second chord as a standalone single-chord command
         let single = lux_config::ChordSequence(vec![chord]);
         if let Some(cmd) = app.keymap.command_for(&single, platform).map(str::to_owned) {
-            execute_keymap_command(app, &cmd, clipboard);
+            execute_keymap_command(app, &cmd, clipboard, ctx);
             return true;
         }
         return false;
@@ -72,14 +73,19 @@ pub(crate) fn dispatch_keymap_or_chord(
 
     let seq = lux_config::ChordSequence(vec![chord]);
     if let Some(cmd) = app.keymap.command_for(&seq, platform).map(str::to_owned) {
-        execute_keymap_command(app, &cmd, clipboard);
+        execute_keymap_command(app, &cmd, clipboard, ctx);
         return true;
     }
 
     false
 }
 
-pub(crate) fn execute_keymap_command(app: &mut App, cmd: &str, clipboard: Option<&dyn Clipboard>) {
+pub(crate) fn execute_keymap_command(
+    app: &mut App,
+    cmd: &str,
+    clipboard: Option<&dyn Clipboard>,
+    ctx: Option<&dyn PlatformContext>,
+) {
     match cmd {
         "copy" => {
             app.copy_to_clipboard(clipboard);
@@ -388,6 +394,27 @@ pub(crate) fn execute_keymap_command(app: &mut App, cmd: &str, clipboard: Option
         "playback_macro" | "macro.playback" => {
             crate::macros::dispatch::playback_macro(app);
             return;
+        }
+        "save_all" | "file.save_all" => {
+            if let Some(ctx) = ctx {
+                app.save_all(ctx);
+            }
+        }
+        "reopen_closed_tab" | "file.reopen_closed_tab" => {
+            app.reopen_last_closed_tab();
+        }
+        "prev_tab" | "view.prev_tab" => {
+            app.switch_to_prev_tab();
+        }
+        "next_tab" | "view.next_tab" => {
+            app.switch_to_next_tab();
+        }
+        "zoom_in" | "view.zoom_in" => app.zoom_font(1.0),
+        "zoom_out" | "view.zoom_out" => app.zoom_font(-1.0),
+        "zoom_reset" | "view.zoom_reset" => app.reset_font_zoom(),
+        "open_settings" | "preferences.open_settings_ui" => {
+            app.ui.settings.open_settings_ui();
+            app.scheduler.invalidate_all();
         }
         "save_macro" | "save_macro_as" | "macro.save_as" => {
             crate::macros::dispatch::save_macro_as(app, "macro");

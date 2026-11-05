@@ -240,22 +240,22 @@ fn test_pane_click_focus_switching() {
 fn test_layout_dispatch_actions() {
     let mut app = create_test_app_with_tabs(4);
 
-    execute_keymap_command(&mut app, "set_layout_columns_2", None);
+    execute_keymap_command(&mut app, "set_layout_columns_2", None, None);
     assert_eq!(app.ui.split.preset, LayoutPreset::Columns2);
 
-    execute_keymap_command(&mut app, "set_layout_rows_2", None);
+    execute_keymap_command(&mut app, "set_layout_rows_2", None, None);
     assert_eq!(app.ui.split.preset, LayoutPreset::Rows2);
 
-    execute_keymap_command(&mut app, "set_layout_grid_4", None);
+    execute_keymap_command(&mut app, "set_layout_grid_4", None, None);
     assert_eq!(app.ui.split.preset, LayoutPreset::Grid2x2);
 
-    execute_keymap_command(&mut app, "focus_group_3", None);
+    execute_keymap_command(&mut app, "focus_group_3", None, None);
     assert_eq!(app.ui.split.active_pane, 2);
 
-    execute_keymap_command(&mut app, "move_to_group_4", None);
+    execute_keymap_command(&mut app, "move_to_group_4", None, None);
     assert_eq!(app.ui.split.active_pane, 3);
 
-    execute_keymap_command(&mut app, "set_layout_single", None);
+    execute_keymap_command(&mut app, "set_layout_single", None, None);
     assert_eq!(app.ui.split.preset, LayoutPreset::Single);
     assert!(!app.ui.split.is_active());
 }
