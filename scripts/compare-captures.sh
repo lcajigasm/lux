@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Capture the real Lux, Sublime Text, and Zed windows on macOS.
 # Writes docs/compare/monokai-side-by-side.png, characters.png,
-# selectors.png, goto.png, theme.png, tree.png, and tabs.png.
+# selectors.png, goto.png, theme.png, tree.png, tabs.png, and settings.png.
 # Lux's selector, go-to, and theme panes in those side-by-side images are
 # opened by physical key posts, the same way Zed's are. retina-palette.png
-# is still one offscreen frame from Lux's renderer at scale factor 2.
+# and settings.png are offscreen frames from Lux's renderer at scale factor 2.
+# Sublime's preferences surface is the JSON buffer, and this job does not
+# open Zed's settings editor, so settings.png is Lux only.
 # Does not draw a stand-in if an application cannot be captured.
 # A 1× framebuffer cannot screencapture Sublime at scale 2; that file is
 # Lux only, and the log says so.
@@ -379,6 +381,33 @@ if [[ "$snap_ready" != 1 ]]; then
   cat "$out/snapshot.log" >&2 || true
   exit 1
 fi
+echo "--> Scale-2 settings page from the renderer"
+"$bin" --settings --snapshot "$out/settings.png" --snapshot-scale 2 "$fixture" >"$out/settings-snapshot.log" 2>&1 &
+settings_pid=$!
+settings_ready=0
+for _ in $(seq 1 40); do
+  if [[ -s "$out/settings.png" ]]; then
+    settings_ready=1
+    break
+  fi
+  if ! kill -0 "$settings_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+kill "$settings_pid" 2>/dev/null || true
+wait "$settings_pid" 2>/dev/null || true
+for _ in $(seq 1 10); do
+  if ! swift /tmp/lux-find-window.swift lux >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.5
+done
+if [[ "$settings_ready" != 1 ]]; then
+  echo "Lux did not write settings.png. Not inventing a settings image." >&2
+  cat "$out/settings-snapshot.log" >&2 || true
+  exit 1
+fi
 echo "--> Opening Lux, Sublime Text, and Zed. Lux's palette is typed, not flagged."
 "$bin" "$fixture" >"$log" 2>&1 &
 lux_pid=$!
@@ -487,6 +516,17 @@ retina_h="$(sips -g pixelHeight "$out/retina-palette.png" | awk '/pixelHeight/ {
 echo "--> retina-palette.png ${retina_w}x${retina_h}"
 if [[ -z "$retina_w" || "$retina_w" -lt 1600 ]]; then
   echo "Scale-2 snapshot is ${retina_w:-0}px wide. Refusing it." >&2
+  exit 1
+fi
+if [[ ! -s "$out/settings.png" ]]; then
+  echo "Lux did not write settings.png. Not inventing a settings image." >&2
+  exit 1
+fi
+settings_w="$(sips -g pixelWidth "$out/settings.png" | awk '/pixelWidth/ {print $2}')"
+settings_h="$(sips -g pixelHeight "$out/settings.png" | awk '/pixelHeight/ {print $2}')"
+echo "--> settings.png ${settings_w}x${settings_h}"
+if [[ -z "$settings_w" || "$settings_w" -lt 1600 ]]; then
+  echo "Settings snapshot is ${settings_w:-0}px wide. Refusing it." >&2
   exit 1
 fi
 scale_line="$(grep "display scale" "$log" "$out/snapshot.log" | awk '{print $NF}' | tail -1 || true)"

@@ -20,7 +20,7 @@ mod plugin;
 mod project_picker;
 mod project_search;
 pub(crate) mod search;
-mod settings;
+pub(crate) mod settings;
 mod sidebar;
 mod snippet_picker;
 pub(crate) mod split;
@@ -541,18 +541,18 @@ impl App {
         if let Some(panel) = &ui.settings.panel {
             settings::render_settings_panel(
                 panel,
-                &mut quad_instances,
-                &mut glyph_instances,
+                &mut overlay_quads,
+                &mut overlay_glyphs,
                 editor_view,
                 &mut atlas_state.atlas,
                 &mut atlas_state.dirty,
                 &mut atlas_state.scale_cx,
                 font,
                 window_width,
-                gpu_window.window.inner_size().height as f32,
+                window_height,
                 tab_bar_height,
+                status_bar_height,
                 *scale_factor,
-                stroke,
                 &chrome.theme,
             );
         }

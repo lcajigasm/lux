@@ -63,6 +63,7 @@ fn main() {
     let mut open_palette = false;
     let mut open_goto = false;
     let mut open_theme = false;
+    let mut open_settings = false;
     let mut query = String::new();
     let mut snapshot: Option<std::path::PathBuf> = None;
     let mut snapshot_scale = 2.0_f32;
@@ -81,6 +82,7 @@ fn main() {
             println!("  --palette      Open the command palette");
             println!("  --goto         Open go to file");
             println!("  --theme        Open the color scheme picker");
+            println!("  --settings     Open the settings page");
             println!("  --query TEXT   Prefill the open selector");
             println!("  --snapshot PATH  Write one offscreen PNG of this window");
             println!("  --snapshot-scale N  Scale factor for that PNG (default 2)");
@@ -100,6 +102,10 @@ fn main() {
         }
         if arg_str == "--theme" {
             open_theme = true;
+            continue;
+        }
+        if arg_str == "--settings" {
+            open_settings = true;
             continue;
         }
         if arg_str == "--query" {
@@ -132,12 +138,14 @@ fn main() {
         eprintln!("{message}");
         std::process::exit(2);
     }
-    if open_palette || (!open_goto && !open_theme && !query.is_empty()) {
+    if open_palette || (!open_goto && !open_theme && !open_settings && !query.is_empty()) {
         app.open_command_palette(&query);
     } else if open_goto {
         app.open_goto_anything(&query);
     } else if open_theme {
         app.open_theme_picker_query(&query);
+    } else if open_settings {
+        app.ui.settings.open_settings_ui();
     }
     if let Some(path) = snapshot {
         snapshot::request(path, snapshot_scale);

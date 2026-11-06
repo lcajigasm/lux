@@ -251,8 +251,20 @@ impl App {
         }
         if self.ui.settings.panel.is_some() && matches!(key_event.key, Key::Named(NamedKey::Escape))
         {
-            self.ui.settings.panel = None;
-            crate::focus::focus_editor(self);
+            let menu_open = self
+                .ui
+                .settings
+                .panel
+                .as_ref()
+                .is_some_and(|panel| panel.menu.is_some());
+            if menu_open {
+                if let Some(panel) = self.ui.settings.panel.as_mut() {
+                    panel.menu = None;
+                }
+            } else {
+                self.ui.settings.panel = None;
+                crate::focus::focus_editor(self);
+            }
             self.scheduler.invalidate_all();
             self.refresh_accessibility();
             return;

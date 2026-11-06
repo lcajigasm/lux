@@ -34,7 +34,10 @@ prove Retina. `retina-palette.png` is written by Lux itself: the same
 renderer, into an RGBA texture at scale factor 2. That file is real
 pixels from the app. It is not an upscale of the 1× screenshot. Sublime
 cannot be captured at scale 2 on a 1× framebuffer, and the script does
-not invent that pair. HiDPI grayscale is selected when `scale_factor > 1`.
+not invent that pair. `settings.png` is the same kind of frame:
+`lux --settings --snapshot-scale 2`. The page fills the editor well.
+Sublime's preferences surface is the JSON buffer, and this job does not
+open Zed's settings editor, so the file is Lux only. HiDPI grayscale is selected when `scale_factor > 1`.
 Selector text uses grayscale at scale 1 as well, so it composites on the
 panel.
 
