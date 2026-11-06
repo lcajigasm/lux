@@ -50,7 +50,7 @@
 > Text, and Zed on the fixtures folder, and the same three with
 > `monokai.rs` and `characters.txt` open. Lux's inactive tab title is
 > the foreground. The runner logged display scale 1. Block 1 stays
-> parcial: the status bar labels and clicks are in ST-FIX-12. External reload, hot exit, and Command+/ are in ST-FIX-13. Minimap and splits stay parked. Settings remains a separate surface.
+> parcial: the status bar labels and clicks are in ST-FIX-12. External reload, hot exit, and Command+/ are in ST-FIX-13. Minimap and splits stay parked. Settings (Command+,) is an opaque page between the tab bar and the status bar. Each row is a label, a description, and a control: a toggle, a stepper, or a menu. The page edge is the neutral chrome border. Selected text stays the foreground. The selection is inset inside the page. `docs/compare/settings.png` is that page from the renderer at scale factor 2.
 > Workspace version 1.4.0 is the block 0 release. Workspace version
 > 1.5.0 is the file-tree and tabs release. See [ROADMAP.md](ROADMAP.md).
 >
@@ -2509,4 +2509,9 @@ _Nothing is behind an `experimental.*` flag yet._
     - Full workspace test suite passes cleanly (`cargo test --workspace`).
     - `scripts/check-limits.sh` passes (< 600 lines/file, <= 25 fields/struct).
     - `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` pass with 0 warnings.
+
+### E13 / UI-SETTINGS: Settings page
+
+- **Status:** Command+, opens an opaque settings page between the tab bar and the status bar. The editor text is under that page. The page edge is the neutral chrome border, not the theme accent. A selected row is inset inside the page, and its label and value stay the foreground color. A boolean is a toggle, a number is a stepper, and a theme or keymap is a menu. The wheel scrolls the page and leaves the editor scroll where it was. Escape closes an open menu first, then the page.
+- **Verification:** `settings::visual_tests::settings_panel_has_no_debug_magenta_border`, `settings::visual_tests::settings_selection_stays_inside_the_card`, and `settings::visual_tests::settings_row_lays_out_label_description_and_value`. `settings::visual_tests::settings_toggle_stepper_and_menu_change_the_stored_value` changes ligatures, font size, and the color theme. `settings::visual_tests::settings_wheel_scrolls_the_page_and_not_the_editor` and `settings::visual_tests::escape_closes_the_menu_before_the_page`. `docs/compare/settings.png` is `lux --settings` rendered at scale factor 2. This is not a Mac keystroke pass.
 

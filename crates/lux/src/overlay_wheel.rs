@@ -16,6 +16,9 @@ pub(crate) fn scroll_open_overlay(app: &mut App, delta: ScrollDelta) -> bool {
     if app.ui.dialogs.conflict_prompt.is_some() || app.ui.dialogs.about.is_some() {
         return true;
     }
+    if crate::settings::scroll_settings(app, delta) {
+        return true;
+    }
     if scroll_palette(app, delta) {
         return true;
     }
