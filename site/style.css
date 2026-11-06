@@ -1207,6 +1207,7 @@ kbd {
 
 @media (min-width: 900px) {
   .shot-row { grid-template-columns: 1fr 1fr; }
+  .editor-shot.shot-wide { grid-column: 1 / -1; }
 }
 
 /* Responsive adjustments */
