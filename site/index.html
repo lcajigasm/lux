@@ -37,7 +37,7 @@
       <a href="#" class="brand">
         <img src="assets/icon.png" alt="Lux Logo" class="brand-logo">
         <span class="brand-name">Lux</span>
-        <span class="brand-tag">v1.3.1</span>
+        <span class="brand-tag">v1.5.5</span>
       </a>
 
       <nav class="nav-menu">
@@ -65,8 +65,8 @@
     <div class="container hero-container">
       <div class="release-pill-wrapper">
         <a href="https://github.com/lcajigasm/lux/releases/latest" target="_blank" rel="noopener" class="release-pill">
-          <span class="pill-badge">v1.3.1</span>
-          <span class="pill-text">macOS first. Universal dmg is opt-in; Linux deb is on the tag</span>
+          <span class="pill-badge">v1.5.5</span>
+          <span class="pill-text">Universal macOS disk image and Linux packages on the tag</span>
           <span class="pill-arrow">→</span>
         </a>
       </div>
@@ -92,11 +92,11 @@
           </div>
         </a>
 
-        <a href="https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg" class="btn btn-hero-secondary">
+        <a href="https://github.com/lcajigasm/lux/releases/download/v1.5.5/lux-macos-universal.dmg" class="btn btn-hero-secondary">
           <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
           </svg>
-          <span>v1.1.0 macOS disk image</span>
+          <span>v1.5.5 macOS disk image</span>
         </a>
       </div>
 
@@ -132,6 +132,10 @@
           <img src="assets/screenshots/palette.png" alt="Lux command palette open over example.rs">
           <figcaption>Command palette in the same window.</figcaption>
         </figure>
+        <figure class="editor-shot shot-wide">
+          <img src="assets/screenshots/settings.png" alt="Lux Settings page with font size stepper, ligatures toggle, and indent style menu">
+          <figcaption>Settings page between the tab bar and the status bar, captured from the renderer at scale factor 2.</figcaption>
+        </figure>
       </div>
     </div>
   </section>
@@ -149,6 +153,17 @@
       </div>
 
       <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon-wrapper">
+            <span class="feature-icon">⚙</span>
+          </div>
+          <h3 class="feature-title">Settings Page</h3>
+          <p class="feature-desc">
+            New in v1.5.5: Settings is an opaque page between the tab bar and the status bar.
+            Toggles, steppers, and menus change the real settings. The wheel scrolls the page.
+          </p>
+        </div>
+
         <!-- Feature 1 -->
         <div class="feature-card">
           <div class="feature-icon-wrapper">
@@ -375,15 +390,13 @@
       <div class="download-card">
         <div class="download-content">
           <span class="section-tag">Get Started Today</span>
-          <h2 class="download-title">Download Lux v1.3.1</h2>
+          <h2 class="download-title">Download Lux v1.5.5</h2>
           <p class="download-desc">
-            macOS is the focus. Publishing a GitHub Release starts one
-            standard <code>macos-14</code> job (<code>release-macos.yml</code>) that attaches
-            the universal <code>.dmg</code>. A version tag publishes
-            <code>lux-linux-x86_64</code> and <code>lux-linux-amd64.deb</code> and does
-            not start a second macOS job. Pull-request CI builds the same image as an
-            artifact and does not publish it. Windows <code>.msi</code> stays outside CI.
-            The second button is the existing v1.1.0 Apple Silicon image.
+            macOS is the focus. The v1.5.5 GitHub Release includes the universal
+            disk image <code>lux-macos-universal.dmg</code>, plus
+            <code>lux-linux-x86_64</code> and <code>lux-linux-amd64.deb</code>.
+            Pull-request CI builds the same image as an artifact and does not publish it.
+            Windows <code>.msi</code> stays outside CI.
           </p>
 
           <div class="download-buttons">
@@ -397,13 +410,13 @@
               </div>
             </a>
 
-            <a href="https://github.com/lcajigasm/lux/releases/download/v1.1.0/Lux.dmg" class="btn btn-outline btn-large">
+            <a href="https://github.com/lcajigasm/lux/releases/download/v1.5.5/lux-macos-universal.dmg" class="btn btn-outline btn-large">
               <svg class="icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
               </svg>
               <div class="btn-text-block">
-                <span class="btn-main-label">v1.1.0 macOS disk image</span>
-                <span class="btn-sub-label">Apple Silicon .dmg</span>
+                <span class="btn-main-label">v1.5.5 macOS disk image</span>
+                <span class="btn-sub-label">Universal .dmg</span>
               </div>
             </a>
           </div>
