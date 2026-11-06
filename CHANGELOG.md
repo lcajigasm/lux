@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.5.5 — 2026-11-06
+
+Test build for Mac. Not a closed release.
+
+### Changed
+
+- Settings is an opaque page between the tab bar and the status bar. The border is the neutral chrome color, not a magenta debug frame. The selection stays inside the page. Booleans are toggles, numbers are steppers, and theme and keymap are menus. The wheel scrolls the page and leaves the editor scroll where it was. Escape closes an open menu before it closes the page. `docs/compare/settings.png` is that page from the renderer at scale factor 2. Visual tests cover the border, the selection, the row layout, the controls, the wheel, and Escape (#47).
+
 ## 1.5.4 — 2026-11-05
 
 Test build for Mac. Not a closed release.
