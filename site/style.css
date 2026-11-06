@@ -326,6 +326,13 @@ body {
   flex-wrap: wrap;
 }
 
+.icon-apple {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  shape-rendering: geometricPrecision;
+}
+
 .btn-hero-primary {
   display: inline-flex;
   align-items: center;
