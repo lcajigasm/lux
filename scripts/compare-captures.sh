@@ -2,9 +2,10 @@
 # Capture the real Lux, Sublime Text, and Zed windows on macOS.
 # Writes docs/compare/monokai-side-by-side.png, characters.png,
 # selectors.png, goto.png, theme.png, tree.png, tabs.png, and settings.png.
-# Lux's selector, go-to, and theme panes in those side-by-side images are
-# opened by physical key posts, the same way Zed's are. retina-palette.png
-# and settings.png are offscreen frames from Lux's renderer at scale factor 2.
+# Lux's selector pane is Command-Shift-P and `sel` posted to Lux.app, with
+# no --palette flag. retina-palette.png is that same live frame written at
+# scale factor 2 when the job sends SIGUSR1. settings.png is still the
+# renderer frame from --settings.
 # Sublime's preferences surface is the JSON buffer, and this job does not
 # open Zed's settings editor, so settings.png is Lux only.
 # Does not draw a stand-in if an application cannot be captured.
@@ -36,6 +37,8 @@ done
 
 echo "--> Building lux (debug, locked)"
 cargo build -p lux --locked
+lux_app="$(bash "$root/scripts/stage-lux-app.sh" --no-build)"
+echo "--> bundled app $lux_app"
 
 cat > /tmp/lux-find-window.swift << 'SWIFT'
 import CoreGraphics
@@ -354,33 +357,6 @@ for key in [s, e, l] {
 }
 SWIFT
 
-echo "--> Scale-2 palette snapshot from the renderer, then a typed palette"
-"$bin" --palette --query sel --snapshot "$out/retina-palette.png" --snapshot-scale 2 "$fixture" >"$out/snapshot.log" 2>&1 &
-snap_pid=$!
-snap_ready=0
-for _ in $(seq 1 40); do
-  if [[ -s "$out/retina-palette.png" ]]; then
-    snap_ready=1
-    break
-  fi
-  if ! kill -0 "$snap_pid" 2>/dev/null; then
-    break
-  fi
-  sleep 0.5
-done
-kill "$snap_pid" 2>/dev/null || true
-wait "$snap_pid" 2>/dev/null || true
-for _ in $(seq 1 10); do
-  if ! swift /tmp/lux-find-window.swift lux >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.5
-done
-if [[ "$snap_ready" != 1 ]]; then
-  echo "Lux did not write retina-palette.png. Not inventing a scale-2 image." >&2
-  cat "$out/snapshot.log" >&2 || true
-  exit 1
-fi
 echo "--> Scale-2 settings page from the renderer"
 "$bin" --settings --snapshot "$out/settings.png" --snapshot-scale 2 "$fixture" >"$out/settings-snapshot.log" 2>&1 &
 settings_pid=$!
@@ -408,10 +384,37 @@ if [[ "$settings_ready" != 1 ]]; then
   cat "$out/settings-snapshot.log" >&2 || true
   exit 1
 fi
-echo "--> Opening Lux, Sublime Text, and Zed. Lux's palette is typed, not flagged."
-"$bin" "$fixture" >"$log" 2>&1 &
+echo "--> Opening Lux.app with no --palette and no --query"
+rm -f "$out/retina-palette.png"
+"$lux_app/Contents/MacOS/lux" \
+  --snapshot-on-usr1 "$out/retina-palette.png" \
+  --snapshot-scale 2 \
+  "$fixture" >"$log" 2>&1 &
 lux_pid=$!
-wait_window lux "$lux_pid" >/dev/null
+lux_proc=""
+for _ in $(seq 1 60); do
+  if ! kill -0 "$lux_pid" 2>/dev/null; then
+    echo "Lux.app exited before a window appeared" >&2
+    cat "$log" >&2 || true
+    exit 1
+  fi
+  for candidate in Lux lux; do
+    if swift /tmp/lux-find-window.swift "$candidate" >/dev/null 2>&1; then
+      lux_proc="$candidate"
+      break
+    fi
+  done
+  if [[ -n "$lux_proc" ]]; then
+    break
+  fi
+  sleep 1
+done
+if [[ -z "$lux_proc" ]]; then
+  echo "Lux.app did not open a window. Not writing selectors.png." >&2
+  cat "$log" >&2 || true
+  exit 1
+fi
+echo "--> Lux.app process $lux_proc pid $lux_pid"
 bound 15 "$subl" --command 'show_overlay {"overlay": "command_palette", "text": "sel"}' || true
 # `bound` returns 0 once the child exits, including when `open` failed.
 # Record the real status so a missing app is visible in the log.
@@ -460,13 +463,34 @@ for key: CGKeyCode in [0x01, 0x0E, 0x25] {
 }
 SWIFT
 sleep 0.3
-front lux
+if ! osascript -e "tell application \"System Events\" to set frontmost of process \"$lux_proc\" to true" >"$out/lux-focus.err" 2>&1; then
+  echo "System Events refused to focus Lux.app (process $lux_proc):" >&2
+  cat "$out/lux-focus.err" >&2
+  exit 1
+fi
 sleep 0.4
 if ! swift /tmp/lux-own-palette.swift; then
   echo "Could not type Lux's command palette. Not writing selectors.png." >&2
   exit 1
 fi
-sleep 0.5
+sleep 0.8
+kill -USR1 "$lux_pid"
+usr1_ready=0
+for _ in $(seq 1 40); do
+  if [[ -s "$out/retina-palette.png" ]]; then
+    usr1_ready=1
+    break
+  fi
+  if ! kill -0 "$lux_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.25
+done
+if [[ "$usr1_ready" != 1 ]]; then
+  echo "Lux.app did not write retina-palette.png after the typed palette. Not inventing a scale-2 image." >&2
+  tail -40 "$log" >&2 || true
+  exit 1
+fi
 
 cat > /tmp/lux-selector-bounds.applescript << 'APPLESCRIPT'
 tell application "System Events"
@@ -494,7 +518,7 @@ bound 8 osascript /tmp/lux-selector-bounds.applescript || true
 sleep 1
 
 sel="$(mktemp -d)"
-shoot lux "$sel/lux.png"
+shoot "$lux_proc" "$sel/lux.png"
 if ! shoot "Sublime Text" "$sel/sublime.png"; then
   echo "Sublime Text's command palette could not be captured. Not writing selectors.png." >&2
   exit 1

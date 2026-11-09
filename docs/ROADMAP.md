@@ -184,20 +184,33 @@ builds debug `lux`, installs the Sublime Text cask, opens
 `docs/compare/fixtures/monokai.rs` in both apps with Monokai, and
 `docs/compare/fixtures/characters.txt` in Lux. `screencapture -l` captures
 the real windows. ImageMagick appends the pair. The same job then
-installs the Zed cask, opens Lux with `--palette --query sel`, asks
-Sublime for its command palette with the same text, sends Zed
+installs the Zed cask, launches `target/Lux.app` with no `--palette`
+and no `--query`, posts Command-Shift-P and types `sel` into that app,
+asks Sublime for its command palette with the same text, sends Zed
 Cmd-Shift-P and types `sel`, and appends the three windows to
-`selectors.png`. It then captures go to file (`--goto --query mon`) and
-the theme picker (`--theme --query mo`). It then opens the fixtures
-folder for `tree.png` and `monokai.rs` plus `characters.txt` for
-`tabs.png`. Lux also writes
-`retina-palette.png` by rendering that frame offscreen at scale factor 2.
+`selectors.png`. `retina-palette.png` is that same live Lux.app frame,
+written when the job sends SIGUSR1 after the typed query, at scale
+factor 2. It then opens go to file and the theme picker with key posts
+(`mon` and `mo`), then the fixtures folder for `tree.png` and
+`monokai.rs` plus `characters.txt` for `tabs.png`.
 On a 1× runner, Sublime cannot be screencaptured at scale 2, and the
 script does not upscale a 1× shot. If Sublime or Zed cannot be captured,
 the script exits
 non-zero and does not write a stand-in image. The job uploads the PNGs.
 Committing them is a separate change. The artifact alone does not close
 the phase.
+
+## P0 evidence — A10, I2, I4
+
+These three rows are the DoD for real interaction on the free `macos-15`
+runner. The captures are the compiled app. A panel opened by
+`--palette`, `--query`, or `--settings` does not count.
+
+| Id | Proof | Run |
+|---|---|---|
+| A10 | `compare.yml` stages `target/Lux.app` and launches it with no `--palette` and no `--query`. It posts Command-Shift-P, types `sel`, and uploads `selectors.png` (Lux beside Sublime Text and Zed). `retina-palette.png` is that same session after SIGUSR1, at renderer scale 2. | pending |
+| I2 | `evidence.yml` launches that app, types `LuxEvidence42`, then posts Command-P, Command-Shift-P, Command-D, Command-Comma, a scroll, and Command-S. The job fails unless the opened file contains the token and the process is still alive. | pending |
+| I4 | The same evidence job writes `editor.png`, `palette.png`, and `settings.png` from the live session at scale 2, after the typing, the `sel` query, and Settings. Sublime Text and Zed install free in the compare job, but the runner display is 1×, so those scale-2 frames are Lux only. Their 1× windows stay in `selectors.png`. | pending |
 
 ## Block 1 — Interface — parcial
 
