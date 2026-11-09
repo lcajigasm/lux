@@ -167,17 +167,19 @@ run_matrix() {
   drive_key tap 5 cmd
   sleep 0.3
   drive_dump
-  local head
-  head="$(drive_field sel | awk -F'[:,]' '{print $2}')"
-  if [[ -z "$head" || "$head" -eq 0 ]]; then
-    fail "$CASE" "find_next left the caret at '$head'"
+  local sel
+  sel="$(drive_field sel)"
+  # "aa xx aa": the second match is chars 6..8, caret on either edge.
+  if [[ "$sel" != 6:8 && "$sel" != 8:6 ]]; then
+    fail "$CASE" "find_next left selection $sel"
   fi
   drive_key tap 5 cmd,shift
   sleep 0.3
   drive_dump
-  head="$(drive_field sel | awk -F'[:,]' '{print $2}')"
-  if [[ "$head" != 0 ]]; then
-    fail "$CASE" "find_prev left the caret at '$head'"
+  sel="$(drive_field sel)"
+  # Previous match is the first "aa", chars 0..2.
+  if [[ "$sel" != 0:2 && "$sel" != 2:0 ]]; then
+    fail "$CASE" "find_prev left selection $sel"
   fi
   pass "$layout find_next_prev"
 

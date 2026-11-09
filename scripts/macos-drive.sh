@@ -202,8 +202,8 @@ drive_key() {
 drive_dump() {
   rm -f "$DRIVE_PROBE"
   kill -USR2 "$DRIVE_PID"
-  local _
-  for _ in $(seq 1 40); do
+  local _ sent=1
+  for _ in $(seq 1 60); do
     if [[ -s "$DRIVE_PROBE" ]]; then
       return 0
     fi
@@ -213,6 +213,10 @@ drive_dump() {
       return 1
     fi
     sleep 0.25
+    if [[ "$sent" -eq 1 && "$_" -eq 8 ]]; then
+      kill -USR2 "$DRIVE_PID" || true
+      sent=2
+    fi
   done
   echo "timed out waiting for $DRIVE_PROBE" >&2
   tail -40 "$DRIVE_LOG" >&2 || true

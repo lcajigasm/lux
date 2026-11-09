@@ -19,14 +19,14 @@ trap drive_stop EXIT
 rows=()
 add() { rows+=("$1|$2|$3"); }
 
-file="$DRIVE_WORK/check.rs"
+file="$DRIVE_WORK/check.txt"
 python3 - "$file" << 'PY'
 import sys
 with open(sys.argv[1], "w") as f:
     for i in range(400):
         f.write(f"line {i}\n")
 PY
-second="$DRIVE_WORK/other.rs"
+second="$DRIVE_WORK/other.txt"
 printf 'second\n' > "$second"
 drive_launch "$file" "$second"
 sleep 0.6
@@ -87,7 +87,7 @@ fi
 drive_stop
 dir="$DRIVE_WORK/folder"
 mkdir -p "$dir"
-printf 'x\n' > "$dir/a.rs"
+printf 'x\n' > "$dir/a.txt"
 drive_launch "$dir"
 sleep 0.5
 drive_dump

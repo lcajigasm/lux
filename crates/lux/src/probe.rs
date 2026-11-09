@@ -132,7 +132,16 @@ pub(crate) fn listen() {
                 if n <= 0 {
                     break;
                 }
-                wake_main();
+                // One wakeup can land while the main thread is already
+                // inside an event and then be dropped. Keep waking until
+                // that signal is consumed.
+                for _ in 0..40 {
+                    wake_main();
+                    if TAKEN.load(Ordering::Acquire) >= ARMED.load(Ordering::Acquire) {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
             }
         });
 }
