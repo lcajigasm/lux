@@ -55,7 +55,9 @@ unsafe extern "C" {
 }
 
 extern "C" fn on_usr1(sig: i32) {
-    unsafe { signal(sig, on_usr1); }
+    unsafe {
+        signal(sig, on_usr1);
+    }
     ARMED.fetch_add(1, Ordering::Release);
     let fd = WAKE_WRITE.load(Ordering::Acquire);
     if fd >= 0 {

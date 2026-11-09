@@ -208,9 +208,9 @@ runner. The captures are the compiled app. A panel opened by
 
 | Id | Proof | Run |
 |---|---|---|
-| A10 | `compare.yml` stages `target/Lux.app` and launches it with no `--palette` and no `--query`. It posts Command-Shift-P, types `sel`, and uploads `selectors.png` (Lux beside Sublime Text and Zed). `retina-palette.png` is that same session after SIGUSR1, at renderer scale 2. | pending |
-| I2 | `evidence.yml` launches that app, types `LuxEvidence42`, then posts Command-P, Command-Shift-P, Command-D, Command-Comma, a scroll, and Command-S. The job fails unless the opened file contains the token and the process is still alive. | pending |
-| I4 | The same evidence job writes `editor.png`, `palette.png`, and `settings.png` from the live session at scale 2, after the typing, the `sel` query, and Settings. Sublime Text and Zed install free in the compare job, but the runner display is 1×, so those scale-2 frames are Lux only. Their 1× windows stay in `selectors.png`. | pending |
+| A10 | `compare.yml` stages `target/Lux.app` and launches it with no `--palette` and no `--query`. It posts Command-Shift-P, types `sel`, and uploads `selectors.png` (Lux beside Sublime Text and Zed). `retina-palette.png` is that same session after SIGUSR1, at renderer scale 2 (2000×1312 on that run). | [42588286845](https://github.com/lcajigasm/lux/actions/runs/42588286845) |
+| I2 | `evidence.yml` launches that app, types `LuxEvidence42`, then posts Command-P, Command-Shift-P, Command-D, Command-Comma, a scroll, and Command-S. The job fails unless the opened file contains the token and the process is still alive. That run saved the token and left the process running. | [42588287110](https://github.com/lcajigasm/lux/actions/runs/42588287110) |
+| I4 | The same evidence job writes `editor.png`, `palette.png`, and `settings.png` from the live session at scale 2, after the typing, the `sel` query, and Settings. Sublime Text and Zed install free in the compare job, but the runner display is 1×, so those scale-2 frames are Lux only. Their 1× windows stay in `selectors.png`. Each frame on that run is 2000px wide. | [42588287110](https://github.com/lcajigasm/lux/actions/runs/42588287110) |
 
 ## Block 1 — Interface — parcial
 
