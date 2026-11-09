@@ -66,6 +66,7 @@ fn main() {
     let mut open_settings = false;
     let mut query = String::new();
     let mut snapshot: Option<std::path::PathBuf> = None;
+    let mut snapshot_on_usr1: Vec<std::path::PathBuf> = Vec::new();
     let mut snapshot_scale = 2.0_f32;
     let mut positionals: Vec<std::path::PathBuf> = Vec::new();
     let mut args = std::env::args_os().skip(1);
@@ -85,6 +86,7 @@ fn main() {
             println!("  --settings     Open the settings page");
             println!("  --query TEXT   Prefill the open selector");
             println!("  --snapshot PATH  Write one offscreen PNG of this window");
+            println!("  --snapshot-on-usr1 PATH  Write that PNG when SIGUSR1 arrives");
             println!("  --snapshot-scale N  Scale factor for that PNG (default 2)");
             return;
         }
@@ -124,6 +126,14 @@ fn main() {
             snapshot = Some(std::path::PathBuf::from(value));
             continue;
         }
+        if arg_str == "--snapshot-on-usr1" {
+            let Some(value) = args.next() else {
+                eprintln!("Usage: lux --snapshot-on-usr1 PATH");
+                std::process::exit(2);
+            };
+            snapshot_on_usr1.push(std::path::PathBuf::from(value));
+            continue;
+        }
         if arg_str == "--snapshot-scale" {
             let Some(value) = args.next() else {
                 eprintln!("Usage: lux --snapshot-scale N");
@@ -147,7 +157,9 @@ fn main() {
     } else if open_settings {
         app.ui.settings.open_settings_ui();
     }
-    if let Some(path) = snapshot {
+    if !snapshot_on_usr1.is_empty() {
+        snapshot::listen_usr1(snapshot_on_usr1, snapshot_scale);
+    } else if let Some(path) = snapshot {
         snapshot::request(path, snapshot_scale);
     }
     lux_platform::desktop::run(app).expect("desktop event loop failed");

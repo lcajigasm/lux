@@ -1,0 +1,43 @@
+name: Evidence
+
+# Smoke the compiled Lux.app on the free macos-15 runner. Real key
+# events, a saved file, and scale-2 frames of the live session. Does not
+# publish a release and does not draw a stand-in image.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: lux app smoke (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Smoke Lux.app
+        run: |
+          chmod +x scripts/evidence-macos.sh scripts/stage-lux-app.sh
+          ./scripts/evidence-macos.sh
+
+      - name: Upload scale-2 frames
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-frames
+          path: |
+            docs/evidence/editor.png
+            docs/evidence/palette.png
+            docs/evidence/settings.png
+            docs/evidence/smoke.log
+          if-no-files-found: warn

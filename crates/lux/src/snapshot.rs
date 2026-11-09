@@ -4,6 +4,7 @@
 
 use std::cell::RefCell;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 
 use crate::app::{ATLAS_SIDE, App, GpuWindow};
 use crate::presentation::Outcome;
@@ -23,9 +24,134 @@ pub(crate) struct Capture {
     path: PathBuf,
 }
 
+struct Usr1Queue {
+    paths: Vec<PathBuf>,
+    scale: f32,
+    next: usize,
+}
+
+enum Usr1 {
+    Idle,
+    Wait,
+    Ready(PathBuf, f32),
+}
+
 thread_local! {
     static REQUEST: RefCell<Option<Request>> = const { RefCell::new(None) };
     static PENDING: RefCell<Option<Capture>> = const { RefCell::new(None) };
+    static USR1_PATHS: RefCell<Option<Usr1Queue>> = const { RefCell::new(None) };
+}
+
+static ARMED: AtomicU32 = AtomicU32::new(0);
+static TAKEN: AtomicU32 = AtomicU32::new(0);
+static WAKE_WRITE: AtomicI32 = AtomicI32::new(-1);
+static WAKE_STARTED: AtomicBool = AtomicBool::new(false);
+
+unsafe extern "C" {
+    fn pipe(fds: *mut i32) -> i32;
+    fn read(fd: i32, buf: *mut u8, count: usize) -> isize;
+    fn write(fd: i32, buf: *const u8, count: usize) -> isize;
+    fn signal(sig: i32, handler: extern "C" fn(i32)) -> usize;
+}
+
+extern "C" fn on_usr1(sig: i32) {
+    unsafe {
+        signal(sig, on_usr1);
+    }
+    ARMED.fetch_add(1, Ordering::Release);
+    let fd = WAKE_WRITE.load(Ordering::Acquire);
+    if fd >= 0 {
+        let byte = [1u8];
+        unsafe {
+            write(fd, byte.as_ptr(), 1);
+        }
+    }
+}
+
+fn sigusr1() -> i32 {
+    if cfg!(target_os = "macos") { 30 } else { 10 }
+}
+
+#[cfg(target_os = "macos")]
+fn wake_main() {
+    #[link(name = "CoreFoundation", kind = "framework")]
+    unsafe extern "C" {
+        fn CFRunLoopGetMain() -> *mut std::ffi::c_void;
+        fn CFRunLoopWakeUp(run_loop: *mut std::ffi::c_void);
+    }
+    unsafe { CFRunLoopWakeUp(CFRunLoopGetMain()) }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn wake_main() {}
+
+/// Later `SIGUSR1` signals write `paths` in order, one current frame each.
+/// The launch flags do not open a panel. The frame is whatever the live
+/// session is showing when the signal arrives.
+pub(crate) fn listen_usr1(paths: Vec<PathBuf>, scale: f32) {
+    USR1_PATHS.with(|slot| {
+        *slot.borrow_mut() = Some(Usr1Queue {
+            paths,
+            scale,
+            next: 0,
+        });
+    });
+    if WAKE_STARTED.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let mut fds = [-1i32; 2];
+    unsafe {
+        if pipe(fds.as_mut_ptr()) != 0 {
+            eprintln!("Lux: snapshot wake pipe failed");
+            return;
+        }
+        WAKE_WRITE.store(fds[1], Ordering::Release);
+        signal(sigusr1(), on_usr1);
+    }
+    let read_fd = fds[0];
+    let _ = std::thread::Builder::new()
+        .name("lux-snapshot-wake".into())
+        .spawn(move || {
+            let mut buf = [0u8; 16];
+            loop {
+                let n = unsafe { read(read_fd, buf.as_mut_ptr(), buf.len()) };
+                if n <= 0 {
+                    break;
+                }
+                wake_main();
+            }
+        });
+}
+
+pub(crate) fn usr1_waiting() -> bool {
+    ARMED.load(Ordering::Acquire) > TAKEN.load(Ordering::Acquire)
+}
+
+fn usr1_state(app: &App) -> Usr1 {
+    let armed = ARMED.load(Ordering::Acquire);
+    let taken = TAKEN.load(Ordering::Acquire);
+    if armed <= taken {
+        return Usr1::Idle;
+    }
+    if !settled(app) || !app.presentation.ready(std::time::Instant::now()) {
+        return Usr1::Wait;
+    }
+    USR1_PATHS.with(|slot| {
+        let mut queue = slot.borrow_mut();
+        let Some(queue) = queue.as_mut() else {
+            TAKEN.store(armed, Ordering::Release);
+            return Usr1::Idle;
+        };
+        if queue.next >= queue.paths.len() {
+            TAKEN.store(armed, Ordering::Release);
+            return Usr1::Idle;
+        }
+        let path = queue.paths[queue.next].clone();
+        let scale = queue.scale;
+        queue.next += 1;
+        TAKEN.fetch_add(1, Ordering::Release);
+        Usr1::Ready(path, scale)
+    })
 }
 
 pub(crate) struct FrameExtent {
@@ -91,6 +217,19 @@ pub(crate) fn present_or_capture(
 /// After a presented frame has settled, render the same scene again at the
 /// requested scale into a PNG. The on-screen window is unchanged.
 pub(crate) fn capture_settled(app: &mut App, ctx: &dyn PlatformContext) {
+    match usr1_state(app) {
+        Usr1::Wait => {
+            if let Some(gpu) = &app.gpu_window {
+                gpu.window.request_redraw();
+            }
+            return;
+        }
+        Usr1::Ready(path, scale) => {
+            render_capture(app, ctx, &path, scale);
+            return;
+        }
+        Usr1::Idle => {}
+    }
     let Some((path, scale)) = REQUEST.with(|slot| {
         let req = slot.borrow();
         let req = req.as_ref()?;
@@ -110,6 +249,10 @@ pub(crate) fn capture_settled(app: &mut App, ctx: &dyn PlatformContext) {
         }
         return;
     }
+    render_capture(app, ctx, &path, scale);
+}
+
+fn render_capture(app: &mut App, ctx: &dyn PlatformContext, path: &std::path::Path, scale: f32) {
     let Some(gpu) = app.gpu_window.as_ref() else {
         return;
     };
@@ -134,7 +277,7 @@ pub(crate) fn capture_settled(app: &mut App, ctx: &dyn PlatformContext) {
         *slot.borrow_mut() = Some(Capture {
             width,
             height,
-            path,
+            path: path.to_path_buf(),
         });
     });
     app.redraw(ctx);

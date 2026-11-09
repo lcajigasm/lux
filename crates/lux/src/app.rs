@@ -533,10 +533,14 @@ impl PlatformEventHandler for App {
         let mut settings = std::mem::take(&mut self.ui.settings);
         settings.poll_watcher(self);
         self.ui.settings = settings;
+        let waiting = crate::snapshot::usr1_waiting();
         let Some(gpu_window) = &self.gpu_window else {
             return;
         };
-        if self.presentation.ready(Instant::now()) && self.scheduler.needs_repaint(Instant::now()) {
+        if waiting
+            || (self.presentation.ready(Instant::now())
+                && self.scheduler.needs_repaint(Instant::now()))
+        {
             gpu_window.window.request_redraw();
         }
     }

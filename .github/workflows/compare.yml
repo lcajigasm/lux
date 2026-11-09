@@ -28,7 +28,7 @@ jobs:
 
       - name: Capture Lux and Sublime Text
         run: |
-          chmod +x scripts/compare-captures.sh
+          chmod +x scripts/compare-captures.sh scripts/stage-lux-app.sh
           ./scripts/compare-captures.sh
 
       - name: Upload captures
@@ -38,3 +38,11 @@ jobs:
           name: compare-captures
           path: docs/compare/*.png
           if-no-files-found: warn
+
+      - name: Upload selectors.png
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selectors.png
+          path: docs/compare/selectors.png
+          if-no-files-found: error

@@ -11,9 +11,10 @@ Committed PNGs, including `goto.png`, are copies of compare run
 If Sublime Text cannot be captured,
 the job fails and does not write a replacement image.
 
-`selectors.png` is the same job with a query typed: Lux
-(`lux --palette --query sel`), Sublime Text (`show_overlay` with
-`text: sel`), and Zed (Cmd-Shift-P, then `sel`). `goto.png` is go to
+`selectors.png` is the same job with a query typed. Lux.app is launched
+with no `--palette` and no `--query`; the job activates it and posts
+Command-Shift-P, then `sel`, as CGEvents. Sublime Text uses
+`show_overlay` with `text: sel`. Zed gets Command-Shift-P, then `sel`. `goto.png` is go to
 file with `mon`. Lux opens the fixtures directory for that shot, so the
 list is the folder index, not an empty panel from a file that has not
 loaded yet. A contiguous or word-initial match drops scattered names:
