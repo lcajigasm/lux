@@ -155,7 +155,7 @@ PY
 drive_launch "$scroll"
 sleep 0.5
 for _ in $(seq 1 40); do
-  drive_key scroll
+  drive_scroll
   sleep 0.05
 done
 sleep 0.4

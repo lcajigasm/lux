@@ -20,7 +20,12 @@ rows=()
 add() { rows+=("$1|$2|$3"); }
 
 file="$DRIVE_WORK/check.rs"
-printf 'alpha\nbeta\n' > "$file"
+python3 - "$file" << 'PY'
+import sys
+with open(sys.argv[1], "w") as f:
+    for i in range(400):
+        f.write(f"line {i}\n")
+PY
 second="$DRIVE_WORK/other.rs"
 printf 'second\n' > "$second"
 drive_launch "$file" "$second"
@@ -35,7 +40,7 @@ else
 fi
 
 before="$(drive_field scroll_y)"
-drive_key scroll
+drive_scroll
 sleep 0.4
 drive_dump
 after="$(drive_field scroll_y)"

@@ -26,6 +26,9 @@ for w in info {
     let width = (bounds["Width"] as? NSNumber)?.doubleValue ?? 0
     let height = (bounds["Height"] as? NSNumber)?.doubleValue ?? 0
     if width < 200 || height < 200 { continue }
+    let x = (bounds["X"] as? NSNumber)?.doubleValue ?? 0
+    let y = (bounds["Y"] as? NSNumber)?.doubleValue ?? 0
+    print("\(Int(x)) \(Int(y)) \(Int(width)) \(Int(height))")
     exit(0)
 }
 exit(1)
@@ -88,12 +91,23 @@ case "tap":
     post(CGKeyCode(code), true, fl)
     post(CGKeyCode(code), false, fl)
 case "scroll":
+    let x = Double(args.count > 2 ? args[2] : "400") ?? 400
+    let y = Double(args.count > 3 ? args[3] : "400") ?? 400
+    let point = CGPoint(x: x, y: y)
     let source = CGEventSource(stateID: .hidSystemState)
-    guard let wheel = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 1, wheel1: -400, wheel2: 0, wheel3: 0) else {
-        fputs("cannot build a scroll event\n", stderr)
-        exit(1)
+    if let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
+        move.post(tap: .cghidEventTap)
     }
-    wheel.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.05)
+    for delta: Int32 in [-900, 900] {
+        guard let wheel = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 1, wheel1: delta, wheel2: 0, wheel3: 0) else {
+            fputs("cannot build a scroll event\n", stderr)
+            exit(1)
+        }
+        wheel.location = point
+        wheel.post(tap: .cghidEventTap)
+        Thread.sleep(forTimeInterval: 0.02)
+    }
 default:
     fputs("unknown step\n", stderr)
     exit(2)
@@ -194,4 +208,20 @@ drive_field() {
 drive_save() {
   drive_key tap 1 cmd
   sleep 0.6
+}
+
+# One trailing newline is not part of the assertion. The editor may round
+# the fixture's final newline when it saves.
+drive_norm() {
+  local text="$1"
+  printf '%s' "${text%$'\n'}"
+}
+
+drive_scroll() {
+  local line x y w h
+  line="$(swift /tmp/lux-find-window.swift "$DRIVE_OWNER")"
+  read -r x y w h <<<"$line"
+  local cx=$((x + w / 2))
+  local cy=$((y + h / 2))
+  drive_key scroll "$cx" "$cy"
 }

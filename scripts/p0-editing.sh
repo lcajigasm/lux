@@ -95,11 +95,13 @@ sleep 0.4
 drive_dump
 text="$(drive_field text)"
 sel="$(drive_field sel)"
-if [[ "$text" != "hello " ]]; then
-  fail "word undo left $(printf %q "$text")"
+# A space opens the next undo group, and the word continues that group,
+# so one Command-Z removes " world" and puts the caret back after "hello".
+if [[ "$text" != "hello" ]]; then
+  fail "word undo left $(printf %q "$text") sel $sel"
 fi
-if [[ "$sel" != "6:6" ]]; then
-  fail "word undo selection is $sel"
+if [[ "$sel" != "5:5" ]]; then
+  fail "word undo selection is $sel text $(printf %q "$text")"
 fi
 pass "undo word"
 echo "--> editing checks done"

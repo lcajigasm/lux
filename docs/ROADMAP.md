@@ -224,7 +224,7 @@ does not fail the job. Run URLs land here after the jobs finish.
 | A9 | Block 3 chords on US, and on Spanish when the runner can select that layout. Each chord changes the file or the probe. A missing Spanish layout is `layout-unavailable`, not a pass. | pending |
 | C2 | Typed `()[]{}""` and `''`, including the skip of a closer and backspace of a pair. The saved file is the assertion. | pending |
 | C4 | `ab`, a pause, `c`, then Command-Z restores `ab` and the caret. `hello world` then Command-Z restores `hello ` and the caret. | pending |
-| E1 | A screencapture of the real window after `displayplacer` tries a scaled mode. If the runner stays 1×, the note says solo-Mac and quotes the tool. | pending |
+| E1 | solo-Mac. `displayplacer list` on macos-15 showed one 1024×768 screen, `scaling:off`, and modes from 640×480 to 1920×1080. None had `scaling:on`, so a screencapture of the window cannot be scale 2. | [42593509340](https://github.com/lcajigasm/lux/actions/runs/42593509340) |
 | I3 | `docs/receipts/p0-macos-ci.md` is written by the checklist job from that run. | pending |
 | H1 | Cold start to the first presented frame, median of 10, release binary. | pending |
 | H2 | Key event to the next presented frame, p99, 20k-line file. | pending |

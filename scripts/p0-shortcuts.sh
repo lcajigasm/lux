@@ -47,7 +47,8 @@ field_is() {
 file_is() {
   local want="$1" got
   drive_save
-  got="$(cat "$CASE_FILE")"
+  got="$(drive_norm "$(cat "$CASE_FILE")")"
+  want="$(drive_norm "$want")"
   if [[ "$got" != "$want" ]]; then
     fail "$CASE" "file is $(printf %q "$got"), wanted $(printf %q "$want")"
   fi
