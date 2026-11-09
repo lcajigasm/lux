@@ -66,7 +66,7 @@ impl DocumentSync {
             session,
             documents: StdMutex::new(HashMap::new()),
         });
-        tokio::spawn(replay_on_reconnect(Arc::downgrade(&this)));
+        crate::runtime::spawn(replay_on_reconnect(Arc::downgrade(&this)));
         this
     }
 

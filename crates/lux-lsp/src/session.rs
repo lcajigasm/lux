@@ -106,7 +106,7 @@ impl ServerSession {
         let (socket_tx, socket_rx) = watch::channel(None);
         let (diagnostics_tx, diagnostics_rx) = watch::channel(Arc::new(BTreeMap::new()));
         let (stop_tx, stop_rx) = oneshot::channel();
-        let supervisor = tokio::spawn(supervise(
+        let supervisor = crate::runtime::spawn(supervise(
             spec,
             root.clone(),
             state_tx,
@@ -470,4 +470,35 @@ fn record_progress(state_tx: &watch::Sender<ServerState>, params: ProgressParams
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::ServerSession;
+    use crate::discovery::ServerSpec;
+    use crate::sync::DocumentSync;
+
+    #[test]
+    fn opening_a_session_from_a_plain_thread_does_not_panic() {
+        let spec = ServerSpec {
+            language_id: "missing",
+            command: "lux-lsp-not-installed",
+            args: &[],
+        };
+        std::thread::spawn(move || {
+            let session = Arc::new(ServerSession::spawn(spec, std::env::temp_dir()));
+            let sync = DocumentSync::new(session.clone());
+            drop(sync);
+            crate::runtime::block_on(async move {
+                let mut rx = session.watch();
+                while !rx.borrow().status.is_terminal() {
+                    rx.changed().await.expect("state channel closed");
+                }
+            });
+        })
+        .join()
+        .expect("lsp thread panicked");
+    }
 }
