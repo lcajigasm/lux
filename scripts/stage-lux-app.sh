@@ -1,14 +1,32 @@
 #!/usr/bin/env bash
-# Wrap the debug lux binary in target/Lux.app. The evidence and compare
-# jobs launch this bundle, not a loose binary. Does not change Info.plist.
+# Wrap the lux binary in target/Lux.app. The evidence, compare, and P0
+# jobs launch this bundle. Pass --release for the performance job.
+# Does not change Info.plist.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
-bin="$root/target/debug/lux"
+profile="debug"
+build=1
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --release) profile="release" ;;
+    --no-build) build=0 ;;
+    *)
+      echo "usage: stage-lux-app.sh [--release] [--no-build]" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+bin="$root/target/$profile/lux"
 app="$root/target/Lux.app"
 
-if [[ "${1:-}" != "--no-build" || ! -x "$bin" ]]; then
-  cargo build -p lux --locked
+if [[ "$build" == 1 || ! -x "$bin" ]]; then
+  if [[ "$profile" == "release" ]]; then
+    cargo build -p lux --release --locked
+  else
+    cargo build -p lux --locked
+  fi
 fi
 if [[ ! -x "$bin" ]]; then
   echo "missing $bin" >&2

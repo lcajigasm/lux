@@ -1,0 +1,115 @@
+name: P0 macOS
+
+# Free macos-15 only. Real key events and release timings. A missed
+# performance budget is written down and does not fail the job.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shortcuts:
+    name: shortcut matrix (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Press the Block 3 chords
+        run: |
+          chmod +x scripts/p0-shortcuts.sh scripts/stage-lux-app.sh
+          ./scripts/p0-shortcuts.sh
+      - name: Upload shortcut report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shortcut-matrix
+          path: docs/evidence/shortcuts.txt
+          if-no-files-found: warn
+
+  editing:
+    name: autopair and undo (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Type pairs and undo
+        run: |
+          chmod +x scripts/p0-editing.sh scripts/stage-lux-app.sh
+          ./scripts/p0-editing.sh
+      - name: Upload editing report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editing-report
+          path: docs/evidence/editing.txt
+          if-no-files-found: warn
+
+  hidpi:
+    name: retina window (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Try a scale-2 framebuffer
+        run: |
+          chmod +x scripts/p0-hidpi.sh scripts/stage-lux-app.sh
+          ./scripts/p0-hidpi.sh
+      - name: Upload HiDPI note
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e1-hidpi
+          path: |
+            docs/evidence/e1-hidpi.txt
+            docs/evidence/e1-window.png
+          if-no-files-found: warn
+
+  checklist:
+    name: parity checklist (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Run the checklist
+        run: |
+          chmod +x scripts/p0-checklist.sh scripts/stage-lux-app.sh
+          ./scripts/p0-checklist.sh
+      - name: Upload receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-receipt
+          path: docs/receipts/p0-macos-ci.md
+          if-no-files-found: error
+
+  perf:
+    name: release timings (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Measure the release binary
+        run: |
+          chmod +x scripts/p0-perf.sh scripts/stage-lux-app.sh
+          ./scripts/p0-perf.sh
+      - name: Upload timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-macos
+          path: |
+            docs/evidence/perf.md
+            docs/evidence/perf-raw.txt
+          if-no-files-found: warn

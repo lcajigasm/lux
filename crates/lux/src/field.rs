@@ -36,6 +36,10 @@ impl QueryField {
         }
     }
 
+    pub(crate) fn text(&self) -> &str {
+        &self.text
+    }
+
     pub(crate) fn from_text(text: impl Into<String>) -> Self {
         let text = text.into();
         let caret = text.chars().count();

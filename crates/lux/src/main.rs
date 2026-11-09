@@ -33,6 +33,7 @@ mod palette;
 mod pane_view;
 mod plugin;
 mod presentation;
+mod probe;
 mod project;
 mod project_search;
 mod render;
@@ -53,6 +54,7 @@ mod ui;
 mod desktop_pass;
 
 fn main() {
+    probe::mark_process_start();
     lux_pack::install_panic_hook();
     let (path, font_bytes) = font::load_system_monospace_font().expect(
         "no known system monospace font was found — see \
@@ -68,6 +70,8 @@ fn main() {
     let mut snapshot: Option<std::path::PathBuf> = None;
     let mut snapshot_on_usr1: Vec<std::path::PathBuf> = Vec::new();
     let mut snapshot_scale = 2.0_f32;
+    let mut probe: Option<std::path::PathBuf> = None;
+    let mut bench_open: Option<std::path::PathBuf> = None;
     let mut positionals: Vec<std::path::PathBuf> = Vec::new();
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
@@ -88,6 +92,8 @@ fn main() {
             println!("  --snapshot PATH  Write one offscreen PNG of this window");
             println!("  --snapshot-on-usr1 PATH  Write that PNG when SIGUSR1 arrives");
             println!("  --snapshot-scale N  Scale factor for that PNG (default 2)");
+            println!("  --probe PATH  Write editor state when SIGUSR2 arrives");
+            println!("  --bench-open PATH  Open that file on the first SIGUSR2");
             return;
         }
         if arg_str == "--version" || arg_str == "-v" {
@@ -142,6 +148,22 @@ fn main() {
             snapshot_scale = value.to_string_lossy().parse().unwrap_or(2.0);
             continue;
         }
+        if arg_str == "--probe" {
+            let Some(value) = args.next() else {
+                eprintln!("Usage: lux --probe PATH");
+                std::process::exit(2);
+            };
+            probe = Some(std::path::PathBuf::from(value));
+            continue;
+        }
+        if arg_str == "--bench-open" {
+            let Some(value) = args.next() else {
+                eprintln!("Usage: lux --bench-open PATH");
+                std::process::exit(2);
+            };
+            bench_open = Some(std::path::PathBuf::from(value));
+            continue;
+        }
         positionals.push(std::path::PathBuf::from(arg));
     }
     if let Err(message) = apply_positionals(&mut app, &positionals) {
@@ -162,6 +184,8 @@ fn main() {
     } else if let Some(path) = snapshot {
         snapshot::request(path, snapshot_scale);
     }
+    probe::configure(probe, bench_open);
+    probe::listen();
     lux_platform::desktop::run(app).expect("desktop event loop failed");
 }
 
