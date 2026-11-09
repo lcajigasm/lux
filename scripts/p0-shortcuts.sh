@@ -90,10 +90,12 @@ run_matrix() {
   begin skip "one one"$'\n'
   drive_key tap 2 cmd
   sleep 0.2
-  drive_key tap 40 cmd
-  sleep 0.15
-  drive_key tap 2 cmd
-  sleep 0.2
+  drive_chord cmd 40 2
+  sleep 0.3
+  drive_dump
+  if [[ "$(drive_field sel)" == *,* ]]; then
+    fail "$CASE" "skip kept both selections ($(drive_field sel)) text $(drive_field text)"
+  fi
   drive_key type Z
   sleep 0.2
   file_is "one Z"$'\n'

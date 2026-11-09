@@ -299,6 +299,15 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         u8::from(app.ui.project_search.is_some()),
         u8::from(app.ui.settings.panel.is_some()),
     ));
+    let chord = app
+        .ui
+        .pending_chord
+        .as_ref()
+        .map(|pending| pending.to_string())
+        .unwrap_or_default();
+    out.push_str("chord=");
+    out.push_str(&escape(&chord));
+    out.push('\n');
     out.push_str(&format!(
         "panes={}\ntabs={}\nsidebar={}\nscroll_y={}\n",
         app.ui.split.preset.num_panes(),

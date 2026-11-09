@@ -90,24 +90,43 @@ case "tap":
     let fl = flags(args[3])
     post(CGKeyCode(code), true, fl)
     post(CGKeyCode(code), false, fl)
+case "chord":
+    // Hold the modifiers, then tap each key. A two-step chord such as
+    // Command-K Command-D is one held Command, not two separate taps.
+    guard args.count >= 4 else { exit(2) }
+    let fl = flags(args[2])
+    if fl.contains(.maskCommand) { post(55, true, []) }
+    if fl.contains(.maskShift) { post(56, true, []) }
+    if fl.contains(.maskAlternate) { post(58, true, []) }
+    if fl.contains(.maskControl) { post(59, true, []) }
+    Thread.sleep(forTimeInterval: 0.05)
+    for raw in args.dropFirst(3) {
+        guard let code = UInt16(raw) else { exit(2) }
+        post(CGKeyCode(code), true, fl)
+        Thread.sleep(forTimeInterval: 0.03)
+        post(CGKeyCode(code), false, fl)
+        Thread.sleep(forTimeInterval: 0.08)
+    }
+    if fl.contains(.maskControl) { post(59, false, []) }
+    if fl.contains(.maskAlternate) { post(58, false, []) }
+    if fl.contains(.maskShift) { post(56, false, []) }
+    if fl.contains(.maskCommand) { post(55, false, []) }
 case "scroll":
     let x = Double(args.count > 2 ? args[2] : "400") ?? 400
     let y = Double(args.count > 3 ? args[3] : "400") ?? 400
+    let lines = Int32(args.count > 4 ? args[4] : "-8") ?? -8
     let point = CGPoint(x: x, y: y)
     let source = CGEventSource(stateID: .hidSystemState)
     if let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
         move.post(tap: .cghidEventTap)
     }
     Thread.sleep(forTimeInterval: 0.05)
-    for delta: Int32 in [-900, 900] {
-        guard let wheel = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 1, wheel1: delta, wheel2: 0, wheel3: 0) else {
-            fputs("cannot build a scroll event\n", stderr)
-            exit(1)
-        }
-        wheel.location = point
-        wheel.post(tap: .cghidEventTap)
-        Thread.sleep(forTimeInterval: 0.02)
+    guard let wheel = CGEvent(scrollWheelEvent2Source: source, units: .line, wheelCount: 1, wheel1: lines, wheel2: 0, wheel3: 0) else {
+        fputs("cannot build a scroll event\n", stderr)
+        exit(1)
     }
+    wheel.location = point
+    wheel.post(tap: .cghidEventTap)
 default:
     fputs("unknown step\n", stderr)
     exit(2)
@@ -218,10 +237,15 @@ drive_norm() {
 }
 
 drive_scroll() {
+  local lines="${1:--8}"
   local line x y w h
   line="$(swift /tmp/lux-find-window.swift "$DRIVE_OWNER")"
   read -r x y w h <<<"$line"
   local cx=$((x + w / 2))
   local cy=$((y + h / 2))
-  drive_key scroll "$cx" "$cy"
+  drive_key scroll "$cx" "$cy" "$lines"
+}
+
+drive_chord() {
+  drive_key chord "$@"
 }

@@ -40,10 +40,16 @@ else
 fi
 
 before="$(drive_field scroll_y)"
-drive_scroll
-sleep 0.4
+drive_scroll -8
+sleep 0.5
 drive_dump
 after="$(drive_field scroll_y)"
+if [[ "$before" == "$after" ]]; then
+  drive_scroll 8
+  sleep 0.5
+  drive_dump
+  after="$(drive_field scroll_y)"
+fi
 if [[ "$before" != "$after" ]]; then
   add "Scroll" "covered" "scroll_y $before -> $after"
 else
@@ -51,7 +57,7 @@ else
 fi
 
 drive_key tap 35 cmd
-sleep 0.3
+sleep 0.5
 drive_dump
 if [[ "$(drive_field goto)" == 1 ]]; then
   add "Cmd+P" "covered" "goto panel opened"
@@ -59,9 +65,9 @@ else
   add "Cmd+P" "failed" "goto=$(drive_field goto)"
 fi
 drive_key tap 53 none
-sleep 0.2
-drive_key tap 35 cmd,shift
 sleep 0.3
+drive_key tap 35 cmd,shift
+sleep 0.5
 drive_dump
 if [[ "$(drive_field palette)" == 1 ]]; then
   add "Cmd+Shift+P" "covered" "palette opened"
