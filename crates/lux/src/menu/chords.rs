@@ -164,6 +164,34 @@ pub(crate) fn claim_menu(action: MenuAction) -> bool {
     claim(action, Source::Menu)
 }
 
+/// The command a pending chord plus this menu key completes, if any.
+///
+/// The menu key equivalent runs before the view sees the key. `Cmd+D` is
+/// both "select next" and the second half of `Cmd+K Cmd+D`, so the menu
+/// has to finish the chord instead of selecting another match.
+pub(crate) fn menu_completes_pending(
+    keymap: &lux_config::Keymap,
+    pending: &lux_config::Chord,
+    action: MenuAction,
+) -> Option<String> {
+    let letter = key(action);
+    if letter.is_empty() {
+        return None;
+    }
+    let shift = letter.chars().next()?.is_ascii_uppercase();
+    let second = lux_config::Chord {
+        ctrl: false,
+        alt: false,
+        shift,
+        cmd: true,
+        key: letter.to_ascii_lowercase(),
+    };
+    let sequence = lux_config::ChordSequence(vec![pending.clone(), second]);
+    keymap
+        .command_for(&sequence, lux_config::Platform::Mac)
+        .map(str::to_owned)
+}
+
 pub(crate) fn claim_key(action: MenuAction) -> bool {
     claim(action, Source::Key)
 }
@@ -211,6 +239,17 @@ mod tests {
         assert_eq!(key(MenuAction::Copy), "c");
         assert_eq!(key(MenuAction::Paste), "v");
         assert_eq!(key(MenuAction::SelectAll), "a");
+    }
+
+    #[test]
+    fn command_d_after_command_k_is_skip_not_another_match() {
+        let keymap = lux_config::keymap::presets::sublime();
+        let pending: lux_config::Chord = "cmd+k".parse().unwrap();
+        let command =
+            menu_completes_pending(&keymap, &pending, MenuAction::AddNextOccurrence).unwrap();
+        assert_eq!(command, "skip_next_occurrence");
+        let other: lux_config::Chord = "cmd+b".parse().unwrap();
+        assert!(menu_completes_pending(&keymap, &other, MenuAction::AddNextOccurrence).is_none());
     }
 
     #[test]

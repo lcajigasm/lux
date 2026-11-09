@@ -39,23 +39,6 @@ else
   add "Tabs" "failed" "probe tabs=$tabs"
 fi
 
-before="$(drive_field scroll_y)"
-drive_scroll -8
-sleep 0.5
-drive_dump
-after="$(drive_field scroll_y)"
-if [[ "$before" == "$after" ]]; then
-  drive_scroll 8
-  sleep 0.5
-  drive_dump
-  after="$(drive_field scroll_y)"
-fi
-if [[ "$before" != "$after" ]]; then
-  add "Scroll" "covered" "scroll_y $before -> $after"
-else
-  add "Scroll" "failed" "scroll_y stayed $before"
-fi
-
 drive_key tap 35 cmd
 sleep 0.5
 drive_dump
@@ -73,6 +56,25 @@ if [[ "$(drive_field palette)" == 1 ]]; then
   add "Cmd+Shift+P" "covered" "palette opened"
 else
   add "Cmd+Shift+P" "failed" "palette=$(drive_field palette)"
+fi
+drive_key tap 53 none
+sleep 0.2
+
+before="$(drive_field scroll_y)"
+drive_scroll -8
+sleep 0.5
+drive_dump
+after="$(drive_field scroll_y)"
+if [[ "$before" == "$after" ]]; then
+  drive_scroll 8
+  sleep 0.5
+  drive_dump
+  after="$(drive_field scroll_y)"
+fi
+if [[ "$before" != "$after" ]]; then
+  add "Scroll" "covered" "scroll_y $before -> $after"
+else
+  add "Scroll" "failed" "scroll_y stayed $before"
 fi
 
 menu_err="$DRIVE_WORK/menu.err"
