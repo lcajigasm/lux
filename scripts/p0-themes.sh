@@ -60,7 +60,10 @@ snap_theme() {
   HOME="$home" "$bin" --snapshot "$png" --snapshot-scale 2 "$sample" >"$work/$slug.log" 2>&1 &
   local pid=$!
   local _
-  for _ in $(seq 1 40); do
+  # The PNG is written after the file is open and the frame has settled.
+  # A busy macos-15 runner can take longer than a few seconds; the process
+  # is still working. Stop early only when it exits. 45s is the hang cap.
+  for _ in $(seq 1 180); do
     if [[ -s "$png" ]]; then
       break
     fi
