@@ -39,33 +39,6 @@ else
   add "Tabs" "failed" "probe tabs=$tabs"
 fi
 
-drive_key tap 35 cmd
-sleep 0.5
-drive_dump
-if [[ "$(drive_field goto)" == 1 ]]; then
-  add "Cmd+P" "covered" "goto panel opened"
-else
-  add "Cmd+P" "failed" "goto=$(drive_field goto) palette=$(drive_field palette)"
-fi
-drive_key tap 53 none
-sleep 0.3
-drive_key tap 35 cmd,shift
-sleep 0.5
-drive_dump
-if [[ "$(drive_field palette)" == 1 ]]; then
-  add "Cmd+Shift+P" "covered" "palette opened"
-else
-  add "Cmd+Shift+P" "failed" "palette=$(drive_field palette) goto=$(drive_field goto)"
-fi
-drive_key tap 53 none
-sleep 0.2
-drive_dump
-if [[ "$(drive_field goto)" == 1 || "$(drive_field palette)" == 1 ]]; then
-  drive_key tap 53 none
-  sleep 0.2
-  drive_dump
-fi
-
 before="$(drive_field scroll_y)"
 drive_scroll -8
 sleep 0.5
@@ -91,6 +64,29 @@ else
 fi
 
 drive_stop
+
+# Each panel is its own window, same as the shortcut matrix. In one long
+# session the second chord arrived as Command-P: Goto Anything closed and
+# the palette stayed shut. The required probe values are unchanged.
+panel() {
+  local name="$1" mods="$2" field="$3" evidence="$4"
+  local one="$DRIVE_WORK/panel.rs"
+  printf 'fn main() {}\n' > "$one"
+  drive_launch "$one"
+  sleep 0.4
+  drive_key tap 35 "$mods"
+  sleep 0.4
+  drive_dump
+  if [[ "$(drive_field "$field")" == 1 ]]; then
+    add "$name" "covered" "$evidence"
+  else
+    add "$name" "failed" "$field=$(drive_field "$field") goto=$(drive_field goto) palette=$(drive_field palette)"
+  fi
+  drive_stop
+}
+panel "Cmd+P" cmd goto "goto panel opened"
+panel "Cmd+Shift+P" cmd,shift palette "palette opened"
+
 dir="$DRIVE_WORK/folder"
 mkdir -p "$dir"
 printf 'x\n' > "$dir/a.rs"
