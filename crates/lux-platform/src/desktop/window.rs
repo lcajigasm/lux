@@ -50,6 +50,10 @@ impl PlatformWindow for DesktopWindow {
         self.window.request_redraw();
     }
 
+    fn focus(&self) {
+        self.window.focus_window();
+    }
+
     fn pre_present_notify(&self) {
         self.window.pre_present_notify();
     }

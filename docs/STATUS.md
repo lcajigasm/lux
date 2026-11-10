@@ -76,6 +76,11 @@
 > line to the release `SHA256SUMS`. It starts when that GitHub Release is published,
 > or on `workflow_dispatch`. It does not run on pull request, branch push, or
 > tag push, so the Linux workflow does not start a second macOS job.
+> The bundle also contains `Contents/SharedSupport/bin/lux`. That command
+> returns after handing its paths to the running editor, or it starts
+> `Contents/MacOS/lux` when none is running. A second `lux file` on Unix
+> does the same handoff. `--probe`, `--snapshot`, and `--bench-open` stay
+> in the process that received them.
 > The repository is public. These jobs use standard runners only.
 > Windows `.msi` stays `scripts/package-msi.ps1` (unsigned WiX).
 > `pages.yml` deploys `site/` on push to `main` and on `workflow_dispatch`.

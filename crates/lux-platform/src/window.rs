@@ -66,6 +66,9 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn safe_area_insets(&self) -> SafeAreaInsets;
     fn set_title(&self, title: &str);
     fn request_redraw(&self);
+    /// Asks the OS to bring this window forward. A later `lux` command
+    /// uses it after handing paths to the editor that is already running.
+    fn focus(&self) {}
     /// Must be called right before presenting a frame, so the platform can
     /// synchronize compositing (matches `winit`'s `pre_present_notify`).
     fn pre_present_notify(&self);

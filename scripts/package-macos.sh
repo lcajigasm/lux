@@ -82,6 +82,9 @@ mkdir -p "$app_path/Contents/Resources"
 
 cp "$bin" "$app_path/Contents/MacOS/lux"
 chmod +x "$app_path/Contents/MacOS/lux"
+mkdir -p "$app_path/Contents/SharedSupport/bin"
+cp "$bin" "$app_path/Contents/SharedSupport/bin/lux"
+chmod +x "$app_path/Contents/SharedSupport/bin/lux"
 # Two release trees plus the disk-image scratch exhausted the runner
 # (hdiutil: No space left on device, runs 41335548609 and 41341898224).
 # Deleting only the arch directories still left the cargo registry and
@@ -219,6 +222,19 @@ fi
 
 echo "--> Verifying mounted binary execution..."
 "$mounted/$app_name/Contents/MacOS/lux" --help 2>&1 || true
+cli="$mounted/$app_name/Contents/SharedSupport/bin/lux"
+if [[ ! -x "$cli" ]]; then
+  echo "Error: CLI executable missing inside mounted DMG!" >&2
+  exit 1
+fi
+version_line="$("$cli" --version)"
+case "$version_line" in
+  lux\ *) ;;
+  *)
+    echo "Error: CLI --version printed: $version_line" >&2
+    exit 1
+    ;;
+esac
 
 hdiutil detach "$mounted"
 mounted=""
