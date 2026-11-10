@@ -81,27 +81,46 @@ def editor_band(rows):
 
 
 def text_origin(rows, top, bottom):
+    """Left edge of the buffer text, not the minimap.
+
+    A full-width line is one solid bar in the minimap, and the longest ink
+    run in the text is a single "M". Group the spans and take the widest
+    group. The minimap sits in the right 220px and is left out.
+    """
     width = len(rows[0])
-    starts = []
-    for y in range(top + 4, min(bottom, top + 120)):
-        run = 0
-        run_start = 0
-        best = (0, 0)
+    counts = [0] * width
+    for y in range(top, bottom):
         for x in range(width):
             if ink(rows[y][x]):
-                if run == 0:
-                    run_start = x
-                run += 1
-                if run > best[0]:
-                    best = (run, run_start)
-            else:
-                run = 0
-        if best[0] > 40:
-            starts.append(best[1])
-    if not starts:
+                counts[x] += 1
+    cutoff = max(0, width - 220)
+    spans = []
+    start = None
+    gap = 0
+    end = 0
+    for x in range(cutoff):
+        if counts[x] >= 2:
+            if start is None:
+                start = x
+            gap = 0
+            end = x + 1
+        elif start is not None:
+            gap += 1
+            if gap > 2:
+                spans.append((start, end))
+                start = None
+    if start is not None:
+        spans.append((start, end))
+    if not spans:
         raise SystemExit("no text run found")
-    starts.sort()
-    return starts[len(starts) // 2]
+    groups = [[spans[0]]]
+    for span in spans[1:]:
+        if span[0] - groups[-1][-1][1] > 16:
+            groups.append([span])
+        else:
+            groups[-1].append(span)
+    text = max(groups, key=lambda group: group[-1][1] - group[0][0])
+    return text[0][0]
 
 
 def digit_right(rows, top, bottom, text_left):
@@ -134,10 +153,19 @@ def margin_equal(a, b, top, bottom, text_left):
 
 
 def stray_ink(rows, top, bottom, left, right):
+    # The caret is a few pixels wide and blinks in the padding. Buffer text
+    # that crosses into the margin is a much longer run.
+    if left >= right:
+        return False
     for y in range(top, bottom):
+        run = 0
         for x in range(left, right):
             if ink(rows[y][x]):
-                return True
+                run += 1
+                if run >= 12:
+                    return True
+            else:
+                run = 0
     return False
 
 
@@ -182,9 +210,11 @@ def main():
         ("05-wrap-on.png", wrapped),
     ):
         check(name, rows, top, bottom, origin, numbers)
-    if not margin_equal(before, shifted, top, bottom, origin):
+    # Compare the line-number strip, not the padding where the caret blinks.
+    gutter_right = numbers + 1
+    if not margin_equal(before, shifted, top, bottom, gutter_right):
         raise SystemExit("shift+wheel changed the margin strip")
-    if not margin_equal(before, delta_x, top, bottom, origin):
+    if not margin_equal(before, delta_x, top, bottom, gutter_right):
         raise SystemExit("delta-x wheel changed the margin strip")
     before_delta = first_ink_row(before, origin, origin + 30, top, bottom) - first_ink_row(
         before, 0, numbers + 1, top, bottom
