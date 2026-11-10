@@ -28,7 +28,7 @@ pub(crate) mod split;
 mod status_bar;
 mod tab_bar;
 mod term;
-mod text;
+pub(crate) mod text;
 mod theme_picker;
 mod window;
 
@@ -104,7 +104,7 @@ impl App {
         let gutter_total_width = if is_df {
             0.0
         } else {
-            frame.gutter_width + 16.0 * *scale_factor
+            text::gutter_total_width(frame.gutter_width, *scale_factor)
         };
         let text_left = if is_df {
             let col_chars = ui

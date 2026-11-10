@@ -211,7 +211,179 @@ def check(name, rows, top, bottom, origin, numbers):
         raise SystemExit(f"{name}: line numbers are not visible")
 
 
+def is_marker(pixel, background):
+    if dist(pixel, background) <= 18:
+        return False
+    red, green, blue = pixel
+    added = green > red + 35 and green > blue + 15 and green > 80
+    modified = blue > red + 35 and blue > green + 20 and blue > 80
+    removed = red > green + 40 and red > blue + 40 and red > 100
+    return added or modified or removed
+
+
+def editor_strip(rows):
+    """Gutter background and the rows that are the editor, not the chrome."""
+    height = len(rows)
+    column = [rows[y][1] for y in range(height)]
+    sample = column[height // 5 : 4 * height // 5]
+    background = max(set(sample), key=sample.count)
+    top = next(y for y in range(height) if dist(rows[y][1], background) <= 8)
+    bottom = height
+    for y in range(height - 1, top, -1):
+        if dist(rows[y][1], background) <= 8:
+            bottom = y + 1
+            break
+    return background, top, bottom
+
+
+def assert_digit_margin(name, rows):
+    """Leftmost digit column has >= 1px of gutter, and nothing covers a glyph.
+
+    The settings-palette shots use `fn theme_probe` / `let n = 1;`. A new
+    file in the repo paints a change marker beside the numbers. The marker
+    used to start inside the units digit, so "10" read as "1(" and a single
+    digit was cut in half.
+    """
+    background, top, bottom = editor_strip(rows)
+    width = len(rows[0])
+    limit = min(width, 180)
+    digit_cols = []
+    for x in range(limit):
+        digits = 0
+        marks = 0
+        for y in range(top, bottom):
+            pixel = rows[y][x]
+            if dist(pixel, background) <= 18:
+                continue
+            if is_marker(pixel, background):
+                marks += 1
+            else:
+                digits += 1
+        if digits >= 8 and digits > marks:
+            digit_cols.append(x)
+    if not digit_cols:
+        raise SystemExit(f"{name}: line numbers are not visible")
+    left = digit_cols[0]
+    right = left
+    for x in digit_cols:
+        if x - right > 8:
+            break
+        right = x
+    if left < 1:
+        raise SystemExit(f"{name}: digit column starts at x={left}, want a margin of at least 1px")
+    # Only the rows that hold a digit. A chrome rule above the first line
+    # is not the digit column.
+    for y in range(top, bottom):
+        on_digit = False
+        for x in range(left, right + 1):
+            pixel = rows[y][x]
+            if dist(pixel, background) > 18 and not is_marker(pixel, background):
+                on_digit = True
+                break
+        if not on_digit:
+            continue
+        # A chrome rule crosses the whole strip. A digit does not.
+        span = sum(
+            1
+            for x in range(min(90, len(rows[0])))
+            if dist(rows[y][x], background) > 18 and not is_marker(rows[y][x], background)
+        )
+        if span > 40:
+            continue
+        for x in range(left):
+            pixel = rows[y][x]
+            if dist(pixel, background) > 18 and not is_marker(pixel, background):
+                raise SystemExit(f"{name}: digit row y={y} has ink at x={x}")
+    gap = None
+    for x in range(right + 1, min(width, right + 80)):
+        for y in range(top, bottom, 2):
+            if dist(rows[y][x], background) > 18:
+                gap = x - right - 1
+                break
+        if gap is not None:
+            break
+    if gap is None:
+        raise SystemExit(f"{name}: no gutter edge after the digits")
+    if gap < 1:
+        raise SystemExit(
+            f"{name}: digits clipped at x={right}, next ink is {gap}px away (want >= 1)"
+        )
+    print(f"{name}: digit margin x={left}..{right} gap={gap}px")
+
+
+def load_any_png(path: Path):
+    data = path.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise SystemExit(f"{path} is not a PNG")
+    pos = 8
+    width = height = None
+    idat = b""
+    color = depth = None
+    while pos + 8 <= len(data):
+        (length,) = struct.unpack(">I", data[pos : pos + 4])
+        kind = data[pos + 4 : pos + 8]
+        chunk = data[pos + 8 : pos + 8 + length]
+        pos += 12 + length
+        if kind == b"IHDR":
+            width, height = struct.unpack(">II", chunk[:8])
+            depth, color = chunk[8], chunk[9]
+        elif kind == b"IDAT":
+            idat += chunk
+        elif kind == b"IEND":
+            break
+    if color != 6 or depth != 8:
+        raise SystemExit(f"{path} is not 8-bit RGBA")
+    raw = zlib.decompress(idat)
+    bpp = 4
+    stride = width * bpp
+    rows = []
+    prev = bytearray(stride)
+    index = 0
+
+    def paeth(left, up, corner):
+        estimate = left + up - corner
+        la, ua, ca = abs(estimate - left), abs(estimate - up), abs(estimate - corner)
+        if la <= ua and la <= ca:
+            return left
+        if ua <= ca:
+            return up
+        return corner
+
+    for _ in range(height):
+        filt = raw[index]
+        index += 1
+        row = bytearray(raw[index : index + stride])
+        index += stride
+        if filt == 1:
+            for x in range(stride):
+                left = row[x - bpp] if x >= bpp else 0
+                row[x] = (row[x] + left) & 255
+        elif filt == 2:
+            for x in range(stride):
+                row[x] = (row[x] + prev[x]) & 255
+        elif filt == 3:
+            for x in range(stride):
+                left = row[x - bpp] if x >= bpp else 0
+                row[x] = (row[x] + ((left + prev[x]) // 2)) & 255
+        elif filt == 4:
+            for x in range(stride):
+                left = row[x - bpp] if x >= bpp else 0
+                up = prev[x]
+                corner = prev[x - bpp] if x >= bpp else 0
+                row[x] = (row[x] + paeth(left, up, corner)) & 255
+        elif filt != 0:
+            raise SystemExit(f"{path} uses PNG filter {filt}")
+        prev = row
+        rows.append([tuple(row[x * 4 : x * 4 + 3]) for x in range(width)])
+    return rows
+
+
 def main():
+    if len(sys.argv) >= 3 and sys.argv[1] == "--margin":
+        for name in sys.argv[2:]:
+            assert_digit_margin(name, load_any_png(Path(name)))
+        print("digit margin ok")
+        return
     folder = Path(sys.argv[1])
     before = load_png(folder / "01-before.png")[2]
     shifted = load_png(folder / "02-after-shift-wheel.png")[2]
@@ -256,6 +428,14 @@ def main():
     wrap_gap = wrapped_numbers[1][0] - wrapped_numbers[0][0]
     if wrap_gap < plain_gap * 2:
         raise SystemExit(f"wrap did not stack the long line ({plain_gap} -> {wrap_gap})")
+    for name, rows in (
+        ("01-before.png", before),
+        ("02-after-shift-wheel.png", shifted),
+        ("03-after-delta-x.png", delta_x),
+        ("04-after-vertical.png", vertical),
+        ("05-wrap-on.png", wrapped),
+    ):
+        assert_digit_margin(name, rows)
     print("gutter pixels ok")
 
 

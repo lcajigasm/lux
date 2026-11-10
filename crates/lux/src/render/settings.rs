@@ -8,7 +8,7 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::render::paint::{color, overlay_text, push_glyph};
-use crate::render::panel::selected_fill;
+use crate::render::panel::settings_selection;
 use crate::settings::layout::{
     ControlGeom, SettingsBounds, SettingsLayout, format_number, layout_settings,
 };
@@ -45,7 +45,7 @@ pub(crate) fn render_settings_panel(
     let scale = layout.scale;
     let page_fill = color(theme.chrome.panel);
     let border = color(theme.chrome.border);
-    let row_fill = selected_fill(theme);
+    let row_fill = settings_selection(theme);
     let well = super::panel::distinct_fill(color(theme.chrome.panel_input), page_fill);
     let label_on_page = super::panel::label_ink(theme, page_fill);
     let hint_on_page = super::panel::hint_ink(theme, page_fill);
@@ -108,7 +108,7 @@ pub(crate) fn render_settings_panel(
         if index == panel.category && panel.query.is_empty() {
             quad_instances.push(QuadInstance::rounded(
                 [rect.x, rect.y, rect.w, rect.h],
-                selected_fill(theme),
+                row_fill,
                 6.0 * scale,
             ));
         }
@@ -182,7 +182,7 @@ pub(crate) fn render_settings_panel(
         {
             quad_instances.push(QuadInstance::rounded(
                 [selection.x, selection.y, selection.w, selection.h],
-                selected_fill(theme),
+                row_fill,
                 8.0 * scale,
             ));
         }
@@ -238,6 +238,7 @@ pub(crate) fn render_settings_panel(
             well,
             border,
             on_track,
+            page_fill,
             quad_instances,
             glyph_instances,
         );
@@ -280,12 +281,14 @@ fn paint_control(
     well: [f32; 4],
     border: [f32; 4],
     on_track: [f32; 4],
+    page: [f32; 4],
     quads: &mut Vec<QuadInstance>,
     glyphs: &mut Vec<GlyphInstance>,
 ) {
     match (kind, geom) {
         (SettingKind::Boolean { value }, ControlGeom::Toggle { track, knob }) => {
-            let fill = if *value { on_track } else { border };
+            let fill = super::panel::toggle_track(if *value { on_track } else { border }, page);
+            let knob_fill = super::panel::toggle_knob(foreground, fill);
             quads.push(QuadInstance::rounded(
                 [track.x, track.y, track.w, track.h],
                 fill,
@@ -293,7 +296,7 @@ fn paint_control(
             ));
             quads.push(QuadInstance::rounded(
                 [knob.x, knob.y, knob.w, knob.h],
-                foreground,
+                knob_fill,
                 knob.h * 0.5,
             ));
         }
@@ -445,7 +448,7 @@ fn paint_menu(
                     rect.w,
                     (rect.h - 2.0 * scale).max(1.0),
                 ],
-                selected_fill(theme),
+                settings_selection(theme),
                 5.0 * scale,
             ));
         }
@@ -461,7 +464,7 @@ fn paint_menu(
             rect.x + 8.0 * scale,
             rect.y + (rect.h - 13.0 * scale) * 0.5,
             if highlight == Some(index) {
-                super::panel::label_ink(theme, selected_fill(theme))
+                super::panel::label_ink(theme, settings_selection(theme))
             } else {
                 foreground
             },

@@ -47,7 +47,7 @@ impl App {
         let digits = self.buffer.len_lines().max(1).to_string().len();
         let gutter_w = self.editor_view.reference_width(&"0".repeat(digits));
         let left_padding = if self.ui.split.is_active() {
-            22.0 * self.scale_factor
+            crate::render::text::gutter_number_pad(self.scale_factor) + 22.0 * self.scale_factor
         } else {
             self.text_left() - self.sidebar_width() - gutter_w
         };
@@ -91,7 +91,8 @@ impl App {
         if self.fold_state.is_line_folded(position.line) {
             let digits = self.buffer.len_lines().max(1).to_string().len();
             let gutter_w = self.editor_view.reference_width(&"0".repeat(digits));
-            let text_left = gutter_w + 22.0 * self.scale_factor;
+            let text_left = crate::render::text::gutter_total_width(gutter_w, self.scale_factor)
+                + 6.0 * self.scale_factor;
             let line_content = self.buffer.line_content(position.line).unwrap_or_default();
             let trimmed = line_content.trim_end_matches(['\r', '\n']);
             let text_w = self.editor_view.reference_width(trimmed);

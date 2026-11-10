@@ -186,6 +186,11 @@ sleep 0.3
 drive_key chars "th"
 sleep 0.3
 capture "$out/palette-solarized-light.png"
+python3 "$root/scripts/gutter_pixels.py" --margin \
+  "$out/palette-monokai.png" \
+  "$out/palette-solarized-light.png" \
+  || fail "line numbers are clipped"
+pass "line numbers keep a 1px margin"
 drive_key tap 53 ""
 sleep 0.2
 

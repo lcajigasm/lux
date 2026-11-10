@@ -220,3 +220,31 @@ pub(crate) fn render_command_palette(
     }
     crate::overlay_motion::note_if_animating(&palette.motion, now);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::panel::push_rounded_surface;
+
+    #[test]
+    fn a_card_shadow_is_a_soft_halo() {
+        let cases = [
+            ([0.93, 0.91, 0.84, 1.0], 0.22_f32),
+            ([0.16, 0.16, 0.14, 1.0], 0.30),
+        ];
+        for (fill, cap) in cases {
+            let mut quads = Vec::new();
+            push_rounded_surface(
+                &mut quads,
+                [10.0, 20.0, 400.0, 300.0],
+                12.0,
+                fill,
+                fill,
+                40.0,
+                2.0,
+            );
+            let shadows: Vec<_> = quads.iter().filter(|quad| quad.color[3] < 0.5).collect();
+            assert!(shadows.len() >= 3, "{}", shadows.len());
+            assert!(shadows.iter().all(|quad| quad.color[3] <= cap));
+        }
+    }
+}

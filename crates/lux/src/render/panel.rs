@@ -54,6 +54,51 @@ pub(crate) fn selected_fill(theme: &lux_ui::Theme) -> [f32; 4] {
     color(theme.chrome.panel_row)
 }
 
+pub(crate) fn settings_selection(theme: &lux_ui::Theme) -> [f32; 4] {
+    contrasting_fill(selected_fill(theme), color(theme.chrome.sidebar))
+}
+
+pub(crate) fn contrasting_fill(fill: [f32; 4], against: [f32; 4]) -> [f32; 4] {
+    const MIN: f32 = 3.05;
+    if contrast_ratio(fill, against) >= MIN {
+        return fill;
+    }
+    let sum = against[0] + against[1] + against[2];
+    let target = if sum >= 1.5 {
+        [0.0, 0.0, 0.0, 1.0]
+    } else {
+        [1.0, 1.0, 1.0, 1.0]
+    };
+    let mut best = fill;
+    let mut best_ratio = contrast_ratio(fill, against);
+    for step in 1..=24 {
+        let t = step as f32 / 24.0;
+        let mixed = [
+            fill[0] + (target[0] - fill[0]) * t,
+            fill[1] + (target[1] - fill[1]) * t,
+            fill[2] + (target[2] - fill[2]) * t,
+            1.0,
+        ];
+        let ratio = contrast_ratio(mixed, against);
+        if ratio >= MIN {
+            return mixed;
+        }
+        if ratio > best_ratio {
+            best = mixed;
+            best_ratio = ratio;
+        }
+    }
+    best
+}
+
+pub(crate) fn toggle_track(proposed: [f32; 4], page: [f32; 4]) -> [f32; 4] {
+    contrasting_fill(proposed, page)
+}
+
+pub(crate) fn toggle_knob(knob: [f32; 4], track: [f32; 4]) -> [f32; 4] {
+    contrasting_fill(knob, track)
+}
+
 /// WCAG contrast ratio. 4.5 is AA for normal text.
 pub(crate) fn contrast_ratio(a: [f32; 4], b: [f32; 4]) -> f32 {
     fn channel(v: f32) -> f32 {
@@ -259,6 +304,64 @@ mod contrast_tests {
     }
 
     #[test]
+    fn ten_bundled_themes_paint_controls_at_wcag_aa() {
+        let schemes = crate::color_scheme::bundled_schemes();
+        assert!(schemes.len() >= 10);
+        for scheme in schemes.iter().take(10) {
+            let theme = &scheme.theme;
+            let page = color(theme.chrome.panel);
+            let selection = settings_selection(theme);
+            let off = toggle_track(color(theme.chrome.border), page);
+            let on = toggle_track(color(theme.accent), page);
+            let knob = toggle_knob(
+                label_ink(theme, distinct_fill(color(theme.chrome.panel_input), page)),
+                off,
+            );
+            let pairs = [
+                (
+                    contrast_ratio(selection, color(theme.chrome.sidebar)),
+                    3.0,
+                    "selection/sidebar",
+                ),
+                (contrast_ratio(off, page), 3.0, "track-off/page"),
+                (contrast_ratio(on, page), 3.0, "track-on/page"),
+                (contrast_ratio(knob, off), 3.0, "knob/track"),
+                (
+                    contrast_ratio(label_ink(theme, page), page),
+                    4.5,
+                    "text/page",
+                ),
+                (
+                    contrast_ratio(label_ink(theme, selection), selection),
+                    4.5,
+                    "text/selection",
+                ),
+                (
+                    contrast_ratio(hint_ink(theme, selection), selection),
+                    4.5,
+                    "hint/selection",
+                ),
+            ];
+            println!(
+                "{} {}",
+                scheme.name,
+                pairs
+                    .iter()
+                    .map(|(ratio, _, name)| format!("{name} {ratio:.2}"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            for (ratio, floor, name) in pairs {
+                assert!(
+                    ratio >= floor,
+                    "{} {name} {ratio:.2} < {floor}",
+                    scheme.name
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_search_well_clears_the_page_after_quantization() {
         let rgb = |hex: &str| color(lux_ui::Color::from_hex(hex).unwrap());
         for (page, well) in [
@@ -373,17 +476,32 @@ pub(crate) fn push_rounded_surface(
     stroke: f32,
 ) {
     if shadow > 0.0 {
-        let grow = shadow * 0.45;
-        quads.push(QuadInstance::rounded(
-            [
-                rect[0] - grow * 0.15,
-                rect[1] + shadow * 0.42,
-                rect[2] + grow * 0.35,
-                rect[3] + shadow * 0.28,
-            ],
-            super::paint::faded([0.0, 0.0, 0.0, 0.78]),
-            radius + grow * 0.2,
-        ));
+        let light = fill[0] + fill[1] + fill[2] > 1.7;
+        let ink = if light {
+            [0.30, 0.25, 0.18]
+        } else {
+            [0.0, 0.0, 0.0]
+        };
+        // Outer layer first: widest and faintest, then a tighter core.
+        let layers: [(f32, f32); 3] = if light {
+            [(0.90, 0.06), (0.55, 0.12), (0.28, 0.20)]
+        } else {
+            [(0.90, 0.07), (0.55, 0.14), (0.28, 0.26)]
+        };
+        for (spread, alpha) in layers {
+            let grow = shadow * 0.32 * spread;
+            let drop = shadow * 0.18 * spread;
+            quads.push(QuadInstance::rounded(
+                [
+                    rect[0] - grow * 0.45,
+                    rect[1] + drop,
+                    rect[2] + grow * 0.9,
+                    rect[3] + drop * 0.45,
+                ],
+                super::paint::faded([ink[0], ink[1], ink[2], alpha]),
+                radius + grow * 0.35,
+            ));
+        }
     }
     quads.push(QuadInstance::rounded(
         rect,

@@ -63,7 +63,8 @@ impl App {
         } else {
             let digits = self.buffer.len_lines().max(1).to_string().len();
             let gutter_w = self.editor_view.reference_width(&"0".repeat(digits));
-            let gutter_total_w = gutter_w + 16.0 * self.scale_factor;
+            let gutter_total_w =
+                crate::render::text::gutter_total_width(gutter_w, self.scale_factor);
             self.sidebar_width() + gutter_total_w + 6.0 * self.scale_factor
         }
     }
