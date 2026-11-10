@@ -122,6 +122,14 @@ fn quant_channel(value: f32) -> i32 {
     byte & !7
 }
 
+pub(crate) fn label_ink(theme: &lux_ui::Theme, background: [f32; 4]) -> [f32; 4] {
+    readable_ink(color(theme.foreground), background)
+}
+
+pub(crate) fn hint_ink(theme: &lux_ui::Theme, background: [f32; 4]) -> [f32; 4] {
+    readable_ink(color(theme.muted), background)
+}
+
 pub(crate) fn readable_ink(ink: [f32; 4], background: [f32; 4]) -> [f32; 4] {
     if contrast_ratio(ink, background) >= 4.8 {
         return ink;
@@ -148,10 +156,6 @@ pub(crate) fn readable_ink(ink: [f32; 4], background: [f32; 4]) -> [f32; 4] {
         }
     }
     best
-}
-
-pub(crate) fn rim_color() -> [f32; 4] {
-    color(lux_ui::Color::rgb(0xC2, 0xC0, 0xA8))
 }
 
 pub(crate) fn placeholder_ink(theme: &lux_ui::Theme) -> [f32; 4] {
@@ -215,6 +219,43 @@ mod contrast_tests {
         let solarized = color(lux_ui::Color::from_hex("#657b83").unwrap());
         let paper = color(lux_ui::Color::from_hex("#EEE8D5").unwrap());
         assert!(contrast_ratio(readable_ink(solarized, paper), paper) >= 4.5);
+    }
+
+    #[test]
+    fn ten_bundled_themes_paint_ui_text_at_wcag_aa() {
+        let schemes = crate::color_scheme::bundled_schemes();
+        assert!(
+            schemes.len() >= 10,
+            "expected the ten bundled themes, found {}",
+            schemes.len()
+        );
+        for scheme in schemes.iter().take(10) {
+            let theme = &scheme.theme;
+            let page = color(theme.chrome.panel);
+            let row = selected_fill(theme);
+            let card = card_fill(theme);
+            let well = distinct_fill(color(theme.chrome.panel_input), page);
+            for (name, ink, background) in [
+                ("label/page", label_ink(theme, page), page),
+                ("label/row", label_ink(theme, row), row),
+                ("label/card", label_ink(theme, card), card),
+                ("label/well", label_ink(theme, well), well),
+                ("hint/page", hint_ink(theme, page), page),
+                ("hint/row", hint_ink(theme, row), row),
+                ("hint/well", hint_ink(theme, well), well),
+                ("match/card", hit_ink(false, theme), card),
+                ("match/row", hit_ink(true, theme), row),
+                (
+                    "shortcut/card",
+                    readable_ink(shortcut_ink(theme), card),
+                    card,
+                ),
+                ("shortcut/row", readable_ink(shortcut_ink(theme), row), row),
+            ] {
+                let ratio = contrast_ratio(ink, background);
+                assert!(ratio >= 4.5, "{} {name} contrast {ratio:.2}", scheme.name);
+            }
+        }
     }
 
     #[test]
@@ -292,7 +333,7 @@ pub(crate) fn paint_selector_chrome(
         [box_.left, top, box_.width, height],
         box_.radius,
         card_fill(theme),
-        rim_color(),
+        color(theme.chrome.border),
         20.0 * scale,
         stroke.max(1.5 * scale),
     );
@@ -308,7 +349,7 @@ pub(crate) fn paint_selector_chrome(
         ],
         8.0 * scale,
         field_fill(theme),
-        rim_color(),
+        color(theme.chrome.border),
         0.0,
         stroke.max(1.0),
     );
@@ -375,7 +416,7 @@ pub(crate) fn push_moving_row(
     start_idx: usize,
     visible: usize,
     fill: [f32; 4],
-    accent: [f32; 4],
+    _accent: [f32; 4],
     scale: f32,
 ) {
     if visible == 0 {
@@ -398,16 +439,6 @@ pub(crate) fn push_moving_row(
         super::paint::faded(fill),
         radius,
     ));
-    quads.push(QuadInstance::rounded(
-        [
-            left + inset,
-            y + 5.0 * scale,
-            4.0 * scale,
-            (row_height - 10.0 * scale).max(1.0),
-        ],
-        super::paint::faded(accent),
-        2.0 * scale,
-    ));
 }
 
 #[cfg(test)]
@@ -425,5 +456,25 @@ mod tests {
         let wide = selector_box(2000.0, 64.0, 2.0);
         assert!((wide.width / 2000.0 - 0.46).abs() < 0.001);
         assert!((wide.top - 80.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn the_selected_row_is_a_fill_without_an_accent_stripe() {
+        let mut quads = Vec::new();
+        push_moving_row(
+            &mut quads,
+            10.0,
+            20.0,
+            400.0,
+            36.0,
+            1.0,
+            0,
+            8,
+            [0.2, 0.2, 0.2, 1.0],
+            [0.98, 0.15, 0.45, 1.0],
+            1.0,
+        );
+        assert_eq!(quads.len(), 1);
+        assert!(quads[0].rect[2] > 100.0);
     }
 }

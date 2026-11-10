@@ -45,9 +45,14 @@ pub(crate) fn render_settings_panel(
     let scale = layout.scale;
     let page_fill = color(theme.chrome.panel);
     let border = color(theme.chrome.border);
-    let foreground = super::panel::readable_ink(color(theme.foreground), page_fill);
-    let muted = color(theme.muted);
+    let row_fill = selected_fill(theme);
     let well = super::panel::distinct_fill(color(theme.chrome.panel_input), page_fill);
+    let label_on_page = super::panel::label_ink(theme, page_fill);
+    let hint_on_page = super::panel::hint_ink(theme, page_fill);
+    let label_on_row = super::panel::label_ink(theme, row_fill);
+    let hint_on_row = super::panel::hint_ink(theme, row_fill);
+    let label_on_well = super::panel::label_ink(theme, well);
+    let hint_on_well = super::panel::hint_ink(theme, well);
     let on_track = color(theme.accent);
 
     quad_instances.push(QuadInstance::solid(
@@ -71,7 +76,7 @@ pub(crate) fn render_settings_panel(
         "Settings",
         layout.title_x,
         layout.title_y,
-        foreground,
+        label_on_page,
         glyph_instances,
     );
     draw_line(
@@ -81,11 +86,11 @@ pub(crate) fn render_settings_panel(
         scale_cx,
         font,
         &family,
-        12.0 * scale,
+        13.0 * scale,
         "Type to search  ·  Esc closes  ·  ← → changes the control",
         layout.hint_x,
         layout.hint_y,
-        muted,
+        hint_on_page,
         glyph_instances,
     );
 
@@ -108,6 +113,7 @@ pub(crate) fn render_settings_panel(
             ));
         }
         let name = names.get(index).copied().unwrap_or("");
+        let pill = index == panel.category && panel.query.is_empty();
         draw_line(
             editor_view,
             atlas,
@@ -119,10 +125,12 @@ pub(crate) fn render_settings_panel(
             name,
             rect.x + 10.0 * scale,
             rect.y + (rect.h - 13.0 * scale) * 0.5,
-            if index == panel.category {
-                foreground
+            if pill {
+                label_on_row
+            } else if index == panel.category {
+                label_on_page
             } else {
-                muted
+                hint_on_page
             },
             glyph_instances,
         );
@@ -154,16 +162,16 @@ pub(crate) fn render_settings_panel(
         layout.search.x + 10.0 * scale,
         layout.search.y + (layout.search.h - 13.0 * scale) * 0.5,
         if panel.query.is_empty() {
-            muted
+            hint_on_well
         } else {
-            foreground
+            label_on_well
         },
         glyph_instances,
     );
     if let Some(bar) = layout.scrollbar {
         quad_instances.push(QuadInstance::rounded(
             [bar.x, bar.y, bar.w, bar.h],
-            muted,
+            hint_on_page,
             bar.w * 0.5,
         ));
     }
@@ -182,6 +190,7 @@ pub(crate) fn render_settings_panel(
             continue;
         }
         let item = &panel.items[row.index];
+        let selected = row.index == panel.selected_index;
         draw_line(
             editor_view,
             atlas,
@@ -193,7 +202,11 @@ pub(crate) fn render_settings_panel(
             item.label,
             row.label.x,
             row.label.y,
-            foreground,
+            if selected {
+                label_on_row
+            } else {
+                label_on_page
+            },
             glyph_instances,
         );
         draw_line(
@@ -203,11 +216,11 @@ pub(crate) fn render_settings_panel(
             scale_cx,
             font,
             &family,
-            11.5 * scale,
+            13.0 * scale,
             item.description,
             row.description.x,
             row.description.y,
-            muted,
+            if selected { hint_on_row } else { hint_on_page },
             glyph_instances,
         );
         paint_control(
@@ -220,8 +233,8 @@ pub(crate) fn render_settings_panel(
             font,
             &family,
             scale,
-            foreground,
-            muted,
+            label_on_well,
+            hint_on_well,
             well,
             border,
             on_track,
@@ -241,7 +254,7 @@ pub(crate) fn render_settings_panel(
             scale_cx,
             font,
             &family,
-            foreground,
+            label_on_well,
             well,
             border,
             theme,
@@ -357,10 +370,10 @@ fn paint_control(
                 scale_cx,
                 font,
                 family,
-                11.0 * scale,
+                13.0 * scale,
                 "▾",
                 button.right() - 18.0 * scale,
-                button.y + (button.h - 11.0 * scale) * 0.5,
+                button.y + (button.h - 13.0 * scale) * 0.5,
                 muted,
                 glyphs,
             );
@@ -447,7 +460,11 @@ fn paint_menu(
             option,
             rect.x + 8.0 * scale,
             rect.y + (rect.h - 13.0 * scale) * 0.5,
-            foreground,
+            if highlight == Some(index) {
+                super::panel::label_ink(theme, selected_fill(theme))
+            } else {
+                foreground
+            },
             glyphs,
         );
     }

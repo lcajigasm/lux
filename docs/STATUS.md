@@ -32,8 +32,15 @@
 > untitled, clean, and Plain Text. The palette lists one `Color Theme`
 > command. Its text is the system UI font at 13pt times the display
 > scale. Row text and match highlights meet WCAG AA against the row
-> fill. The selected row uses the theme's panel-row color. Settings has
-> a category sidebar, a search field, and a scrollbar. The free
+> fill. The selected row uses the theme's panel-row color and has no
+> accent stripe. Settings has a category sidebar (All, Editor,
+> Appearance, Keys, Files, Git, CLI), a search field, and a scrollbar.
+> Settings and palette text is the system font at 13pt or larger.
+> `ten_bundled_themes_paint_ui_text_at_wcag_aa` computes the contrast
+> of that ink on the ten bundled themes from Monokai through Catppuccin
+> Latte. `scripts/settings-e2e.sh` opens Settings, scrolls to the end,
+> cycles those ten themes with the buffer and cursor in place, and
+> checks the theme after a restart. The free
 > macos-15 runner stays 1× unless a job records a scaled mode, so a
 > Retina capture of an external monitor is still solo-Mac.
 > `scripts/theme-break.sh` opens a Rust file on every bundled theme,
@@ -2552,6 +2559,6 @@ _Nothing is behind an `experimental.*` flag yet._
 
 ### E13 / UI-SETTINGS: Settings page
 
-- **Status:** Command+, opens an opaque settings page between the tab bar and the status bar. The editor text is under that page. The page edge is the neutral chrome border, not the theme accent. A selected row is inset inside the page, and its label and value stay the foreground color. A boolean is a toggle, a number is a stepper, and a theme or keymap is a menu. The wheel scrolls the page and leaves the editor scroll where it was. Escape closes an open menu first, then the page.
-- **Verification:** `settings::visual_tests::settings_panel_has_no_debug_magenta_border`, `settings::visual_tests::settings_selection_stays_inside_the_card`, and `settings::visual_tests::settings_row_lays_out_label_description_and_value`. `settings::visual_tests::settings_toggle_stepper_and_menu_change_the_stored_value` changes ligatures, font size, and the color theme. `settings::visual_tests::settings_wheel_scrolls_the_page_and_not_the_editor` and `settings::visual_tests::escape_closes_the_menu_before_the_page`. `docs/compare/settings.png` is `lux --settings` rendered at scale factor 2. This is not a Mac keystroke pass.
+- **Status:** Command+, and Preferences: Open Settings UI open an opaque settings page between the tab bar and the status bar. The editor text is under that page. The page edge is the neutral chrome border, not the theme accent. The sidebar is All, Editor, Appearance, Keys, Files, Git, and CLI. Search filters every category. A selected row is inset inside the page. Labels are at least 13pt. A boolean is a toggle, a number is a stepper, and a theme or keymap is a menu. Git and CLI rows describe the real palette commands and do not write a setting. The wheel, Page Down, Page Up, End, and Home scroll the page and leave the editor scroll where it was. Escape closes an open menu first, then the page. The command palette draws match highlights, shows each command's shortcut, and closes on Escape. Its selection is the panel-row fill. Confirming a theme keeps the buffer, cursor, and scroll, and the next launch reads that theme back.
+- **Verification:** `settings::visual_tests::settings_panel_has_no_debug_magenta_border`, `settings::visual_tests::settings_selection_stays_inside_the_card`, and `settings::visual_tests::settings_row_lays_out_label_description_and_value`. `settings::visual_tests::settings_toggle_stepper_and_menu_change_the_stored_value` changes ligatures, font size, and the color theme. `settings::visual_tests::settings_wheel_scrolls_the_page_and_not_the_editor`, `settings::visual_tests::end_and_home_scroll_the_settings_page`, and `settings::visual_tests::escape_closes_the_menu_before_the_page`. `settings::tests::theme_reload_keeps_the_buffer_and_scales_line_height` cycles every theme setting and reloads Solarized Light. `render::panel::contrast_tests::ten_bundled_themes_paint_ui_text_at_wcag_aa` computes WCAG AA. `scripts/settings-e2e.sh` is the macos-15 job. `docs/compare/settings.png` is `lux --settings` rendered at scale factor 2.
 

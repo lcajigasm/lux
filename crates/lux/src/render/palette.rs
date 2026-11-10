@@ -62,13 +62,14 @@ pub(crate) fn render_command_palette(
         ligatures: false,
     };
 
-    let foreground =
-        super::panel::readable_ink(color(theme.foreground), super::panel::card_fill(theme));
+    let card = super::panel::card_fill(theme);
+    let foreground = super::panel::label_ink(theme, card);
+    let placeholder = super::panel::readable_ink(super::panel::placeholder_ink(theme), card);
     let input_baseline = (chrome.input_height - palette_font_size) * 0.5;
     let text_x = chrome.left + 22.0 * scale_factor;
     let text_y = chrome.top + stroke + input_baseline;
     let (display_text, text_color) = if palette.query.is_empty() {
-        ("Execute a command…", super::panel::placeholder_ink(theme))
+        ("Execute a command…", placeholder)
     } else {
         (palette.query.as_str(), foreground)
     };
@@ -147,23 +148,37 @@ pub(crate) fn render_command_palette(
             hole,
         );
 
+        let shortcut = palette.shortcuts.get(&entry.command.id);
+        let shortcut_line = shortcut.map(|shortcut| {
+            editor_view
+                .text_layout_mut()
+                .layout_line(&style, shortcut, &[])
+        });
+        let shortcut_w = shortcut_line
+            .as_ref()
+            .map(|line| line.width())
+            .unwrap_or(0.0);
+        let title_limit = chrome.left + chrome.width - shortcut_w - 28.0 * scale_factor;
         let title_line =
             editor_view
                 .text_layout_mut()
                 .layout_line(&style, &entry.command.title, &[]);
         let title_x = icon_x + icon_size + 10.0 * scale_factor;
         let hits = fuzzy_spans(&entry.command.title, &palette.query);
+        let row_fill = if is_selected {
+            super::panel::selected_fill(theme)
+        } else {
+            super::panel::card_fill(theme)
+        };
         for cluster in title_line.clusters() {
             let hit = span_covers(&hits, &cluster.byte_range);
-            let row_fill = if is_selected {
-                super::panel::selected_fill(theme)
-            } else {
-                super::panel::card_fill(theme)
-            };
+            if title_x + cluster.x + cluster.advance > title_limit {
+                continue;
+            }
             let glyph_color = if hit {
                 super::panel::hit_ink(is_selected, theme)
             } else {
-                super::panel::readable_ink(color(theme.foreground), row_fill)
+                super::panel::label_ink(theme, row_fill)
             };
             let draw = if hit && is_selected {
                 push_bold_glyph
@@ -184,12 +199,9 @@ pub(crate) fn render_command_palette(
             );
         }
 
-        let Some(shortcut) = palette.shortcuts.get(&entry.command.id) else {
+        let Some(shortcut_line) = shortcut_line else {
             continue;
         };
-        let shortcut_line = editor_view
-            .text_layout_mut()
-            .layout_line(&style, shortcut, &[]);
         let shortcut_x = chrome.left + chrome.width - shortcut_line.width() - 18.0 * scale_factor;
         for cluster in shortcut_line.clusters() {
             push_glyph(
@@ -201,7 +213,7 @@ pub(crate) fn render_command_palette(
                 &cluster,
                 shortcut_x,
                 row_y + row_baseline + shortcut_line.baseline(),
-                super::panel::shortcut_ink(theme),
+                super::panel::readable_ink(super::panel::shortcut_ink(theme), row_fill),
                 glyph_instances,
             );
         }

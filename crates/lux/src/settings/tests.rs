@@ -38,11 +38,28 @@ fn settings_importers_and_panel_options() {
     state.open_settings_ui();
     assert!(state.panel.is_some());
 
-    let panel = state.panel.as_ref().unwrap();
-    assert_eq!(panel.items.len(), 12);
-    assert_eq!(panel.items[0].key, "editor.fontSize");
-    assert_eq!(panel.items[1].key, "editor.lineHeight");
-    assert!(panel.categories().len() >= 4);
+    {
+        let panel = state.panel.as_ref().unwrap();
+        assert_eq!(panel.items.len(), 14);
+        assert_eq!(panel.items[0].key, "editor.fontSize");
+        assert_eq!(panel.items[1].key, "editor.lineHeight");
+        assert_eq!(
+            panel.categories(),
+            vec!["All", "Editor", "Appearance", "Keys", "Files", "Git", "CLI"]
+        );
+        assert!(
+            panel
+                .items
+                .iter()
+                .any(|item| { item.category == "Git" && matches!(item.kind, SettingKind::Info) })
+        );
+        assert!(panel.items.iter().any(|item| item.category == "CLI"));
+    }
+    let panel = state.panel.as_mut().unwrap();
+    panel.query = "history".into();
+    let visible = panel.visible_indices();
+    assert_eq!(visible.len(), 1);
+    assert_eq!(panel.items[visible[0]].category, "Git");
 }
 
 #[test]
@@ -85,6 +102,11 @@ fn theme_reload_keeps_the_buffer_and_scales_line_height() {
     );
     assert!(metrics.line_height > metrics.font_size);
     assert_eq!(app.chrome.theme.name, "One Dark");
+    app.cursors = lux_core::multicursor::MultiCursor::new(lux_core::selection::Selection::cursor(
+        lux_core::position::Position::from_char(&app.buffer, 8),
+    ));
+    app.viewport.scroll_y = 120.0;
+    app.viewport.scroll_x = 16.0;
     for name in crate::color_scheme::theme_setting_options() {
         app.confirm_theme(name);
         assert_eq!(app.buffer.text(), text, "{name}");
@@ -105,7 +127,21 @@ fn theme_reload_keeps_the_buffer_and_scales_line_height() {
             "{name} line {}",
             metrics.line_height
         );
+        assert_eq!(app.cursors.primary().head.char, 8, "{name}");
+        assert!((app.viewport.scroll_y - 120.0).abs() < 0.01, "{name}");
+        assert!((app.viewport.scroll_x - 16.0).abs() < 0.01, "{name}");
     }
+    app.confirm_theme("Solarized Light");
+    assert_eq!(app.chrome.theme.name, "Solarized Light");
+    assert_eq!(app.buffer.text(), text);
+    assert_eq!(app.cursors.primary().head.char, 8);
+    let path = app.ui.settings.settings_path.clone();
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(saved.contains("Solarized Light"), "{saved}");
+    let mut next = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    let settings = SettingsState::new(path);
+    settings.apply_to_app(&mut next);
+    assert_eq!(next.chrome.theme.name, "Solarized Light");
 }
 
 #[test]

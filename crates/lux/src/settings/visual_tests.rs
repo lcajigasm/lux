@@ -234,10 +234,11 @@ fn settings_toggle_stepper_and_menu_change_the_stored_value() {
         _ => panic!("font size"),
     }
 
-    reveal(&mut app, 10);
+    let theme = item_index(&app, "workbench.colorTheme");
+    reveal(&mut app, theme);
     let button = {
         let layout = layout_settings(app.ui.settings.panel.as_ref().unwrap(), frame);
-        match layout.rows[10].kind {
+        match layout.rows[theme].kind {
             layout::ControlGeom::Menu { button } => button,
             _ => panic!("theme is a menu"),
         }
@@ -249,7 +250,7 @@ fn settings_toggle_stepper_and_menu_change_the_stored_value() {
         layout.menu.expect("menu").options[2]
     };
     click(&mut app, option.x + 6.0, option.y + option.h * 0.5);
-    match &app.ui.settings.panel.as_ref().unwrap().items[10].kind {
+    match &app.ui.settings.panel.as_ref().unwrap().items[theme].kind {
         SettingKind::Enum { value, .. } => assert_eq!(value, "mariana"),
         _ => panic!("theme"),
     }
@@ -274,10 +275,11 @@ fn escape_closes_the_menu_before_the_page() {
     let mut app = app();
     app.ui.settings.open_settings_ui();
     let frame = bounds(&app);
-    reveal(&mut app, 10);
+    let theme = item_index(&app, "workbench.colorTheme");
+    reveal(&mut app, theme);
     let button = {
         let layout = layout_settings(app.ui.settings.panel.as_ref().unwrap(), frame);
-        match layout.rows[10].kind {
+        match layout.rows[theme].kind {
             layout::ControlGeom::Menu { button } => button,
             _ => panic!("theme is a menu"),
         }
@@ -288,6 +290,18 @@ fn escape_closes_the_menu_before_the_page() {
     assert!(app.ui.settings.panel.as_ref().unwrap().menu.is_none());
     app.handle_keyboard_event(&Ctx, &escape());
     assert!(app.ui.settings.panel.is_none());
+}
+
+fn item_index(app: &App, key: &str) -> usize {
+    app.ui
+        .settings
+        .panel
+        .as_ref()
+        .unwrap()
+        .items
+        .iter()
+        .position(|item| item.key == key)
+        .unwrap_or_else(|| panic!("missing {key}"))
 }
 
 fn reveal(app: &mut App, index: usize) {
@@ -315,6 +329,33 @@ fn click(app: &mut App, x: f32, y: f32) {
     let mut settings = std::mem::take(&mut app.ui.settings);
     settings.handle_click(app, x, y);
     app.ui.settings = settings;
+}
+
+#[test]
+fn end_and_home_scroll_the_settings_page() {
+    let mut app = app();
+    app.ui.settings.open_settings_ui();
+    app.handle_keyboard_event(&Ctx, &named(NamedKey::End));
+    let end = app.ui.settings.panel.as_ref().unwrap().scroll;
+    assert!(end > 0.0, "the page fits without scrolling");
+    let frame = bounds(&app);
+    let layout = layout_settings(app.ui.settings.panel.as_ref().unwrap(), frame);
+    let last = layout.rows.last().unwrap();
+    assert!(last.row.bottom() <= layout.body.bottom() + 0.6);
+    app.handle_keyboard_event(&Ctx, &named(NamedKey::Home));
+    assert_eq!(app.ui.settings.panel.as_ref().unwrap().scroll, 0.0);
+    app.handle_keyboard_event(&Ctx, &named(NamedKey::PageDown));
+    assert!(app.ui.settings.panel.as_ref().unwrap().scroll > 0.0);
+}
+
+fn named(key: NamedKey) -> KeyEvent {
+    KeyEvent {
+        key: Key::Named(key),
+        text: None,
+        state: ElementState::Pressed,
+        repeat: false,
+        physical: None,
+    }
 }
 
 fn escape() -> KeyEvent {

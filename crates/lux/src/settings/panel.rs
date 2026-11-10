@@ -21,6 +21,8 @@ pub(crate) enum SettingKind {
         value: String,
         options: &'static [&'static str],
     },
+    /// A true statement. It is not a control and it is not written to disk.
+    Info,
 }
 
 #[derive(Debug, Clone)]
@@ -176,6 +178,10 @@ impl SettingsState {
                 self.edit_query(app, None);
                 true
             }
+            Key::Named(NamedKey::PageDown) => self.scroll_page(app, 1.0),
+            Key::Named(NamedKey::PageUp) => self.scroll_page(app, -1.0),
+            Key::Named(NamedKey::End) => self.scroll_page(app, f32::MAX),
+            Key::Named(NamedKey::Home) => self.scroll_page(app, f32::MIN),
             Key::Character(text)
                 if !app.modifiers.meta && !app.modifiers.control && !app.modifiers.alt =>
             {
@@ -362,8 +368,27 @@ impl SettingsState {
             }
             Some(SettingKind::Enum { .. }) => self.toggle_menu(index),
             Some(SettingKind::Number { .. }) => self.edit(app, index, Edit::Step(true)),
-            None => {}
+            Some(SettingKind::Info) | None => {}
         }
+    }
+
+    fn scroll_page(&mut self, app: &mut App, pages: f32) -> bool {
+        let bounds = bounds_for(app);
+        let Some(panel) = self.panel.as_mut() else {
+            return true;
+        };
+        let body = layout_settings(panel, bounds).body.h;
+        panel.scroll = if pages >= f32::MAX / 2.0 {
+            f32::MAX
+        } else if pages <= f32::MIN / 2.0 {
+            0.0
+        } else {
+            (panel.scroll + pages * body).max(0.0)
+        };
+        panel.menu = None;
+        panel.scroll = layout_settings(panel, bounds).scroll;
+        app.scheduler.invalidate_all();
+        true
     }
 
     fn toggle_menu(&mut self, index: usize) {

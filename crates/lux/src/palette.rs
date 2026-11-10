@@ -174,6 +174,25 @@ mod tests {
         let results = palette.results(&ctx);
         assert!(!results.is_empty());
         assert!(results[0].command.title.to_lowercase().contains("save"));
+        palette.query = crate::field::QueryField::from_text("color theme");
+        assert_eq!(
+            palette.results(&ctx)[0].command.id,
+            "preferences.color_theme"
+        );
+        palette.query = crate::field::QueryField::from_text("open settings ui");
+        assert_eq!(
+            palette.results(&ctx)[0].command.id,
+            "preferences.open_settings_ui"
+        );
+        let spans = crate::render::paint::fuzzy_spans("Color Theme", "th");
+        assert!(
+            crate::render::paint::span_covers(&spans, &(6..7)),
+            "{spans:?}"
+        );
+        assert!(
+            crate::render::paint::span_covers(&spans, &(7..8)),
+            "{spans:?}"
+        );
     }
 
     #[test]
