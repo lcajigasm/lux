@@ -13,8 +13,7 @@ receipt="$root/docs/receipts/p0-macos-ci.md"
 run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-lcajigasm/lux}/actions/runs/${GITHUB_RUN_ID:-local}"
 
 app="$(bash "$root/scripts/stage-lux-app.sh")"
-# A session left in the runner home restores a frame before this launch.
-# The checklist wants the default window, on the display it is created on.
+# A saved frame can place the window off the display the wheel is aimed at.
 export HOME
 HOME="$(mktemp -d)"
 unset XDG_CACHE_HOME || true
@@ -32,12 +31,7 @@ with open(sys.argv[1], "w") as f:
         f.write(f"line {i}\n")
 PY
 second="$DRIVE_WORK/other.rs"
-python3 - "$second" << 'PY'
-import sys
-with open(sys.argv[1], "w") as f:
-    for i in range(400):
-        f.write(f"other {i}\n")
-PY
+printf 'second\n' > "$second"
 drive_launch "$file" "$second"
 sleep 0.6
 font="$(grep 'Lux: using system font' "$DRIVE_LOG" | head -1 || true)"
@@ -54,32 +48,16 @@ drive_scroll -8
 sleep 0.5
 drive_dump
 after="$(drive_field scroll_y)"
-how="wheel"
 if [[ "$before" == "$after" ]]; then
   drive_scroll 8
   sleep 0.5
   drive_dump
   after="$(drive_field scroll_y)"
 fi
-if [[ "$before" == "$after" ]]; then
-  # One Page Down lands on the last visible line. The leftover is often
-  # under half a pixel, so scroll_y still rounds to 0. End of buffer does not.
-  drive_key tap 125 cmd
-  sleep 0.6
-  drive_dump
-  after="$(drive_field scroll_y)"
-  how="end"
-fi
 if [[ "$before" != "$after" ]]; then
-  add "Scroll" "covered" "scroll_y $before -> $after ($how)"
+  add "Scroll" "covered" "scroll_y $before -> $after (wheel)"
 else
-  chars="$(drive_field text_chars || true)"
-  sel="$(drive_field sel || true)"
-  echo "scroll probe:" >&2
-  cat "$DRIVE_PROBE" >&2 || true
-  echo "lux log:" >&2
-  tail -30 "$DRIVE_LOG" >&2 || true
-  add "Scroll" "failed" "scroll_y stayed ${before:-0} chars=${chars:-short} sel=${sel:-?}"
+  add "Scroll" "failed" "scroll_y stayed $before goto=$(drive_field goto) palette=$(drive_field palette)"
 fi
 
 menu_err="$DRIVE_WORK/menu.err"

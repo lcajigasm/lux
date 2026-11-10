@@ -441,18 +441,7 @@ impl PlatformEventHandler for App {
             }
             PlatformEvent::MouseWheel(delta) => {
                 crate::probe::note_scroll();
-                let on_tabs = self.wheel_targets_tabs();
-                if on_tabs && self.ui.command_palette.is_none() && self.ui.goto_anything.is_none() {
-                    let pixels = match delta {
-                        lux_platform::ScrollDelta::Lines { x, y } => (x + y) * self.tab_width(),
-                        lux_platform::ScrollDelta::Pixels(position) => {
-                            position.x as f32 + position.y as f32
-                        }
-                    };
-                    crate::chrome::scroll_tabs(self, pixels);
-                } else if !crate::overlay_wheel::scroll_open_overlay(self, delta) {
-                    self.scroll(delta);
-                }
+                self.on_wheel(delta);
             }
             PlatformEvent::MouseMoved(position) => {
                 self.mouse.position = position;

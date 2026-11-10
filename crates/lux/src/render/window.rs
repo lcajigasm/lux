@@ -118,11 +118,27 @@ impl App {
 
     /// The tab strip takes the wheel only after the pointer has been seen
     /// inside that strip. The origin is the default before any move, and it
-    /// sits in the strip's rectangle.
+    /// sits in the strip's rectangle, so a wheel that arrives first scrolls
+    /// the editor.
     pub(crate) fn wheel_targets_tabs(&self) -> bool {
         self.mouse.placed
             && self.mouse.position.y < self.tab_bar_height() as f64
             && self.mouse.position.x >= self.sidebar_width() as f64
+    }
+
+    pub(crate) fn on_wheel(&mut self, delta: ScrollDelta) {
+        if self.wheel_targets_tabs()
+            && self.ui.command_palette.is_none()
+            && self.ui.goto_anything.is_none()
+        {
+            let pixels = match delta {
+                ScrollDelta::Lines { x, y } => (x + y) * self.tab_width(),
+                ScrollDelta::Pixels(position) => position.x as f32 + position.y as f32,
+            };
+            crate::chrome::scroll_tabs(self, pixels);
+        } else if !crate::overlay_wheel::scroll_open_overlay(self, delta) {
+            self.scroll(delta);
+        }
     }
 
     pub(crate) fn scroll(&mut self, delta: ScrollDelta) {
@@ -249,9 +265,16 @@ mod tests {
     }
 
     #[test]
-    fn a_wheel_before_any_pointer_move_is_not_the_tab_strip() {
-        let app = app();
-        assert!(!app.wheel_targets_tabs());
+    fn a_wheel_before_any_pointer_move_scrolls_the_editor() {
+        let mut app = app();
+        assert!(!app.mouse.placed);
+        assert_eq!(app.mouse.position, dpi::PhysicalPosition::new(0.0, 0.0));
+        app.on_wheel(ScrollDelta::Lines { x: 0.0, y: -8.0 });
+        assert!(
+            app.viewport.scroll_y > 0.0,
+            "scroll_y was {}",
+            app.viewport.scroll_y
+        );
     }
 
     #[test]
