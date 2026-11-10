@@ -58,6 +58,21 @@ func post(_ key: CGKeyCode, _ down: Bool, _ fl: CGEventFlags) {
     event.flags = fl
     event.post(tap: .cghidEventTap)
 }
+func holdModifiers(_ fl: CGEventFlags, _ down: Bool) {
+    // Flags on the letter event are not enough. A Command-P that never
+    // releases Command makes the next Command-Shift-P look like Command-P.
+    if down {
+        if fl.contains(.maskCommand) { post(55, true, []) }
+        if fl.contains(.maskShift) { post(56, true, []) }
+        if fl.contains(.maskAlternate) { post(58, true, []) }
+        if fl.contains(.maskControl) { post(59, true, []) }
+    } else {
+        if fl.contains(.maskControl) { post(59, false, []) }
+        if fl.contains(.maskAlternate) { post(58, false, []) }
+        if fl.contains(.maskShift) { post(56, false, []) }
+        if fl.contains(.maskCommand) { post(55, false, []) }
+    }
+}
 func type(_ text: String) {
     let units = Array(text.utf16)
     let source = CGEventSource(stateID: .hidSystemState)
@@ -88,17 +103,18 @@ case "chars":
 case "tap":
     guard args.count >= 4, let code = UInt16(args[2]) else { exit(2) }
     let fl = flags(args[3])
+    holdModifiers(fl, true)
+    if fl.rawValue != 0 { Thread.sleep(forTimeInterval: 0.05) }
     post(CGKeyCode(code), true, fl)
+    Thread.sleep(forTimeInterval: 0.03)
     post(CGKeyCode(code), false, fl)
+    holdModifiers(fl, false)
 case "chord":
     // Hold the modifiers, then tap each key. A two-step chord such as
     // Command-K Command-D is one held Command, not two separate taps.
     guard args.count >= 4 else { exit(2) }
     let fl = flags(args[2])
-    if fl.contains(.maskCommand) { post(55, true, []) }
-    if fl.contains(.maskShift) { post(56, true, []) }
-    if fl.contains(.maskAlternate) { post(58, true, []) }
-    if fl.contains(.maskControl) { post(59, true, []) }
+    holdModifiers(fl, true)
     Thread.sleep(forTimeInterval: 0.05)
     for raw in args.dropFirst(3) {
         guard let code = UInt16(raw) else { exit(2) }
@@ -107,10 +123,7 @@ case "chord":
         post(CGKeyCode(code), false, fl)
         Thread.sleep(forTimeInterval: 0.08)
     }
-    if fl.contains(.maskControl) { post(59, false, []) }
-    if fl.contains(.maskAlternate) { post(58, false, []) }
-    if fl.contains(.maskShift) { post(56, false, []) }
-    if fl.contains(.maskCommand) { post(55, false, []) }
+    holdModifiers(fl, false)
 case "scroll":
     let x = Double(args.count > 2 ? args[2] : "400") ?? 400
     let y = Double(args.count > 3 ? args[3] : "400") ?? 400
