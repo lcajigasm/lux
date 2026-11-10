@@ -539,12 +539,16 @@ impl PlatformEventHandler for App {
         }
     }
 
-    fn about_to_wait(&mut self, _ctx: &dyn PlatformContext) {
+    fn about_to_wait(&mut self, ctx: &dyn PlatformContext) {
+        // A menu key equivalent posts here and is otherwise drained on the
+        // next window event. The probe snapshot is taken in this callback,
+        // so the command has to land first.
+        crate::menu::poll_and_dispatch(self, ctx);
         crate::session::poll_file_watcher(self);
         let mut settings = std::mem::take(&mut self.ui.settings);
         settings.poll_watcher(self);
         self.ui.settings = settings;
-        crate::probe::poll(self, _ctx);
+        crate::probe::poll(self, ctx);
         let waiting = crate::snapshot::usr1_waiting();
         let Some(gpu_window) = &self.gpu_window else {
             return;

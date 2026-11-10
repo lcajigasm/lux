@@ -128,6 +128,7 @@ pub(crate) fn action_for_command(cmd: &str) -> Option<MenuAction> {
         "select_next_occurrence" => MenuAction::AddNextOccurrence,
         "find" => MenuAction::Find,
         "quick_open" => MenuAction::GotoAnything,
+        "file.new" => MenuAction::NewFile,
         "command_palette" => MenuAction::CommandPalette,
         "open_settings" | "preferences.open_settings_ui" => MenuAction::Preferences,
         _ => return None,

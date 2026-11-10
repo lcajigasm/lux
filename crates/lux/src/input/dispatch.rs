@@ -92,6 +92,11 @@ pub(crate) fn execute_keymap_command(
         return;
     }
     match cmd {
+        "file.new" => {
+            if let Some(ctx) = ctx {
+                app.request_document(ctx, crate::document::Request::New);
+            }
+        }
         "copy" => {
             app.copy_to_clipboard(clipboard);
         }

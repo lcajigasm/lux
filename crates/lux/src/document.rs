@@ -245,7 +245,7 @@ impl App {
         if !command {
             return false;
         }
-        let Key::Character(key) = &event.key else {
+        let Some(key) = crate::input::shortcut_letter(event) else {
             return false;
         };
         if self.modifiers.shift && key.eq_ignore_ascii_case("t") {

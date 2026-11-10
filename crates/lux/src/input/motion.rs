@@ -94,6 +94,16 @@ impl App {
     }
 }
 
+/// Letter a document shortcut names. A command chord whose logical key
+/// winit could not identify still carries the physical key.
+pub(crate) fn shortcut_letter(event: &lux_platform::event::KeyEvent) -> Option<String> {
+    match &event.key {
+        lux_platform::Key::Character(key) => Some(key.to_lowercase()),
+        lux_platform::Key::Unidentified => event.physical.map(|key| key.chord_token()),
+        _ => None,
+    }
+}
+
 pub(super) fn key_event_to_chord(
     event: &lux_platform::event::KeyEvent,
     modifiers: &lux_platform::Modifiers,

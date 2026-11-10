@@ -7,6 +7,7 @@
 [
   { "command": "find_action", "key": "ctrl+shift+a", "mac": "cmd+shift+a" },
   { "command": "quick_open", "key": "ctrl+shift+n", "mac": "cmd+shift+o" },
+  { "command": "file.new", "key": "ctrl+n", "mac": "cmd+n" },
   { "command": "find", "key": "ctrl+f", "mac": "cmd+f" },
   { "command": "find_in_files", "key": "ctrl+shift+f", "mac": "cmd+shift+f" },
   // Not cmd+g on mac — that would collide with "Find Next".
