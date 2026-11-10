@@ -65,7 +65,7 @@ snap() {
   local pid=$!
   local ready=0
   local _
-  for _ in $(seq 1 45); do
+  for _ in $(seq 1 60); do
     if [[ -s "$dest" ]]; then
       ready=1
       break
@@ -77,6 +77,11 @@ snap() {
   done
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
+  # The file can land in the last sleep, or between the size check and the
+  # exit check. Look again once the process has stopped.
+  if [[ -s "$dest" ]]; then
+    ready=1
+  fi
   if [[ "$ready" != 1 ]]; then
     echo "Lux did not write $dest" | tee -a "$report" >&2
     tail -40 "$dest.log" >&2 || true
@@ -182,7 +187,7 @@ HOME="$before_home" "$before_bin" --settings --snapshot "$out/settings-before.pn
   --snapshot-scale 2 "$fixture" >"$out/settings-before.log" 2>&1 &
 before_pid=$!
 before_ready=0
-for _ in $(seq 1 45); do
+for _ in $(seq 1 60); do
   if [[ -s "$out/settings-before.png" ]]; then
     before_ready=1
     break
@@ -194,6 +199,9 @@ for _ in $(seq 1 45); do
 done
 kill "$before_pid" 2>/dev/null || true
 wait "$before_pid" 2>/dev/null || true
+if [[ -s "$out/settings-before.png" ]]; then
+  before_ready=1
+fi
 hdiutil detach "$mount" || true
 [[ "$before_ready" == 1 ]] || fail "v1.5.6 did not write settings-before.png"
 pass "captured Lux 1.5.6 settings"
