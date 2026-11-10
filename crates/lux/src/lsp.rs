@@ -424,21 +424,28 @@ pub(crate) fn handle_completion_popup_key(app: &mut App, event: &KeyEvent) -> bo
     if event.state != ElementState::Pressed {
         return false;
     }
+    let total = app
+        .ui
+        .lsp
+        .completion_popup
+        .as_ref()
+        .map(|popup| popup.items.len());
+    let Some(total) = total else {
+        return false;
+    };
+    let metrics = crate::modal::ModalMetrics::from_app(app);
+    let visible = crate::overlay_list::visible_rows(
+        metrics.vp_height,
+        metrics.tab_bar_height,
+        metrics.status_bar,
+        metrics.scale,
+        total,
+    );
     if let Some(popup) = app.ui.lsp.completion_popup.as_mut() {
         match &event.key {
-            Key::Named(NamedKey::ArrowDown) => {
-                if popup.selected_index + 1 < popup.items.len() {
-                    popup.selected_index += 1;
-                    app.scheduler.invalidate_all();
-                    return true;
-                }
-            }
-            Key::Named(NamedKey::ArrowUp) => {
-                if popup.selected_index > 0 {
-                    popup.selected_index -= 1;
-                    app.scheduler.invalidate_all();
-                    return true;
-                }
+            key if crate::overlay_list::nudge(&mut popup.selected_index, total, visible, key) => {
+                app.scheduler.invalidate_all();
+                return true;
             }
             Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Tab) => {
                 if let Some(item) = popup.items.get(popup.selected_index).cloned() {

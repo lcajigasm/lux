@@ -6,24 +6,7 @@ use super::{ModalGeometry, ModalMetrics};
 use crate::app::App;
 
 fn geom_palette(m: ModalMetrics, total_results: usize, selected: usize) -> ModalGeometry {
-    use crate::render::panel::{self, SELECTOR_VISIBLE};
-    let box_ = panel::selector_box(m.vp_width, m.tab_bar_height, m.scale);
-    let visible = total_results.min(SELECTOR_VISIBLE);
-    let start = if selected >= visible {
-        selected + 1 - visible
-    } else {
-        0
-    };
-    ModalGeometry {
-        left: box_.left,
-        top: box_.top,
-        width: box_.width,
-        total_height: panel::panel_height(box_.input_height, box_.row_height, visible, m.scale),
-        rows_top: panel::rows_top(box_.top, box_.input_height, m.scale),
-        row_height: box_.row_height,
-        visible_count: visible,
-        start_idx: start,
-    }
+    super::list_geometry(m, total_results, selected)
 }
 
 pub(super) fn click_command_palette(
@@ -92,24 +75,7 @@ pub(super) fn hover_command_palette(app: &mut App, mx: f32, my: f32) -> bool {
 }
 
 fn geom_goto(m: ModalMetrics, total_items: usize, selected: usize) -> ModalGeometry {
-    use crate::render::panel::{self, SELECTOR_VISIBLE};
-    let box_ = panel::selector_box(m.vp_width, m.tab_bar_height, m.scale);
-    let visible = total_items.min(SELECTOR_VISIBLE);
-    let start = if selected >= visible {
-        selected + 1 - visible
-    } else {
-        0
-    };
-    ModalGeometry {
-        left: box_.left,
-        top: box_.top,
-        width: box_.width,
-        total_height: panel::panel_height(box_.input_height, box_.row_height, visible, m.scale),
-        rows_top: panel::rows_top(box_.top, box_.input_height, m.scale),
-        row_height: box_.row_height,
-        visible_count: visible,
-        start_idx: start,
-    }
+    super::list_geometry(m, total_items, selected)
 }
 
 pub(super) fn click_goto_anything(

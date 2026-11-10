@@ -8,7 +8,6 @@ pub(crate) struct LanguagePickerState {
     pub(crate) query: crate::field::QueryField,
     pub(crate) selected_index: usize,
     pub(crate) candidates: Vec<(Option<LanguageId>, &'static str)>,
-    scroll_remainder: f32,
 }
 
 impl Default for LanguagePickerState {
@@ -23,7 +22,6 @@ impl LanguagePickerState {
             query: crate::field::QueryField::new(),
             selected_index: 0,
             candidates: all_languages(),
-            scroll_remainder: 0.0,
         }
     }
 
@@ -37,40 +35,18 @@ impl LanguagePickerState {
             .map(|(item, _)| item)
             .collect()
     }
-
-    pub(crate) fn select_next(&mut self, total: usize) {
-        if total > 0 && self.selected_index + 1 < total {
-            self.selected_index += 1;
-        }
-    }
-
-    pub(crate) fn select_prev(&mut self) {
-        if self.selected_index > 0 {
-            self.selected_index -= 1;
-        }
-    }
 }
 
 /// Routes wheel/trackpad movement to the open language list instead of the
-/// editor underneath it. Line deltas move discrete rows; precise pixel
-/// deltas accumulate so a trackpad does not skip rows or lose small motions.
+/// editor underneath it. A line moves one row. Trackpad pixels move one row
+/// per 16 logical pixels, through the shared overlay.
 pub(crate) fn handle_language_picker_scroll(app: &mut crate::app::App, delta: ScrollDelta) -> bool {
     let Some(picker) = app.ui.language_picker.as_mut() else {
         return false;
     };
 
     let total = picker.filtered().len();
-    let rows = match delta {
-        ScrollDelta::Lines { y, .. } => (-y).round() as isize,
-        ScrollDelta::Pixels(position) => {
-            let row_height = crate::render::panel::selector_box(1.0, 0.0, 1.0).row_height
-                * app.scale_factor.max(1.0);
-            picker.scroll_remainder += -(position.y as f32);
-            let rows = (picker.scroll_remainder / row_height).trunc() as isize;
-            picker.scroll_remainder -= rows as f32 * row_height;
-            rows
-        }
-    };
+    let rows = crate::overlay_list::wheel_steps(8, delta, app.scale_factor);
 
     if total > 0 && rows != 0 {
         picker.selected_index = picker
@@ -109,6 +85,14 @@ pub(crate) fn handle_language_picker_key(
         };
         picker.filtered().len()
     };
+    let metrics = crate::modal::ModalMetrics::from_app(app);
+    let visible = crate::overlay_list::visible_rows(
+        metrics.vp_height,
+        metrics.tab_bar_height,
+        metrics.status_bar,
+        metrics.scale,
+        total,
+    );
 
     match &event.key {
         Key::Named(NamedKey::Escape) => {
@@ -117,17 +101,13 @@ pub(crate) fn handle_language_picker_key(
             app.scheduler.invalidate_all();
             true
         }
-        Key::Named(NamedKey::ArrowDown) => {
-            if let Some(picker) = app.ui.language_picker.as_mut() {
-                picker.select_next(total);
-            }
-            app.scheduler.invalidate_all();
-            true
-        }
-        Key::Named(NamedKey::ArrowUp) => {
-            if let Some(picker) = app.ui.language_picker.as_mut() {
-                picker.select_prev();
-            }
+        key if {
+            let Some(picker) = app.ui.language_picker.as_mut() else {
+                return false;
+            };
+            crate::overlay_list::nudge(&mut picker.selected_index, total, visible, key)
+        } =>
+        {
             app.scheduler.invalidate_all();
             true
         }
@@ -170,42 +150,21 @@ pub(crate) fn handle_language_picker_key(
     }
 }
 
-struct PickerCard {
-    left: f32,
-    top: f32,
-    width: f32,
-    height: f32,
-    rows_top: f32,
-    row_height: f32,
-    visible: usize,
-    start: usize,
-}
-
-fn picker_card(app: &crate::app::App, selected: usize, total: usize) -> PickerCard {
-    use crate::render::panel::{self, SELECTOR_VISIBLE};
-    let width = app
-        .gpu_window
-        .as_ref()
-        .map(|g| g.window.inner_size().width as f32)
-        .unwrap_or(app.viewport.width);
-    let scale = app.scale_factor;
-    let box_ = panel::selector_box(width, app.tab_bar_height(), scale);
-    let visible = total.min(SELECTOR_VISIBLE);
-    let start = if selected >= visible {
-        selected + 1 - visible
-    } else {
-        0
-    };
-    PickerCard {
-        left: box_.left,
-        top: box_.top,
-        width: box_.width,
-        height: panel::panel_height(box_.input_height, box_.row_height, visible, scale),
-        rows_top: panel::rows_top(box_.top, box_.input_height, scale),
-        row_height: box_.row_height,
-        visible,
-        start,
-    }
+fn picker_card(
+    app: &crate::app::App,
+    selected: usize,
+    total: usize,
+) -> crate::overlay_list::ListFrame {
+    let metrics = crate::modal::ModalMetrics::from_app(app);
+    crate::overlay_list::centered_frame(
+        metrics.vp_width,
+        metrics.vp_height,
+        metrics.tab_bar_height,
+        metrics.status_bar,
+        metrics.scale,
+        total,
+        selected,
+    )
 }
 
 pub(crate) fn handle_language_picker_click(
@@ -227,7 +186,7 @@ pub(crate) fn handle_language_picker_click(
             None
         } else if mouse_y >= card.rows_top && card.row_height > 0.0 {
             let display_idx = ((mouse_y - card.rows_top) / card.row_height) as usize;
-            let actual_idx = card.start + display_idx;
+            let actual_idx = card.origin + display_idx;
             if display_idx < card.visible && actual_idx < filtered.len() {
                 Some(Some(filtered[actual_idx].0))
             } else {
@@ -275,7 +234,7 @@ pub(crate) fn handle_language_picker_hover(
     {
         return false;
     }
-    let actual_idx = card.start + ((mouse_y - card.rows_top) / card.row_height) as usize;
+    let actual_idx = card.origin + ((mouse_y - card.rows_top) / card.row_height) as usize;
     if actual_idx < total && actual_idx != selected {
         if let Some(picker) = app.ui.language_picker.as_mut() {
             picker.selected_index = actual_idx;
