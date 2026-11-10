@@ -143,6 +143,15 @@ export HOME="$key_home"
 drive_init "$app"
 trap drive_stop EXIT
 drive_launch "$fixture"
+# The fixture open is a worker. Pressing New before it lands used to drop
+# the command. Wait until that file is the active tab.
+for _ in $(seq 1 40); do
+  drive_dump
+  if [[ "$(drive_field active_path)" == "$fixture" ]]; then
+    break
+  fi
+  sleep 0.25
+done
 drive_key tap 45 cmd
 sleep 0.4
 drive_dump

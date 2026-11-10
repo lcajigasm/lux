@@ -117,7 +117,8 @@ pub(crate) struct Documents {
     sender: Sender<Result<Outcome, String>>,
     receiver: Receiver<Result<Outcome, String>>,
     pub(crate) message: Option<String>,
-    close_when_idle: bool,
+    /// Cmd+N or Cmd+W pressed while a worker is still finishing.
+    follow_up: Option<Request>,
     pub(crate) initial_path: Option<PathBuf>,
     /// Files to open after `initial_path`, one at a time, as their own tabs.
     pub(crate) open_queue: Vec<PathBuf>,
@@ -145,7 +146,7 @@ impl Default for Documents {
             sender,
             receiver,
             message: None,
-            close_when_idle: false,
+            follow_up: None,
             initial_path: None,
             open_queue: Vec::new(),
             tab_context_menu: None,
@@ -391,12 +392,13 @@ impl App {
     }
 
     pub(crate) fn request_document(&mut self, ctx: &dyn PlatformContext, request: Request) {
-        if self.documents.pending.is_some() {
-            if matches!(request, Request::Close) {
-                self.documents.close_when_idle = true;
-            }
+        // An empty New has no dialog and no disk. Doing it inline means the
+        // tab exists before the next frame, including when the key arrived
+        // while another open was still in flight.
+        let Some(request) = io::accept(self, request) else {
+            self.update_document_title();
             return;
-        }
+        };
         let state_before_save = self.history.state_id();
         if matches!(request, Request::Save { .. }) {
             self.apply_on_save_transforms();
@@ -450,12 +452,12 @@ impl App {
         match outcome {
             Ok(Outcome::Cancelled) => {
                 self.revert_rejected_save_transform(&pending);
-                self.documents.close_when_idle = false;
+                self.documents.follow_up = None;
             }
             Err(error) => {
                 self.revert_rejected_save_transform(&pending);
                 self.documents.message = Some(error);
-                self.documents.close_when_idle = false;
+                self.documents.follow_up = None;
             }
             Ok(Outcome::Finished {
                 saved,
@@ -572,8 +574,8 @@ impl App {
                         }
                         ctx.exit();
                     }
-                } else if std::mem::take(&mut self.documents.close_when_idle) {
-                    self.request_document(ctx, Request::Close);
+                } else if let Some(next) = self.documents.follow_up.take() {
+                    self.request_document(ctx, next);
                 }
             }
         }

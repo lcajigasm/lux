@@ -395,7 +395,6 @@ fn command_n_opens_a_clean_plain_text_buffer_and_comma_opens_settings() {
             physical: Some(lux_platform::PhysicalKey::Letter('n')),
         },
     );
-    ctx.complete(&mut app);
     assert_eq!(app.documents.tabs.tabs().len(), 2);
     assert!(app.documents.path.is_none());
     assert!(app.buffer.text().is_empty());
@@ -413,4 +412,36 @@ fn command_n_opens_a_clean_plain_text_buffer_and_comma_opens_settings() {
         },
     );
     assert!(app.ui.settings.panel.is_some());
+}
+
+#[test]
+fn command_n_during_an_open_runs_when_the_open_finishes() {
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    let ctx = TestContext::new();
+    let path = std::env::temp_dir().join(format!("lux-new-during-open-{}", std::process::id()));
+    std::fs::write(&path, "kept\n").unwrap();
+    app.request_document(&ctx, Request::Open(Some(path.clone())));
+    app.modifiers = Modifiers {
+        meta: cfg!(target_os = "macos"),
+        control: !cfg!(target_os = "macos"),
+        shift: false,
+        alt: false,
+    };
+    app.handle_keyboard_event(
+        &ctx,
+        &KeyEvent {
+            key: Key::Character("n".into()),
+            text: Some("n".into()),
+            state: ElementState::Pressed,
+            repeat: false,
+            physical: Some(lux_platform::PhysicalKey::Letter('n')),
+        },
+    );
+    assert_eq!(app.documents.tabs.tabs().len(), 1);
+    ctx.complete(&mut app);
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+    assert!(app.documents.path.is_none());
+    assert!(app.buffer.text().is_empty());
+    assert!(!app.document_dirty());
+    let _ = std::fs::remove_file(path);
 }
