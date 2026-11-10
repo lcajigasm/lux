@@ -148,8 +148,8 @@ drive_key tap 36 ""
 sleep 0.35
 drive_dump
 [[ "$(drive_field picker)" == "theme" ]] || fail "theme picker did not open"
-scroll_to_end theme
 capture "$out/theme-monokai.png"
+scroll_to_end theme
 drive_key tap 53 ""
 sleep 0.3
 drive_dump
@@ -194,8 +194,8 @@ drive_dump
 open_palette "color theme"
 drive_key tap 36 ""
 sleep 0.35
-scroll_to_end theme
 capture "$out/theme-solarized-light.png"
+scroll_to_end theme
 drive_key tap 53 ""
 sleep 0.3
 
