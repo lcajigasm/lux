@@ -284,7 +284,8 @@ impl SettingsState {
 /// `editor.lineHeight` below 8 is a multiplier of the font size, matching
 /// the settings page. 8 and above is a logical pixel height. Both are then
 /// multiplied by the display scale. Writing the multiplier straight into
-/// the pixel line height is what blanked the editor after a theme change.
+/// the pixel line height blanks the editor after a theme change and makes
+/// every line of a tall file visible at once.
 pub(crate) fn physical_text_metrics(font_size: f64, line_height: f64, scale: f32) -> (f32, f32) {
     let scale = if scale.is_finite() && scale > 0.0 {
         scale

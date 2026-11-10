@@ -153,8 +153,16 @@ pub(crate) fn render_text_lines(
         };
 
         let line_pad_y = (line_height - font_size) * 0.5;
+        let mut cached_face: Option<(u64, FontRef<'_>)> = None;
         for cluster in line.layout.clusters() {
-            let face = line.layout.face(cluster.font_id).unwrap_or(font);
+            let face = match cached_face {
+                Some((id, face)) if id == cluster.font_id => face,
+                _ => {
+                    let face = line.layout.face(cluster.font_id).unwrap_or(font);
+                    cached_face = Some((cluster.font_id, face));
+                    face
+                }
+            };
             let abs_byte = line_start + cluster.byte_range.start;
             let glyph_color = if let Some(syntax) = syntax
                 && let Some(token) = line_tokens
