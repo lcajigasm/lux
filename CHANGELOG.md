@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `lux path` from a terminal opens that path in the editor that is already running. The macOS bundle ships the command at `Lux.app/Contents/SharedSupport/bin/lux`.
+
 ## 1.5.6 — 2026-11-10
 
 Test build for Mac. Not a closed release.

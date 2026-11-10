@@ -34,8 +34,9 @@ if [[ ! -x "$bin" ]]; then
 fi
 
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/SharedSupport/bin"
 cp "$bin" "$app/Contents/MacOS/lux"
+cp "$bin" "$app/Contents/SharedSupport/bin/lux"
 cp "$root/packaging/macos/Info.plist" "$app/Contents/Info.plist"
-chmod +x "$app/Contents/MacOS/lux"
+chmod +x "$app/Contents/MacOS/lux" "$app/Contents/SharedSupport/bin/lux"
 echo "$app"

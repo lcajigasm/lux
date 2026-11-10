@@ -7,6 +7,7 @@ mod accessibility;
 mod app;
 mod build;
 mod chrome;
+mod cli;
 mod color_scheme;
 mod conflict;
 mod dialog;
@@ -56,6 +57,20 @@ mod desktop_pass;
 fn main() {
     probe::mark_process_start();
     lux_pack::install_panic_hook();
+    if std::env::args_os()
+        .skip(1)
+        .any(|arg| arg == "--help" || arg == "-h")
+    {
+        print_help();
+        return;
+    }
+    if std::env::args_os()
+        .skip(1)
+        .any(|arg| arg == "--version" || arg == "-v")
+    {
+        println!("lux {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     let (path, font_bytes) = font::load_system_monospace_font().expect(
         "no known system monospace font was found — see \
          crates/lux/src/font.rs's candidate list",
@@ -77,23 +92,7 @@ fn main() {
     while let Some(arg) = args.next() {
         let arg_str = arg.to_string_lossy();
         if arg_str == "--help" || arg_str == "-h" {
-            println!("Lux — Sublime-grade high-performance text editor");
-            println!();
-            println!("Usage: lux [OPTIONS] [DIRECTORY] [FILE...]");
-            println!();
-            println!("Options:");
-            println!("  -h, --help     Print help information");
-            println!("  -v, --version  Print version information");
-            println!("  --palette      Open the command palette");
-            println!("  --goto         Open go to file");
-            println!("  --theme        Open the color scheme picker");
-            println!("  --settings     Open the settings page");
-            println!("  --query TEXT   Prefill the open selector");
-            println!("  --snapshot PATH  Write one offscreen PNG of this window");
-            println!("  --snapshot-on-usr1 PATH  Write that PNG when SIGUSR1 arrives");
-            println!("  --snapshot-scale N  Scale factor for that PNG (default 2)");
-            println!("  --probe PATH  Write editor state when SIGUSR2 arrives");
-            println!("  --bench-open PATH  Open that file on the first SIGUSR2");
+            print_help();
             return;
         }
         if arg_str == "--version" || arg_str == "-v" {
@@ -166,19 +165,31 @@ fn main() {
         }
         positionals.push(std::path::PathBuf::from(arg));
     }
+    let session = cli::Session {
+        paths: positionals.clone(),
+        palette: open_palette,
+        goto: open_goto,
+        theme: open_theme,
+        settings: open_settings,
+        query: query.clone(),
+    };
+    let private_process = snapshot.is_some()
+        || !snapshot_on_usr1.is_empty()
+        || probe.is_some()
+        || bench_open.is_some();
+    match cli::startup(&session, private_process) {
+        Ok(cli::Startup::Done) => return,
+        Ok(cli::Startup::Run) => {}
+        Err(message) => {
+            eprintln!("{message}");
+            std::process::exit(1);
+        }
+    }
     if let Err(message) = apply_positionals(&mut app, &positionals) {
         eprintln!("{message}");
         std::process::exit(2);
     }
-    if open_palette || (!open_goto && !open_theme && !open_settings && !query.is_empty()) {
-        app.open_command_palette(&query);
-    } else if open_goto {
-        app.open_goto_anything(&query);
-    } else if open_theme {
-        app.open_theme_picker_query(&query);
-    } else if open_settings {
-        app.ui.settings.open_settings_ui();
-    }
+    cli::open_requested_surface(&mut app, &session);
     if !snapshot_on_usr1.is_empty() {
         snapshot::listen_usr1(snapshot_on_usr1, snapshot_scale);
     } else if let Some(path) = snapshot {
@@ -187,6 +198,26 @@ fn main() {
     probe::configure(probe, bench_open);
     probe::listen();
     lux_platform::desktop::run(app).expect("desktop event loop failed");
+}
+
+fn print_help() {
+    println!("Lux — Sublime-grade high-performance text editor");
+    println!();
+    println!("Usage: lux [OPTIONS] [DIRECTORY] [FILE...]");
+    println!();
+    println!("Options:");
+    println!("  -h, --help     Print help information");
+    println!("  -v, --version  Print version information");
+    println!("  --palette      Open the command palette");
+    println!("  --goto         Open go to file");
+    println!("  --theme        Open the color scheme picker");
+    println!("  --settings     Open the settings page");
+    println!("  --query TEXT   Prefill the open selector");
+    println!("  --snapshot PATH  Write one offscreen PNG of this window");
+    println!("  --snapshot-on-usr1 PATH  Write that PNG when SIGUSR1 arrives");
+    println!("  --snapshot-scale N  Scale factor for that PNG (default 2)");
+    println!("  --probe PATH  Write editor state when SIGUSR2 arrives");
+    println!("  --bench-open PATH  Open that file on the first SIGUSR2");
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
