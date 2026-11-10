@@ -30,6 +30,62 @@ pub(crate) fn bundled_monokai() -> LoadedScheme {
     })
 }
 
+/// Every scheme compiled into the binary. Monokai stays first. A name is
+/// parsed once and then shared with the picker and the settings menu.
+pub(crate) fn bundled_schemes() -> &'static [LoadedScheme] {
+    static SCHEMES: OnceLock<Vec<LoadedScheme>> = OnceLock::new();
+    SCHEMES.get_or_init(|| {
+        let mut out = vec![bundled_monokai()];
+        for text in [
+            include_str!("../../../themes/One Dark.sublime-color-scheme"),
+            include_str!("../../../themes/Dracula.sublime-color-scheme"),
+            include_str!("../../../themes/Solarized Dark.sublime-color-scheme"),
+            include_str!("../../../themes/Solarized Light.sublime-color-scheme"),
+            include_str!("../../../themes/Nord.sublime-color-scheme"),
+            include_str!("../../../themes/Gruvbox.sublime-color-scheme"),
+            include_str!("../../../themes/Tokyo Night.sublime-color-scheme"),
+            include_str!("../../../themes/Catppuccin.sublime-color-scheme"),
+            include_str!("../../../themes/Catppuccin Latte.sublime-color-scheme"),
+            include_str!("../../../themes/GitHub Dark.sublime-color-scheme"),
+            include_str!("../../../themes/GitHub Light.sublime-color-scheme"),
+            include_str!("../../../themes/Ayu.sublime-color-scheme"),
+            include_str!("../../../themes/Rose Pine.sublime-color-scheme"),
+        ] {
+            out.push(parse_scheme(text).expect("bundled color scheme parses"));
+        }
+        out
+    });
+    SCHEMES.get().expect("bundled schemes").as_slice()
+}
+
+/// Settings menu values: the historical ids, then each bundled display name.
+pub(crate) fn theme_setting_options() -> &'static [&'static str] {
+    static OPTIONS: OnceLock<Vec<&'static str>> = OnceLock::new();
+    OPTIONS.get_or_init(|| {
+        let mut names = vec![
+            "system",
+            "monokai",
+            "mariana",
+            "breakers",
+            "celeste",
+            "lux-dark",
+            "lux-light",
+            "high-contrast",
+        ];
+        for scheme in bundled_schemes() {
+            if names
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(scheme.name))
+            {
+                continue;
+            }
+            names.push(scheme.name);
+        }
+        names
+    });
+    OPTIONS.get().expect("theme options").as_slice()
+}
+
 /// Reads every `*.sublime-color-scheme` in `dir`. A file that does not
 /// parse is skipped; it is not turned into a blank theme.
 pub(crate) fn load_user_schemes(dir: &Path) -> Vec<LoadedScheme> {
@@ -339,5 +395,30 @@ mod tests {
     #[test]
     fn a_scheme_without_a_background_is_refused() {
         assert!(parse_scheme(r#"{ "name": "Broken", "globals": {} }"#).is_err());
+    }
+
+    #[test]
+    fn bundled_schemes_keep_the_published_backgrounds() {
+        let schemes = bundled_schemes();
+        let mut seen = std::collections::HashSet::new();
+        for scheme in schemes {
+            let bg = scheme.theme.background;
+            assert!(
+                seen.insert((bg.r, bg.g, bg.b, bg.a)),
+                "{} repeats a background",
+                scheme.name
+            );
+        }
+        let bg = |name| scheme_named(schemes, name).unwrap().theme.background;
+        assert_eq!(bg("One Dark"), Color::rgb(0x28, 0x2C, 0x34));
+        assert_eq!(bg("Dracula"), Color::rgb(0x28, 0x2A, 0x36));
+        assert_eq!(bg("Solarized Light"), Color::rgb(0xFD, 0xF6, 0xE3));
+        assert_eq!(bg("Nord"), Color::rgb(0x2E, 0x34, 0x40));
+        assert_eq!(bg("Catppuccin"), Color::rgb(0x1E, 0x1E, 0x2E));
+        assert_eq!(bg("GitHub Light"), Color::rgb(0xFF, 0xFF, 0xFF));
+        assert_eq!(bg("Ayu"), Color::rgb(0x0B, 0x0E, 0x14));
+        assert_eq!(bg("Rose Pine"), Color::rgb(0x19, 0x17, 0x24));
+        assert!(theme_setting_options().contains(&"One Dark"));
+        assert!(theme_setting_options().contains(&"monokai"));
     }
 }

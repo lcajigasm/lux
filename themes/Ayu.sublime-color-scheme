@@ -1,0 +1,41 @@
+{
+  "name": "Ayu",
+  "globals": {
+    "background": "#0b0e14",
+    "foreground": "#bfbdb6",
+    "accent": "#e6b450",
+    "selection": "#1b3a5b",
+    "muted": "#5c6773",
+    "sidebar": "#0d1017",
+    "tab_bar": "#0d1017",
+    "tab_inactive": "#11151c",
+    "status_bar": "#11151c",
+    "panel": "#0d1017",
+    "panel_input": "#11151c",
+    "panel_row": "#1b3a5b",
+    "border": "#11151c",
+    "gutter": "#0b0e14",
+    "line_highlight": "#11151c"
+  },
+  "rules": [
+    { "scope": "comment", "foreground": "#5c6773" },
+    { "scope": "keyword", "foreground": "#ff8f40" },
+    { "scope": "conditional", "foreground": "#ff8f40" },
+    { "scope": "repeat", "foreground": "#ff8f40" },
+    { "scope": "import", "foreground": "#ff8f40" },
+    { "scope": "string", "foreground": "#aad94c" },
+    { "scope": "character", "foreground": "#aad94c" },
+    { "scope": "number", "foreground": "#d2a6ff" },
+    { "scope": "constant", "foreground": "#d2a6ff" },
+    { "scope": "boolean", "foreground": "#d2a6ff" },
+    { "scope": "type", "foreground": "#59c2ff" },
+    { "scope": "function", "foreground": "#ffb454" },
+    { "scope": "constructor", "foreground": "#ffb454" },
+    { "scope": "variable", "foreground": "#bfbdb6" },
+    { "scope": "parameter", "foreground": "#e6b450" },
+    { "scope": "property", "foreground": "#e6b450" },
+    { "scope": "tag", "foreground": "#39bae6" },
+    { "scope": "operator", "foreground": "#f29668" },
+    { "scope": "punctuation", "foreground": "#5c6773" }
+  ]
+}

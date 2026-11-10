@@ -150,6 +150,23 @@ pub(crate) fn handle_theme_picker_key(
     }
 }
 
+/// Settings handlers run while `App`'s settings value is moved out. Install
+/// `schemes` for the lookup, then put the empty slot back.
+pub(crate) fn with_schemes(
+    app: &mut App,
+    schemes: &[crate::color_scheme::LoadedScheme],
+    body: impl FnOnce(&mut App),
+) {
+    let install = app.ui.settings.schemes.is_empty() && !schemes.is_empty();
+    if install {
+        app.ui.settings.schemes = schemes.to_vec();
+    }
+    body(app);
+    if install {
+        app.ui.settings.schemes.clear();
+    }
+}
+
 impl App {
     pub(crate) fn active_syntax_theme(&self) -> &'static lux_syntax::theme::SyntaxTheme {
         crate::color_scheme::syntax_theme(&self.ui.settings.schemes, self.chrome.theme.name)

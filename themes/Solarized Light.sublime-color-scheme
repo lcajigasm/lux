@@ -1,0 +1,41 @@
+{
+  "name": "Solarized Light",
+  "globals": {
+    "background": "#fdf6e3",
+    "foreground": "#657b83",
+    "accent": "#268bd2",
+    "selection": "#eee8d5",
+    "muted": "#93a1a1",
+    "sidebar": "#eee8d5",
+    "tab_bar": "#eee8d5",
+    "tab_inactive": "#eee8d5",
+    "status_bar": "#eee8d5",
+    "panel": "#eee8d5",
+    "panel_input": "#eee8d5",
+    "panel_row": "#eee8d5",
+    "border": "#eee8d5",
+    "gutter": "#fdf6e3",
+    "line_highlight": "#eee8d5"
+  },
+  "rules": [
+    { "scope": "comment", "foreground": "#93a1a1" },
+    { "scope": "keyword", "foreground": "#859900" },
+    { "scope": "conditional", "foreground": "#859900" },
+    { "scope": "repeat", "foreground": "#859900" },
+    { "scope": "import", "foreground": "#859900" },
+    { "scope": "string", "foreground": "#2aa198" },
+    { "scope": "character", "foreground": "#2aa198" },
+    { "scope": "number", "foreground": "#d33682" },
+    { "scope": "constant", "foreground": "#b58900" },
+    { "scope": "boolean", "foreground": "#b58900" },
+    { "scope": "type", "foreground": "#b58900" },
+    { "scope": "function", "foreground": "#268bd2" },
+    { "scope": "constructor", "foreground": "#268bd2" },
+    { "scope": "variable", "foreground": "#657b83" },
+    { "scope": "parameter", "foreground": "#cb4b16" },
+    { "scope": "property", "foreground": "#cb4b16" },
+    { "scope": "tag", "foreground": "#268bd2" },
+    { "scope": "operator", "foreground": "#859900" },
+    { "scope": "punctuation", "foreground": "#93a1a1" }
+  ]
+}

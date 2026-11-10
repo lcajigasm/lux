@@ -1,0 +1,41 @@
+{
+  "name": "Catppuccin Latte",
+  "globals": {
+    "background": "#eff1f5",
+    "foreground": "#4c4f69",
+    "accent": "#8839ef",
+    "selection": "#ccd0da",
+    "muted": "#8c8fa1",
+    "sidebar": "#e6e9ef",
+    "tab_bar": "#e6e9ef",
+    "tab_inactive": "#ccd0da",
+    "status_bar": "#ccd0da",
+    "panel": "#e6e9ef",
+    "panel_input": "#ccd0da",
+    "panel_row": "#ccd0da",
+    "border": "#ccd0da",
+    "gutter": "#eff1f5",
+    "line_highlight": "#e6e9ef"
+  },
+  "rules": [
+    { "scope": "comment", "foreground": "#8c8fa1" },
+    { "scope": "keyword", "foreground": "#8839ef" },
+    { "scope": "conditional", "foreground": "#8839ef" },
+    { "scope": "repeat", "foreground": "#8839ef" },
+    { "scope": "import", "foreground": "#8839ef" },
+    { "scope": "string", "foreground": "#40a02b" },
+    { "scope": "character", "foreground": "#40a02b" },
+    { "scope": "number", "foreground": "#fe640b" },
+    { "scope": "constant", "foreground": "#fe640b" },
+    { "scope": "boolean", "foreground": "#fe640b" },
+    { "scope": "type", "foreground": "#df8e1d" },
+    { "scope": "function", "foreground": "#1e66f5" },
+    { "scope": "constructor", "foreground": "#1e66f5" },
+    { "scope": "variable", "foreground": "#4c4f69" },
+    { "scope": "parameter", "foreground": "#d20f39" },
+    { "scope": "property", "foreground": "#d20f39" },
+    { "scope": "tag", "foreground": "#d20f39" },
+    { "scope": "operator", "foreground": "#179299" },
+    { "scope": "punctuation", "foreground": "#8c8fa1" }
+  ]
+}

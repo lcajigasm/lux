@@ -1,0 +1,41 @@
+{
+  "name": "Rose Pine",
+  "globals": {
+    "background": "#191724",
+    "foreground": "#e0def4",
+    "accent": "#eb6f92",
+    "selection": "#403d52",
+    "muted": "#6e6a86",
+    "sidebar": "#1f1d2e",
+    "tab_bar": "#1f1d2e",
+    "tab_inactive": "#26233a",
+    "status_bar": "#26233a",
+    "panel": "#1f1d2e",
+    "panel_input": "#26233a",
+    "panel_row": "#403d52",
+    "border": "#26233a",
+    "gutter": "#191724",
+    "line_highlight": "#26233a"
+  },
+  "rules": [
+    { "scope": "comment", "foreground": "#6e6a86" },
+    { "scope": "keyword", "foreground": "#eb6f92" },
+    { "scope": "conditional", "foreground": "#eb6f92" },
+    { "scope": "repeat", "foreground": "#eb6f92" },
+    { "scope": "import", "foreground": "#eb6f92" },
+    { "scope": "string", "foreground": "#f6c177" },
+    { "scope": "character", "foreground": "#f6c177" },
+    { "scope": "number", "foreground": "#ebbcba" },
+    { "scope": "constant", "foreground": "#ebbcba" },
+    { "scope": "boolean", "foreground": "#ebbcba" },
+    { "scope": "type", "foreground": "#c4a7e8" },
+    { "scope": "function", "foreground": "#9ccfd8" },
+    { "scope": "constructor", "foreground": "#9ccfd8" },
+    { "scope": "variable", "foreground": "#e0def4" },
+    { "scope": "parameter", "foreground": "#f6c177" },
+    { "scope": "property", "foreground": "#f6c177" },
+    { "scope": "tag", "foreground": "#31748f" },
+    { "scope": "operator", "foreground": "#908caa" },
+    { "scope": "punctuation", "foreground": "#6e6a86" }
+  ]
+}

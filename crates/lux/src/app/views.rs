@@ -34,6 +34,7 @@ impl App {
             self.ui.settings.palette_clock,
         );
         state.query = crate::field::QueryField::from_text(query);
+        state.theme_before = Some(self.chrome.theme.name);
         state.shortcuts = crate::palette::shortcut_labels(&self.keymap);
         self.ui.command_palette = Some(state);
         self.chrome

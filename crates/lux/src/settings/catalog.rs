@@ -106,16 +106,7 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             "Color Theme",
             "Visual color palette. \"system\" follows the OS appearance",
             theme,
-            &[
-                "system",
-                "monokai",
-                "mariana",
-                "breakers",
-                "celeste",
-                "lux-dark",
-                "lux-light",
-                "high-contrast",
-            ],
+            crate::color_scheme::theme_setting_options(),
         ),
         enumeration(
             "workbench.keymap",

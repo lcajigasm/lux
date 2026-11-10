@@ -7,7 +7,13 @@
 > `docs/compare/characters.png` (macos-15 compare run 41348580486) shows
 > áéíóúüñ, emoji, CJK, and combining marks on Monokai, with `UTF-8` in the
 > status bar. The default theme is Monokai, parsed from
-> `themes/Monokai.sublime-color-scheme` (MIT, `themes/NOTICE.md`). The
+> `themes/Monokai.sublime-color-scheme` (MIT, `themes/NOTICE.md`).
+> Bundled beside it, same format and MIT: One Dark, Dracula, Solarized
+> Dark, Solarized Light, Nord, Gruvbox, Tokyo Night, Catppuccin,
+> Catppuccin Latte, GitHub Dark, GitHub Light, Ayu, and Rose Pine
+> (`docs/THEMES.md`). The theme picker, the Settings color-theme menu,
+> and palette rows `Theme: …` preview the highlighted theme; Escape
+> restores the previous theme without writing settings. The
 > sidebar, tabs, selectors, and status bar take their colors from that
 > theme. In `docs/compare/monokai-side-by-side.png` from that same run the
 > Lux editor well is `#272822`, the current line is `#2C2D27`, the tab bar

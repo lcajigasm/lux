@@ -43,6 +43,8 @@ pub(crate) struct SettingsPanelState {
     pub(crate) items: Vec<SettingItem>,
     pub(crate) scroll: f32,
     pub(crate) menu: Option<SettingsMenu>,
+    /// Theme name and `theme_follows_system` from before this menu previewed.
+    pub(crate) theme_before: Option<(String, bool)>,
 }
 
 enum Edit {
@@ -67,6 +69,7 @@ impl SettingsState {
             items,
             scroll: 0.0,
             menu: None,
+            theme_before: None,
         });
     }
 
@@ -100,9 +103,7 @@ impl SettingsState {
                     .as_ref()
                     .is_some_and(|panel| panel.menu.is_some());
                 if menu_open {
-                    if let Some(panel) = self.panel.as_mut() {
-                        panel.menu = None;
-                    }
+                    self.dismiss_menu(app, false);
                 } else {
                     self.panel = None;
                 }
@@ -111,11 +112,13 @@ impl SettingsState {
             }
             Key::Named(NamedKey::ArrowDown) => {
                 self.move_selection(bounds, 1);
+                self.preview_menu_theme(app);
                 app.scheduler.invalidate_all();
                 true
             }
             Key::Named(NamedKey::ArrowUp) => {
                 self.move_selection(bounds, -1);
+                self.preview_menu_theme(app);
                 app.scheduler.invalidate_all();
                 true
             }
@@ -148,16 +151,12 @@ impl SettingsState {
                 app.scheduler.invalidate_all();
             }
             SettingsHit::Page => {
-                if let Some(panel) = self.panel.as_mut() {
-                    panel.menu = None;
-                }
+                self.dismiss_menu(app, false);
                 app.scheduler.invalidate_all();
             }
             SettingsHit::Row(index) => {
-                if let Some(panel) = self.panel.as_mut() {
-                    panel.selected_index = index;
-                    panel.menu = None;
-                }
+                self.dismiss_menu(app, false);
+                self.select(index);
                 app.scheduler.invalidate_all();
             }
             SettingsHit::Toggle(index) => {
@@ -178,11 +177,11 @@ impl SettingsState {
                 self.select(index);
                 self.edit(app, index, Edit::Step(true));
             }
-            SettingsHit::MenuButton(index) => self.toggle_menu(index),
+            SettingsHit::MenuButton(index) => self.toggle_menu(app, index),
             SettingsHit::MenuOption { item, option } => {
                 self.edit(app, item, Edit::Choose(option));
+                self.dismiss_menu(app, true);
                 if let Some(panel) = self.panel.as_mut() {
-                    panel.menu = None;
                     panel.selected_index = item;
                 }
             }
@@ -199,7 +198,6 @@ impl SettingsState {
             ScrollDelta::Pixels(position) => -(position.y as f32),
         };
         panel.scroll = (panel.scroll + dy).max(0.0);
-        panel.menu = None;
         true
     }
 
@@ -237,9 +235,7 @@ impl SettingsState {
         let Some(index) = self.panel.as_ref().map(|panel| panel.selected_index) else {
             return;
         };
-        if let Some(panel) = self.panel.as_mut() {
-            panel.menu = None;
-        }
+        self.dismiss_menu(app, false);
         let edit = match self.panel.as_ref().and_then(|panel| panel.items.get(index)) {
             Some(SettingItem {
                 kind: SettingKind::Boolean { .. },
@@ -258,9 +254,7 @@ impl SettingsState {
             let option = menu.highlight;
             let item = menu.item;
             self.edit(app, item, Edit::Choose(option));
-            if let Some(panel) = self.panel.as_mut() {
-                panel.menu = None;
-            }
+            self.dismiss_menu(app, true);
             return;
         }
         let index = panel.selected_index;
@@ -269,22 +263,25 @@ impl SettingsState {
                 let next = !*value;
                 self.edit(app, index, Edit::SetBool(next));
             }
-            Some(SettingKind::Enum { .. }) => self.toggle_menu(index),
+            Some(SettingKind::Enum { .. }) => self.toggle_menu(app, index),
             Some(SettingKind::Number { .. }) => self.edit(app, index, Edit::Step(true)),
             None => {}
         }
     }
 
-    fn toggle_menu(&mut self, index: usize) {
+    fn toggle_menu(&mut self, app: &mut App, index: usize) {
+        let open = self
+            .panel
+            .as_ref()
+            .is_some_and(|panel| panel.menu.is_some_and(|menu| menu.item == index));
+        if open {
+            self.dismiss_menu(app, false);
+            return;
+        }
         let Some(panel) = self.panel.as_mut() else {
             return;
         };
         panel.selected_index = index;
-        let open = panel.menu.is_some_and(|menu| menu.item == index);
-        if open {
-            panel.menu = None;
-            return;
-        }
         let highlight = match panel.items.get(index).map(|item| &item.kind) {
             Some(SettingKind::Enum { value, options }) => options
                 .iter()
@@ -296,13 +293,90 @@ impl SettingsState {
             item: index,
             highlight,
         });
+        self.preview_menu_theme(app);
     }
 
     fn select(&mut self, index: usize) {
         if let Some(panel) = self.panel.as_mut() {
             panel.selected_index = index;
+        }
+    }
+
+    fn color_theme_menu_open(&self) -> bool {
+        self.panel.as_ref().is_some_and(|panel| {
+            panel.menu.is_some_and(|menu| {
+                panel
+                    .items
+                    .get(menu.item)
+                    .is_some_and(|item| item.key == "workbench.colorTheme")
+            })
+        })
+    }
+
+    fn dismiss_menu(&mut self, app: &mut App, commit: bool) {
+        let theme_menu = self.color_theme_menu_open();
+        if let Some(panel) = self.panel.as_mut() {
             panel.menu = None;
         }
+        if !theme_menu {
+            return;
+        }
+        if commit {
+            if let Some(panel) = self.panel.as_mut() {
+                panel.theme_before = None;
+            }
+            return;
+        }
+        let saved = self
+            .panel
+            .as_mut()
+            .and_then(|panel| panel.theme_before.take());
+        if let Some((name, follows)) = saved {
+            app.chrome.theme_follows_system = follows;
+            let schemes = self.schemes.clone();
+            crate::theme_picker::with_schemes(app, &schemes, |app| app.set_theme(&name));
+        }
+    }
+
+    fn preview_menu_theme(&mut self, app: &mut App) {
+        let choice = {
+            let Some(panel) = self.panel.as_ref() else {
+                return;
+            };
+            let Some(menu) = panel.menu else {
+                return;
+            };
+            let Some(item) = panel.items.get(menu.item) else {
+                return;
+            };
+            if item.key != "workbench.colorTheme" {
+                return;
+            }
+            let SettingKind::Enum { options, .. } = &item.kind else {
+                return;
+            };
+            options.get(menu.highlight).copied().map(str::to_string)
+        };
+        let Some(choice) = choice else {
+            return;
+        };
+        if let Some(panel) = self.panel.as_mut()
+            && panel.theme_before.is_none()
+        {
+            panel.theme_before = Some((
+                app.chrome.theme.name.to_string(),
+                app.chrome.theme_follows_system,
+            ));
+        }
+        let schemes = self.schemes.clone();
+        crate::theme_picker::with_schemes(app, &schemes, |app| {
+            if choice == "system" {
+                let scheme = app.chrome.system_scheme;
+                app.set_theme(lux_ui::Chrome::theme_name_for_scheme(scheme));
+            } else {
+                app.preview_theme(&choice);
+            }
+        });
     }
 
     fn edit(&mut self, app: &mut App, index: usize, edit: Edit) {
@@ -413,6 +487,7 @@ pub(crate) fn scroll_settings(app: &mut App, delta: ScrollDelta) -> bool {
     if app.ui.settings.panel.is_none() {
         return false;
     }
+    cancel_settings_menu(app);
     let scale = app.scale_factor;
     let mut settings = std::mem::take(&mut app.ui.settings);
     let scrolled = settings.scroll_by(delta, scale);
@@ -426,6 +501,32 @@ pub(crate) fn scroll_settings(app: &mut App, delta: ScrollDelta) -> bool {
     }
     app.ui.settings = settings;
     scrolled
+}
+
+/// Escape and a scroll close an open settings menu. A color-theme preview
+/// returns to the theme that was active when the menu opened.
+pub(crate) fn cancel_settings_menu(app: &mut App) {
+    let saved = {
+        let Some(panel) = app.ui.settings.panel.as_mut() else {
+            return;
+        };
+        let theme_menu = panel.menu.is_some_and(|menu| {
+            panel
+                .items
+                .get(menu.item)
+                .is_some_and(|item| item.key == "workbench.colorTheme")
+        });
+        panel.menu = None;
+        if theme_menu {
+            panel.theme_before.take()
+        } else {
+            None
+        }
+    };
+    if let Some((name, follows)) = saved {
+        app.chrome.theme_follows_system = follows;
+        app.set_theme(&name);
+    }
 }
 
 fn reveal(panel: &mut SettingsPanelState, bounds: SettingsBounds) {

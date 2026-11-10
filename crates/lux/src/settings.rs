@@ -6,6 +6,7 @@ mod importers;
 pub(crate) mod layout;
 mod panel;
 
+pub(crate) use panel::cancel_settings_menu;
 pub(crate) use panel::scroll_settings;
 pub(crate) use panel::{SettingKind, SettingsPanelState};
 
@@ -91,7 +92,7 @@ impl SettingsState {
         let watcher =
             ConfigWatcher::new(Arc::clone(&config), [(Layer::User, settings_path.clone())]).ok();
 
-        let mut schemes = vec![crate::color_scheme::bundled_monokai()];
+        let mut schemes = crate::color_scheme::bundled_schemes().to_vec();
         if let Some(dir) = settings_path.parent() {
             schemes.extend(crate::color_scheme::load_user_schemes(&dir.join("themes")));
         }
@@ -147,7 +148,11 @@ impl SettingsState {
             .as_str()
             .or_else(|| resolved["theme"].as_str())
         {
-            app.apply_color_theme_setting(theme_name);
+            let theme_name = theme_name.to_string();
+            let schemes = self.schemes.clone();
+            crate::theme_picker::with_schemes(app, &schemes, |app| {
+                app.apply_color_theme_setting(&theme_name);
+            });
         }
 
         if let Some(keymap_name) = resolved["workbench.keymap"]

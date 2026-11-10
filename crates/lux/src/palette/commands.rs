@@ -5,6 +5,10 @@ use lux_platform::PlatformContext;
 use crate::app::App;
 
 pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_id: &str) {
+    if let Some(name) = command_id.strip_prefix("theme.select:") {
+        app.confirm_theme(name);
+        return;
+    }
     match command_id {
         "file.new" => app.request_document(ctx, crate::document::Request::New),
         "file.open" => app.request_document(ctx, crate::document::Request::Open(None)),

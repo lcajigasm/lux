@@ -1,0 +1,41 @@
+{
+  "name": "Nord",
+  "globals": {
+    "background": "#2e3440",
+    "foreground": "#d8dee9",
+    "accent": "#88c0d0",
+    "selection": "#434c5e",
+    "muted": "#616e88",
+    "sidebar": "#3b4252",
+    "tab_bar": "#3b4252",
+    "tab_inactive": "#4c566a",
+    "status_bar": "#4c566a",
+    "panel": "#3b4252",
+    "panel_input": "#4c566a",
+    "panel_row": "#434c5e",
+    "border": "#4c566a",
+    "gutter": "#2e3440",
+    "line_highlight": "#3b4252"
+  },
+  "rules": [
+    { "scope": "comment", "foreground": "#616e88" },
+    { "scope": "keyword", "foreground": "#81a1c1" },
+    { "scope": "conditional", "foreground": "#81a1c1" },
+    { "scope": "repeat", "foreground": "#81a1c1" },
+    { "scope": "import", "foreground": "#81a1c1" },
+    { "scope": "string", "foreground": "#a3be8c" },
+    { "scope": "character", "foreground": "#a3be8c" },
+    { "scope": "number", "foreground": "#b48ead" },
+    { "scope": "constant", "foreground": "#b48ead" },
+    { "scope": "boolean", "foreground": "#b48ead" },
+    { "scope": "type", "foreground": "#8fbcbb" },
+    { "scope": "function", "foreground": "#88c0d0" },
+    { "scope": "constructor", "foreground": "#88c0d0" },
+    { "scope": "variable", "foreground": "#d8dee9" },
+    { "scope": "parameter", "foreground": "#d08770" },
+    { "scope": "property", "foreground": "#d08770" },
+    { "scope": "tag", "foreground": "#81a1c1" },
+    { "scope": "operator", "foreground": "#81a1c1" },
+    { "scope": "punctuation", "foreground": "#616e88" }
+  ]
+}

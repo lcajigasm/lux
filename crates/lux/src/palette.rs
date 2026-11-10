@@ -12,6 +12,8 @@ pub(crate) struct CommandPaletteState {
     pub(crate) registry: CommandRegistry,
     pub(crate) shortcuts: HashMap<String, String>,
     pub(crate) motion: crate::overlay_motion::OverlayMotion,
+    /// Theme active when the palette opened. Escape restores it.
+    pub(crate) theme_before: Option<&'static str>,
 }
 
 impl Default for CommandPaletteState {
@@ -30,6 +32,7 @@ impl CommandPaletteState {
             registry,
             shortcuts: HashMap::new(),
             motion: crate::overlay_motion::OverlayMotion::open(),
+            theme_before: None,
         }
     }
 
@@ -60,69 +63,145 @@ fn populate_registry(registry: &mut CommandRegistry) {
     registry::populate_registry(registry);
 }
 
+fn palette_context(app: &crate::app::App) -> Context {
+    let mut context = Context::new();
+    context.set("editorFocus", true);
+    context.set("hasSelection", !app.cursors.primary().is_empty());
+    context
+}
+
+fn preview_palette_theme(app: &mut crate::app::App) {
+    let selected = {
+        let Some(palette) = app.ui.command_palette.as_ref() else {
+            return;
+        };
+        let context = palette_context(app);
+        let results = palette.results(&context);
+        results.get(palette.selected_index).and_then(|entry| {
+            entry
+                .command
+                .id
+                .strip_prefix("theme.select:")
+                .map(str::to_string)
+        })
+    };
+    if let Some(name) = selected {
+        app.preview_theme(&name);
+        return;
+    }
+    if let Some(origin) = app
+        .ui
+        .command_palette
+        .as_ref()
+        .and_then(|palette| palette.theme_before)
+    {
+        app.set_theme(origin);
+    }
+}
+
+fn restore_palette_theme(app: &mut crate::app::App) {
+    if let Some(origin) = app
+        .ui
+        .command_palette
+        .as_ref()
+        .and_then(|palette| palette.theme_before)
+    {
+        app.set_theme(origin);
+    }
+}
+
 pub(crate) fn handle_palette_key(
     app: &mut crate::app::App,
     ctx: &dyn PlatformContext,
     event: &KeyEvent,
 ) -> bool {
-    let Some(palette) = app.ui.command_palette.as_mut() else {
+    if app.ui.command_palette.is_none() {
         return false;
+    }
+    let total = {
+        let context = palette_context(app);
+        app.ui
+            .command_palette
+            .as_ref()
+            .map(|palette| palette.results(&context).len())
+            .unwrap_or(0)
     };
-
-    let mut context = Context::new();
-    context.set("editorFocus", true);
-    context.set("hasSelection", !app.cursors.primary().is_empty());
-    let results = palette.results(&context);
-    let total = results.len();
 
     match &event.key {
         Key::Named(NamedKey::Escape) => {
+            restore_palette_theme(app);
             app.ui.command_palette = None;
             crate::focus::focus_editor(app);
             app.scheduler.invalidate_all();
             true
         }
         Key::Named(NamedKey::ArrowDown) => {
-            palette.select_next(total);
+            if let Some(palette) = app.ui.command_palette.as_mut() {
+                palette.select_next(total);
+            }
+            preview_palette_theme(app);
             app.scheduler.invalidate_all();
             true
         }
         Key::Named(NamedKey::ArrowUp) => {
-            palette.select_prev();
+            if let Some(palette) = app.ui.command_palette.as_mut() {
+                palette.select_prev();
+            }
+            preview_palette_theme(app);
             app.scheduler.invalidate_all();
             true
         }
         Key::Named(NamedKey::Backspace) => {
-            palette.query.pop();
-            palette.selected_index = 0;
+            if let Some(palette) = app.ui.command_palette.as_mut() {
+                palette.query.pop();
+                palette.selected_index = 0;
+            }
+            preview_palette_theme(app);
             app.scheduler.invalidate_all();
             true
         }
         Key::Named(NamedKey::Enter) => {
-            if let Some(entry) = results.get(palette.selected_index) {
-                let cmd_id = entry.command.id.clone();
-                palette.registry.record_use(&cmd_id);
-                let (uses, clock) = palette.registry.export_usage();
-                app.ui.settings.palette_uses = uses;
-                app.ui.settings.palette_clock = clock;
-                app.ui.command_palette = None;
-                crate::focus::focus_editor(app);
-                execute_command(app, ctx, &cmd_id);
+            let context = palette_context(app);
+            let cmd_id = if let Some(palette) = app.ui.command_palette.as_mut() {
+                let results = palette.results(&context);
+                let cmd_id = results
+                    .get(palette.selected_index)
+                    .map(|entry| entry.command.id.clone());
+                if let Some(cmd_id) = &cmd_id {
+                    palette.registry.record_use(cmd_id);
+                    let (uses, clock) = palette.registry.export_usage();
+                    app.ui.settings.palette_uses = uses;
+                    app.ui.settings.palette_clock = clock;
+                }
+                cmd_id
             } else {
-                app.ui.command_palette = None;
-                crate::focus::focus_editor(app);
+                None
+            };
+            let keep = cmd_id
+                .as_deref()
+                .is_some_and(|id| id.starts_with("theme.select:"));
+            if !keep {
+                restore_palette_theme(app);
+            }
+            app.ui.command_palette = None;
+            crate::focus::focus_editor(app);
+            if let Some(cmd_id) = cmd_id {
+                execute_command(app, ctx, &cmd_id);
             }
             app.scheduler.invalidate_all();
             true
         }
         Key::Character(s) => {
-            if !app.modifiers.meta && !app.modifiers.control {
+            if app.modifiers.meta || app.modifiers.control {
+                return false;
+            }
+            if let Some(palette) = app.ui.command_palette.as_mut() {
                 palette.query.push_str(s);
                 palette.selected_index = 0;
-                app.scheduler.invalidate_all();
-                return true;
             }
-            false
+            preview_palette_theme(app);
+            app.scheduler.invalidate_all();
+            true
         }
         _ => false,
     }

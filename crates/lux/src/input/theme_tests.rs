@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::app::App;
 use crate::menu::{MenuAction, handle_menu_action};
-use crate::palette::execute_command;
+use crate::palette::{execute_command, handle_palette_key};
 use crate::theme_picker::handle_theme_picker_key;
 use lux_core::buffer::Buffer;
 use lux_platform::event::{ElementState, KeyEvent};
@@ -299,4 +299,77 @@ fn test_set_language_mode_preserves_active_theme() {
         syn.theme.color_for_scope("keyword"),
         lux_syntax::theme::Color::rgb(0xC5, 0x94, 0xC5)
     );
+}
+
+#[test]
+fn palette_theme_row_previews_and_escape_restores() {
+    let mut app = test_app();
+    let ctx = DummyContext;
+    let dir = std::env::temp_dir().join(format!("lux-theme-palette-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    app.ui.settings.settings_path = dir.join("settings.json");
+    std::fs::write(
+        &app.ui.settings.settings_path,
+        crate::settings::DEFAULT_SETTINGS_JSON,
+    )
+    .unwrap();
+
+    app.open_command_palette("Theme: One Dark");
+    let context = {
+        let mut context = lux_ui::command_palette::Context::new();
+        context.set("editorFocus", true);
+        context
+    };
+    let id = app.ui.command_palette.as_ref().unwrap().results(&context)[0]
+        .command
+        .id
+        .clone();
+    assert_eq!(id, "theme.select:One Dark");
+    handle_palette_key(&mut app, &ctx, &key_event(Key::Named(NamedKey::ArrowUp)));
+    assert_eq!(app.chrome.theme.name, "One Dark");
+    handle_palette_key(&mut app, &ctx, &key_event(Key::Named(NamedKey::Escape)));
+    assert!(app.ui.command_palette.is_none());
+    assert_eq!(app.chrome.theme.name, "Monokai");
+    let saved = std::fs::read_to_string(&app.ui.settings.settings_path).unwrap();
+    assert!(!saved.contains("One Dark"));
+
+    app.open_command_palette("Theme: Dracula");
+    handle_palette_key(&mut app, &ctx, &key_event(Key::Named(NamedKey::Enter)));
+    assert_eq!(app.chrome.theme.name, "Dracula");
+    let saved = std::fs::read_to_string(&app.ui.settings.settings_path).unwrap();
+    assert!(saved.contains("Dracula"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn settings_theme_menu_previews_and_escape_restores() {
+    let mut app = test_app();
+    let mut settings = std::mem::take(&mut app.ui.settings);
+    settings.open_settings_ui();
+    let index = settings
+        .panel
+        .as_ref()
+        .unwrap()
+        .items
+        .iter()
+        .position(|item| item.key == "workbench.colorTheme")
+        .unwrap();
+    let origin = app.chrome.theme.name;
+    settings.panel.as_mut().unwrap().selected_index = index;
+    settings.handle_key(&mut app, &key_event(Key::Named(NamedKey::Enter)));
+    for _ in 0..40 {
+        settings.handle_key(&mut app, &key_event(Key::Named(NamedKey::ArrowUp)));
+    }
+    for _ in 0..40 {
+        if app.chrome.theme.name == "One Dark" {
+            break;
+        }
+        settings.handle_key(&mut app, &key_event(Key::Named(NamedKey::ArrowDown)));
+    }
+    assert_eq!(app.chrome.theme.name, "One Dark");
+    app.ui.settings = settings;
+    crate::settings::cancel_settings_menu(&mut app);
+    assert_eq!(app.chrome.theme.name, origin);
+    assert!(app.ui.settings.panel.as_ref().unwrap().menu.is_none());
 }

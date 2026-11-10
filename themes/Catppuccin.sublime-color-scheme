@@ -1,0 +1,41 @@
+{
+  "name": "Catppuccin",
+  "globals": {
+    "background": "#1e1e2e",
+    "foreground": "#cdd6f4",
+    "accent": "#cba6f7",
+    "selection": "#45475a",
+    "muted": "#6c7086",
+    "sidebar": "#181825",
+    "tab_bar": "#181825",
+    "tab_inactive": "#313244",
+    "status_bar": "#313244",
+    "panel": "#181825",
+    "panel_input": "#313244",
+    "panel_row": "#45475a",
+    "border": "#313244",
+    "gutter": "#1e1e2e",
+    "line_highlight": "#313244"
+  },
+  "rules": [
+    { "scope": "comment", "foreground": "#6c7086" },
+    { "scope": "keyword", "foreground": "#cba6f7" },
+    { "scope": "conditional", "foreground": "#cba6f7" },
+    { "scope": "repeat", "foreground": "#cba6f7" },
+    { "scope": "import", "foreground": "#cba6f7" },
+    { "scope": "string", "foreground": "#a6e3a1" },
+    { "scope": "character", "foreground": "#a6e3a1" },
+    { "scope": "number", "foreground": "#fab387" },
+    { "scope": "constant", "foreground": "#fab387" },
+    { "scope": "boolean", "foreground": "#fab387" },
+    { "scope": "type", "foreground": "#f9e2af" },
+    { "scope": "function", "foreground": "#89b4fa" },
+    { "scope": "constructor", "foreground": "#89b4fa" },
+    { "scope": "variable", "foreground": "#cdd6f4" },
+    { "scope": "parameter", "foreground": "#f38ba8" },
+    { "scope": "property", "foreground": "#f38ba8" },
+    { "scope": "tag", "foreground": "#f38ba8" },
+    { "scope": "operator", "foreground": "#94e2d5" },
+    { "scope": "punctuation", "foreground": "#6c7086" }
+  ]
+}

@@ -258,9 +258,7 @@ impl App {
                 .as_ref()
                 .is_some_and(|panel| panel.menu.is_some());
             if menu_open {
-                if let Some(panel) = self.ui.settings.panel.as_mut() {
-                    panel.menu = None;
-                }
+                crate::settings::cancel_settings_menu(self);
             } else {
                 self.ui.settings.panel = None;
                 crate::focus::focus_editor(self);

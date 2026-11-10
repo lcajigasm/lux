@@ -3,6 +3,7 @@
 use lux_ui::command_palette::{Command, CommandRegistry, When};
 
 pub(super) fn populate_registry(registry: &mut CommandRegistry) {
+    register_theme_commands(registry);
     let _ = lux_ui::status_bar::register_commands(registry);
 
     let commands = [
@@ -335,5 +336,15 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
 
     for (id, title, category) in commands {
         let _ = registry.register(Command::new(id, title, category).with_when(When::always()));
+    }
+}
+
+fn register_theme_commands(registry: &mut CommandRegistry) {
+    for name in crate::color_scheme::theme_names(crate::color_scheme::bundled_schemes()) {
+        let _ = registry.register(Command::new(
+            format!("theme.select:{name}"),
+            format!("Theme: {name}"),
+            "Theme",
+        ));
     }
 }
