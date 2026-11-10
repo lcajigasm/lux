@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::placement::WindowFrame;
 use crate::project::Workspace;
 
 pub const SESSION_FILE_NAME: &str = ".lux-session";
@@ -69,6 +70,10 @@ pub struct Session {
     /// never reached a clean exit — see `needs_recovery`.
     #[serde(default)]
     clean_shutdown: bool,
+    /// One entry per window that was open at the last quit. The editor
+    /// has a single window today, so the list holds that one frame.
+    #[serde(default)]
+    pub windows: Vec<WindowFrame>,
 }
 
 impl Session {
@@ -78,6 +83,7 @@ impl Session {
             tabs: Vec::new(),
             active_tab: None,
             clean_shutdown: false,
+            windows: Vec::new(),
         }
     }
 
@@ -352,6 +358,7 @@ mod tests {
         let session = Session::load(&path).unwrap();
         assert!(session.folders.is_empty());
         assert!(session.tabs.is_empty());
+        assert!(session.windows.is_empty());
         assert!(session.needs_recovery());
 
         fs::remove_dir_all(&dir).ok();

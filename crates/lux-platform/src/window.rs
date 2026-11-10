@@ -17,6 +17,12 @@ pub struct WindowAttributes {
     /// `None` lets the platform choose a default size.
     pub inner_size: Option<LogicalSize<f64>>,
     pub min_inner_size: Option<LogicalSize<f64>>,
+    /// Inner size in physical pixels. Wins over `inner_size` when both are set.
+    pub physical_inner_size: Option<PhysicalSize<u32>>,
+    /// Outer position in physical pixels, top-left origin.
+    pub position: Option<PhysicalPosition<i32>>,
+    pub maximized: bool,
+    pub fullscreen: bool,
     pub visible: bool,
 }
 
@@ -26,6 +32,10 @@ impl Default for WindowAttributes {
             title: "Lux".to_string(),
             inner_size: None,
             min_inner_size: None,
+            physical_inner_size: None,
+            position: None,
+            maximized: false,
+            fullscreen: false,
             visible: true,
         }
     }
@@ -50,6 +60,18 @@ impl SafeAreaInsets {
         bottom: 0.0,
         left: 0.0,
     };
+}
+
+/// One connected display, in physical pixels with a top-left origin.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Screen {
+    pub name: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    /// `scale_factor * 1000`.
+    pub scale_millis: u32,
 }
 
 /// A live window. Also a valid target for a `wgpu` surface via the
@@ -91,6 +113,26 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn is_fullscreen(&self) -> bool {
         false
     }
+    /// Outer origin in physical pixels. `None` when the backend cannot
+    /// report it (a window that has already closed, or a test double).
+    fn outer_position(&self) -> Option<(i32, i32)> {
+        None
+    }
+    fn set_outer_position(&self, x: i32, y: i32) {
+        let _ = (x, y);
+    }
+    fn request_inner_size(&self, width: u32, height: u32) {
+        let _ = (width, height);
+    }
+    fn set_maximized(&self, maximized: bool) {
+        let _ = maximized;
+    }
+    fn is_maximized(&self) -> bool {
+        false
+    }
+    fn current_monitor(&self) -> Option<Screen> {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -103,6 +145,9 @@ mod tests {
         assert_eq!(attrs.title, "Lux");
         assert!(attrs.visible);
         assert!(attrs.inner_size.is_none());
+        assert!(attrs.position.is_none());
+        assert!(!attrs.maximized);
+        assert!(!attrs.fullscreen);
     }
 
     #[test]

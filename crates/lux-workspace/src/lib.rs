@@ -1,12 +1,14 @@
 //! Project folders, file watchers, and session persistence.
 
 pub mod index;
+pub mod placement;
 pub mod project;
 pub mod session;
 pub mod symbols;
 pub mod watcher;
 
 pub use index::{IndexDelta, WorkspaceIndex};
+pub use placement::{MonitorRect, PlacedWindow, WindowFrame, restore_window};
 pub use project::{FolderEntry, PROJECT_FILE_NAME, ProjectFile, Root, RootId, Workspace};
 pub use session::{
     CursorState, RecoverySnapshot, RecoveryStore, SESSION_FILE_NAME, Session, TabState,

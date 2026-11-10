@@ -132,6 +132,7 @@ impl App {
             modifiers: Modifiers::default(),
             mouse: MouseState {
                 position: dpi::PhysicalPosition::new(0.0, 0.0),
+                placed: false,
                 selection_anchor: None,
                 last_click: None,
             },
@@ -370,10 +371,18 @@ impl PlatformEventHandler for App {
 
         match event {
             PlatformEvent::CloseRequested => {
+                crate::place::remember(self);
                 ctx.exit();
             }
             PlatformEvent::Resized(size) => {
                 self.resize(size);
+                // Size and position come from the event. Querying the window
+                // here calls into AppKit during `windowDidResize`, and
+                // `is_maximized` can rewrite the style mask.
+                crate::place::note_resized(self, size.width, size.height);
+            }
+            PlatformEvent::WindowMoved(position) => {
+                crate::place::note_moved(self, position.x, position.y);
             }
             PlatformEvent::ScaleFactorChanged { scale_factor } => {
                 self.set_display_scale(scale_factor);
@@ -432,22 +441,11 @@ impl PlatformEventHandler for App {
             }
             PlatformEvent::MouseWheel(delta) => {
                 crate::probe::note_scroll();
-                let on_tabs = self.mouse.position.y < self.tab_bar_height() as f64
-                    && self.mouse.position.x >= self.sidebar_width() as f64;
-                if on_tabs && self.ui.command_palette.is_none() && self.ui.goto_anything.is_none() {
-                    let pixels = match delta {
-                        lux_platform::ScrollDelta::Lines { x, y } => (x + y) * self.tab_width(),
-                        lux_platform::ScrollDelta::Pixels(position) => {
-                            position.x as f32 + position.y as f32
-                        }
-                    };
-                    crate::chrome::scroll_tabs(self, pixels);
-                } else if !crate::overlay_wheel::scroll_open_overlay(self, delta) {
-                    self.scroll(delta);
-                }
+                self.on_wheel(delta);
             }
             PlatformEvent::MouseMoved(position) => {
                 self.mouse.position = position;
+                self.mouse.placed = true;
                 if crate::modal::handle_modal_hover(self, position.x as f32, position.y as f32)
                     && let Some(gpu_window) = &self.gpu_window
                 {
@@ -560,6 +558,7 @@ impl PlatformEventHandler for App {
 
     fn exiting(&mut self, _ctx: &dyn PlatformContext) {
         self.sync_active_document_to_entry();
+        crate::place::remember(self);
         let _ = crate::session::save_session(self, true);
         self.ui.term.shutdown_all();
     }

@@ -281,6 +281,7 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         ));
     }
     out.push('\n');
+    out.push_str(&format!("dirty={}\n", u8::from(app.document_dirty())));
     let (goto, goto_mode, goto_query) = match &app.ui.goto_anything {
         Some(state) => {
             let mode = match state.mode {

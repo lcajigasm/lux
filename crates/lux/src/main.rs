@@ -32,6 +32,7 @@ mod overlay_motion;
 mod overlay_wheel;
 mod palette;
 mod pane_view;
+mod place;
 mod plugin;
 mod presentation;
 mod probe;

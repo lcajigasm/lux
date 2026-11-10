@@ -13,6 +13,10 @@ receipt="$root/docs/receipts/p0-macos-ci.md"
 run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-lcajigasm/lux}/actions/runs/${GITHUB_RUN_ID:-local}"
 
 app="$(bash "$root/scripts/stage-lux-app.sh")"
+# A saved frame can place the window off the display the wheel is aimed at.
+export HOME
+HOME="$(mktemp -d)"
+unset XDG_CACHE_HOME || true
 drive_init "$app"
 trap drive_stop EXIT
 
@@ -51,7 +55,7 @@ if [[ "$before" == "$after" ]]; then
   after="$(drive_field scroll_y)"
 fi
 if [[ "$before" != "$after" ]]; then
-  add "Scroll" "covered" "scroll_y $before -> $after"
+  add "Scroll" "covered" "scroll_y $before -> $after (wheel)"
 else
   add "Scroll" "failed" "scroll_y stayed $before goto=$(drive_field goto) palette=$(drive_field palette)"
 fi

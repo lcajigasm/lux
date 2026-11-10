@@ -188,6 +188,8 @@ pub enum ColorScheme {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlatformEvent {
     Resized(PhysicalSize<u32>),
+    /// The window's outer origin changed, in physical pixels.
+    WindowMoved(PhysicalPosition<i32>),
     /// The window's scale factor changed; a `Resized` event with the new
     /// physical size follows.
     ScaleFactorChanged {

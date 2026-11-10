@@ -23,6 +23,9 @@ pub(crate) struct WorkspaceSession {
     pub(crate) session_path: Option<PathBuf>,
     pub(crate) symbol_index: lux_workspace::SymbolIndex,
     waker: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// Last measured frame. Written on move and resize, and used at quit
+    /// if the window has already closed.
+    pub(crate) frame: Option<lux_workspace::WindowFrame>,
 }
 
 impl WorkspaceSession {
@@ -148,6 +151,13 @@ pub(crate) fn save_session(app: &App, clean: bool) -> std::io::Result<()> {
         if app.documents.active_tab == Some(entry.tab_id) {
             session.active_tab = Some(idx);
         }
+    }
+
+    if let Some(frame) = app.ui.session.frame.clone() {
+        session.windows.push(frame.clone());
+        crate::place::mirror_global(&frame, &session_path);
+    } else if let Ok(previous) = Session::load(&session_path) {
+        session.windows = previous.windows;
     }
 
     if let Some(parent) = session_path.parent() {
@@ -415,6 +425,7 @@ mod tests {
 
         // Edit the default untitled tab with some unsaved notes
         app.buffer = Buffer::from_bytes(b"# My Scratchpad\nDraft notes here").unwrap();
+        app.cursors = MultiCursor::new(Selection::cursor(Position::from_char(&app.buffer, 4)));
         app.sync_active_document_to_entry();
 
         save_session(&app, true).unwrap();
@@ -431,6 +442,7 @@ mod tests {
             "# My Scratchpad\nDraft notes here"
         );
         assert!(app2.document_dirty());
+        assert_eq!(app2.cursors.cursors()[0].head.char, 4);
     }
 
     #[test]
@@ -478,6 +490,33 @@ mod tests {
             .unwrap();
         assert_eq!(clean.buffer.text(), "clean\n");
         assert!(!clean.is_dirty());
+    }
+
+    #[test]
+    fn save_session_records_the_window_frame() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_file = dir.path().join(SESSION_FILE_NAME);
+        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+        app.ui.session.session_path = Some(session_file.clone());
+        app.ui.session.frame = Some(lux_workspace::WindowFrame {
+            x: 12,
+            y: 34,
+            width: 640,
+            height: 480,
+            monitor_name: "Built-in".to_string(),
+            monitor_x: 0,
+            monitor_y: 0,
+            scale_millis: 2000,
+            fullscreen: false,
+            maximized: true,
+        });
+        save_session(&app, true).unwrap();
+        let loaded = Session::load(&session_file).unwrap();
+        assert_eq!(loaded.windows.len(), 1);
+        assert_eq!(loaded.windows[0].x, 12);
+        assert_eq!(loaded.windows[0].width, 640);
+        assert!(loaded.windows[0].maximized);
+        assert!(!loaded.windows[0].fullscreen);
     }
 
     #[test]

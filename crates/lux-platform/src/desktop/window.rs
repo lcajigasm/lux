@@ -7,7 +7,7 @@ use raw_window_handle::{
 };
 
 use crate::event::ColorScheme;
-use crate::window::{PlatformWindow, SafeAreaInsets, WindowId};
+use crate::window::{PlatformWindow, SafeAreaInsets, Screen, WindowId};
 
 pub(super) struct DesktopWindow {
     pub(super) window: Rc<winit::window::Window>,
@@ -81,6 +81,49 @@ impl PlatformWindow for DesktopWindow {
 
     fn is_fullscreen(&self) -> bool {
         self.window.fullscreen().is_some()
+    }
+
+    fn outer_position(&self) -> Option<(i32, i32)> {
+        self.window
+            .outer_position()
+            .ok()
+            .map(|position| (position.x, position.y))
+    }
+
+    fn set_outer_position(&self, x: i32, y: i32) {
+        self.window
+            .set_outer_position(PhysicalPosition::<i32>::new(x, y));
+    }
+
+    fn request_inner_size(&self, width: u32, height: u32) {
+        let _ = self
+            .window
+            .request_inner_size(PhysicalSize::<u32>::new(width, height));
+    }
+
+    fn set_maximized(&self, maximized: bool) {
+        self.window.set_maximized(maximized);
+    }
+
+    fn is_maximized(&self) -> bool {
+        self.window.is_maximized()
+    }
+
+    fn current_monitor(&self) -> Option<Screen> {
+        self.window.current_monitor().map(screen_from)
+    }
+}
+
+pub(super) fn screen_from(monitor: winit::monitor::MonitorHandle) -> Screen {
+    let position = monitor.position();
+    let size = monitor.size();
+    Screen {
+        name: monitor.name().unwrap_or_default(),
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+        scale_millis: (monitor.scale_factor() * 1000.0).round() as u32,
     }
 }
 

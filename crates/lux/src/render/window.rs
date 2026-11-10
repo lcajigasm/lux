@@ -1,4 +1,4 @@
-use dpi::{LogicalSize, PhysicalSize};
+use dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use lux_platform::{PlatformContext, PlatformWindow, ScrollDelta, WindowAttributes};
 use lux_render::{GpuContext, QuadPipeline, Surface, TextPipeline};
 
@@ -7,12 +7,27 @@ use crate::render::paint::color;
 
 impl App {
     pub(crate) fn create_gpu_window(&mut self, ctx: &dyn PlatformContext) {
+        let placed = crate::place::restored(ctx);
+        let mut attrs = WindowAttributes {
+            title: "Lux".to_string(),
+            inner_size: Some(LogicalSize::new(1000.0, 700.0)),
+            ..Default::default()
+        };
+        if let Some(frame) = &placed {
+            attrs.position = Some(PhysicalPosition::new(frame.x, frame.y));
+            if frame.fullscreen {
+                attrs.fullscreen = true;
+                attrs.inner_size = None;
+            } else if frame.maximized {
+                attrs.maximized = true;
+                attrs.inner_size = None;
+            } else {
+                attrs.physical_inner_size = Some(PhysicalSize::new(frame.width, frame.height));
+                attrs.inner_size = None;
+            }
+        }
         let window = ctx
-            .create_window(WindowAttributes {
-                title: "Lux".to_string(),
-                inner_size: Some(LogicalSize::new(1000.0, 700.0)),
-                ..Default::default()
-            })
+            .create_window(attrs)
             .expect("failed to create the main window");
         window.set_ime_allowed(true);
         let window: &'static dyn PlatformWindow = Box::leak(window);
@@ -99,6 +114,31 @@ impl App {
         gpu_window
             .text
             .set_globals(&gpu_window.gpu.queue, size.width, size.height, clear);
+    }
+
+    /// The tab strip takes the wheel only after the pointer has been seen
+    /// inside that strip. The origin is the default before any move, and it
+    /// sits in the strip's rectangle, so a wheel that arrives first scrolls
+    /// the editor.
+    pub(crate) fn wheel_targets_tabs(&self) -> bool {
+        self.mouse.placed
+            && self.mouse.position.y < self.tab_bar_height() as f64
+            && self.mouse.position.x >= self.sidebar_width() as f64
+    }
+
+    pub(crate) fn on_wheel(&mut self, delta: ScrollDelta) {
+        if self.wheel_targets_tabs()
+            && self.ui.command_palette.is_none()
+            && self.ui.goto_anything.is_none()
+        {
+            let pixels = match delta {
+                ScrollDelta::Lines { x, y } => (x + y) * self.tab_width(),
+                ScrollDelta::Pixels(position) => position.x as f32 + position.y as f32,
+            };
+            crate::chrome::scroll_tabs(self, pixels);
+        } else if !crate::overlay_wheel::scroll_open_overlay(self, delta) {
+            self.scroll(delta);
+        }
     }
 
     pub(crate) fn scroll(&mut self, delta: ScrollDelta) {
@@ -222,6 +262,27 @@ mod tests {
         assert_eq!(app.viewport.scroll_x, 8.0);
         assert_eq!(app.viewport.scroll_y, 23.0);
         assert_ne!(app.viewport.scroll_y % LINE_HEIGHT, 0.0);
+    }
+
+    #[test]
+    fn a_wheel_before_any_pointer_move_scrolls_the_editor() {
+        let mut app = app();
+        assert!(!app.mouse.placed);
+        assert_eq!(app.mouse.position, dpi::PhysicalPosition::new(0.0, 0.0));
+        app.on_wheel(ScrollDelta::Lines { x: 0.0, y: -8.0 });
+        assert!(
+            app.viewport.scroll_y > 0.0,
+            "scroll_y was {}",
+            app.viewport.scroll_y
+        );
+    }
+
+    #[test]
+    fn a_wheel_on_the_tab_strip_stays_there() {
+        let mut app = app();
+        app.mouse.placed = true;
+        app.mouse.position = dpi::PhysicalPosition::new(200.0, 4.0);
+        assert!(app.wheel_targets_tabs());
     }
 
     #[test]
