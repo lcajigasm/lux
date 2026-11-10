@@ -368,3 +368,31 @@ fn build_frame_with_folds_skips_collapsed_lines() {
     assert_eq!(frame.lines[0].visual_index, 0);
     assert_eq!(frame.lines[1].visual_index, 1);
 }
+
+#[test]
+fn an_unwrapped_long_line_shapes_only_the_visible_columns() {
+    let line = "M".repeat(420);
+    let buffer = Buffer::from_bytes(format!("{line}\n").as_bytes()).unwrap();
+    let mut view = build_view();
+    let cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
+    let frame = view.build_frame(
+        &buffer,
+        &cursors,
+        &Viewport {
+            width: 800.0,
+            height: 40.0,
+            scroll_x: 0.0,
+            scroll_y: 0.0,
+        },
+        Duration::ZERO,
+        None,
+    );
+    let clusters = frame.lines[0].layout.clusters();
+    assert!(
+        clusters.len() < 200,
+        "shaped {} columns of a 420-column line",
+        clusters.len()
+    );
+    assert!(clusters.len() > 10, "shaped {}", clusters.len());
+    assert_eq!(clusters[0].byte_range.start, 0);
+}

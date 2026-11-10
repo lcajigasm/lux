@@ -51,6 +51,9 @@ pub struct LineStyle<'a> {
 pub struct ClusterGeometry {
     pub byte_range: Range<usize>,
     pub x: f32,
+    /// Which soft-wrapped row of this layout the cluster sits on. A line
+    /// that is not wrapped is always row 0.
+    pub row: u32,
     pub advance: f32,
     pub is_ligature_start: bool,
     pub is_ligature_continuation: bool,
@@ -141,6 +144,7 @@ impl LineLayout {
                         ClusterGeometry {
                             byte_range: cluster.text_range(),
                             x,
+                            row: line_index as u32,
                             advance,
                             is_ligature_start: cluster.is_ligature_start(),
                             is_ligature_continuation: cluster.is_ligature_continuation(),

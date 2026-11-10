@@ -1,0 +1,38 @@
+name: Gutter clip
+
+# Real Lux.app on macos-15. Horizontal and vertical wheels, then pixel
+# checks that buffer text never lands in the line-number margin.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gutter:
+    name: gutter clip (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Scroll and check the margin
+        run: |
+          chmod +x scripts/gutter-clip.sh scripts/gutter_pixels.py scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/gutter-clip.sh
+
+      - name: Upload gutter captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gutter-clip
+          path: docs/evidence/gutter/**
+          if-no-files-found: warn

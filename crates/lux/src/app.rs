@@ -440,6 +440,7 @@ impl PlatformEventHandler for App {
                 }
             }
             PlatformEvent::RedrawRequested => {
+                crate::probe::poll(self, ctx);
                 let frame_began = Instant::now();
                 self.redraw(ctx);
                 crate::snapshot::capture_settled(self, ctx);

@@ -134,6 +134,12 @@ impl SettingsState {
         if let Some(lig) = resolved["editor.fontLigatures"].as_bool() {
             app.editor_view.metrics_mut().ligatures = lig;
         }
+        if let Some(wrap) = resolved["editor.wordWrap"].as_bool() {
+            app.editor_view.metrics_mut().word_wrap = wrap;
+            if wrap {
+                app.viewport.scroll_x = 0.0;
+            }
+        }
         if let Some(rulers) = resolved["editor.columnRulers"].as_array() {
             app.editor_view.metrics_mut().column_rulers = rulers
                 .iter()
@@ -278,7 +284,8 @@ impl SettingsState {
 /// `editor.lineHeight` below 8 is a multiplier of the font size, matching
 /// the settings page. 8 and above is a logical pixel height. Both are then
 /// multiplied by the display scale. Writing the multiplier straight into
-/// the pixel line height is what blanked the editor after a theme change.
+/// the pixel line height blanks the editor after a theme change and makes
+/// every line of a tall file visible at once.
 pub(crate) fn physical_text_metrics(font_size: f64, line_height: f64, scale: f32) -> (f32, f32) {
     let scale = if scale.is_finite() && scale > 0.0 {
         scale

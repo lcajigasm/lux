@@ -142,6 +142,7 @@ impl App {
     }
 
     pub(crate) fn scroll(&mut self, delta: ScrollDelta) {
+        let delta = horizontal_when_shifted(self.modifiers.shift, delta);
         let (dx, dy) = scroll_offset_delta(delta, self.editor_view.metrics().line_height.max(1.0));
         let mouse_x = self.mouse.position.x as f32;
         let mouse_y = self.mouse.position.y as f32;
@@ -198,8 +199,25 @@ impl App {
     }
 
     fn apply_scroll_delta(&mut self, dx: f32, dy: f32) {
-        self.viewport.scroll_x = (self.viewport.scroll_x - dx).max(0.0);
+        if self.editor_view.metrics().word_wrap {
+            self.viewport.scroll_x = 0.0;
+        } else {
+            self.viewport.scroll_x = (self.viewport.scroll_x - dx).max(0.0);
+        }
         self.viewport.scroll_y = (self.viewport.scroll_y - dy).max(0.0);
+    }
+}
+
+fn horizontal_when_shifted(shift: bool, delta: ScrollDelta) -> ScrollDelta {
+    if !shift {
+        return delta;
+    }
+    match delta {
+        ScrollDelta::Lines { x, y } if x.abs() < 0.01 => ScrollDelta::Lines { x: y, y: 0.0 },
+        ScrollDelta::Pixels(position) if position.x.abs() < 0.5 => {
+            ScrollDelta::Pixels(dpi::PhysicalPosition::new(position.y, 0.0))
+        }
+        other => other,
     }
 }
 
@@ -300,5 +318,26 @@ mod tests {
         assert!(scrolled > 0.0, "sidebar scroll_y was {scrolled}");
         assert_eq!(app.viewport.scroll_y, 0.0);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn shift_wheel_scrolls_sideways_and_wrap_locks_horizontal_scroll() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = app();
+        app.ui.settings = crate::settings::SettingsState::new(temp.path().join("settings.json"));
+        app.buffer = lux_core::buffer::Buffer::from_bytes(&vec![b'a'; 500]).unwrap();
+        app.modifiers.shift = true;
+        app.scroll(ScrollDelta::Lines { x: 0.0, y: -4.0 });
+        assert!(app.viewport.scroll_x > 0.0);
+        assert_eq!(app.viewport.scroll_y, 0.0);
+        app.toggle_word_wrap();
+        assert!(app.editor_view.metrics().word_wrap);
+        assert_eq!(app.viewport.scroll_x, 0.0);
+        app.scroll(ScrollDelta::Lines { x: 0.0, y: -4.0 });
+        assert_eq!(app.viewport.scroll_x, 0.0);
+        app.modifiers.shift = false;
+        app.scroll(ScrollDelta::Pixels(PhysicalPosition::new(-40.0, -8.0)));
+        assert_eq!(app.viewport.scroll_x, 0.0);
+        assert!(app.viewport.scroll_y > 0.0);
     }
 }

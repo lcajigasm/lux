@@ -107,3 +107,32 @@ fn theme_reload_keeps_the_buffer_and_scales_line_height() {
         );
     }
 }
+
+#[test]
+fn word_wrap_defaults_off_and_the_toggle_persists() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("settings.json");
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    assert!(!app.editor_view.metrics().word_wrap);
+    app.ui.settings = SettingsState::new(path.clone());
+    app.toggle_word_wrap();
+    assert!(app.editor_view.metrics().word_wrap);
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(saved.contains("\"editor.wordWrap\": true"), "{saved}");
+    let mut next = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    let settings = SettingsState::new(path);
+    settings.apply_to_app(&mut next);
+    assert!(next.editor_view.metrics().word_wrap);
+}
+
+#[test]
+fn the_default_line_height_is_a_multiplier_not_a_pixel_height() {
+    let (size, line) = physical_text_metrics(13.0, 1.4, 1.0);
+    assert_eq!(size, 13.0);
+    assert!((line - 18.2).abs() < 0.01, "{line}");
+    let (size, line) = physical_text_metrics(13.0, 1.4, 2.0);
+    assert_eq!(size, 26.0);
+    assert!((line - 36.4).abs() < 0.01, "{line}");
+    let (_size, line) = physical_text_metrics(16.0, 22.0, 1.0);
+    assert_eq!(line, 22.0);
+}

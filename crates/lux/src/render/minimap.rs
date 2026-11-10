@@ -1,7 +1,7 @@
 //! Render pass for the minimap overview widget.
 
 use crate::minimap::{MINIMAP_ROW_HEIGHT, MinimapState};
-use crate::render::paint::{color, faint_rule};
+use crate::render::paint::color;
 use lux_core::buffer::Buffer;
 use lux_render::QuadInstance;
 use lux_ui::minimap::build_frame;
@@ -62,12 +62,6 @@ pub(crate) fn render_minimap(
     quad_instances.push(QuadInstance::solid(
         [minimap_x, minimap_y, minimap_w, minimap_h],
         bg_color,
-    ));
-
-    // Left border divider stroke
-    quad_instances.push(QuadInstance::solid(
-        [minimap_x, minimap_y, stroke, minimap_h],
-        faint_rule(theme),
     ));
 
     // Density rows

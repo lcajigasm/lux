@@ -140,6 +140,36 @@ case "scroll":
     }
     wheel.location = point
     wheel.post(tap: .cghidEventTap)
+case "scrollx", "scrollshift":
+    let x = Double(args.count > 2 ? args[2] : "400") ?? 400
+    let y = Double(args.count > 3 ? args[3] : "400") ?? 400
+    let lines = Int32(args.count > 4 ? args[4] : "-8") ?? -8
+    let point = CGPoint(x: x, y: y)
+    let source = CGEventSource(stateID: .hidSystemState)
+    if let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
+        move.post(tap: .cghidEventTap)
+    }
+    Thread.sleep(forTimeInterval: 0.05)
+    let vertical: Int32 = args[1] == "scrollx" ? 0 : lines
+    let horizontal: Int32 = args[1] == "scrollx" ? lines : 0
+    let shifted = args[1] == "scrollshift"
+    // A wheel flag alone leaves Shift down for the next event. The vertical
+    // wheel then scrolls sideways and scroll_y stays put.
+    if shifted {
+        post(56, true, .maskShift)
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+    guard let wheel = CGEvent(scrollWheelEvent2Source: source, units: .line, wheelCount: 2, wheel1: vertical, wheel2: horizontal, wheel3: 0) else {
+        fputs("cannot build a scroll event\n", stderr)
+        exit(1)
+    }
+    if shifted { wheel.flags = .maskShift }
+    wheel.location = point
+    wheel.post(tap: .cghidEventTap)
+    if shifted {
+        Thread.sleep(forTimeInterval: 0.05)
+        post(56, false, [])
+    }
 default:
     fputs("unknown step\n", stderr)
     exit(2)

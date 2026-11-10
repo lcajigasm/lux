@@ -448,12 +448,16 @@ fn test_split_visual_focus_indicator_and_static_cursors() {
             .unwrap_or(&lux_syntax::theme::LUX_DARK),
     };
 
+    let mut gutter_quads = Vec::new();
+    let mut gutter_glyphs = Vec::new();
     crate::render::split::render_split_layout(
         &params,
         &mut app.editor_view,
         &mut app.atlas_state,
         &mut quad_instances,
         &mut glyph_instances,
+        &mut gutter_quads,
+        &mut gutter_glyphs,
     );
 
     let accent_col = crate::render::paint::color(app.chrome.theme.accent);

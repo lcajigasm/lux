@@ -11,6 +11,7 @@
 // The accessibility tree still uses this historical snapshot index; frame
 // construction now uses Buffer's indexed line access directly.
 pub(crate) mod line_index;
+mod wrap;
 
 use std::ops::Range;
 use std::time::Duration;
@@ -54,6 +55,8 @@ pub struct VisibleLine {
     pub number_layout: LineLayout,
     pub layout: LineLayout,
     pub indent_guides: Vec<f32>,
+    /// Pixel offset of this line from the top of the document.
+    pub top: f32,
 }
 
 /// A blinking caret at a selection's head, including nonempty selections.
@@ -62,6 +65,9 @@ pub struct CursorGlyph {
     pub line: usize,
     pub visual_row: usize,
     pub x: f32,
+    /// Pixel offset of the caret from the top of the document, including
+    /// the soft-wrap row inside its buffer line.
+    pub y: f32,
     pub visible: bool,
     pub primary: bool,
 }
@@ -73,6 +79,8 @@ pub struct SelectionRect {
     pub visual_row: usize,
     pub x_start: f32,
     pub x_end: f32,
+    /// Pixel offset of this highlight from the top of the document.
+    pub y: f32,
 }
 
 /// Everything a render pass needs to draw one frame of the editor view.
@@ -171,16 +179,38 @@ impl EditorView {
     ) -> EditorViewFrame {
         let total_lines = buffer.len_lines();
         let total_visual = folds.map_or(total_lines, |f| f.total_visual_lines(total_lines));
-        let visible_line_range = visible_range(viewport, self.metrics.line_height, total_visual);
+        let line_height = self.metrics.line_height;
         let gutter_digits = total_lines.max(1).to_string().len();
         let gutter_width = self.reference_width("0".repeat(gutter_digits).as_str());
         let column_ruler_x = self.column_ruler_x();
         let blink_visible = cursor_blink_visible(elapsed, self.metrics.blink_interval);
+        let text_width =
+            (viewport.width - gutter_width - self.metrics.font_size * (22.0 / 16.0)).max(50.0);
+        let placed: Vec<(usize, f32)> = if self.metrics.word_wrap {
+            let char_w = self.reference_width("0").max(1.0);
+            let chars = (text_width / char_w).floor().max(1.0) as usize;
+            wrap::visible_slots(buffer, folds, viewport, line_height, chars)
+        } else {
+            visible_range(viewport, line_height, total_visual)
+                .map(|visual| (visual, visual as f32 * line_height))
+                .collect()
+        };
+        let visible_line_range = placed.first().map(|(visual, _)| *visual).unwrap_or(0)
+            ..placed.last().map(|(visual, _)| visual + 1).unwrap_or(0);
 
         let indent = buffer.indent();
+        // Unwrapped columns past the viewport are not shaped. The first
+        // frame of a 400-column line has to return so the run loop can
+        // answer a probe.
+        let char_w = self.reference_width("0").max(1.0);
+        let visible_chars = if self.metrics.word_wrap {
+            None
+        } else {
+            Some(((viewport.scroll_x.max(0.0) + text_width) / char_w).ceil() as usize + 8)
+        };
 
-        let mut lines = Vec::with_capacity(visible_line_range.len());
-        for visual_idx in visible_line_range.clone() {
+        let mut lines = Vec::with_capacity(placed.len());
+        for (visual_idx, top) in placed {
             let line_idx = folds.map_or(visual_idx, |f| {
                 f.visual_to_buffer_line(visual_idx, total_lines)
             });
@@ -190,17 +220,21 @@ impl EditorView {
                 .line_content(line_idx)
                 .expect("visible line is in range");
             let line_text = content.as_str();
+            let shaped = match visible_chars {
+                Some(keep) => wrap::prefix_chars(line_text, keep),
+                None => line_text,
+            };
             let style =
                 Self::line_style(&self.family, self.metrics.font_size, self.metrics.ligatures);
             let max_w = if self.metrics.word_wrap {
-                Some((viewport.width - gutter_width).max(50.0))
+                Some(text_width)
             } else {
                 None
             };
             let layout = self
                 .text_layout
-                .layout_line_wrapped(&style, line_text, max_w, &[]);
-            let indent_guides = indent_guide_x(&layout, line_text, indent);
+                .layout_line_wrapped(&style, shaped, max_w, &[]);
+            let indent_guides = indent_guide_x(&layout, shaped, indent);
             let number = format!("{:>gutter_digits$}", line_idx + 1);
             let number_layout = self.text_layout.layout_line(&style, &number, &[]);
             lines.push(VisibleLine {
@@ -212,6 +246,7 @@ impl EditorView {
                 number_layout,
                 layout,
                 indent_guides,
+                top,
             });
         }
 
@@ -224,11 +259,12 @@ impl EditorView {
                 let line_start = buffer
                     .line_start_byte(pos.line)
                     .expect("visible line is in range");
-                let x = x_for_byte(&line.layout, pos.byte - line_start);
+                let (x, row) = wrap::place_byte(&line.layout, pos.byte - line_start);
                 cursor_glyphs.push(CursorGlyph {
                     line: pos.line,
                     visual_row: line.visual_index,
                     x,
+                    y: line.top + row as f32 * line_height,
                     visible: blink_visible,
                     primary: *selection == primary,
                 });
@@ -242,10 +278,10 @@ impl EditorView {
                     let line_start = buffer
                         .line_start_byte(line.index)
                         .expect("visible line is in range");
-                    let x_start = if line.index == start.line {
-                        x_for_byte(&line.layout, start.byte - line_start)
+                    let (x_start, row) = if line.index == start.line {
+                        wrap::place_byte(&line.layout, start.byte - line_start)
                     } else {
-                        0.0
+                        (0.0, 0)
                     };
                     let x_end = if line.index == end.line {
                         x_for_byte(&line.layout, end.byte - line_start)
@@ -257,6 +293,7 @@ impl EditorView {
                         visual_row: line.visual_index,
                         x_start,
                         x_end,
+                        y: line.top + row as f32 * line_height,
                     });
                 }
             }
@@ -288,13 +325,14 @@ impl EditorView {
                         .line_start_byte(line.index)
                         .expect("visible line is in range");
                     let next_pos = pos.next_grapheme(buffer);
-                    let x_start = x_for_byte(&line.layout, pos.byte - line_start);
+                    let (x_start, row) = wrap::place_byte(&line.layout, pos.byte - line_start);
                     let x_end = x_for_byte(&line.layout, next_pos.byte - line_start);
                     matching_brackets.push(SelectionRect {
                         line: line.index,
                         visual_row: line.visual_index,
                         x_start,
                         x_end,
+                        y: line.top + row as f32 * line_height,
                     });
                 }
             }
@@ -448,21 +486,7 @@ fn visible_range(viewport: &Viewport, line_height: f32, total_lines: usize) -> R
 /// a deeper problem left for when a real ligature-bearing font is in use
 /// (see the receipt).
 fn x_for_byte(layout: &LineLayout, byte_in_line: usize) -> f32 {
-    let clusters = layout.clusters();
-    for cluster in &clusters {
-        if cluster.byte_range.contains(&byte_in_line) {
-            let span = (cluster.byte_range.end - cluster.byte_range.start).max(1) as f32;
-            let offset = (byte_in_line - cluster.byte_range.start) as f32;
-            return cluster.x + cluster.advance * (offset / span);
-        }
-    }
-    // `LineLayout::width` omits trailing whitespace, so a caret after a tab
-    // or trailing spaces would paint at the last non-space. The shaped
-    // cluster end is the buffer position.
-    clusters
-        .last()
-        .map(|cluster| cluster.x + cluster.advance)
-        .unwrap_or(0.0)
+    wrap::place_byte(layout, byte_in_line).0
 }
 
 /// Chooses the source boundary nearest a horizontal point. Cluster
