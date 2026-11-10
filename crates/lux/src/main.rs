@@ -86,6 +86,8 @@ fn main() {
     let mut snapshot: Option<std::path::PathBuf> = None;
     let mut snapshot_on_usr1: Vec<std::path::PathBuf> = Vec::new();
     let mut snapshot_scale = 2.0_f32;
+    let mut wait = false;
+    let mut new_window = false;
     let mut probe: Option<std::path::PathBuf> = None;
     let mut bench_open: Option<std::path::PathBuf> = None;
     let mut positionals: Vec<std::path::PathBuf> = Vec::new();
@@ -156,6 +158,14 @@ fn main() {
             probe = Some(std::path::PathBuf::from(value));
             continue;
         }
+        if arg_str == "--wait" {
+            wait = true;
+            continue;
+        }
+        if arg_str == "--new-window" {
+            new_window = true;
+            continue;
+        }
         if arg_str == "--bench-open" {
             let Some(value) = args.next() else {
                 eprintln!("Usage: lux --bench-open PATH");
@@ -166,13 +176,34 @@ fn main() {
         }
         positionals.push(std::path::PathBuf::from(arg));
     }
+    let scratch = if positionals.iter().any(|path| path.as_os_str() == "-") {
+        Some(cli::read_stdin_scratch().unwrap_or_else(|message| {
+            eprintln!("{message}");
+            std::process::exit(1);
+        }))
+    } else {
+        None
+    };
+    let (paths, mut locations) = cli::prepare(&positionals, scratch).unwrap_or_else(|message| {
+        eprintln!("{message}");
+        std::process::exit(2);
+    });
+    let wait_token = if wait { cli::fresh_token() } else { 0 };
+    if wait_token != 0 {
+        for location in &mut locations {
+            location.wait_token = wait_token;
+        }
+    }
     let session = cli::Session {
-        paths: positionals.clone(),
+        paths: paths.clone(),
+        locations,
         palette: open_palette,
         goto: open_goto,
         theme: open_theme,
         settings: open_settings,
         query: query.clone(),
+        new_window,
+        wait_token,
     };
     let private_process = snapshot.is_some()
         || !snapshot_on_usr1.is_empty()
@@ -186,7 +217,8 @@ fn main() {
             std::process::exit(1);
         }
     }
-    if let Err(message) = apply_positionals(&mut app, &positionals) {
+    cli::register_locations(&session.locations);
+    if let Err(message) = apply_positionals(&mut app, &paths) {
         eprintln!("{message}");
         std::process::exit(2);
     }
@@ -202,18 +234,7 @@ fn main() {
 }
 
 fn print_help() {
-    println!("Lux — Sublime-grade high-performance text editor");
-    println!();
-    println!("Usage: lux [OPTIONS] [DIRECTORY] [FILE...]");
-    println!();
-    println!("Options:");
-    println!("  -h, --help     Print help information");
-    println!("  -v, --version  Print version information");
-    println!("  --palette      Open the command palette");
-    println!("  --goto         Open go to file");
-    println!("  --theme        Open the color scheme picker");
-    println!("  --settings     Open the settings page");
-    println!("  --query TEXT   Prefill the open selector");
+    println!("{}", cli::help_text());
     println!("  --snapshot PATH  Write one offscreen PNG of this window");
     println!("  --snapshot-on-usr1 PATH  Write that PNG when SIGUSR1 arrives");
     println!("  --snapshot-scale N  Scale factor for that PNG (default 2)");

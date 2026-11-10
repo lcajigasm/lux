@@ -378,8 +378,7 @@ impl App {
         true
     }
 
-    /// Drops on-save whitespace edits when the worker did not write the file
-    /// and the user has not typed since the transform.
+    /// Drops on-save whitespace edits when the worker did not write the file.
     fn revert_rejected_save_transform(&mut self, pending: &Pending) {
         if !pending.revert_transform || self.history.state_id() != pending.version {
             return;
@@ -392,9 +391,7 @@ impl App {
     }
 
     pub(crate) fn request_document(&mut self, ctx: &dyn PlatformContext, request: Request) {
-        // An empty New has no dialog and no disk. Doing it inline means the
-        // tab exists before the next frame, including when the key arrived
-        // while another open was still in flight.
+        // An empty New has no disk work, so the tab exists before the next frame.
         let Some(request) = io::accept(self, request) else {
             self.update_document_title();
             return;
@@ -452,10 +449,12 @@ impl App {
         match outcome {
             Ok(Outcome::Cancelled) => {
                 self.revert_rejected_save_transform(&pending);
+                crate::cli::note_open_failed(&pending.request);
                 self.documents.follow_up = None;
             }
             Err(error) => {
                 self.revert_rejected_save_transform(&pending);
+                crate::cli::note_open_failed(&pending.request);
                 self.documents.message = Some(error);
                 self.documents.follow_up = None;
             }
@@ -504,10 +503,7 @@ impl App {
                             .and_then(|p| p.file_name())
                             .and_then(|f| f.to_str())
                             .unwrap_or("Untitled");
-                        // Opening the first real file may reuse the initial
-                        // empty placeholder. An explicit New request must
-                        // always create a new tab: Cmd/Ctrl+N promises a new
-                        // document even when the current tab is untouched.
+                        // The first real file replaces the untouched Untitled tab. New always adds one.
                         let is_untouched = !matches!(pending.request, Request::New)
                             && self.documents.entries.len() == 1
                             && self.documents.path.is_none()
@@ -552,6 +548,7 @@ impl App {
                 if close {
                     if self.documents.tabs.tabs().len() > 1 {
                         if let Some(active_id) = self.documents.active_tab {
+                            crate::cli::release_tab(active_id);
                             self.documents.tabs.close(active_id);
                             if let Some(pos) = self
                                 .documents
@@ -570,8 +567,10 @@ impl App {
                         }
                     } else {
                         if let Some(active) = self.documents.tabs.active() {
+                            crate::cli::release_tab(active.id);
                             self.documents.tabs.close(active.id);
                         }
+                        crate::cli::release_all();
                         ctx.exit();
                     }
                 } else if let Some(next) = self.documents.follow_up.take() {

@@ -96,6 +96,8 @@ pub(crate) enum MenuAction {
     ToggleRecordMacro = 160,
     PlaybackMacro = 161,
     SaveMacro = 162,
+    InstallCommand = 163,
+    UninstallCommand = 164,
     SelectColorTheme = 3,
 }
 
@@ -197,6 +199,8 @@ impl MenuAction {
             160 => Some(Self::ToggleRecordMacro),
             161 => Some(Self::PlaybackMacro),
             162 => Some(Self::SaveMacro),
+            163 => Some(Self::InstallCommand),
+            164 => Some(Self::UninstallCommand),
             _ => None,
         }
     }
@@ -438,6 +442,18 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
         }
         MenuAction::CommandPalette => {
             app.toggle_command_palette();
+        }
+        MenuAction::InstallCommand => {
+            app.ui.announcement = Some(match crate::cli::install_command() {
+                Ok(message) => message,
+                Err(message) => message,
+            });
+        }
+        MenuAction::UninstallCommand => {
+            app.ui.announcement = Some(match crate::cli::uninstall_command() {
+                Ok(message) => message,
+                Err(message) => message,
+            });
         }
         MenuAction::Fold => {
             app.fold_at_cursor();

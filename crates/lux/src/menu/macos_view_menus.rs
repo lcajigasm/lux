@@ -235,6 +235,21 @@ pub(crate) fn build_view_and_tool_menus(mtm: MainThreadMarker, main_menu: &NSMen
         Some(MenuAction::CancelBuild),
     );
     add_separator(mtm, &tools_menu);
+    add_item(
+        mtm,
+        &tools_menu,
+        "Install Command Line Tool",
+        "",
+        Some(MenuAction::InstallCommand),
+    );
+    add_item(
+        mtm,
+        &tools_menu,
+        "Uninstall Command Line Tool",
+        "",
+        Some(MenuAction::UninstallCommand),
+    );
+    add_separator(mtm, &tools_menu);
     add_item_with_mask(
         mtm,
         &tools_menu,

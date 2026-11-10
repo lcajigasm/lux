@@ -161,6 +161,15 @@ tabs, cursor offsets, and unsaved buffer text; a launch with no path
 restores them. The editor has one window, stored as the single entry of
 `Session.windows`.
 
+`lux file:line:col` opens that file and places the cursor. `lux -` reads
+stdin into an untitled buffer. `--wait` blocks the client until those
+buffers close. `--new-window` starts another window. The palette commands
+`Shell Command: Install 'lux' in PATH` and `Shell Command: Uninstall 'lux' from PATH`,
+and the Tools menu items `Install Command Line Tool` and
+`Uninstall Command Line Tool`, link `Contents/SharedSupport/bin/lux`.
+`packaging/homebrew/lux.rb` is the cask with that `binary` stanza. The live
+tap stays on the published 1.5.6 dmg, which does not contain that binary yet.
+
 Current desktop integration (updated 2026-10-10): the native application
 integrates configurable keymap command dispatch (`lux-config`), snippet expansion
 with interactive placeholder navigation and tab stops (`lux-core`), tree-sitter

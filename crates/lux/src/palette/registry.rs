@@ -22,6 +22,16 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
             "File",
         ),
         ("file.close_tab", "File: Close Tab", "File"),
+        (
+            "cli.install",
+            "Shell Command: Install 'lux' in PATH",
+            "Tools",
+        ),
+        (
+            "cli.uninstall",
+            "Shell Command: Uninstall 'lux' from PATH",
+            "Tools",
+        ),
         ("file.reopen_closed_tab", "File: Reopen Closed Tab", "File"),
         (
             "file.clone_view_to_group",
