@@ -225,16 +225,11 @@ pub(crate) fn restore_session(app: &mut App, session_path: &Path) -> std::io::Re
         let tab_id = app.documents.tabs.open(&file_name);
         let mut entry = DocumentEntry::new(tab_id, tab_state.path.clone(), buffer);
 
-        // A pathless tab stays Plain Text until the user picks a language.
         if tab_state.path.is_some()
             && let Some(lang_name) = &tab_state.language
+            && let Some(language) = crate::language_picker::id_for_label(lang_name)
         {
-            for (id, name) in crate::language_picker::all_languages() {
-                if name == lang_name {
-                    entry.language = id;
-                    break;
-                }
-            }
+            entry.language = language;
         }
 
         // Restore dirty state
@@ -404,8 +399,20 @@ mod tests {
         let session_file = dir.path().join(SESSION_FILE_NAME);
         app.ui.session.session_path = Some(session_file.clone());
 
+        app.documents
+            .set_language(Some(lux_syntax::LanguageId::CommonLisp));
         save_session(&app, true).unwrap();
         assert!(session_file.exists());
+
+        let mut reopened =
+            App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+        reopened.ui.session.session_path = Some(session_file.clone());
+        reopened.documents.path = Some(file_path.clone());
+        crate::language_picker::apply_remembered_language(&mut reopened);
+        assert_eq!(
+            reopened.documents.language(),
+            Some(lux_syntax::LanguageId::CommonLisp)
+        );
 
         // Now create a fresh app and restore session
         let mut app2 =
@@ -414,6 +421,10 @@ mod tests {
         assert!(restored);
         assert_eq!(app2.documents.entries.len(), 1);
         assert_eq!(app2.documents.entries[0].path, Some(file_path));
+        assert_eq!(
+            app2.documents.entries[0].language,
+            Some(lux_syntax::LanguageId::CommonLisp)
+        );
         assert!(app2.ui.sidebar.is_some());
     }
 

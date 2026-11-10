@@ -61,6 +61,50 @@ pub(crate) fn handle_language_picker_scroll(app: &mut crate::app::App, delta: Sc
     true
 }
 
+/// Command-line open skips session restore while the file is still loading.
+/// The language chosen for that path still has to come back.
+pub(crate) fn apply_remembered_language(app: &mut crate::app::App) {
+    let Some(path) = app.documents.path.clone() else {
+        return;
+    };
+    let root = app
+        .ui
+        .sidebar
+        .as_ref()
+        .and_then(|sidebar| sidebar.workspace_root.as_deref());
+    let session_path = app
+        .ui
+        .session
+        .session_path
+        .clone()
+        .unwrap_or_else(|| crate::session::default_session_path(root));
+    let Ok(session) = lux_workspace::session::Session::load(&session_path) else {
+        return;
+    };
+    let Some(label) = session.tabs.iter().rev().find_map(|tab| {
+        if tab.path.as_deref() == Some(path.as_path()) {
+            tab.language.as_deref()
+        } else {
+            None
+        }
+    }) else {
+        return;
+    };
+    if let Some(language) = id_for_label(label) {
+        app.set_language_mode(language);
+    }
+}
+
+pub(crate) fn id_for_label(label: &str) -> Option<Option<LanguageId>> {
+    if let Some((id, _)) = all_languages().into_iter().find(|(_, name)| *name == label) {
+        return Some(id);
+    }
+    LanguageId::ALL
+        .iter()
+        .find(|id| id.name() == label)
+        .map(|id| Some(*id))
+}
+
 pub(crate) fn all_languages() -> Vec<(Option<LanguageId>, &'static str)> {
     let mut languages = vec![(None, "Plain Text")];
     for language in LanguageId::ALL {
