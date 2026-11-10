@@ -107,7 +107,7 @@ impl SettingsState {
         });
     }
 
-    pub(crate) fn update_setting_value(&mut self, app: &mut App, key: &str, val: Value) {
+    pub(crate) fn write_user_value(&mut self, key: &str, val: Value) {
         let mut map: serde_json::Map<String, Value> = match fs_read_map(&self.settings_path) {
             Some(map) => map,
             None => serde_json::Map::new(),
@@ -122,6 +122,10 @@ impl SettingsState {
             .lock()
             .unwrap()
             .reload_layer(lux_config::layering::Layer::User);
+    }
+
+    pub(crate) fn update_setting_value(&mut self, app: &mut App, key: &str, val: Value) {
+        self.write_user_value(key, val);
         self.apply_to_app(app);
     }
 

@@ -17,17 +17,7 @@ use crate::split::{SplitLayout, compute_layout_geometry};
 /// Strictly clamps a quad instance within a bounding rectangle.
 /// Returns None if the quad falls completely outside the bounds.
 pub(crate) fn clamp_quad_to_rect(rect: [f32; 4], bounds: [f32; 4]) -> Option<[f32; 4]> {
-    let [rx, ry, rw, rh] = rect;
-    let [bx, by, bw, bh] = bounds;
-    let x1 = rx.max(bx);
-    let y1 = ry.max(by);
-    let x2 = (rx + rw).min(bx + bw);
-    let y2 = (ry + rh).min(by + bh);
-    if x2 > x1 && y2 > y1 {
-        Some([x1, y1, x2 - x1, y2 - y1])
-    } else {
-        None
-    }
+    super::clip::clip_rect(rect, bounds)
 }
 
 /// Parameters required to render the full multi-pane split view (ST-SPLIT-01).
@@ -57,6 +47,8 @@ pub(crate) fn render_split_layout(
     atlas_state: &mut AtlasState,
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
+    gutter_quads: &mut Vec<QuadInstance>,
+    gutter_glyphs: &mut Vec<GlyphInstance>,
 ) {
     if !params.split.is_active() {
         return;
@@ -98,6 +90,8 @@ pub(crate) fn render_split_layout(
             atlas_state,
             quad_instances,
             glyph_instances,
+            gutter_quads,
+            gutter_glyphs,
         );
     }
 }
@@ -112,6 +106,8 @@ fn render_single_pane(
     atlas_state: &mut AtlasState,
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
+    gutter_quads: &mut Vec<QuadInstance>,
+    gutter_glyphs: &mut Vec<GlyphInstance>,
 ) {
     let [px, py, pw, ph] = bounds;
 
@@ -218,42 +214,12 @@ fn render_single_pane(
 
     let gutter_total_width = frame.gutter_width + 16.0 * params.scale_factor;
     let text_left = px + gutter_total_width + 6.0 * params.scale_factor;
-
-    // Gutter background & right border
-    if gutter_total_width > 0.0 {
-        if let Some(g_rect) = clamp_quad_to_rect([px, py, gutter_total_width, ph], bounds) {
-            quad_instances.push(QuadInstance::solid(
-                g_rect,
-                color(params.theme.chrome.gutter),
-            ));
-        }
-        if let Some(b_rect) = clamp_quad_to_rect(
-            [
-                px + gutter_total_width - params.stroke,
-                py,
-                params.stroke,
-                ph,
-            ],
-            bounds,
-        ) {
-            quad_instances.push(QuadInstance::solid(
-                b_rect,
-                color(params.theme.chrome.border),
-            ));
-        }
-    }
-
-    let text_bounds = [
-        px + gutter_total_width,
-        py,
-        (pw - gutter_total_width).max(0.0),
-        ph,
-    ];
+    let text_bounds = [text_left, py, (px + pw - text_left).max(0.0), ph];
 
     // Active line highlight
     for cursor in &frame.cursors {
         if cursor.primary {
-            let cur_y = py + cursor.visual_row as f32 * params.line_height - scroll_y;
+            let cur_y = py + cursor.y - scroll_y;
             if let Some(h_rect) = clamp_quad_to_rect(
                 [
                     px + gutter_total_width,
@@ -283,7 +249,7 @@ fn render_single_pane(
 
     // Indent guides and selections
     for line in &frame.lines {
-        let y = py + line.visual_index as f32 * params.line_height - scroll_y;
+        let y = py + line.top - scroll_y;
         for guide_x in &line.indent_guides {
             let gx = text_left + guide_x - scroll_x;
             if let Some(g_rect) =
@@ -296,7 +262,7 @@ fn render_single_pane(
 
     let sel_col = color(params.theme.selection);
     for selection in &frame.selections {
-        let y = py + selection.visual_row as f32 * params.line_height - scroll_y;
+        let y = py + selection.y - scroll_y;
         let width = (selection.x_end - selection.x_start).max(1.0);
         let sx = text_left + selection.x_start - scroll_x;
         if let Some(s_rect) = clamp_quad_to_rect([sx, y, width, params.line_height], text_bounds) {
@@ -307,46 +273,8 @@ fn render_single_pane(
     let foreground_col = color(params.theme.foreground);
     let line_pad_y = (params.line_height - params.font_size) * 0.5;
 
-    // Gutter numbers, fold indicators, and syntax-highlighted text clusters
     for line in &frame.lines {
-        let y = py + line.visual_index as f32 * params.line_height - scroll_y;
-        if y + params.line_height < py || y > py + ph {
-            continue;
-        }
-
-        // Bookmark ribbon in gutter
-        if bookmarks.contains(line.index) {
-            let bm_x = px + 2.0 * params.stroke;
-            let bm_w = 4.0 * params.stroke;
-            let bm_h = (params.line_height * 0.60).clamp(8.0 * params.stroke, 14.0 * params.stroke);
-            let bm_y = y + (params.line_height - bm_h) / 2.0;
-            if let Some(bm_rect) = clamp_quad_to_rect([bm_x, bm_y, bm_w, bm_h], bounds) {
-                quad_instances.push(QuadInstance::solid(bm_rect, [0.25, 0.70, 0.95, 0.95]));
-            }
-        }
-
-        // Line numbers
-        let is_curr = frame.cursors.iter().any(|c| c.line == line.index);
-        let num_color = if is_curr { foreground_col } else { muted_col };
-        for cluster in line.number_layout.clusters() {
-            let nx = px + 8.0 * params.scale_factor + cluster.x;
-            if nx >= px && nx + cluster.advance <= px + gutter_total_width {
-                push_glyph(
-                    &mut atlas_state.atlas,
-                    &mut atlas_state.dirty,
-                    &mut atlas_state.scale_cx,
-                    params.font,
-                    params.font_size,
-                    &cluster,
-                    px + 8.0 * params.scale_factor,
-                    y + line_pad_y + line.number_layout.baseline(),
-                    num_color,
-                    glyph_instances,
-                );
-            }
-        }
-
-        // Syntax-colored text clusters bounded to pane geometry
+        let y = py + line.top - scroll_y;
         let line_start = buffer.line_start_byte(line.index).unwrap_or(0);
         let line_len = buffer.line_content(line.index).map_or(0, |c| c.len());
         let line_end = line_start + line_len;
@@ -360,10 +288,6 @@ fn render_single_pane(
         };
 
         for cluster in line.layout.clusters() {
-            let cx = text_left + cluster.x - scroll_x;
-            if cx < text_left || cx + cluster.advance > px + pw {
-                continue;
-            }
             let abs_byte = line_start + cluster.byte_range.start;
             let glyph_color = if let Some(token) = line_tokens
                 .iter()
@@ -373,7 +297,7 @@ fn render_single_pane(
             } else {
                 foreground_col
             };
-
+            let start = glyph_instances.len();
             push_glyph(
                 &mut atlas_state.atlas,
                 &mut atlas_state.dirty,
@@ -382,12 +306,31 @@ fn render_single_pane(
                 params.font_size,
                 &cluster,
                 text_left - scroll_x,
-                y + line_pad_y + line.layout.baseline(),
+                y + cluster.row as f32 * params.line_height + line_pad_y + line.layout.baseline(),
                 glyph_color,
                 glyph_instances,
             );
+            super::clip::clip_glyphs(glyph_instances, start, text_bounds);
         }
     }
+
+    pane_viewport.height = ph;
+    super::text::render_gutter(
+        &frame,
+        Some(bookmarks),
+        &pane_viewport,
+        py,
+        params.line_height,
+        px,
+        gutter_total_width,
+        params.stroke,
+        params.theme,
+        atlas_state,
+        params.font,
+        params.font_size,
+        gutter_quads,
+        gutter_glyphs,
+    );
 
     // Caret indicators (blinking in active pane, static solid in inactive pane)
     let caret_h = params.font_size + 2.0 * params.stroke;
@@ -395,8 +338,7 @@ fn render_single_pane(
 
     for cursor_glyph in &frame.cursors {
         let x = text_left + cursor_glyph.x - scroll_x;
-        let y = py + cursor_glyph.visual_row as f32 * params.line_height - scroll_y + line_pad_y
-            - params.stroke;
+        let y = py + cursor_glyph.y - scroll_y + line_pad_y - params.stroke;
 
         let should_draw = if is_active_pane {
             cursor_glyph.visible && blink_visible
@@ -491,12 +433,16 @@ mod tests {
                 .unwrap_or(&lux_syntax::theme::LUX_DARK),
         };
 
+        let mut gutter_quads = Vec::new();
+        let mut gutter_glyphs = Vec::new();
         render_split_layout(
             &params,
             &mut app.editor_view,
             &mut app.atlas_state,
             &mut quad_instances,
             &mut glyph_instances,
+            &mut gutter_quads,
+            &mut gutter_glyphs,
         );
 
         // Verify quads and glyphs were generated

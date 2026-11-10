@@ -270,6 +270,7 @@ pub(crate) fn clip_glyphs(glyphs: &[GlyphInstance], width: f32, height: f32) -> 
 pub(crate) fn paint(
     gpu_window: &mut GpuWindow,
     base: DrawList<'_>,
+    gutter: DrawList<'_>,
     overlay: DrawList<'_>,
     atlas: &GlyphAtlas,
     background: [f32; 4],
@@ -318,7 +319,16 @@ pub(crate) fn paint(
     };
     let win = gpu_window.window.inner_size();
     let base_glyphs = clip_glyphs(base.glyphs, win.width as f32, win.height as f32);
+    let gutter_glyphs = clip_glyphs(gutter.glyphs, win.width as f32, win.height as f32);
     let overlay_glyphs = clip_glyphs(overlay.glyphs, win.width as f32, win.height as f32);
+    let gutter = DrawList {
+        quads: gutter.quads,
+        glyphs: &gutter_glyphs,
+    };
+    let overlay = DrawList {
+        quads: overlay.quads,
+        glyphs: &overlay_glyphs,
+    };
     let view = texture
         .texture
         .create_view(&wgpu::TextureViewDescriptor::default());
@@ -357,19 +367,59 @@ pub(crate) fn paint(
         );
     }
     // `draw` writes one instance buffer per pipeline. A second pass in the
-    // same submit overwrites that buffer before the GPU runs the first pass,
-    // so the editor disappears and only the selector survives. Submit the
-    // editor first.
-    if !overlay.quads.is_empty() || !overlay.glyphs.is_empty() {
-        gpu_window.gpu.queue.submit(Some(encoder.finish()));
-        encoder = gpu_window
-            .gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    // same submit overwrites that buffer before the GPU runs the first pass.
+    // The gutter is its own pass so its fill covers editor glyphs, and the
+    // selector is a pass after that.
+    let encoder = draw_on_top(
+        &gpu_window.gpu.device,
+        &gpu_window.gpu.queue,
+        &mut gpu_window.quads,
+        &mut gpu_window.text,
+        encoder,
+        &view,
+        gutter,
+        "lux gutter",
+    );
+    let encoder = draw_on_top(
+        &gpu_window.gpu.device,
+        &gpu_window.gpu.queue,
+        &mut gpu_window.quads,
+        &mut gpu_window.text,
+        encoder,
+        &view,
+        overlay,
+        "lux overlay",
+    );
+    gpu_window.window.pre_present_notify();
+    gpu_window.gpu.queue.submit(Some(encoder.finish()));
+    gpu_window.gpu.queue.present(texture);
+    Outcome::Presented
+}
+
+/// Submits `encoder` and draws `list` into a new pass that keeps the
+/// framebuffer. An empty list returns `encoder` unsubmitted.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn draw_on_top(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    quads: &mut QuadPipeline,
+    text: &mut TextPipeline,
+    encoder: wgpu::CommandEncoder,
+    view: &wgpu::TextureView,
+    list: DrawList<'_>,
+    label: &str,
+) -> wgpu::CommandEncoder {
+    if list.quads.is_empty() && list.glyphs.is_empty() {
+        return encoder;
+    }
+    queue.submit(Some(encoder.finish()));
+    let mut encoder =
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some(label) });
+    {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("lux overlay"),
+            label: Some(label),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
@@ -382,23 +432,10 @@ pub(crate) fn paint(
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        gpu_window.quads.draw(
-            &gpu_window.gpu.device,
-            &gpu_window.gpu.queue,
-            &mut pass,
-            overlay.quads,
-        );
-        gpu_window.text.draw(
-            &gpu_window.gpu.device,
-            &gpu_window.gpu.queue,
-            &mut pass,
-            &overlay_glyphs,
-        );
+        quads.draw(device, queue, &mut pass, list.quads);
+        text.draw(device, queue, &mut pass, list.glyphs);
     }
-    gpu_window.window.pre_present_notify();
-    gpu_window.gpu.queue.submit(Some(encoder.finish()));
-    gpu_window.gpu.queue.present(texture);
-    Outcome::Presented
+    encoder
 }
 
 /// Byte ranges in `haystack` that a case-insensitive subsequence `needle` hits.

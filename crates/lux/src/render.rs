@@ -4,6 +4,7 @@
 
 mod about;
 mod build;
+mod clip;
 mod conflict;
 mod git;
 mod goto;
@@ -132,6 +133,8 @@ impl App {
         let mut glyph_instances = Vec::new();
         let mut overlay_quads = Vec::new();
         let mut overlay_glyphs = Vec::new();
+        let mut gutter_quads = Vec::new();
+        let mut gutter_glyphs = Vec::new();
         let mut cursor_screen = None;
 
         if ui.split.is_active() {
@@ -163,32 +166,14 @@ impl App {
                 atlas_state,
                 &mut quad_instances,
                 &mut glyph_instances,
+                &mut gutter_quads,
+                &mut gutter_glyphs,
             );
         } else {
             quad_instances.push(QuadInstance::solid(
                 [sidebar_width, editor_top, viewport.width, viewport.height],
                 color(chrome.theme.background),
             ));
-            if gutter_total_width > 0.0 {
-                quad_instances.push(QuadInstance::solid(
-                    [
-                        sidebar_width,
-                        editor_top,
-                        gutter_total_width,
-                        viewport.height,
-                    ],
-                    color(chrome.theme.chrome.gutter),
-                ));
-                quad_instances.push(QuadInstance::solid(
-                    [
-                        sidebar_width + gutter_total_width - stroke,
-                        editor_top,
-                        stroke,
-                        viewport.height,
-                    ],
-                    color(chrome.theme.chrome.border),
-                ));
-            }
 
             let show_preview = documents.active_entry().is_some_and(|entry| {
                 entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Markdown)
@@ -196,18 +181,13 @@ impl App {
             if !show_preview {
                 for cursor in &frame.cursors {
                     if cursor.primary {
-                        let cur_y =
-                            editor_top + cursor.visual_row as f32 * line_height - viewport.scroll_y;
+                        let cur_y = editor_top + cursor.y - viewport.scroll_y;
                         if cur_y >= editor_top && cur_y < editor_top + viewport.height {
-                            let h_x = if is_df {
-                                0.0
-                            } else {
-                                sidebar_width + gutter_total_width
-                            };
+                            let h_x = if is_df { 0.0 } else { text_left };
                             let h_w = if is_df {
                                 window_width
                             } else {
-                                viewport.width - gutter_total_width
+                                (sidebar_width + viewport.width - text_left).max(0.0)
                             };
                             quad_instances.push(QuadInstance::solid(
                                 [h_x, cur_y, h_w, line_height],
@@ -220,14 +200,12 @@ impl App {
                     &frame,
                     buffer,
                     syntax.as_ref(),
-                    Some(bookmarks),
                     viewport,
                     editor_top,
                     line_height,
                     sidebar_width,
                     text_left,
                     stroke,
-                    !is_df,
                     &chrome.theme,
                     atlas_state,
                     font,
@@ -249,21 +227,35 @@ impl App {
                 }
                 let line_pad_y = (line_height - font_size) * 0.5;
                 let caret_h = font_size + 2.0 * stroke;
-                for cursor_glyph in &frame.cursors {
-                    let x = text_left + cursor_glyph.x - viewport.scroll_x;
-                    let y = editor_top + cursor_glyph.visual_row as f32 * line_height
-                        - viewport.scroll_y
-                        + line_pad_y
-                        - stroke;
-                    if cursor_glyph.primary {
-                        cursor_screen = Some((x, y));
-                    }
-                    if cursor_glyph.visible {
-                        quad_instances.push(QuadInstance::solid(
-                            [x, y, 2.0 * stroke, caret_h],
-                            color(chrome.theme.accent),
-                        ));
-                    }
+                cursor_screen = text::render_carets(
+                    &frame,
+                    viewport,
+                    editor_top,
+                    text_left,
+                    sidebar_width,
+                    line_pad_y,
+                    stroke,
+                    caret_h,
+                    color(chrome.theme.accent),
+                    &mut quad_instances,
+                );
+                if gutter_total_width > 0.0 {
+                    text::render_gutter(
+                        &frame,
+                        Some(bookmarks),
+                        viewport,
+                        editor_top,
+                        line_height,
+                        sidebar_width,
+                        gutter_total_width,
+                        stroke,
+                        &chrome.theme,
+                        atlas_state,
+                        font,
+                        font_size,
+                        &mut gutter_quads,
+                        &mut gutter_glyphs,
+                    );
                 }
             } else {
                 markdown::render_preview(
@@ -482,6 +474,7 @@ impl App {
             line_height,
             viewport.scroll_y,
             *scale_factor,
+            &mut gutter_quads,
         );
 
         let (cx, cy) = cursor_screen.unwrap_or((text_left, editor_top));
@@ -569,6 +562,10 @@ impl App {
             DrawList {
                 quads: &quad_instances,
                 glyphs: &glyph_instances,
+            },
+            DrawList {
+                quads: &gutter_quads,
+                glyphs: &gutter_glyphs,
             },
             DrawList {
                 quads: &overlay_quads,

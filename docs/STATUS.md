@@ -14,8 +14,14 @@
 > is `#1E1F1C`, and the status bar is `#414339`, beside Sublime Text on the
 > same file. The right-hand status labels are light on that bar. The window
 > title is the file name and its parent folder. The column ruler is off
-> unless `editor.columnRulers` is set, and the minimap edge is a faint
-> border. Sublime's own minimap, breadcrumb, and lighter status chrome are
+> unless `editor.columnRulers` is set. Indent guides are drawn only where
+> a line has leading indentation. The minimap is a darker strip at the
+> right edge and does not paint a stroke across the buffer. Word wrap
+> defaults to off (`editor.wordWrap` in the shipped settings). The View
+> menu, the command palette, Settings, and Option+Z toggle it, and the
+> choice is written back to that setting. An untitled buffer stays Plain
+> Text until a language is chosen or the file is saved with an extension.
+> Sublime's own minimap, breadcrumb, and lighter status chrome are
 > not copied. HiDPI text uses grayscale antialiasing when `scale_factor > 1`.
 > The job logged `display scale 1`, so the PNG does not prove Retina.
 > Confirming a theme reloads settings. `editor.lineHeight` below 8 is a

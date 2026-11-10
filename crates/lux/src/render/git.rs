@@ -28,6 +28,7 @@ pub(crate) fn render_git(
     line_height: f32,
     scroll_y: f32,
     scale_factor: f32,
+    gutter_quads: &mut Vec<QuadInstance>,
 ) {
     render_gutter_markers(
         &git.markers,
@@ -38,7 +39,7 @@ pub(crate) fn render_git(
         scroll_y,
         scale_factor,
         viewport_height,
-        quad_instances,
+        gutter_quads,
     );
     render_conflict_decorations(
         &mut git.conflict_blocks,

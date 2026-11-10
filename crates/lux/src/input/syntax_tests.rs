@@ -35,6 +35,26 @@ fn names_extensions_and_shebangs_pick_the_grammar() {
 }
 
 #[test]
+fn an_untitled_buffer_stays_plain_text() {
+    let php = Buffer::from_bytes(b"#!/usr/bin/env php <?php echo str_repeat('x', 400);\n").unwrap();
+    let tab = crate::document::Documents::default()
+        .active_tab
+        .expect("default tab");
+    let untitled = crate::document::DocumentEntry::new(tab, None, php.clone());
+    assert!(untitled.language.is_none());
+    let saved =
+        crate::document::DocumentEntry::new(tab, Some(std::path::PathBuf::from("index.php")), php);
+    assert_eq!(saved.language, Some(LanguageId::Php));
+
+    let mut app = app("#!/usr/bin/env php\n");
+    assert!(app.documents.language().is_none());
+    app.update_syntax_on_open();
+    assert!(app.documents.language().is_none());
+    app.set_language_mode(Some(LanguageId::Php));
+    assert_eq!(app.documents.language(), Some(LanguageId::Php));
+}
+
+#[test]
 fn new_languages_comment_with_their_line_prefix() {
     assert_eq!(LanguageId::Php.line_comment(), Some("//"));
     assert_eq!(LanguageId::Ruby.line_comment(), Some("#"));

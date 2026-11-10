@@ -225,8 +225,10 @@ pub(crate) fn restore_session(app: &mut App, session_path: &Path) -> std::io::Re
         let tab_id = app.documents.tabs.open(&file_name);
         let mut entry = DocumentEntry::new(tab_id, tab_state.path.clone(), buffer);
 
-        // Restore language if recorded
-        if let Some(lang_name) = &tab_state.language {
+        // A pathless tab stays Plain Text until the user picks a language.
+        if tab_state.path.is_some()
+            && let Some(lang_name) = &tab_state.language
+        {
             for (id, name) in crate::language_picker::all_languages() {
                 if name == lang_name {
                     entry.language = id;

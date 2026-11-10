@@ -140,7 +140,10 @@ impl App {
             return;
         }
         let language = self.documents.language().or_else(|| {
-            crate::document::detect_language(self.documents.path.as_deref(), &self.buffer)
+            self.documents
+                .path
+                .as_deref()
+                .and_then(|path| crate::document::detect_language(Some(path), &self.buffer))
         });
         if let Some(lang) = language {
             self.documents.set_language(Some(lang));

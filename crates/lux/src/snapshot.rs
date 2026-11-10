@@ -194,15 +194,18 @@ pub(crate) fn frame_extent(window_width: u32, window_height: u32) -> FrameExtent
 pub(crate) fn present_or_capture(
     gpu_window: &mut GpuWindow,
     base: DrawList<'_>,
+    gutter: DrawList<'_>,
     overlay: DrawList<'_>,
     atlas: &GlyphAtlas,
     background: [f32; 4],
     capture: Option<Capture>,
 ) -> Outcome {
     let Some(capture) = capture else {
-        return paint::paint(gpu_window, base, overlay, atlas, background);
+        return paint::paint(gpu_window, base, gutter, overlay, atlas, background);
     };
-    match write_texture(gpu_window, base, overlay, atlas, background, &capture) {
+    match write_texture(
+        gpu_window, base, gutter, overlay, atlas, background, &capture,
+    ) {
         Ok(()) => eprintln!(
             "Lux: wrote scale snapshot {} ({}x{})",
             capture.path.display(),
@@ -333,6 +336,7 @@ fn settled(app: &App) -> bool {
 fn write_texture(
     gpu_window: &mut GpuWindow,
     base: DrawList<'_>,
+    gutter: DrawList<'_>,
     overlay: DrawList<'_>,
     atlas: &GlyphAtlas,
     background: [f32; 4],
@@ -362,8 +366,18 @@ fn write_texture(
         view_formats: &[],
     });
     let base_glyphs = paint::clip_glyphs(base.glyphs, capture.width as f32, capture.height as f32);
+    let gutter_glyphs =
+        paint::clip_glyphs(gutter.glyphs, capture.width as f32, capture.height as f32);
     let overlay_glyphs =
         paint::clip_glyphs(overlay.glyphs, capture.width as f32, capture.height as f32);
+    let gutter = paint::DrawList {
+        quads: gutter.quads,
+        glyphs: &gutter_glyphs,
+    };
+    let overlay = paint::DrawList {
+        quads: overlay.quads,
+        glyphs: &overlay_glyphs,
+    };
     let view = target.create_view(&wgpu::TextureViewDescriptor::default());
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("lux scale snapshot"),
@@ -393,32 +407,28 @@ fn write_texture(
         quads_pipe.draw(device, queue, &mut pass, base.quads);
         text.draw(device, queue, &mut pass, &base_glyphs);
     }
-    // Same instance-buffer rule as the window: submit the editor before the
-    // selector draw replaces it. One submit kept only the clear color.
-    if !overlay.quads.is_empty() || !overlay.glyphs.is_empty() {
-        queue.submit(Some(encoder.finish()));
-        encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("lux scale snapshot overlay"),
-        });
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("lux scale snapshot overlay"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        quads_pipe.draw(device, queue, &mut pass, overlay.quads);
-        text.draw(device, queue, &mut pass, &overlay_glyphs);
-    }
+    // Same instance-buffer rule as the window. The gutter pass covers editor
+    // glyphs; the selector pass covers the gutter.
+    let encoder = paint::draw_on_top(
+        device,
+        queue,
+        &mut quads_pipe,
+        &mut text,
+        encoder,
+        &view,
+        gutter,
+        "lux scale snapshot gutter",
+    );
+    let mut encoder = paint::draw_on_top(
+        device,
+        queue,
+        &mut quads_pipe,
+        &mut text,
+        encoder,
+        &view,
+        overlay,
+        "lux scale snapshot overlay",
+    );
 
     let tight = capture.width * 4;
     let padded = tight.div_ceil(256) * 256;

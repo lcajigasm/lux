@@ -12,8 +12,14 @@ impl App {
     }
 
     pub(crate) fn toggle_word_wrap(&mut self) {
-        let current = self.editor_view.metrics().word_wrap;
-        self.editor_view.metrics_mut().word_wrap = !current;
+        let enabled = !self.editor_view.metrics().word_wrap;
+        self.editor_view.metrics_mut().word_wrap = enabled;
+        if enabled {
+            self.viewport.scroll_x = 0.0;
+        }
+        self.ui
+            .settings
+            .write_user_value("editor.wordWrap", serde_json::Value::Bool(enabled));
         self.scheduler.invalidate_all();
     }
 

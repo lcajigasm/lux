@@ -134,6 +134,12 @@ impl SettingsState {
         if let Some(lig) = resolved["editor.fontLigatures"].as_bool() {
             app.editor_view.metrics_mut().ligatures = lig;
         }
+        if let Some(wrap) = resolved["editor.wordWrap"].as_bool() {
+            app.editor_view.metrics_mut().word_wrap = wrap;
+            if wrap {
+                app.viewport.scroll_x = 0.0;
+            }
+        }
         if let Some(rulers) = resolved["editor.columnRulers"].as_array() {
             app.editor_view.metrics_mut().column_rulers = rulers
                 .iter()
