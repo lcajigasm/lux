@@ -239,6 +239,8 @@ pub(crate) fn render_settings_panel(
             border,
             on_track,
             page_fill,
+            if selected { Some(row_fill) } else { None },
+            theme,
             quad_instances,
             glyph_instances,
         );
@@ -282,9 +284,12 @@ fn paint_control(
     border: [f32; 4],
     on_track: [f32; 4],
     page: [f32; 4],
+    on_selection: Option<[f32; 4]>,
+    theme: &lux_ui::Theme,
     quads: &mut Vec<QuadInstance>,
     glyphs: &mut Vec<GlyphInstance>,
 ) {
+    let paint = selected_control_colors(theme, on_selection, foreground, muted, well, border);
     match (kind, geom) {
         (SettingKind::Boolean { value }, ControlGeom::Toggle { track, knob }) => {
             let fill = super::panel::toggle_track(if *value { on_track } else { border }, page);
@@ -308,8 +313,8 @@ fn paint_control(
                 plus,
             },
         ) => {
-            paint_button(*minus, well, border, scale, quads);
-            paint_button(*plus, well, border, scale, quads);
+            paint_button(*minus, paint.chip, paint.edge, scale, quads);
+            paint_button(*plus, paint.chip, paint.edge, scale, quads);
             centered(
                 editor_view,
                 atlas,
@@ -320,7 +325,7 @@ fn paint_control(
                 13.0 * scale,
                 &format_number(*value),
                 *well_rect,
-                foreground,
+                paint.value,
                 glyphs,
             );
             centered(
@@ -333,7 +338,7 @@ fn paint_control(
                 16.0 * scale,
                 "−",
                 *minus,
-                foreground,
+                paint.mark,
                 glyphs,
             );
             centered(
@@ -346,12 +351,12 @@ fn paint_control(
                 16.0 * scale,
                 "+",
                 *plus,
-                foreground,
+                paint.mark,
                 glyphs,
             );
         }
         (SettingKind::Enum { value, .. }, ControlGeom::Menu { button }) => {
-            paint_button(*button, well, border, scale, quads);
+            paint_button(*button, paint.chip, paint.edge, scale, quads);
             draw_line(
                 editor_view,
                 atlas,
@@ -363,7 +368,11 @@ fn paint_control(
                 value,
                 button.x + 12.0 * scale,
                 button.y + (button.h - 13.0 * scale) * 0.5,
-                foreground,
+                if on_selection.is_some() {
+                    paint.mark
+                } else {
+                    paint.value
+                },
                 glyphs,
             );
             draw_line(
@@ -377,11 +386,50 @@ fn paint_control(
                 "▾",
                 button.right() - 18.0 * scale,
                 button.y + (button.h - 13.0 * scale) * 0.5,
-                muted,
+                paint.caret,
                 glyphs,
             );
         }
         _ => {}
+    }
+}
+
+struct ControlPaint {
+    value: [f32; 4],
+    chip: [f32; 4],
+    edge: [f32; 4],
+    mark: [f32; 4],
+    caret: [f32; 4],
+}
+
+/// Value ink sits on the selection. The chip fill and its − / + marks
+/// sit on each other. An unselected row keeps the page well.
+fn selected_control_colors(
+    theme: &lux_ui::Theme,
+    on_selection: Option<[f32; 4]>,
+    foreground: [f32; 4],
+    muted: [f32; 4],
+    well: [f32; 4],
+    border: [f32; 4],
+) -> ControlPaint {
+    let Some(selection) = on_selection else {
+        return ControlPaint {
+            value: foreground,
+            chip: well,
+            edge: border,
+            mark: foreground,
+            caret: muted,
+        };
+    };
+    let value = super::panel::label_ink(theme, selection);
+    let chip = super::panel::selection_chip(selection, value);
+    let mark = super::panel::label_ink(theme, chip);
+    ControlPaint {
+        value,
+        chip,
+        edge: value,
+        mark,
+        caret: mark,
     }
 }
 

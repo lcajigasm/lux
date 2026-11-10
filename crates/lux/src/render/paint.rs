@@ -525,6 +525,21 @@ mod tests {
     }
 
     #[test]
+    fn glyphs_outside_the_window_are_dropped() {
+        let glyph = |x| {
+            lux_render::GlyphInstance::new(
+                [x, 10.0, 8.0, 12.0],
+                [0.0, 0.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+                lux_render::GlyphKind::Monochrome,
+            )
+        };
+        let kept = super::clip_glyphs(&[glyph(1200.0), glyph(12.0)], 1000.0, 700.0);
+        assert_eq!(kept.len(), 1);
+        assert!((kept[0].rect[0] - 12.0).abs() < 0.1);
+    }
+
+    #[test]
     fn fuzzy_spans_cover_a_case_insensitive_subsequence() {
         let spans = fuzzy_spans("Goto Line", "gl");
         assert!(span_covers(&spans, &(0..1)), "{spans:?}");
