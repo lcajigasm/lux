@@ -284,7 +284,6 @@ fn configured_shortcut_runs_through_the_real_keyboard_pipeline() {
     let tabs_before = app.documents.tabs.tabs().len();
     command(&mut app, false);
     press(&mut app, &ctx, Key::Character("n".into()), Some("n"));
-    ctx.complete(&mut app);
 
     assert_eq!(app.documents.tabs.tabs().len(), tabs_before + 1);
     assert!(app.documents.path.is_none());
