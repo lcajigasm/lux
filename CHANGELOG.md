@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 1.5.6 — 2026-11-10
+
+Test build for Mac. Not a closed release.
+
+### Added
+
+- P0 checks run on the free macos-15 runner: the shortcut matrix, autopair and undo, the parity checklist, the language-server runtime, and release timings (#52).
+
+### Fixed
+
+- The language server client starts on a Tokio runtime. Opening a Rust file keeps the process alive (#52).
+- Command-P opens Goto Anything and Command-Shift-P opens the command palette, once. Command-K Command-D finishes when the menu owns Command-D (#52).
+- Command-P, Escape, then Command-Shift-P in the same window leaves the command palette open (#53).
+
 ## 1.5.5 — 2026-11-06
 
 Test build for Mac. Not a closed release.
