@@ -47,6 +47,8 @@ for _ in $(seq 1 40); do
 done
 if [[ "$opened" != 1 ]]; then
   echo "the wide file never became active" >&2
+  echo "probe:" >&2
+  cat "$DRIVE_PROBE" >&2 || true
   cat "$DRIVE_LOG" >&2 || true
   exit 1
 fi
