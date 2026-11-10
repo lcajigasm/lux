@@ -283,7 +283,7 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         "goto.anything" => {
             app.toggle_goto_anything();
         }
-        "goto.line" => {
+        "goto.line" | lux_ui::status_bar::GOTO_LINE_COMMAND => {
             app.open_goto_anything(":");
         }
         "goto.symbol" => {

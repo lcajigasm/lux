@@ -196,6 +196,15 @@ mod tests {
         );
         palette.query = crate::field::QueryField::from_text("unstage hunk");
         assert_eq!(palette.results(&ctx)[0].command.id, "git.unstage_hunk");
+        palette.query = crate::field::QueryField::from_text("go to line");
+        let line_ids: Vec<_> = palette
+            .results(&ctx)
+            .iter()
+            .map(|entry| entry.command.id.as_str())
+            .take(4)
+            .collect();
+        assert_eq!(line_ids[0], "status_bar.goto_line");
+        assert!(line_ids.contains(&"goto.line"), "{line_ids:?}");
         palette.query = crate::field::QueryField::from_text("open settings ui");
         assert_eq!(
             palette.results(&ctx)[0].command.id,
@@ -308,5 +317,23 @@ mod tests {
         let eol_before = app.buffer.eol();
         execute_command(&mut app, &ctx, "view.toggle_line_endings");
         assert_ne!(app.buffer.eol(), eol_before);
+
+        execute_command(&mut app, &ctx, "goto.line");
+        assert_eq!(
+            app.ui
+                .goto_anything
+                .as_ref()
+                .map(|state| state.query.as_str()),
+            Some(":")
+        );
+        app.ui.goto_anything = None;
+        execute_command(&mut app, &ctx, lux_ui::status_bar::GOTO_LINE_COMMAND);
+        assert_eq!(
+            app.ui
+                .goto_anything
+                .as_ref()
+                .map(|state| state.query.as_str()),
+            Some(":")
+        );
     }
 }
