@@ -202,8 +202,8 @@ drive_key() {
 drive_dump() {
   rm -f "$DRIVE_PROBE"
   kill -USR2 "$DRIVE_PID"
-  local _ sent=1
-  for _ in $(seq 1 60); do
+  local attempt sent=1
+  for attempt in $(seq 1 60); do
     if [[ -s "$DRIVE_PROBE" ]]; then
       return 0
     fi
@@ -213,7 +213,8 @@ drive_dump() {
       return 1
     fi
     sleep 0.25
-    if [[ "$sent" -eq 1 && "$_" -eq 8 ]]; then
+    # `$_` is the previous command's last argument, not this loop variable.
+    if [[ "$sent" -eq 1 && "$attempt" -eq 8 ]]; then
       kill -USR2 "$DRIVE_PID" || true
       sent=2
     fi

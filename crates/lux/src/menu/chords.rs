@@ -91,6 +91,14 @@ const ROWS: &[Row] = &[
         key: "f",
     },
     Row {
+        action: MenuAction::GotoAnything,
+        key: "p",
+    },
+    Row {
+        action: MenuAction::CommandPalette,
+        key: "P",
+    },
+    Row {
         action: MenuAction::Preferences,
         key: ",",
     },
@@ -119,6 +127,8 @@ pub(crate) fn action_for_command(cmd: &str) -> Option<MenuAction> {
         "join_lines" => MenuAction::JoinLines,
         "select_next_occurrence" => MenuAction::AddNextOccurrence,
         "find" => MenuAction::Find,
+        "quick_open" => MenuAction::GotoAnything,
+        "command_palette" => MenuAction::CommandPalette,
         "open_settings" | "preferences.open_settings_ui" => MenuAction::Preferences,
         _ => return None,
     })
@@ -219,6 +229,8 @@ mod tests {
             (MenuAction::JoinLines, "join_lines"),
             (MenuAction::AddNextOccurrence, "select_next_occurrence"),
             (MenuAction::Find, "find"),
+            (MenuAction::GotoAnything, "quick_open"),
+            (MenuAction::CommandPalette, "command_palette"),
             (MenuAction::Preferences, "open_settings"),
         ];
         for (action, command) in pairs {

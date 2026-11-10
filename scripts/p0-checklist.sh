@@ -45,7 +45,7 @@ drive_dump
 if [[ "$(drive_field goto)" == 1 ]]; then
   add "Cmd+P" "covered" "goto panel opened"
 else
-  add "Cmd+P" "failed" "goto=$(drive_field goto)"
+  add "Cmd+P" "failed" "goto=$(drive_field goto) palette=$(drive_field palette)"
 fi
 drive_key tap 53 none
 sleep 0.3
@@ -55,10 +55,16 @@ drive_dump
 if [[ "$(drive_field palette)" == 1 ]]; then
   add "Cmd+Shift+P" "covered" "palette opened"
 else
-  add "Cmd+Shift+P" "failed" "palette=$(drive_field palette)"
+  add "Cmd+Shift+P" "failed" "palette=$(drive_field palette) goto=$(drive_field goto)"
 fi
 drive_key tap 53 none
 sleep 0.2
+drive_dump
+if [[ "$(drive_field goto)" == 1 || "$(drive_field palette)" == 1 ]]; then
+  drive_key tap 53 none
+  sleep 0.2
+  drive_dump
+fi
 
 before="$(drive_field scroll_y)"
 drive_scroll -8
@@ -74,7 +80,7 @@ fi
 if [[ "$before" != "$after" ]]; then
   add "Scroll" "covered" "scroll_y $before -> $after"
 else
-  add "Scroll" "failed" "scroll_y stayed $before"
+  add "Scroll" "failed" "scroll_y stayed $before goto=$(drive_field goto) palette=$(drive_field palette)"
 fi
 
 menu_err="$DRIVE_WORK/menu.err"
