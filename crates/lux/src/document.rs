@@ -451,7 +451,6 @@ impl App {
                 self.revert_rejected_save_transform(&pending);
                 crate::cli::note_open_failed(&pending.request);
                 self.documents.follow_up = None;
-                self.documents.close_when_idle = false;
             }
             Err(error) => {
                 self.revert_rejected_save_transform(&pending);
