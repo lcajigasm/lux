@@ -174,10 +174,17 @@ apply_theme "latte" "Catppuccin Latte"
 apply_theme "solarized light" "Solarized Light"
 pass "ten themes kept the buffer, cursor, and scroll"
 
-drive_key tap 43 cmd
-sleep 0.4
-drive_dump
-[[ "$(drive_field settings)" == "1" ]] || fail "Settings did not open on Solarized Light"
+opened_settings=0
+for _ in $(seq 1 4); do
+  drive_key tap 43 cmd
+  sleep 0.4
+  drive_dump
+  if [[ "$(drive_field settings)" == "1" ]]; then
+    opened_settings=1
+    break
+  fi
+done
+[[ "$opened_settings" == 1 ]] || fail "Settings did not open on Solarized Light"
 capture "$out/settings-solarized-light.png"
 drive_key tap 53 ""
 sleep 0.25

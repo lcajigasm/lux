@@ -365,6 +365,12 @@ pub(crate) fn render_carets(
     primary
 }
 
+fn push_quad(out: &mut Vec<QuadInstance>, rect: [f32; 4], color: [f32; 4], bounds: [f32; 4]) {
+    if let Some(rect) = clip_rect(rect, bounds) {
+        out.push(QuadInstance::solid(rect, color));
+    }
+}
+
 #[cfg(test)]
 mod gutter_layout_tests {
     use super::*;
@@ -386,11 +392,5 @@ mod gutter_layout_tests {
             let fold = gutter_fold_x(0.0, digits, scale);
             assert!(fold >= marker + 3.0 * scale);
         }
-    }
-}
-
-fn push_quad(out: &mut Vec<QuadInstance>, rect: [f32; 4], color: [f32; 4], bounds: [f32; 4]) {
-    if let Some(rect) = clip_rect(rect, bounds) {
-        out.push(QuadInstance::solid(rect, color));
     }
 }

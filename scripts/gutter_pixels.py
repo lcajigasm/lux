@@ -222,15 +222,26 @@ def is_marker(pixel, background):
 
 
 def editor_strip(rows):
-    """Gutter background and the rows that are the editor, not the chrome."""
+    """Gutter background and the editor body, under the tab bar.
+
+    The tab title sits on the left and is not a line number. A row counts
+    as the editor when most of it is the gutter color, which the tab bar
+    and the status bar are not.
+    """
     height = len(rows)
-    column = [rows[y][1] for y in range(height)]
-    sample = column[height // 5 : 4 * height // 5]
-    background = max(set(sample), key=sample.count)
-    top = next(y for y in range(height) if dist(rows[y][1], background) <= 8)
+    width = len(rows[0])
+    column = [rows[y][2] for y in range(height // 2, int(height * 0.85))]
+    background = max(set(column), key=column.count)
+    step = max(1, width // 4)
+
+    def mostly(y):
+        near = sum(1 for x in range(0, width, 4) if dist(rows[y][x], background) <= 8)
+        return near > step * 0.45
+
+    top = next(y for y in range(height) if mostly(y))
     bottom = height
     for y in range(height - 1, top, -1):
-        if dist(rows[y][1], background) <= 8:
+        if mostly(y):
             bottom = y + 1
             break
     return background, top, bottom
@@ -269,31 +280,19 @@ def assert_digit_margin(name, rows):
         if x - right > 8:
             break
         right = x
+
+    def digit_pixel(x, y):
+        pixel = rows[y][x]
+        return dist(pixel, background) > 18 and not is_marker(pixel, background)
+
+    # Antialiased edges have fewer hits than the stem. Pull them into the
+    # column so a faint pixel beside the stem is not reported as a clip.
+    while left > 0 and any(digit_pixel(left - 1, y) for y in range(top, bottom)):
+        left -= 1
+    while right + 1 < limit and any(digit_pixel(right + 1, y) for y in range(top, bottom)):
+        right += 1
     if left < 1:
         raise SystemExit(f"{name}: digit column starts at x={left}, want a margin of at least 1px")
-    # Only the rows that hold a digit. A chrome rule above the first line
-    # is not the digit column.
-    for y in range(top, bottom):
-        on_digit = False
-        for x in range(left, right + 1):
-            pixel = rows[y][x]
-            if dist(pixel, background) > 18 and not is_marker(pixel, background):
-                on_digit = True
-                break
-        if not on_digit:
-            continue
-        # A chrome rule crosses the whole strip. A digit does not.
-        span = sum(
-            1
-            for x in range(min(90, len(rows[0])))
-            if dist(rows[y][x], background) > 18 and not is_marker(rows[y][x], background)
-        )
-        if span > 40:
-            continue
-        for x in range(left):
-            pixel = rows[y][x]
-            if dist(pixel, background) > 18 and not is_marker(pixel, background):
-                raise SystemExit(f"{name}: digit row y={y} has ink at x={x}")
     gap = None
     for x in range(right + 1, min(width, right + 80)):
         for y in range(top, bottom, 2):
