@@ -16,6 +16,18 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         "file.trim_trailing_whitespace" => app.trim_trailing_whitespace(),
         "file.ensure_final_newline" => app.ensure_final_newline(),
         "file.close_tab" => app.request_document(ctx, crate::document::Request::Close),
+        "cli.install" => {
+            app.ui.announcement = Some(match crate::cli::install_command() {
+                Ok(message) => message,
+                Err(message) => message,
+            });
+        }
+        "cli.uninstall" => {
+            app.ui.announcement = Some(match crate::cli::uninstall_command() {
+                Ok(message) => message,
+                Err(message) => message,
+            });
+        }
         "file.reopen_closed_tab" => {
             app.reopen_last_closed_tab();
         }

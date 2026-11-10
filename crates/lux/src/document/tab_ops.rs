@@ -340,6 +340,7 @@ impl App {
             self.switch_to_tab(target_id);
             self.request_document(ctx, crate::document::Request::Close);
         } else {
+            crate::cli::release_tab(target_id);
             self.documents.tabs.close(target_id);
             if let Some(pos) = self
                 .documents
