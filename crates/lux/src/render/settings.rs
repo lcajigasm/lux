@@ -47,7 +47,7 @@ pub(crate) fn render_settings_panel(
     let border = color(theme.chrome.border);
     let foreground = super::panel::readable_ink(color(theme.foreground), page_fill);
     let muted = color(theme.muted);
-    let well = color(theme.chrome.panel_input);
+    let well = super::panel::distinct_fill(color(theme.chrome.panel_input), page_fill);
     let on_track = color(theme.accent);
 
     quad_instances.push(QuadInstance::solid(

@@ -79,6 +79,49 @@ pub(crate) fn contrast_ratio(a: [f32; 4], b: [f32; 4]) -> f32 {
 /// Moves `ink` toward black or white until it clears WCAG AA on
 /// `background`. The theme color is kept when it already clears 4.8,
 /// which leaves a little room for antialiasing.
+/// A control fill that still reads as a control after the snapshot
+/// checker quantizes each channel with `& ~7` and allows 10 levels of
+/// slack. A theme whose `panel_input` sits on `panel` (Ayu, Solarized,
+/// GitHub Light) otherwise paints a search field with no edge.
+pub(crate) fn distinct_fill(fill: [f32; 4], page: [f32; 4]) -> [f32; 4] {
+    if quant_gap(fill, page) > 18 {
+        return fill;
+    }
+    let sum = page[0] + page[1] + page[2];
+    let target = if sum < 1.5 {
+        [1.0, 1.0, 1.0, 1.0]
+    } else {
+        [0.0, 0.0, 0.0, 1.0]
+    };
+    let mut best = fill;
+    for step in 1..=20 {
+        let t = step as f32 / 20.0;
+        let mixed = [
+            fill[0] + (target[0] - fill[0]) * t,
+            fill[1] + (target[1] - fill[1]) * t,
+            fill[2] + (target[2] - fill[2]) * t,
+            1.0,
+        ];
+        best = mixed;
+        if quant_gap(mixed, page) > 18 {
+            return mixed;
+        }
+    }
+    best
+}
+
+fn quant_gap(a: [f32; 4], b: [f32; 4]) -> i32 {
+    (0..3)
+        .map(|channel| (quant_channel(a[channel]) - quant_channel(b[channel])).abs())
+        .max()
+        .unwrap_or(0)
+}
+
+fn quant_channel(value: f32) -> i32 {
+    let byte = (value.clamp(0.0, 1.0) * 255.0).round() as i32;
+    byte & !7
+}
+
 pub(crate) fn readable_ink(ink: [f32; 4], background: [f32; 4]) -> [f32; 4] {
     if contrast_ratio(ink, background) >= 4.8 {
         return ink;
@@ -172,6 +215,27 @@ mod contrast_tests {
         let solarized = color(lux_ui::Color::from_hex("#657b83").unwrap());
         let paper = color(lux_ui::Color::from_hex("#EEE8D5").unwrap());
         assert!(contrast_ratio(readable_ink(solarized, paper), paper) >= 4.5);
+    }
+
+    #[test]
+    fn a_search_well_clears_the_page_after_quantization() {
+        let rgb = |hex: &str| color(lux_ui::Color::from_hex(hex).unwrap());
+        for (page, well) in [
+            ("#0d1017", "#11151c"),
+            ("#073642", "#073642"),
+            ("#eee8d5", "#eee8d5"),
+            ("#f6f8fa", "#f6f8fa"),
+            ("#1f1d2e", "#26233a"),
+            ("#1e1f1c", "#414339"),
+        ] {
+            let page = rgb(page);
+            let out = distinct_fill(rgb(well), page);
+            assert!(quant_gap(out, page) > 18, "{page:?} -> {out:?}");
+        }
+        let monokai_page = rgb("#1e1f1c");
+        let monokai_well = rgb("#414339");
+        let kept = distinct_fill(monokai_well, monokai_page);
+        assert_eq!(kept, monokai_well);
     }
 
     #[test]
