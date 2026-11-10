@@ -1,5 +1,4 @@
-//! Document lifecycle. Disk and native dialogs run on a worker; completion
-//! wakes the platform event loop, without a timer or recurring polling.
+//! Document lifecycle. Disk and dialogs run on a worker and wake the event loop.
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -41,8 +40,7 @@ pub(crate) enum Request {
 struct Pending {
     request: Request,
     version: u64,
-    /// True when on-save whitespace edits were recorded and must be undone
-    /// if the worker rejects or cancels the save.
+    /// Undo on-save whitespace edits when the worker rejects the save.
     revert_transform: bool,
 }
 
@@ -83,7 +81,9 @@ impl DocumentEntry {
         static NEXT_BID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let buffer_id = NEXT_BID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let disk_snapshot = path.as_ref().map(|_| buffer.clone());
-        let language = detect_language(path.as_deref(), &buffer);
+        let language = path
+            .as_deref()
+            .and_then(|p| detect_language(Some(p), &buffer));
         Self {
             tab_id,
             buffer_id,
