@@ -23,16 +23,19 @@ thread_local! {
 
 /// Holds the selector fade for one overlay paint and restores the previous
 /// value, including on an early return.
+#[cfg(test)]
 pub(crate) struct OverlayFade {
     previous: f32,
 }
 
+#[cfg(test)]
 impl Drop for OverlayFade {
     fn drop(&mut self) {
         OVERLAY_FADE.with(|cell| cell.set(self.previous));
     }
 }
 
+#[cfg(test)]
 pub(crate) fn overlay_fade(opacity: f32) -> OverlayFade {
     OverlayFade {
         previous: OVERLAY_FADE.with(|cell| cell.replace(opacity.clamp(0.0, 1.0))),

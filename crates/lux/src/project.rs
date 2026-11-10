@@ -73,27 +73,30 @@ pub(crate) struct ProjectSwitchState {
 
 impl ProjectSwitchState {
     pub(crate) fn filtered(&self) -> Vec<&PathBuf> {
-        let q = self.query.trim().to_lowercase();
+        let q = self.query.trim();
         if q.is_empty() {
-            self.projects.iter().collect()
-        } else {
-            self.projects
-                .iter()
-                .filter(|p| {
-                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    let path_str = p.to_string_lossy();
-                    name.to_lowercase().contains(&q) || path_str.to_lowercase().contains(&q)
-                })
-                .collect()
+            return self.projects.iter().collect();
         }
+        let labels: Vec<(usize, String)> = self
+            .projects
+            .iter()
+            .enumerate()
+            .map(|(index, path)| (index, path.display().to_string()))
+            .collect();
+        lux_search::fuzzy::rank_by(q, &labels, |(_, label)| label.as_str())
+            .into_iter()
+            .map(|(item, _)| &self.projects[item.0])
+            .collect()
     }
 
+    #[cfg(test)]
     pub(crate) fn select_next(&mut self, total: usize) {
         if total > 0 && self.selected + 1 < total {
             self.selected += 1;
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn select_prev(&mut self) {
         if self.selected > 0 {
             self.selected -= 1;
@@ -129,20 +132,24 @@ pub(crate) fn handle_project_switch_key(
         };
         picker.filtered().len()
     };
+    let metrics = crate::modal::ModalMetrics::from_app(app);
+    let visible = crate::overlay_list::visible_rows(
+        metrics.vp_height,
+        metrics.tab_bar_height,
+        metrics.status_bar,
+        metrics.scale,
+        total,
+    );
 
     match &event.key {
-        Key::Named(NamedKey::ArrowDown) => {
-            if let Some(picker) = app.ui.project.picker.as_mut() {
-                picker.select_next(total);
-                app.scheduler.invalidate_all();
-            }
-            true
-        }
-        Key::Named(NamedKey::ArrowUp) => {
-            if let Some(picker) = app.ui.project.picker.as_mut() {
-                picker.select_prev();
-                app.scheduler.invalidate_all();
-            }
+        key if {
+            let Some(picker) = app.ui.project.picker.as_mut() else {
+                return false;
+            };
+            crate::overlay_list::nudge(&mut picker.selected, total, visible, key)
+        } =>
+        {
+            app.scheduler.invalidate_all();
             true
         }
         Key::Named(NamedKey::Escape) => {

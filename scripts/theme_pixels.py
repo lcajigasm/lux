@@ -306,7 +306,6 @@ def check_palette(path, row_fill):
     left = (width - card_w) * 0.5
     top = 64 + 16
     row_y = top + 92 + 4
-    expected = parse_hex(row_fill)
     row = mode(
         image,
         int(left + 70),
@@ -315,9 +314,17 @@ def check_palette(path, row_fill):
         int(row_y + 64),
         2,
     )
-    if not near(row, expected, 30):
-        fail(f"{path} palette row {hex_of(row)} wanted {row_fill}")
-    if not near(expected, parse_hex("75715E"), 12) and near(row, parse_hex("75715E"), 18):
+    card = mode(image, int(left + 40), int(left + card_w - 40), int(top + 2), int(top + 12), 2)
+    # The selection is pushed to 3:1 against the card, so it is no longer
+    # the raw panel-row hex. `row_fill` stays in the call for the job log.
+    _ = row_fill
+    row_ratio = contrast(row, card)
+    if row_ratio < 2.9:
+        fail(
+            f"{path} palette selection {hex_of(row)} on card {hex_of(card)} "
+            f"is {row_ratio:.2f}, want >= 2.9 ({row_fill})"
+        )
+    if not near(card, parse_hex("75715E"), 12) and near(row, parse_hex("75715E"), 18):
         fail(f"{path} palette row is the old beige {hex_of(row)}")
     inks = []
     heights = []
