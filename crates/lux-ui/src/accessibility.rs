@@ -77,6 +77,16 @@ fn build_editor_nodes(
     nodes: &mut Vec<(NodeId, Node)>,
 ) -> Vec<NodeId> {
     let text = buffer.text();
+    if text.len() > LARGE_TEXT {
+        let mut root = Node::new(Role::MultilineTextInput);
+        let mut end = text.len().min(LONG_LINE);
+        while end > 0 && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        root.set_value(text[..end].to_string());
+        nodes.push((ROOT_ID, root));
+        return Vec::new();
+    }
     let index = LineIndex::build(&text);
     let line_count = index.len();
     let primary = cursors.primary();
@@ -89,10 +99,6 @@ fn build_editor_nodes(
         let line_start = index.line_byte_range(&text, line_idx).start;
         let line_text = &text[index.line_byte_range(&text, line_idx)];
         let id = line_node_id(line_idx);
-        // Shaping every line is done on the UI thread, before the run loop
-        // can answer a probe. A 400 by 420 file never returned from that
-        // walk. Short lines keep real cluster geometry; a long line exposes
-        // its text and a scalar index instead.
         let clusters = if line_text.len() <= LONG_LINE {
             let style = LineStyle {
                 family,
@@ -295,13 +301,9 @@ pub fn build_full_window_tree(
     }
 }
 
-/// Lines longer than this are not shaped for the accessibility tree.
-/// The tree is built on the UI thread.
 const LONG_LINE: usize = 256;
+const LARGE_TEXT: usize = 4_096;
 
-/// `character_lengths`/`character_positions`/`character_widths`, one entry
-/// per cluster — `ClusterGeometry` is already exactly accesskit's
-/// definition of a "character": the smallest selectable unit.
 fn cluster_arrays(clusters: &[ClusterGeometry]) -> (Vec<u8>, Vec<f32>, Vec<f32>) {
     let lengths = clusters
         .iter()
@@ -429,6 +431,18 @@ mod tests {
         assert!(line.character_lengths().is_empty());
         let selection = node(&update, ROOT_ID).text_selection().unwrap();
         assert_eq!(selection.focus.character_index, 400);
+    }
+
+    #[test]
+    fn a_wide_buffer_publishes_one_short_value() {
+        let (mut cx, family) = context_with_ahem();
+        let text = format!("{}\n", "M".repeat(420)).repeat(40);
+        let buffer = Buffer::from_bytes(text.as_bytes()).unwrap();
+        let cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
+        let update = build_tree(&mut cx, &family, FONT_SIZE, &buffer, &cursors);
+        let root = node(&update, ROOT_ID);
+        assert!(root.children().is_empty() && root.character_lengths().is_empty());
+        assert!(root.value().unwrap().len() <= LONG_LINE);
     }
 
     #[test]
