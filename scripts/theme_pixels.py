@@ -379,9 +379,12 @@ def check_settings(path, panel):
     search = mode(image, 460, 900, 180, 230, 2)
     if near(search, body, 10):
         fail(f"{path} settings search field matches the page fill")
+    # settings/layout.rs places the thumb at
+    # page.right - (PAD + 8) * scale, PAD = 28, snapshot scale 2:
+    # about 72px in from the right, 8px wide. The window edge is page fill.
     thumb = 0
-    for y in range(300, height - 80, 2):
-        for x in range(width - 26, width - 6, 2):
+    for y in range(240, height - 40, 2):
+        for x in range(width - 84, width - 56):
             if dist(image.at(x, y), body) > 22:
                 thumb += 1
     if thumb < 20:
