@@ -217,23 +217,25 @@ runner. The captures are the compiled app. A panel opened by
 `p0-macos.yml` runs on the free `macos-15` runner. The shortcut, editing,
 and checklist jobs post CGEvents to `target/Lux.app`. The performance job
 uses the release binary. A missed H budget is written in the artifact and
-does not fail the job. Run URLs land here after the jobs finish.
+does not fail the job. The green run is
+[42737030748](https://github.com/lcajigasm/lux/actions/runs/42737030748)
+on `6fe35ab`, squash-merged as `4103eed`.
 
-| Id | What the job checks | Run |
+| Id | What the job checks | Result |
 |---|---|---|
-| A9 | Block 3 chords on US, and on Spanish when the runner can select that layout. Each chord changes the file or the probe. A missing Spanish layout is `layout-unavailable`, not a pass. | pending |
-| C2 | Typed `()[]{}""` and `''`, including the skip of a closer and backspace of a pair. The saved file is the assertion. | pending |
-| C4 | `ab`, a pause, `c`, then Command-Z restores `ab` and the caret. `hello world` then Command-Z restores `hello ` and the caret. | pending |
-| E1 | solo-Mac. `displayplacer list` on macos-15 showed one 1024×768 screen, `scaling:off`, and modes from 640×480 to 1920×1080. None had `scaling:on`, so a screencapture of the window cannot be scale 2. | [42593509340](https://github.com/lcajigasm/lux/actions/runs/42593509340) |
-| I3 | `docs/receipts/p0-macos-ci.md` is written by the checklist job from that run. | pending |
-| H1 | Cold start to the first presented frame, median of 10, release binary. | pending |
-| H2 | Key event to the next presented frame, p99, 20k-line file. | pending |
-| H3 | Warm process, SIGUSR2 opens a 10 MB file, time to that buffer's first presented frame. | pending |
-| H4 | Same open, 100 MB. | pending |
-| H5 | Slowest redraw while scrolling a 50k-line file. | pending |
-| H6 | Extra RSS across the 100 MB open, against 3× the file. | pending |
-| H7 | Sublime and Zed are timed only until a window is listed. That is not H1's clock. H2 and H5 have no equivalent outside the process. | pending |
-| H8 | The table in `docs/PERFORMANCE.md` copied from the performance artifact. | pending |
+| A9 | Block 3 chords on US, and on Spanish when the runner can select that layout. Each chord changes the file or the probe. A missing Spanish layout is `layout-unavailable`, not a pass. | Artifact `shortcut-matrix`. US and `com.apple.keylayout.Spanish-ISO` both passed every chord in that matrix. |
+| C2 | Typed `()[]{}""` and `''`, including the skip of a closer and backspace of a pair. The saved file is the assertion. | Artifact `editing-report`. Pairs `()`, `[]`, `{}`, quotes, and single quotes passed. |
+| C4 | `ab`, a pause, `c`, then Command-Z restores `ab` and the caret. `hello world` then Command-Z restores `hello ` and the caret. | Artifact `editing-report`. Pause undo and word undo passed. |
+| E1 | solo-Mac. `displayplacer list` on macos-15 showed one 1024×768 screen, `scaling:off`, and modes from 640×480 to 1920×1080. None had `scaling:on`, so a screencapture of the window cannot be scale 2. | [42593509340](https://github.com/lcajigasm/lux/actions/runs/42593509340). Unchanged on the later run. |
+| I3 | `docs/receipts/p0-macos-ci.md` is written by the checklist job from that run. | Artifact `p0-receipt`. The receipt says the checklist passed. Scroll moved `scroll_y` from 0 to 179. The native menu bar stayed solo-Mac (`System Events` -1719). |
+| H1 | Cold start to the first presented frame, median of 10, release binary. | 473.9 ms. Budget < 150 ms. Miss. Artifact `perf-macos`. |
+| H2 | Key event to the next presented frame, p99, 20k-line file. | 34.96 ms over 39 keys. Budget < 8 ms. Miss. |
+| H3 | Warm process, SIGUSR2 opens a 10 MB file, time to that buffer's first presented frame. | 121.4 ms. Budget < 150 ms. Pass. |
+| H4 | Same open, 100 MB. | 1249.5 ms. Budget < 1 s. Miss. |
+| H5 | Slowest redraw while scrolling a 50k-line file. | 68.42 ms over 141 frames. Budget: no frame > 16 ms. Miss. |
+| H6 | Extra RSS across the 100 MB open, against 3× the file. | 5.25×. Budget < 3×. Miss. |
+| H7 | Sublime and Zed are timed only until a window is listed. That is not H1's clock. H2 and H5 have no equivalent outside the process. | Sublime's window did not appear. `open -a Zed` failed (`Unable to find application named 'Zed'`). Not a comparison. |
+| H8 | The table in `docs/PERFORMANCE.md` copied from the performance artifact. | Copied from artifact `perf-macos` on this run. |
 
 ## Block 1 — Interface — parcial
 
@@ -275,9 +277,12 @@ server binary is installed on the `macos-15` job, not stubbed.
 
 The default keymap is Sublime (`workbench.keymap`). Bindings live in
 `crates/lux-config/keymaps/sublime.jsonc` with a `mac` chord. The keymap
-file is the configuration surface. None of these chords was pressed on a
-Mac keyboard in this pass. Headless dispatch covers palette, split, and
-find.
+file is the configuration surface. Headless dispatch covers palette, split, and
+find. The macos-15 shortcut matrix on run
+[42737030748](https://github.com/lcajigasm/lux/actions/runs/42737030748)
+pressed these chords on US and on Spanish-ISO and the log
+(`shortcut-matrix`) passed each one. The rows below stay parcial: the
+acceptance still wants a compare capture, or a committed log, for each chord.
 
 | Chord | Command | State |
 |---|---|---|
@@ -312,8 +317,11 @@ overrides one of these chords without editing the binary.
 and August 2026 (buffer insert, a 100 MB decode, tree-sitter on a range).
 Those numbers are not a cold start of `lux`, not an open of a 10 MB file
 in the window, and not keypress-to-pixel. This plan does not repeat them
-as current results. No Sublime or Zed number is listed here because none
-was measured.
+as current results. The product clock on the free macos-15 runner is the
+H1–H6 table in the P0 section above, from run 42737030748. Several of
+those budgets were missed. That table is the measurement, not a pass.
+No Sublime or Zed number is listed here as a comparison: on that run
+Sublime's window did not appear and `open -a Zed` failed.
 
 Method, release binary, same machine for every column:
 
