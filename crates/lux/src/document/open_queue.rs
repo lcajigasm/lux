@@ -13,6 +13,8 @@ pub(crate) fn note_opened(app: &mut App) {
     eprintln!("Lux: opened {}", path.display());
     crate::cli::apply_opened(app);
     crate::probe::note_open_loaded();
+    // Command-line open skips session restore while the read is in flight.
+    crate::language_picker::apply_remembered_language(app);
     crate::sidebar::reveal_open_document(app);
 }
 
