@@ -324,7 +324,11 @@ def check_palette(path, row_fill):
             f"{path} palette selection {hex_of(row)} on card {hex_of(card)} "
             f"is {row_ratio:.2f}, want >= 2.9 ({row_fill})"
         )
-    if not near(card, parse_hex("75715E"), 12) and near(row, parse_hex("75715E"), 18):
+    # mode() keeps the top 5 bits, so a real #75715E row is reported as
+    # #707058 (distance 6). A legal mid-gray selection such as #686868
+    # is 13 away and must stay.
+    beige = parse_hex("75715E")
+    if not near(card, beige, 8) and near(row, beige, 8):
         fail(f"{path} palette row is the old beige {hex_of(row)}")
     inks = []
     heights = []
