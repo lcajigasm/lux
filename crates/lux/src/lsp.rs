@@ -246,7 +246,7 @@ pub(crate) fn sync_document_open(
     thread::Builder::new()
         .name("lux-lsp-spawn".into())
         .spawn(move || {
-            let session = pollster::block_on(registry.get_or_start(lang, &root));
+            let session = lux_lsp::block_on(registry.get_or_start(lang, &root));
             let Ok(session) = session else {
                 return;
             };

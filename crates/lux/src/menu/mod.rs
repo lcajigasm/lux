@@ -216,6 +216,19 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
     if !chords::claim_menu(action) {
         return;
     }
+    if let Some(pending) = app.ui.pending_chord.clone()
+        && let Some(command) = chords::menu_completes_pending(&app.keymap, &pending, action)
+    {
+        app.ui.pending_chord = None;
+        app.ui.announcement = None;
+        crate::input::dispatch::execute_keymap_command(
+            app,
+            &command,
+            Some(ctx.clipboard()),
+            Some(ctx),
+        );
+        return;
+    }
     match action {
         MenuAction::About => {
             app.open_about_dialog();

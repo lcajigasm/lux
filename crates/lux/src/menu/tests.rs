@@ -209,3 +209,35 @@ fn a_menu_comment_and_the_keymap_comment_run_once() {
     assert!(text.contains("//"), "{text}");
     assert!(text.contains("alpha"), "{text}");
 }
+
+#[test]
+fn command_palette_stays_open_when_the_menu_and_the_key_both_arrive() {
+    super::chords::clear_claim();
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    let ctx = TestCtx {
+        folder_to_pick: None,
+    };
+    super::handle_menu_action(&mut app, &ctx, MenuAction::CommandPalette);
+    assert!(app.ui.command_palette.is_some());
+    crate::input::dispatch::execute_keymap_command(&mut app, "command_palette", None, None);
+    assert!(
+        app.ui.command_palette.is_some(),
+        "the keymap delivery closed the palette the menu had just opened"
+    );
+}
+
+#[test]
+fn quick_open_stays_open_when_the_key_arrives_before_the_menu() {
+    super::chords::clear_claim();
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    let ctx = TestCtx {
+        folder_to_pick: None,
+    };
+    crate::input::dispatch::execute_keymap_command(&mut app, "quick_open", None, None);
+    assert!(app.ui.goto_anything.is_some());
+    super::handle_menu_action(&mut app, &ctx, MenuAction::GotoAnything);
+    assert!(
+        app.ui.goto_anything.is_some(),
+        "the menu delivery closed Goto Anything the key had just opened"
+    );
+}

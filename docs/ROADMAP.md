@@ -212,6 +212,29 @@ runner. The captures are the compiled app. A panel opened by
 | I2 | `evidence.yml` launches that app, types `LuxEvidence42`, then posts Command-P, Command-Shift-P, Command-D, Command-Comma, a scroll, and Command-S. The job fails unless the opened file contains the token and the process is still alive. That run saved the token and left the process running. | [42588287110](https://github.com/lcajigasm/lux/actions/runs/42588287110) |
 | I4 | The same evidence job writes `editor.png`, `palette.png`, and `settings.png` from the live session at scale 2, after the typing, the `sel` query, and Settings. Sublime Text and Zed install free in the compare job, but the runner display is 1×, so those scale-2 frames are Lux only. Their 1× windows stay in `selectors.png`. Each frame on that run is 2000px wide. | [42588287110](https://github.com/lcajigasm/lux/actions/runs/42588287110) |
 
+## P0 macOS CI — A9, C2, C4, E1, I3, H1–H8
+
+`p0-macos.yml` runs on the free `macos-15` runner. The shortcut, editing,
+and checklist jobs post CGEvents to `target/Lux.app`. The performance job
+uses the release binary. A missed H budget is written in the artifact and
+does not fail the job. Run URLs land here after the jobs finish.
+
+| Id | What the job checks | Run |
+|---|---|---|
+| A9 | Block 3 chords on US, and on Spanish when the runner can select that layout. Each chord changes the file or the probe. A missing Spanish layout is `layout-unavailable`, not a pass. | pending |
+| C2 | Typed `()[]{}""` and `''`, including the skip of a closer and backspace of a pair. The saved file is the assertion. | pending |
+| C4 | `ab`, a pause, `c`, then Command-Z restores `ab` and the caret. `hello world` then Command-Z restores `hello ` and the caret. | pending |
+| E1 | solo-Mac. `displayplacer list` on macos-15 showed one 1024×768 screen, `scaling:off`, and modes from 640×480 to 1920×1080. None had `scaling:on`, so a screencapture of the window cannot be scale 2. | [42593509340](https://github.com/lcajigasm/lux/actions/runs/42593509340) |
+| I3 | `docs/receipts/p0-macos-ci.md` is written by the checklist job from that run. | pending |
+| H1 | Cold start to the first presented frame, median of 10, release binary. | pending |
+| H2 | Key event to the next presented frame, p99, 20k-line file. | pending |
+| H3 | Warm process, SIGUSR2 opens a 10 MB file, time to that buffer's first presented frame. | pending |
+| H4 | Same open, 100 MB. | pending |
+| H5 | Slowest redraw while scrolling a 50k-line file. | pending |
+| H6 | Extra RSS across the 100 MB open, against 3× the file. | pending |
+| H7 | Sublime and Zed are timed only until a window is listed. That is not H1's clock. H2 and H5 have no equivalent outside the process. | pending |
+| H8 | The table in `docs/PERFORMANCE.md` copied from the performance artifact. | pending |
+
 ## Block 1 — Interface — parcial
 
 | Surface | State on 44684ab |

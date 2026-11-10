@@ -398,10 +398,17 @@ impl PlatformEventHandler for App {
                 }
             }
             PlatformEvent::RedrawRequested => {
+                let frame_began = Instant::now();
                 self.redraw(ctx);
                 crate::snapshot::capture_settled(self, ctx);
+                crate::probe::on_frame(self, frame_began.elapsed());
             }
             PlatformEvent::Keyboard(key_event) => {
+                if key_event.state == ElementState::Pressed
+                    && key_event.text.as_ref().is_some_and(|text| !text.is_empty())
+                {
+                    crate::probe::note_key();
+                }
                 self.handle_keyboard_event(ctx, &key_event);
                 if let Some(gpu_window) = &self.gpu_window {
                     gpu_window.window.request_redraw();
@@ -420,6 +427,7 @@ impl PlatformEventHandler for App {
                 }
             }
             PlatformEvent::MouseWheel(delta) => {
+                crate::probe::note_scroll();
                 let on_tabs = self.mouse.position.y < self.tab_bar_height() as f64
                     && self.mouse.position.x >= self.sidebar_width() as f64;
                 if on_tabs && self.ui.command_palette.is_none() && self.ui.goto_anything.is_none() {
@@ -533,6 +541,7 @@ impl PlatformEventHandler for App {
         let mut settings = std::mem::take(&mut self.ui.settings);
         settings.poll_watcher(self);
         self.ui.settings = settings;
+        crate::probe::poll(self, _ctx);
         let waiting = crate::snapshot::usr1_waiting();
         let Some(gpu_window) = &self.gpu_window else {
             return;

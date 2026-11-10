@@ -19,6 +19,7 @@ mod inlay_hints;
 mod navigation;
 mod registry;
 mod rename;
+mod runtime;
 mod semantic_tokens;
 mod session;
 mod signature;
@@ -41,6 +42,7 @@ pub use registry::{LspError, ServerRegistry};
 pub use rename::{
     Rename, RenameApplyError, RenameError, RenameHunk, RenamePreview, preview as preview_rename,
 };
+pub use runtime::block_on;
 pub use semantic_tokens::{ResolvedToken, SemanticTokensClient, SemanticTokensError};
 pub use session::{ProgressInfo, ServerSession, ServerState, ServerStatus};
 pub use signature::{Signature, SignatureError, active_parameter_label, active_signature};
