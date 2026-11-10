@@ -529,7 +529,6 @@ impl App {
                             self.viewport.scroll_y = 0.0;
                             self.sync_active_document_to_entry();
                             self.update_syntax_on_open();
-                            crate::language_picker::apply_remembered_language(self);
                             crate::git::refresh_git_state(self);
                         } else {
                             self.sync_active_document_to_entry();
@@ -537,7 +536,6 @@ impl App {
                             let entry = DocumentEntry::new(tab_id, path, buffer);
                             self.documents.entries.push(entry);
                             self.switch_to_tab(tab_id);
-                            crate::language_picker::apply_remembered_language(self);
                         }
                     }
                     crate::lsp::sync_opened_document(self, ctx);
