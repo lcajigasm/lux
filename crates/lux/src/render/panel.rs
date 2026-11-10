@@ -3,10 +3,6 @@
 
 use lux_render::QuadInstance;
 
-/// Rows kept in sync with the hit tests in `modal`.
-pub(crate) const SELECTOR_VISIBLE: usize = 8;
-pub(crate) const THEME_VISIBLE: usize = 7;
-
 /// Resting geometry. The open animation offsets `top` while drawing and
 /// does not move the hit target.
 pub(crate) struct SelectorBox {
@@ -31,14 +27,6 @@ pub(crate) fn selector_box(viewport_width: f32, tab_bar_height: f32, scale: f32)
         row_height: 36.0 * scale,
         radius: 12.0 * scale,
     }
-}
-
-pub(crate) fn panel_height(input: f32, row: f32, visible: usize, scale: f32) -> f32 {
-    input + visible as f32 * row + 8.0 * scale
-}
-
-pub(crate) fn rows_top(top: f32, input: f32, scale: f32) -> f32 {
-    top + input + 2.0 * scale
 }
 
 /// Card lifted off the editor (`#414339` on `#272822`) with a light rim.
@@ -219,6 +207,7 @@ pub(crate) fn placeholder_ink(theme: &lux_ui::Theme) -> [f32; 4] {
 
 /// Match ink has to stay readable on the row it sits on. The accent is
 /// used only when it clears WCAG AA against that row.
+#[cfg(test)]
 pub(crate) fn hit_ink(on_selection: bool, theme: &lux_ui::Theme) -> [f32; 4] {
     let background = if on_selection {
         selected_fill(theme)
@@ -405,65 +394,6 @@ pub(crate) fn shortcut_ink(theme: &lux_ui::Theme) -> [f32; 4] {
 
 fn color(c: lux_ui::Color) -> [f32; 4] {
     super::paint::color(c)
-}
-
-pub(crate) struct PaintedSelector {
-    pub left: f32,
-    pub top: f32,
-    pub width: f32,
-    pub input_height: f32,
-    pub row_height: f32,
-    pub rows_top: f32,
-}
-
-/// Shadow, rim, lifted fill, and a recessed input well.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn paint_selector_chrome(
-    quads: &mut Vec<QuadInstance>,
-    viewport_width: f32,
-    tab_bar_height: f32,
-    scale: f32,
-    stroke: f32,
-    visible: usize,
-    open_offset: f32,
-    theme: &lux_ui::Theme,
-) -> PaintedSelector {
-    let box_ = selector_box(viewport_width, tab_bar_height, scale);
-    let top = box_.top + open_offset;
-    let height = panel_height(box_.input_height, box_.row_height, visible, scale);
-    push_rounded_surface(
-        quads,
-        [box_.left, top, box_.width, height],
-        box_.radius,
-        card_fill(theme),
-        color(theme.chrome.border),
-        20.0 * scale,
-        stroke.max(1.5 * scale),
-    );
-    let pad = 10.0 * scale;
-    let field_h = box_.input_height - 14.0 * scale;
-    push_rounded_surface(
-        quads,
-        [
-            box_.left + pad,
-            top + 8.0 * scale,
-            box_.width - 2.0 * pad,
-            field_h,
-        ],
-        8.0 * scale,
-        field_fill(theme),
-        color(theme.chrome.border),
-        0.0,
-        stroke.max(1.0),
-    );
-    PaintedSelector {
-        left: box_.left,
-        top,
-        width: box_.width,
-        input_height: box_.input_height,
-        row_height: box_.row_height,
-        rows_top: rows_top(top, box_.input_height, scale),
-    }
 }
 
 pub(crate) fn push_rounded_surface(

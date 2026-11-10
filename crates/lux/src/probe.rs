@@ -316,6 +316,13 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     out.push_str("announcement=");
     out.push_str(&escape(app.ui.announcement.as_deref().unwrap_or("")));
     out.push('\n');
+    let (picker, picker_index, picker_count, picker_label) = open_picker(app);
+    out.push_str(&format!(
+        "picker={picker}\npicker_index={picker_index}\npicker_count={picker_count}\n"
+    ));
+    out.push_str("picker_label=");
+    out.push_str(&escape(&picker_label));
+    out.push('\n');
     let (find, replace) = match &app.ui.search_bar {
         Some(search) => (1, u8::from(search.replace_mode)),
         None => (0, 0),
@@ -415,6 +422,45 @@ pub(crate) fn note_input(key: &lux_platform::KeyEvent, modifiers: &lux_platform:
     if let Ok(mut slot) = LAST_INPUT.lock() {
         *slot = line;
     }
+}
+
+fn open_picker(app: &crate::app::App) -> (&'static str, usize, usize, String) {
+    if let Some(picker) = &app.ui.language_picker {
+        let filtered = picker.filtered();
+        let label = filtered
+            .get(picker.selected_index)
+            .map(|item| item.1.to_string())
+            .unwrap_or_default();
+        return ("language", picker.selected_index, filtered.len(), label);
+    }
+    if let Some(picker) = &app.ui.theme_picker {
+        let filtered = picker.filtered();
+        let label = filtered
+            .get(picker.selected_index)
+            .copied()
+            .unwrap_or("")
+            .to_string();
+        return ("theme", picker.selected_index, filtered.len(), label);
+    }
+    if let Some(palette) = &app.ui.command_palette {
+        let mut context = lux_ui::command_palette::Context::new();
+        context.set("editorFocus", true);
+        let results = palette.results(&context);
+        let label = results
+            .get(palette.selected_index)
+            .map(|entry| entry.command.title.clone())
+            .unwrap_or_default();
+        return ("palette", palette.selected_index, results.len(), label);
+    }
+    if let Some(goto) = &app.ui.goto_anything {
+        let label = goto
+            .items
+            .get(goto.selected_index)
+            .map(|item| item.label.clone())
+            .unwrap_or_default();
+        return ("goto", goto.selected_index, goto.items.len(), label);
+    }
+    ("off", 0, 0, String::new())
 }
 
 fn escape(text: &str) -> String {

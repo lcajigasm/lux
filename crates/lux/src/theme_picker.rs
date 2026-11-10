@@ -43,28 +43,14 @@ impl ThemePickerState {
     }
 
     pub(crate) fn filtered(&self) -> Vec<&'static str> {
-        let q = self.query.trim().to_lowercase();
+        let q = self.query.trim();
         if q.is_empty() {
-            self.candidates.clone()
-        } else {
-            self.candidates
-                .iter()
-                .copied()
-                .filter(|name| name.to_lowercase().contains(&q))
-                .collect()
+            return self.candidates.clone();
         }
-    }
-
-    pub(crate) fn select_next(&mut self, total: usize) {
-        if total > 0 && self.selected_index + 1 < total {
-            self.selected_index += 1;
-        }
-    }
-
-    pub(crate) fn select_prev(&mut self) {
-        if self.selected_index > 0 {
-            self.selected_index -= 1;
-        }
+        lux_search::fuzzy::rank_by(q, &self.candidates, |name| *name)
+            .into_iter()
+            .map(|(name, _)| *name)
+            .collect()
     }
 
     pub(crate) fn current_candidate(&self) -> Option<&'static str> {
@@ -78,12 +64,20 @@ pub(crate) fn handle_theme_picker_key(
     _ctx: &dyn PlatformContext,
     event: &KeyEvent,
 ) -> bool {
-    let Some(picker) = &app.ui.theme_picker else {
-        return false;
+    let (original, filtered_len) = {
+        let Some(picker) = &app.ui.theme_picker else {
+            return false;
+        };
+        (picker.original_theme_name, picker.filtered().len())
     };
-
-    let original = picker.original_theme_name;
-    let filtered_len = picker.filtered().len();
+    let metrics = crate::modal::ModalMetrics::from_app(app);
+    let visible = crate::overlay_list::visible_rows(
+        metrics.vp_height,
+        metrics.tab_bar_height,
+        metrics.status_bar,
+        metrics.scale,
+        filtered_len,
+    );
 
     match &event.key {
         Key::Named(NamedKey::Escape) => {
@@ -102,22 +96,17 @@ pub(crate) fn handle_theme_picker_key(
             app.scheduler.invalidate_all();
             true
         }
-        Key::Named(NamedKey::ArrowDown) => {
-            if let Some(picker) = app.ui.theme_picker.as_mut() {
-                picker.select_next(filtered_len);
-                if let Some(candidate) = picker.current_candidate() {
-                    app.preview_theme(candidate);
-                }
-            }
-            app.scheduler.invalidate_all();
-            true
-        }
-        Key::Named(NamedKey::ArrowUp) => {
-            if let Some(picker) = app.ui.theme_picker.as_mut() {
-                picker.select_prev();
-                if let Some(candidate) = picker.current_candidate() {
-                    app.preview_theme(candidate);
-                }
+        key if {
+            let Some(picker) = app.ui.theme_picker.as_mut() else {
+                return false;
+            };
+            crate::overlay_list::nudge(&mut picker.selected_index, filtered_len, visible, key)
+        } =>
+        {
+            if let Some(picker) = app.ui.theme_picker.as_ref()
+                && let Some(candidate) = picker.current_candidate()
+            {
+                app.preview_theme(candidate);
             }
             app.scheduler.invalidate_all();
             true

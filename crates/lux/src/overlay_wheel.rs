@@ -44,7 +44,7 @@ pub(crate) fn scroll_open_overlay(app: &mut App, delta: ScrollDelta) -> bool {
         return true;
     }
     if app.ui.search_bar.is_some() {
-        let steps = row_delta(9, delta, 32.0 * app.scale_factor.max(1.0));
+        let steps = wheel_steps(9, delta, 32.0 * app.scale_factor.max(1.0));
         for _ in 0..steps.unsigned_abs() {
             if steps > 0 {
                 crate::search::find_next(app);
@@ -55,7 +55,7 @@ pub(crate) fn scroll_open_overlay(app: &mut App, delta: ScrollDelta) -> bool {
         return true;
     }
     if app.ui.project_search.is_some() {
-        let steps = row_delta(10, delta, 28.0 * app.scale_factor.max(1.0));
+        let steps = wheel_steps(10, delta, 28.0 * app.scale_factor.max(1.0));
         for _ in 0..steps.unsigned_abs() {
             if let Some(state) = app.ui.project_search.as_mut() {
                 if steps > 0 {
@@ -69,7 +69,7 @@ pub(crate) fn scroll_open_overlay(app: &mut App, delta: ScrollDelta) -> bool {
         return true;
     }
     if app.ui.lsp.completion_popup.is_some() {
-        let steps = row_delta(11, delta, 28.0 * app.scale_factor.max(1.0));
+        let steps = wheel_steps(11, delta, 28.0 * app.scale_factor.max(1.0));
         if let Some(popup) = app.ui.lsp.completion_popup.as_mut() {
             nudge(&mut popup.selected_index, popup.items.len(), steps);
         }
@@ -99,7 +99,7 @@ fn scroll_indexed(app: &mut App, delta: ScrollDelta, which: Which, slot: u8) -> 
     if !open {
         return false;
     }
-    let steps = row_delta(slot, delta, 36.0 * app.scale_factor.max(1.0));
+    let steps = wheel_steps(slot, delta, 16.0 * app.scale_factor.max(1.0));
     match which {
         Which::Build => {
             if let Some(picker) = app.ui.build.picker.as_mut() {
@@ -140,7 +140,7 @@ fn scroll_palette(app: &mut App, delta: ScrollDelta) -> bool {
     if app.ui.command_palette.is_none() {
         return false;
     }
-    let steps = row_delta(1, delta, 36.0 * app.scale_factor.max(1.0));
+    let steps = wheel_steps(1, delta, 16.0 * app.scale_factor.max(1.0));
     if let Some(palette) = app.ui.command_palette.as_mut() {
         let mut context = lux_ui::command_palette::Context::new();
         context.set("editorFocus", true);
@@ -158,7 +158,7 @@ fn nudge(index: &mut usize, len: usize, steps: isize) {
     *index = index.saturating_add_signed(steps).min(len - 1);
 }
 
-fn row_delta(slot: u8, delta: ScrollDelta, row_height: f32) -> isize {
+pub(crate) fn wheel_steps(slot: u8, delta: ScrollDelta, row_height: f32) -> isize {
     match delta {
         ScrollDelta::Lines { y, .. } => (-y).round() as isize,
         ScrollDelta::Pixels(position) => REMAINDER.with(|cell| {

@@ -1,0 +1,37 @@
+name: Overlay
+
+# Shared picker card: scroll, last-row selection, restart, screenshots.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  overlay:
+    name: overlay (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Language, theme, palette, and go to line
+        run: |
+          chmod +x scripts/overlay-e2e.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/overlay-e2e.sh
+
+      - name: Upload overlay captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: overlay
+          path: docs/evidence/overlay/**
+          if-no-files-found: warn
