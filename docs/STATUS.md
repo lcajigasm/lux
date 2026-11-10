@@ -126,6 +126,12 @@
 > config importers, zero-telemetry local crash reporting (`lux-pack`), and release packaging (`scripts/package.sh`).
 > Full workspace tests, limits checks, benchmarks, and xtask verification pass cleanly.
 
+Opening a file asks `lux-git` on a background thread for the branch and
+the gutter hunks of that buffer. `Git: Refresh Status`, `View File Diff`,
+`Stage Current File`, `Stage Hunk`, `Commit Staged Changes`, `Blame`, and
+`File History` run there too. Conflict markers in the buffer still resolve
+in the editor. See `docs/GIT.md`.
+
 Current desktop integration (updated 2026-10-10): the native application
 integrates configurable keymap command dispatch (`lux-config`), snippet expansion
 with interactive placeholder navigation and tab stops (`lux-core`), tree-sitter

@@ -6,16 +6,21 @@
 use std::path::{Path, PathBuf};
 
 use lux_core::buffer::Buffer;
-use lux_git::diff_panel::{ChangedFile, changed_files};
-use lux_git::diff_view::{InlineDiffLineKind, inline_diff};
-use lux_git::gutter::{GutterMarker, Hunk, gutter_markers, hunks_against_head};
+use lux_git::diff_panel::ChangedFile;
+use lux_git::gutter::{GutterMarker, Hunk};
 use lux_git::merge_conflicts::Resolution;
-use lux_git::staging::{stage, stage_hunk, unstage};
-use lux_git::status::status;
 use lux_platform::PlatformContext;
 
 use crate::app::App;
 use crate::document::DocumentEntry;
+
+mod job;
+mod snapshot;
+
+pub(crate) use job::{
+    poll, register_waker, request_blame, request_commit, request_diff, request_history,
+    request_stage_cursor_hunk, request_stage_file, request_status,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct GutterHunkPopup {
@@ -52,6 +57,8 @@ pub(crate) struct GitState {
     pub(crate) conflict_blocks: Vec<ConflictMarkerBlock>,
     pub(crate) commit_message: String,
     pub(crate) source_control_visible: bool,
+    /// Ignores a snapshot from an older refresh.
+    pub(crate) generation: u64,
 }
 
 #[allow(dead_code)]
@@ -70,7 +77,7 @@ pub(crate) fn discover_repo(start: &Path) -> Option<lux_git::gix::Repository> {
     lux_git::gix::discover(start).ok()
 }
 
-fn head_label(repo: &lux_git::gix::Repository) -> Option<String> {
+pub(crate) fn head_label(repo: &lux_git::gix::Repository) -> Option<String> {
     if let Some(name) = repo.head_name().ok().flatten() {
         let short = name.shorten().to_string();
         if !short.is_empty() {
@@ -82,79 +89,8 @@ fn head_label(repo: &lux_git::gix::Repository) -> Option<String> {
 }
 
 pub(crate) fn refresh_git_state(app: &mut App) {
-    let target_path = app
-        .documents
-        .path
-        .clone()
-        .or_else(|| {
-            app.ui
-                .sidebar
-                .as_ref()
-                .and_then(|s| s.workspace_root.clone())
-        })
-        .unwrap_or_else(|| PathBuf::from("."));
-
-    // A file open only needs the branch name. Walking the worktree here
-    // blocks the UI thread; that walk stays on a directory target.
-    if target_path.is_file() {
-        app.ui.git.hunks.clear();
-        app.ui.git.markers.clear();
-        app.ui.git.changed_files.clear();
-        app.ui.git.conflict_blocks.clear();
-        let Some(repo) = discover_repo(&target_path) else {
-            app.ui.git.repo_root = None;
-            app.ui.git.branch_name = None;
-            return;
-        };
-        app.ui.git.repo_root = repo.workdir().map(Path::to_path_buf);
-        app.ui.git.branch_name = head_label(&repo);
-        return;
-    }
-
-    let Some(repo) = discover_repo(&target_path) else {
-        app.ui.git.repo_root = None;
-        app.ui.git.branch_name = None;
-        app.ui.git.hunks.clear();
-        app.ui.git.markers.clear();
-        app.ui.git.changed_files.clear();
-        app.ui.git.conflict_blocks.clear();
-        return;
-    };
-
-    let repo_workdir = repo.workdir().map(Path::to_path_buf);
-    app.ui.git.repo_root = repo_workdir.clone();
-
-    if let Ok(st) = status(&repo) {
-        app.ui.git.branch_name = match st.branch {
-            lux_git::status::BranchState::Named(n) => Some(n),
-            lux_git::status::BranchState::Unborn(n) => Some(format!("{n} (unborn)")),
-            lux_git::status::BranchState::Detached(id) => Some(id.to_string()[..7].to_string()),
-        };
-    }
-
-    if let Ok(changed) = changed_files(&repo) {
-        app.ui.git.changed_files = changed;
-    }
-
-    // Refresh active document hunks and markers
-    if let (Some(workdir), Some(doc_path)) = (&repo_workdir, &app.documents.path) {
-        if let Ok(rel_path) = doc_path.strip_prefix(workdir) {
-            let buffer_text = app.buffer.text();
-            if let Ok(hunks) = hunks_against_head(&repo, rel_path, &buffer_text) {
-                app.ui.git.markers = gutter_markers(&hunks);
-                app.ui.git.hunks = hunks;
-            } else {
-                app.ui.git.hunks.clear();
-                app.ui.git.markers.clear();
-            }
-        }
-    } else {
-        app.ui.git.hunks.clear();
-        app.ui.git.markers.clear();
-    }
-
-    // Detect merge conflicts in active document
     app.ui.git.conflict_blocks = find_conflict_blocks(&app.buffer);
+    job::request_refresh(app);
 }
 
 pub(crate) fn find_conflict_blocks(buffer: &Buffer) -> Vec<ConflictMarkerBlock> {
@@ -248,30 +184,6 @@ pub(crate) fn resolve_conflict(app: &mut App, block_index: usize, resolution: Re
     }
 }
 
-pub(crate) fn stage_gutter_hunk(app: &mut App, hunk: &Hunk) -> bool {
-    let Some(repo_root) = &app.ui.git.repo_root else {
-        return false;
-    };
-    let Some(doc_path) = &app.documents.path else {
-        return false;
-    };
-    let Ok(rel_path) = doc_path.strip_prefix(repo_root) else {
-        return false;
-    };
-    let Some(repo) = discover_repo(repo_root) else {
-        return false;
-    };
-
-    if stage_hunk(&repo, rel_path, hunk).is_ok() {
-        app.ui.git.active_popup = None;
-        refresh_git_state(app);
-        app.scheduler.invalidate_all();
-        true
-    } else {
-        false
-    }
-}
-
 pub(crate) fn revert_gutter_hunk(app: &mut App, hunk: &Hunk) -> bool {
     let Some(repo_root) = &app.ui.git.repo_root else {
         return false;
@@ -351,93 +263,15 @@ pub(crate) fn revert_gutter_hunk(app: &mut App, hunk: &Hunk) -> bool {
     true
 }
 
-pub(crate) fn stage_or_unstage_file(app: &mut App, path: &Path, to_stage: bool) -> bool {
-    let Some(repo_root) = &app.ui.git.repo_root else {
-        return false;
-    };
-    let Some(repo) = discover_repo(repo_root) else {
-        return false;
-    };
-
-    let res = if to_stage {
-        stage(&repo, path).is_ok()
-    } else {
-        unstage(&repo, path).is_ok()
-    };
-
-    if res {
-        refresh_git_state(app);
-        app.scheduler.invalidate_all();
-    }
-    res
-}
-
-pub(crate) fn commit_all_staged(app: &mut App, message: &str) -> bool {
-    let Some(repo_root) = &app.ui.git.repo_root else {
-        return false;
-    };
-    let Some(repo) = discover_repo(repo_root) else {
-        return false;
-    };
-
-    if lux_git::commit::commit(&repo, message, "Lux User", "lux@example.com").is_ok() {
-        app.ui.git.commit_message.clear();
-        refresh_git_state(app);
-        app.scheduler.invalidate_all();
-        true
-    } else {
-        false
-    }
-}
-
-pub(crate) fn open_file_diff(app: &mut App, file_path: &Path) {
-    let Some(repo_root) = &app.ui.git.repo_root else {
+pub(crate) fn open_text_tab(app: &mut App, title: &str, body: &str) {
+    let Ok(buffer) = Buffer::from_bytes(body.as_bytes()) else {
         return;
     };
-    let Some(repo) = discover_repo(repo_root) else {
-        return;
-    };
-
-    let head_text = match repo.head_tree_id_or_empty() {
-        Ok(tree_id) => match repo.find_tree(tree_id) {
-            Ok(tree) => match tree.lookup_entry_by_path(file_path) {
-                Ok(Some(entry)) => entry
-                    .object()
-                    .ok()
-                    .and_then(|o| String::from_utf8(o.data.clone()).ok())
-                    .unwrap_or_default(),
-                _ => String::new(),
-            },
-            Err(_) => String::new(),
-        },
-        Err(_) => String::new(),
-    };
-
-    let working_text = std::fs::read_to_string(repo_root.join(file_path)).unwrap_or_default();
-    let diff_lines = inline_diff(&head_text, &working_text);
-
-    let mut content = String::new();
-    content.push_str(&format!("--- a/{}\n", file_path.display()));
-    content.push_str(&format!("+++ b/{}\n", file_path.display()));
-    for l in diff_lines {
-        match l.kind {
-            InlineDiffLineKind::Context => content.push_str(&format!(" {}\n", l.text)),
-            InlineDiffLineKind::Added => content.push_str(&format!("+{}\n", l.text)),
-            InlineDiffLineKind::Removed => content.push_str(&format!("-{}\n", l.text)),
-        }
-    }
-
-    let file_name = file_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("diff");
-    let tab_title = format!("Diff: {file_name}");
-    if let Ok(diff_buf) = Buffer::from_bytes(content.as_bytes()) {
-        let tab_id = app.documents.tabs.open(&tab_title);
-        let entry = DocumentEntry::new(tab_id, None, diff_buf);
-        app.documents.entries.push(entry);
-        app.switch_to_tab(tab_id);
-    }
+    let tab_id = app.documents.tabs.open(title);
+    app.documents
+        .entries
+        .push(DocumentEntry::new(tab_id, None, buffer));
+    app.switch_to_tab(tab_id);
 }
 
 pub(crate) fn handle_git_click(
@@ -453,7 +287,8 @@ pub(crate) fn handle_git_click(
             let [sx, sy, sw, sh] = popup.stage_btn;
             if mouse_x >= sx && mouse_x <= sx + sw && mouse_y >= sy && mouse_y <= sy + sh {
                 let hunk = popup.hunk;
-                stage_gutter_hunk(app, &hunk);
+                job::defer_stage_hunk(app, hunk);
+                app.ui.git.active_popup = None;
                 return true;
             }
             let [rx, ry, rw, rh] = popup.revert_btn;
@@ -496,12 +331,14 @@ pub(crate) fn handle_git_click(
 }
 
 #[cfg(test)]
+mod feature_tests;
+#[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn discover_repo_walks_up_from_a_file() {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/git.rs");
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/git/mod.rs");
         let repo = discover_repo(&file).expect("repository");
         let label = head_label(&repo).expect("head");
         assert!(!label.is_empty());
@@ -523,7 +360,8 @@ mod tests {
     #[test]
     fn resolve_conflict_replaces_text() {
         let content = "fn main() {\n<<<<<<<\n    ours();\n=======\n    theirs();\n>>>>>>>\n}\n";
-        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+        let mut app =
+            App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
         app.buffer = Buffer::from_bytes(content.as_bytes()).unwrap();
         app.ui.git.conflict_blocks = find_conflict_blocks(&app.buffer);
 
@@ -559,7 +397,8 @@ mod tests {
 
     #[test]
     fn gutter_hunk_popup_hit_testing() {
-        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+        let mut app =
+            App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
         let hunk = Hunk {
             before_start: 1,
             before_len: 2,

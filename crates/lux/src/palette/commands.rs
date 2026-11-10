@@ -287,33 +287,14 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         "file.open_folder" => {
             app.open_folder_dialog(ctx);
         }
-        "git.view_diff" => {
-            if let Some(doc_path) = app.documents.path.clone()
-                && let Some(repo_root) = &app.ui.git.repo_root
-                && let Ok(rel) = doc_path.strip_prefix(repo_root)
-            {
-                crate::git::open_file_diff(app, rel);
-            }
-        }
-        "git.stage_file" => {
-            if let Some(doc_path) = app.documents.path.clone()
-                && let Some(repo_root) = &app.ui.git.repo_root
-                && let Ok(rel) = doc_path.strip_prefix(repo_root)
-            {
-                crate::git::stage_or_unstage_file(app, rel, true);
-            }
-        }
-        "git.unstage_file" => {
-            if let Some(doc_path) = app.documents.path.clone()
-                && let Some(repo_root) = &app.ui.git.repo_root
-                && let Ok(rel) = doc_path.strip_prefix(repo_root)
-            {
-                crate::git::stage_or_unstage_file(app, rel, false);
-            }
-        }
-        "git.commit_staged" => {
-            crate::git::commit_all_staged(app, "Commit from Lux");
-        }
+        "git.view_diff" => crate::git::request_diff(app),
+        "git.stage_file" => crate::git::request_stage_file(app, true),
+        "git.unstage_file" => crate::git::request_stage_file(app, false),
+        "git.stage_hunk" => crate::git::request_stage_cursor_hunk(app),
+        "git.commit_staged" => crate::git::request_commit(app, "Commit from Lux".into()),
+        "git.status" => crate::git::request_status(app),
+        "git.blame" => crate::git::request_blame(app),
+        "git.history" => crate::git::request_history(app),
         "lsp.goto_definition" => {
             crate::lsp::goto_definition(app, ctx);
         }
