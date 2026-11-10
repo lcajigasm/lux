@@ -1,4 +1,4 @@
-use dpi::{LogicalSize, PhysicalSize};
+use dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use lux_platform::{PlatformContext, PlatformWindow, ScrollDelta, WindowAttributes};
 use lux_render::{GpuContext, QuadPipeline, Surface, TextPipeline};
 
@@ -7,12 +7,27 @@ use crate::render::paint::color;
 
 impl App {
     pub(crate) fn create_gpu_window(&mut self, ctx: &dyn PlatformContext) {
+        let placed = crate::place::restored(ctx);
+        let mut attrs = WindowAttributes {
+            title: "Lux".to_string(),
+            inner_size: Some(LogicalSize::new(1000.0, 700.0)),
+            ..Default::default()
+        };
+        if let Some(frame) = &placed {
+            attrs.position = Some(PhysicalPosition::new(frame.x, frame.y));
+            if frame.fullscreen {
+                attrs.fullscreen = true;
+                attrs.inner_size = None;
+            } else if frame.maximized {
+                attrs.maximized = true;
+                attrs.inner_size = None;
+            } else {
+                attrs.physical_inner_size = Some(PhysicalSize::new(frame.width, frame.height));
+                attrs.inner_size = None;
+            }
+        }
         let window = ctx
-            .create_window(WindowAttributes {
-                title: "Lux".to_string(),
-                inner_size: Some(LogicalSize::new(1000.0, 700.0)),
-                ..Default::default()
-            })
+            .create_window(attrs)
             .expect("failed to create the main window");
         window.set_ime_allowed(true);
         let window: &'static dyn PlatformWindow = Box::leak(window);

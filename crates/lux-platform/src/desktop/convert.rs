@@ -234,6 +234,7 @@ pub(super) fn window_event(event: winit::event::WindowEvent) -> Option<PlatformE
     use winit::event::WindowEvent as W;
     Some(match event {
         W::Resized(size) => PlatformEvent::Resized(size),
+        W::Moved(position) => PlatformEvent::WindowMoved(position),
         // `inner_size_writer` lets a caller request a specific resize during
         // this callback; left untouched, winit resizes to the OS-suggested
         // size and emits a separate `Resized` event, which is all this crate

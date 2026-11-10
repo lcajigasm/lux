@@ -132,6 +132,14 @@ the gutter hunks of that buffer. `Git: Refresh Status`, `View File Diff`,
 `File History` run there too. Conflict markers in the buffer still resolve
 in the editor. See `docs/GIT.md`.
 
+Quitting writes the window's position, size, fullscreen or maximized state,
+and monitor into the session (`lux_workspace::WindowFrame`). The next launch
+creates the window there. If that monitor is no longer connected,
+`restore_window` moves it onto a visible one. The same quit writes open
+tabs, cursor offsets, and unsaved buffer text; a launch with no path
+restores them. The editor has one window, stored as the single entry of
+`Session.windows`.
+
 Current desktop integration (updated 2026-10-10): the native application
 integrates configurable keymap command dispatch (`lux-config`), snippet expansion
 with interactive placeholder navigation and tab stops (`lux-core`), tree-sitter

@@ -370,10 +370,15 @@ impl PlatformEventHandler for App {
 
         match event {
             PlatformEvent::CloseRequested => {
+                crate::place::remember(self);
                 ctx.exit();
             }
             PlatformEvent::Resized(size) => {
                 self.resize(size);
+                crate::place::remember(self);
+            }
+            PlatformEvent::WindowMoved(_) => {
+                crate::place::remember(self);
             }
             PlatformEvent::ScaleFactorChanged { scale_factor } => {
                 self.set_display_scale(scale_factor);
@@ -560,6 +565,7 @@ impl PlatformEventHandler for App {
 
     fn exiting(&mut self, _ctx: &dyn PlatformContext) {
         self.sync_active_document_to_entry();
+        crate::place::remember(self);
         let _ = crate::session::save_session(self, true);
         self.ui.term.shutdown_all();
     }

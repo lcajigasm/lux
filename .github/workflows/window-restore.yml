@@ -1,0 +1,31 @@
+name: Window restore
+
+# macos-15. Move and resize a real Lux window, quit, reopen, and compare
+# the frame. A missed pixel fails the job.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frame:
+    name: window frame and hot exit (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Restore the window and the session
+        run: |
+          chmod +x scripts/window-restore.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/window-restore.sh
+      - name: Upload the frame report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-restore
+          path: docs/evidence/window-restore.txt
+          if-no-files-found: warn

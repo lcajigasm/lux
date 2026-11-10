@@ -72,11 +72,22 @@ impl PlatformContext for DesktopContext<'_> {
             // so every window is created invisible and made visible right
             // after the adapter attaches, regardless of what was requested.
             .with_visible(false);
-        if let Some(size) = attrs.inner_size {
+        if let Some(size) = attrs.physical_inner_size {
+            winit_attrs = winit_attrs.with_inner_size(size);
+        } else if let Some(size) = attrs.inner_size {
             winit_attrs = winit_attrs.with_inner_size(size);
         }
         if let Some(min_size) = attrs.min_inner_size {
             winit_attrs = winit_attrs.with_min_inner_size(min_size);
+        }
+        if let Some(position) = attrs.position {
+            winit_attrs = winit_attrs.with_position(position);
+        }
+        if attrs.fullscreen {
+            winit_attrs =
+                winit_attrs.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+        } else if attrs.maximized {
+            winit_attrs = winit_attrs.with_maximized(true);
         }
 
         let window = Rc::new(
@@ -107,6 +118,16 @@ impl PlatformContext for DesktopContext<'_> {
         if requested_visible {
             window.set_visible(true);
         }
+        // Create-time attributes are not always the frame the window shows.
+        // Apply the saved frame again once the window exists.
+        if !attrs.fullscreen && !attrs.maximized {
+            if let Some(position) = attrs.position {
+                window.set_outer_position(position);
+            }
+            if let Some(size) = attrs.physical_inner_size {
+                let _ = window.request_inner_size(size);
+            }
+        }
 
         Ok(Box::new(DesktopWindow {
             window,
@@ -130,5 +151,21 @@ impl PlatformContext for DesktopContext<'_> {
     fn request_wakeup(&self, at: std::time::Instant) {
         self.event_loop
             .set_control_flow(winit::event_loop::ControlFlow::WaitUntil(at));
+    }
+
+    fn monitors(&self) -> Vec<crate::window::Screen> {
+        let mut screens: Vec<_> = self
+            .event_loop
+            .available_monitors()
+            .map(super::window::screen_from)
+            .collect();
+        if let Some(primary) = self.event_loop.primary_monitor() {
+            let primary = super::window::screen_from(primary);
+            if let Some(index) = screens.iter().position(|screen| screen == &primary) {
+                let screen = screens.remove(index);
+                screens.insert(0, screen);
+            }
+        }
+        screens
     }
 }

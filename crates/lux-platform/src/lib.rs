@@ -27,7 +27,7 @@ pub use event::{
     PlatformEvent, ScrollDelta, Touch, TouchPhase,
 };
 pub use ime::{ImeComposition, ImeUpdate};
-pub use window::{PlatformWindow, SafeAreaInsets, WindowAttributes, WindowId};
+pub use window::{PlatformWindow, SafeAreaInsets, Screen, WindowAttributes, WindowId};
 
 /// The callbacks a platform backend drives. Implemented by whatever owns the
 /// application's state (today, that will be `lux-ui`'s driver); the backend
@@ -113,4 +113,9 @@ pub trait PlatformContext {
     /// wakeup once per actual timer need, never on a fixed period
     /// independent of real state (golden rule #5).
     fn request_wakeup(&self, at: std::time::Instant);
+
+    /// Connected displays, primary first when the backend knows it.
+    fn monitors(&self) -> Vec<crate::window::Screen> {
+        Vec::new()
+    }
 }
