@@ -184,6 +184,26 @@ def ink_clusters(rows, top, bottom, x0, x1):
     return groups
 
 
+def text_body_x(rows, origin, top, bottom, numbers):
+    """First text column that is not the caret.
+
+    The caret is a few pixels wide and starts above the em box. A vertical
+    scroll moves that line away, so a sample that includes it reports the
+    text and the line numbers out of sync. A raised region wider than the
+    caret is the text itself and stays in the sample.
+    """
+    number_y = first_ink_row(rows, 0, numbers + 1, top, bottom)
+    if number_y is None:
+        return origin
+    x = origin
+    while x < origin + 8:
+        y = first_ink_row(rows, x, x + 1, top, bottom)
+        if y is None or y + 1 >= number_y:
+            return x
+        x += 1
+    return origin
+
+
 def check(name, rows, top, bottom, origin, numbers):
     if stray_ink(rows, top, bottom, numbers + 2, origin):
         raise SystemExit(f"{name}: text ink in the margin")
@@ -216,10 +236,12 @@ def main():
         raise SystemExit("shift+wheel changed the margin strip")
     if not margin_equal(before, delta_x, top, bottom, gutter_right):
         raise SystemExit("delta-x wheel changed the margin strip")
-    before_delta = first_ink_row(before, origin, origin + 30, top, bottom) - first_ink_row(
+    before_x = text_body_x(before, origin, top, bottom, numbers)
+    after_x = text_body_x(vertical, origin, top, bottom, numbers)
+    before_delta = first_ink_row(before, before_x, before_x + 30, top, bottom) - first_ink_row(
         before, 0, numbers + 1, top, bottom
     )
-    after_delta = first_ink_row(vertical, origin, origin + 30, top, bottom) - first_ink_row(
+    after_delta = first_ink_row(vertical, after_x, after_x + 30, top, bottom) - first_ink_row(
         vertical, 0, numbers + 1, top, bottom
     )
     if abs(before_delta - after_delta) > 1:
