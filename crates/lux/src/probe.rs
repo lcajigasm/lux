@@ -47,6 +47,7 @@ impl Slot {
 }
 
 static PROCESS_START: OnceLock<Instant> = OnceLock::new();
+static LAST_INPUT: Mutex<String> = Mutex::new(String::new());
 static SLOT: Mutex<Option<Slot>> = Mutex::new(None);
 static ARMED: AtomicU32 = AtomicU32::new(0);
 static TAKEN: AtomicU32 = AtomicU32::new(0);
@@ -351,7 +352,39 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         slot.frame_us.len(),
         slot.frame_us.iter().copied().max().unwrap_or(0),
     ));
+    let input = LAST_INPUT
+        .lock()
+        .map(|slot| slot.clone())
+        .unwrap_or_default();
+    out.push_str("input=");
+    out.push_str(&escape(&input));
+    out.push('\n');
     out
+}
+
+pub(crate) fn note_input(key: &lux_platform::KeyEvent, modifiers: &lux_platform::Modifiers) {
+    if key.state != lux_platform::ElementState::Pressed {
+        return;
+    }
+    let physical = key
+        .physical
+        .map(|key| key.chord_token())
+        .unwrap_or_default();
+    let logical = match &key.key {
+        lux_platform::Key::Character(text) => text.clone(),
+        lux_platform::Key::Named(named) => format!("{named:?}"),
+        lux_platform::Key::Unidentified => "unidentified".into(),
+    };
+    let line = format!(
+        "{logical}/{physical} meta={} ctrl={} alt={} shift={}",
+        u8::from(modifiers.meta),
+        u8::from(modifiers.control),
+        u8::from(modifiers.alt),
+        u8::from(modifiers.shift),
+    );
+    if let Ok(mut slot) = LAST_INPUT.lock() {
+        *slot = line;
+    }
 }
 
 fn escape(text: &str) -> String {

@@ -223,6 +223,27 @@ impl App {
         crate::chrome::handle_status_bar_click(self, mouse_x, mouse_y);
     }
 
+    fn command_n(&self, event: &KeyEvent) -> bool {
+        if event.state != ElementState::Pressed
+            || self.modifiers.shift
+            || self.modifiers.alt
+            || self.ui.pending_chord.is_some()
+        {
+            return false;
+        }
+        let letter_n = match event.physical {
+            Some(lux_platform::PhysicalKey::Letter(letter)) => letter.eq_ignore_ascii_case(&'n'),
+            _ => matches!(&event.key, Key::Character(text) if text.eq_ignore_ascii_case("n")),
+        };
+        if !letter_n {
+            return false;
+        }
+        #[cfg(target_os = "macos")]
+        return self.modifiers.meta || crate::menu::macos::command_key_is_down();
+        #[cfg(not(target_os = "macos"))]
+        self.modifiers.control
+    }
+
     pub(crate) fn handle_keyboard_event(
         &mut self,
         ctx: &dyn PlatformContext,
@@ -237,6 +258,13 @@ impl App {
         // them through picker/search handlers used to insert every printable
         // key a second time.
         if key_event.state != ElementState::Pressed {
+            return;
+        }
+        // Before a dead-key commit or a field can swallow the press.
+        if self.command_n(key_event) {
+            if crate::menu::claim_document_request(&crate::document::Request::New) {
+                self.request_document(ctx, crate::document::Request::New);
+            }
             return;
         }
         // The dead key already produced its commit. Typing the base key as
@@ -423,6 +451,7 @@ impl PlatformEventHandler for App {
                 {
                     crate::probe::note_key();
                 }
+                crate::probe::note_input(&key_event, &self.modifiers);
                 self.handle_keyboard_event(ctx, &key_event);
                 if let Some(gpu_window) = &self.gpu_window {
                     gpu_window.window.request_redraw();

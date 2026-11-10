@@ -37,6 +37,17 @@ pub(super) fn get_target() -> &'static Retained<MenuTarget> {
     })
 }
 
+/// `+[NSEvent modifierFlags]`. A focus loss clears the modifiers Lux stored
+/// while AppKit still has Command down, so Cmd+N is neither a command nor text.
+pub(crate) fn command_key_is_down() -> bool {
+    const COMMAND: usize = 1 << 20;
+    let Some(class) = objc2::runtime::AnyClass::get(c"NSEvent") else {
+        return false;
+    };
+    let flags: usize = unsafe { msg_send![class, modifierFlags] };
+    flags & COMMAND != 0
+}
+
 pub(crate) fn install_main_menu(app: &App) {
     let Some(mtm) = MainThreadMarker::new() else {
         return;

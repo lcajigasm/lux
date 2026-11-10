@@ -153,16 +153,32 @@ for _ in $(seq 1 40); do
   sleep 0.25
 done
 drive_key tap 45 cmd
-sleep 0.4
-drive_dump
-tabs="$(drive_field tabs)"
-dirty="$(drive_field dirty)"
-language="$(drive_field language)"
-active="$(drive_field active_path)"
-settings_open="$(drive_field settings)"
+tabs=""
+dirty=""
+language=""
+active=""
+settings_open=""
+for _ in $(seq 1 8); do
+  sleep 0.25
+  drive_dump
+  tabs="$(drive_field tabs)"
+  dirty="$(drive_field dirty)"
+  language="$(drive_field language)"
+  active="$(drive_field active_path)"
+  settings_open="$(drive_field settings)"
+  if [[ "$tabs" -ge 2 && "$dirty" == "0" && "$language" == "Plain Text" && -z "$active" && "$settings_open" == "0" ]]; then
+    break
+  fi
+done
 {
-  echo "after Cmd+N tabs=$tabs dirty=$dirty language=$language settings=$settings_open path=$active"
+  echo "after Cmd+N tabs=$tabs dirty=$dirty language=$language settings=$settings_open path=$active input=$(drive_field input)"
 } | tee -a "$report"
+if [[ "$tabs" -lt 2 ]]; then
+  echo "probe:" | tee -a "$report" >&2
+  cat "$DRIVE_PROBE" | tee -a "$report" >&2 || true
+  echo "log:" | tee -a "$report" >&2
+  tail -40 "$DRIVE_LOG" | tee -a "$report" >&2 || true
+fi
 [[ "$tabs" -ge 2 ]] || fail "Cmd+N did not open a buffer (tabs=$tabs)"
 [[ "$dirty" == "0" ]] || fail "the new buffer is dirty"
 [[ "$language" == "Plain Text" ]] || fail "the new buffer language is $language"
