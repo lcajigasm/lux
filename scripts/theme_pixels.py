@@ -346,12 +346,18 @@ def check_palette(path, row_fill):
     if glyph_h < 12:
         fail(f"{path} palette glyphs are {glyph_h}px at scale 2")
     inks.sort(key=luminance)
-    # Glyph cores, not the antialiased edge. A light row uses the darkest
-    # stems; a dark row uses the lightest.
+    # Glyph cores, not the antialiased edge. Score both ends: a light row
+    # has dark stems, and a mid-gray selection can carry dark text whose
+    # lightest pixels are only the fringe.
     count = max(1, len(inks) // 20)
-    core = inks[:count] if luminance(row) > 0.4 else inks[-count:]
-    ink = core[len(core) // 2]
-    ratio = contrast(ink, row)
+    dark_ink = inks[:count][len(inks[:count]) // 2]
+    light_ink = inks[-count:][len(inks[-count:]) // 2]
+    dark_ratio = contrast(dark_ink, row)
+    light_ratio = contrast(light_ink, row)
+    if dark_ratio >= light_ratio:
+        ink, ratio = dark_ink, dark_ratio
+    else:
+        ink, ratio = light_ink, light_ratio
     if ratio < 4.5:
         fail(f"{path} palette contrast {ratio:.2f} ({hex_of(ink)} on {hex_of(row)})")
     pink = parse_hex("F92672")

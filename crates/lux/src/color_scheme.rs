@@ -110,6 +110,15 @@ pub(crate) fn load_user_schemes(dir: &Path) -> Vec<LoadedScheme> {
     out
 }
 
+/// The theme a picker row should preview. Loaded schemes win, then the
+/// seven built-in themes (Mariana, Celeste, and the rest have no scheme file).
+pub(crate) fn theme_for(schemes: &[LoadedScheme], name: &str) -> Theme {
+    scheme_named(schemes, name)
+        .map(|scheme| scheme.theme)
+        .or_else(|| Theme::by_name(name))
+        .unwrap_or(Theme::MONOKAI)
+}
+
 pub(crate) fn scheme_named(schemes: &[LoadedScheme], name: &str) -> Option<LoadedScheme> {
     let needle = normalize_name(name);
     schemes
@@ -419,6 +428,9 @@ mod tests {
         assert_eq!(bg("Rose Pine"), Color::rgb(0x19, 0x17, 0x24));
         assert!(theme_setting_options().contains(&"One Dark"));
         assert!(theme_setting_options().contains(&"monokai"));
+        assert_eq!(theme_for(schemes, "Rose Pine").background, bg("Rose Pine"));
+        assert_eq!(theme_for(schemes, "Nord").background, bg("Nord"));
+        assert_eq!(theme_for(&[], "Mariana").name, "Mariana");
     }
 
     #[test]

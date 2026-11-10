@@ -12,7 +12,8 @@ use lux_ui::editor_view::EditorView;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_theme_picker(
-    picker: &mut ThemePickerState,
+    picker: &mut Option<ThemePickerState>,
+    schemes: &[crate::color_scheme::LoadedScheme],
     viewport_width: f32,
     window_height: f32,
     tab_bar_height: f32,
@@ -28,6 +29,9 @@ pub(crate) fn render_theme_picker(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
+    let Some(picker) = picker.as_mut() else {
+        return;
+    };
     let now = std::time::Instant::now();
     let reduced = crate::overlay_motion::reduced_motion();
     let filtered = picker.filtered();
@@ -41,17 +45,16 @@ pub(crate) fn render_theme_picker(
             }
         })
         .collect();
-    let swatches: Vec<Option<[[f32; 4]; 4]>> = filtered
+    let swatches: Vec<[[f32; 4]; 4]> = filtered
         .iter()
         .map(|name| {
-            lux_ui::Theme::by_name(name).map(|target| {
-                [
-                    color(target.background),
-                    color(target.foreground),
-                    color(target.accent),
-                    color(target.selection),
-                ]
-            })
+            let target = crate::color_scheme::theme_for(schemes, name);
+            [
+                color(target.background),
+                color(target.foreground),
+                color(target.accent),
+                color(target.selection),
+            ]
         })
         .collect();
     let items: Vec<OverlayItem<'_>> = labels
@@ -62,7 +65,7 @@ pub(crate) fn render_theme_picker(
             badge: None,
             detail: None,
             icon: Some(super::icons::Icon::Theme),
-            swatches: *swatch,
+            swatches: Some(*swatch),
         })
         .collect();
     let frame = centered_frame(

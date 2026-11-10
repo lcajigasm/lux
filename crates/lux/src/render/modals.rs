@@ -152,25 +152,24 @@ pub(crate) fn render_all_modals(
         );
     }
 
-    if let Some(picker) = &mut ui.theme_picker {
-        super::theme_picker::render_theme_picker(
-            picker,
-            window_width,
-            window_height,
-            tab_bar_height,
-            status_bar_height,
-            scale_factor,
-            stroke,
-            font,
-            editor_view,
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            theme,
-            quad_instances,
-            glyph_instances,
-        );
-    }
+    super::theme_picker::render_theme_picker(
+        &mut ui.theme_picker,
+        &ui.settings.schemes,
+        window_width,
+        window_height,
+        tab_bar_height,
+        status_bar_height,
+        scale_factor,
+        stroke,
+        font,
+        editor_view,
+        atlas,
+        atlas_dirty,
+        scale_cx,
+        theme,
+        quad_instances,
+        glyph_instances,
+    );
 
     if let Some(picker) = &ui.snippets.picker {
         super::snippet_picker::render_snippet_picker(
