@@ -25,6 +25,7 @@ pub(crate) enum SettingKind {
 
 #[derive(Debug, Clone)]
 pub(crate) struct SettingItem {
+    pub(crate) category: &'static str,
     pub(crate) key: &'static str,
     pub(crate) label: &'static str,
     pub(crate) description: &'static str,
@@ -43,6 +44,40 @@ pub(crate) struct SettingsPanelState {
     pub(crate) items: Vec<SettingItem>,
     pub(crate) scroll: f32,
     pub(crate) menu: Option<SettingsMenu>,
+    pub(crate) query: String,
+    /// Index into [`SettingsPanelState::categories`]. 0 is All.
+    pub(crate) category: usize,
+}
+
+impl SettingsPanelState {
+    pub(crate) fn categories(&self) -> Vec<&'static str> {
+        let mut out = vec!["All"];
+        for item in &self.items {
+            if !out.contains(&item.category) {
+                out.push(item.category);
+            }
+        }
+        out
+    }
+
+    pub(crate) fn visible_indices(&self) -> Vec<usize> {
+        let categories = self.categories();
+        let selected = categories.get(self.category).copied().unwrap_or("All");
+        let query = self.query.trim().to_ascii_lowercase();
+        self.items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| {
+                if query.is_empty() {
+                    return selected == "All" || item.category == selected;
+                }
+                item.label.to_ascii_lowercase().contains(&query)
+                    || item.description.to_ascii_lowercase().contains(&query)
+                    || item.key.contains(query.as_str())
+            })
+            .map(|(index, _)| index)
+            .collect()
+    }
 }
 
 enum Edit {
@@ -67,6 +102,8 @@ impl SettingsState {
             items,
             scroll: 0.0,
             menu: None,
+            query: String::new(),
+            category: 0,
         });
     }
 
@@ -131,8 +168,36 @@ impl SettingsState {
                 self.activate_selected(app);
                 true
             }
+            Key::Named(NamedKey::Backspace) => {
+                self.edit_query(app, None);
+                true
+            }
+            Key::Character(text)
+                if !app.modifiers.meta && !app.modifiers.control && !app.modifiers.alt =>
+            {
+                self.edit_query(app, Some(text.clone()));
+                true
+            }
             _ => true,
         }
+    }
+
+    fn edit_query(&mut self, app: &mut App, insert: Option<String>) {
+        let Some(panel) = self.panel.as_mut() else {
+            return;
+        };
+        match insert {
+            Some(text) => panel.query.push_str(&text),
+            None => {
+                panel.query.pop();
+            }
+        }
+        panel.scroll = 0.0;
+        panel.menu = None;
+        if let Some(first) = panel.visible_indices().first().copied() {
+            panel.selected_index = first;
+        }
+        app.scheduler.invalidate_all();
     }
 
     pub(crate) fn handle_click(&mut self, app: &mut App, mouse_x: f32, mouse_y: f32) -> bool {
@@ -186,6 +251,24 @@ impl SettingsState {
                     panel.selected_index = item;
                 }
             }
+            SettingsHit::Category(index) => {
+                if let Some(panel) = self.panel.as_mut() {
+                    panel.category = index;
+                    panel.scroll = 0.0;
+                    panel.menu = None;
+                    panel.query.clear();
+                    if let Some(first) = panel.visible_indices().first().copied() {
+                        panel.selected_index = first;
+                    }
+                }
+                app.scheduler.invalidate_all();
+            }
+            SettingsHit::Search => {
+                if let Some(panel) = self.panel.as_mut() {
+                    panel.menu = None;
+                }
+                app.scheduler.invalidate_all();
+            }
         }
         true
     }
@@ -224,12 +307,16 @@ impl SettingsState {
             }
             return;
         }
-        if panel.items.is_empty() {
+        let visible = panel.visible_indices();
+        if visible.is_empty() {
             return;
         }
-        let len = panel.items.len() as isize;
-        let next = (panel.selected_index as isize + delta).clamp(0, len - 1) as usize;
-        panel.selected_index = next;
+        let pos = visible
+            .iter()
+            .position(|index| *index == panel.selected_index)
+            .unwrap_or(0);
+        let next = (pos as isize + delta).clamp(0, visible.len() as isize - 1) as usize;
+        panel.selected_index = visible[next];
         reveal(panel, bounds);
     }
 
@@ -388,9 +475,20 @@ pub(crate) fn bounds_for(app: &App) -> SettingsBounds {
     let status_bar = app.status_bar_height();
     if let Some(gpu) = &app.gpu_window {
         let size = gpu.window.inner_size();
+        // A scale snapshot sets the viewport to the capture, which is
+        // larger than the live window. Lay the page out in that frame
+        // so the sidebar, search field, and scrollbar land in the PNG.
+        let (window_width, window_height) = if app.viewport.width > size.width as f32 + 1.0 {
+            (
+                app.viewport.width,
+                app.viewport.height + tab_bar + status_bar,
+            )
+        } else {
+            (size.width as f32, size.height as f32)
+        };
         return SettingsBounds {
-            window_width: size.width as f32,
-            window_height: size.height as f32,
+            window_width,
+            window_height,
             tab_bar,
             status_bar,
             scale: app.scale_factor,
@@ -430,7 +528,11 @@ pub(crate) fn scroll_settings(app: &mut App, delta: ScrollDelta) -> bool {
 
 fn reveal(panel: &mut SettingsPanelState, bounds: SettingsBounds) {
     let layout = layout_settings(panel, bounds);
-    let Some(row) = layout.rows.get(panel.selected_index) else {
+    let Some(row) = layout
+        .rows
+        .iter()
+        .find(|row| row.index == panel.selected_index)
+    else {
         return;
     };
     if row.row.y < layout.body.y {

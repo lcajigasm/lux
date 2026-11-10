@@ -1,0 +1,41 @@
+{
+  "name": "Tokyo Night",
+  "globals": {
+    "background": "#1a1b26",
+    "foreground": "#c0caf5",
+    "accent": "#7aa2f7",
+    "selection": "#283457",
+    "muted": "#565f89",
+    "sidebar": "#16161e",
+    "tab_bar": "#16161e",
+    "tab_inactive": "#292e42",
+    "status_bar": "#292e42",
+    "panel": "#16161e",
+    "panel_input": "#292e42",
+    "panel_row": "#283457",
+    "border": "#292e42",
+    "gutter": "#1a1b26",
+    "line_highlight": "#1e202e"
+  },
+  "rules": [
+    { "scope": "comment", "foreground": "#565f89" },
+    { "scope": "keyword", "foreground": "#bb9af7" },
+    { "scope": "conditional", "foreground": "#bb9af7" },
+    { "scope": "repeat", "foreground": "#bb9af7" },
+    { "scope": "import", "foreground": "#bb9af7" },
+    { "scope": "string", "foreground": "#9ece6a" },
+    { "scope": "character", "foreground": "#9ece6a" },
+    { "scope": "number", "foreground": "#ff9e64" },
+    { "scope": "constant", "foreground": "#ff9e64" },
+    { "scope": "boolean", "foreground": "#ff9e64" },
+    { "scope": "type", "foreground": "#2ac3de" },
+    { "scope": "function", "foreground": "#7aa2f7" },
+    { "scope": "constructor", "foreground": "#7aa2f7" },
+    { "scope": "variable", "foreground": "#c0caf5" },
+    { "scope": "parameter", "foreground": "#e0af68" },
+    { "scope": "property", "foreground": "#e0af68" },
+    { "scope": "tag", "foreground": "#f7768e" },
+    { "scope": "operator", "foreground": "#89ddff" },
+    { "scope": "punctuation", "foreground": "#565f89" }
+  ]
+}

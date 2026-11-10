@@ -9,7 +9,7 @@ use lux_platform::dialog::SaveDecision;
 use lux_platform::event::KeyEvent;
 use lux_platform::{
     Clipboard, ElementState, FileDialogOptions, FileDialogs, Key, Modifiers, NamedKey,
-    PlatformContext, PlatformError, PlatformWindow, WindowAttributes,
+    PlatformContext, PlatformError, PlatformEventHandler, PlatformWindow, WindowAttributes,
 };
 
 use super::Request;
@@ -371,4 +371,120 @@ fn test_tab_switching_strictly_requires_exclusive_modifiers() {
     assert!(app.document_key(&ctx, &key2));
     assert_eq!(app.documents.active_tab, Some(tab2_id));
     assert_eq!(app.buffer.text(), "B");
+}
+
+#[test]
+fn command_n_opens_a_clean_plain_text_buffer_and_comma_opens_settings() {
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    app.buffer = lux_core::buffer::Buffer::from_bytes(b"fn kept() {}\n").unwrap();
+    app.sync_active_document_to_entry();
+    let ctx = TestContext::new();
+    app.modifiers = Modifiers {
+        meta: cfg!(target_os = "macos"),
+        control: !cfg!(target_os = "macos"),
+        shift: false,
+        alt: false,
+    };
+    app.handle_keyboard_event(
+        &ctx,
+        &KeyEvent {
+            key: Key::Character("n".into()),
+            text: Some("n".into()),
+            state: ElementState::Pressed,
+            repeat: false,
+            physical: Some(lux_platform::PhysicalKey::Letter('n')),
+        },
+    );
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+    assert!(app.documents.path.is_none());
+    assert!(app.buffer.text().is_empty());
+    assert!(!app.document_dirty());
+    assert!(app.documents.language().is_none());
+    assert!(app.ui.settings.panel.is_none());
+    app.handle_keyboard_event(
+        &ctx,
+        &KeyEvent {
+            key: Key::Character(",".into()),
+            text: Some(",".into()),
+            state: ElementState::Pressed,
+            repeat: false,
+            physical: Some(lux_platform::PhysicalKey::Comma),
+        },
+    );
+    assert!(app.ui.settings.panel.is_some());
+}
+
+#[test]
+fn command_n_from_an_unidentified_physical_key_opens_a_buffer() {
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    app.buffer = lux_core::buffer::Buffer::from_bytes(b"fn kept() {}\n").unwrap();
+    app.sync_active_document_to_entry();
+    let ctx = TestContext::new();
+    app.modifiers = Modifiers {
+        meta: cfg!(target_os = "macos"),
+        control: !cfg!(target_os = "macos"),
+        shift: false,
+        alt: false,
+    };
+    app.handle_keyboard_event(
+        &ctx,
+        &KeyEvent {
+            key: Key::Unidentified,
+            text: None,
+            state: ElementState::Pressed,
+            repeat: false,
+            physical: Some(lux_platform::PhysicalKey::Letter('n')),
+        },
+    );
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+    assert!(app.documents.path.is_none());
+    assert!(app.buffer.text().is_empty());
+    assert!(!app.document_dirty());
+    assert!(app.documents.language().is_none());
+}
+
+#[test]
+fn a_menu_new_file_is_applied_before_the_probe_can_read_tabs() {
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    app.buffer = lux_core::buffer::Buffer::from_bytes(b"fn kept() {}\n").unwrap();
+    app.sync_active_document_to_entry();
+    let ctx = TestContext::new();
+    crate::menu::clear_claim();
+    crate::menu::post_action(crate::menu::MenuAction::NewFile);
+    app.about_to_wait(&ctx);
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+    assert!(app.documents.path.is_none());
+    assert!(app.buffer.text().is_empty());
+}
+
+#[test]
+fn command_n_during_an_open_runs_when_the_open_finishes() {
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    let ctx = TestContext::new();
+    let path = std::env::temp_dir().join(format!("lux-new-during-open-{}", std::process::id()));
+    std::fs::write(&path, "kept\n").unwrap();
+    app.request_document(&ctx, Request::Open(Some(path.clone())));
+    app.modifiers = Modifiers {
+        meta: cfg!(target_os = "macos"),
+        control: !cfg!(target_os = "macos"),
+        shift: false,
+        alt: false,
+    };
+    app.handle_keyboard_event(
+        &ctx,
+        &KeyEvent {
+            key: Key::Character("n".into()),
+            text: Some("n".into()),
+            state: ElementState::Pressed,
+            repeat: false,
+            physical: Some(lux_platform::PhysicalKey::Letter('n')),
+        },
+    );
+    assert_eq!(app.documents.tabs.tabs().len(), 1);
+    ctx.complete(&mut app);
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+    assert!(app.documents.path.is_none());
+    assert!(app.buffer.text().is_empty());
+    assert!(!app.document_dirty());
+    let _ = std::fs::remove_file(path);
 }

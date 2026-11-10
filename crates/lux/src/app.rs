@@ -102,6 +102,7 @@ impl App {
         let mut editor_view = EditorView::new(text_layout, font_bytes, metrics)
             .expect("system font bytes read from disk must parse as a real font");
         crate::font::install_coverage_fallbacks(editor_view.text_layout_mut());
+        crate::font::install_ui_font(editor_view.text_layout_mut());
 
         let buffer = Buffer::from_bytes(b"").expect("empty document decodes");
         let cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
@@ -222,6 +223,27 @@ impl App {
         crate::chrome::handle_status_bar_click(self, mouse_x, mouse_y);
     }
 
+    fn command_n(&self, event: &KeyEvent) -> bool {
+        if event.state != ElementState::Pressed
+            || self.modifiers.shift
+            || self.modifiers.alt
+            || self.ui.pending_chord.is_some()
+        {
+            return false;
+        }
+        let letter_n = match event.physical {
+            Some(lux_platform::PhysicalKey::Letter(letter)) => letter.eq_ignore_ascii_case(&'n'),
+            _ => matches!(&event.key, Key::Character(text) if text.eq_ignore_ascii_case("n")),
+        };
+        if !letter_n {
+            return false;
+        }
+        #[cfg(target_os = "macos")]
+        return self.modifiers.meta || crate::menu::macos::command_key_is_down();
+        #[cfg(not(target_os = "macos"))]
+        self.modifiers.control
+    }
+
     pub(crate) fn handle_keyboard_event(
         &mut self,
         ctx: &dyn PlatformContext,
@@ -236,6 +258,13 @@ impl App {
         // them through picker/search handlers used to insert every printable
         // key a second time.
         if key_event.state != ElementState::Pressed {
+            return;
+        }
+        // Before a dead-key commit or a field can swallow the press.
+        if self.command_n(key_event) {
+            if crate::menu::claim_document_request(&crate::document::Request::New) {
+                self.request_document(ctx, crate::document::Request::New);
+            }
             return;
         }
         // The dead key already produced its commit. Typing the base key as
@@ -422,6 +451,7 @@ impl PlatformEventHandler for App {
                 {
                     crate::probe::note_key();
                 }
+                crate::probe::note_input(&key_event, &self.modifiers);
                 self.handle_keyboard_event(ctx, &key_event);
                 if let Some(gpu_window) = &self.gpu_window {
                     gpu_window.window.request_redraw();
@@ -538,12 +568,16 @@ impl PlatformEventHandler for App {
         }
     }
 
-    fn about_to_wait(&mut self, _ctx: &dyn PlatformContext) {
+    fn about_to_wait(&mut self, ctx: &dyn PlatformContext) {
+        // A menu key equivalent posts here and is otherwise drained on the
+        // next window event. The probe snapshot is taken in this callback,
+        // so the command has to land first.
+        crate::menu::poll_and_dispatch(self, ctx);
         crate::session::poll_file_watcher(self);
         let mut settings = std::mem::take(&mut self.ui.settings);
         settings.poll_watcher(self);
         self.ui.settings = settings;
-        crate::probe::poll(self, _ctx);
+        crate::probe::poll(self, ctx);
         let waiting = crate::snapshot::usr1_waiting();
         let Some(gpu_window) = &self.gpu_window else {
             return;

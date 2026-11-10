@@ -551,6 +551,7 @@ pub(crate) mod comment;
 pub(crate) mod dispatch;
 mod indent;
 mod motion;
+pub(crate) use motion::shortcut_letter;
 mod mouse;
 
 #[cfg(test)]

@@ -42,4 +42,68 @@ fn settings_importers_and_panel_options() {
     assert_eq!(panel.items.len(), 12);
     assert_eq!(panel.items[0].key, "editor.fontSize");
     assert_eq!(panel.items[1].key, "editor.lineHeight");
+    assert!(panel.categories().len() >= 4);
+}
+
+#[test]
+fn theme_reload_keeps_the_buffer_and_scales_line_height() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("settings.json");
+    std::fs::write(
+        &path,
+        r#"{ "editor.fontSize": 13.0, "editor.lineHeight": 1.4, "workbench.colorTheme": "monokai" }"#,
+    )
+    .unwrap();
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    app.ui.settings = SettingsState::new(path);
+    app.set_display_scale(2.0);
+    app.buffer =
+        lux_core::buffer::Buffer::from_bytes(b"fn main() {\n    let value = 1;\n}\n").unwrap();
+    app.documents.path = Some(std::path::PathBuf::from("src/main.rs"));
+    app.documents
+        .set_language(Some(lux_syntax::LanguageId::Rust));
+    app.documents.saved_version = app.history.state_id();
+    let text = app.buffer.text();
+    app.confirm_theme("One Dark");
+    assert_eq!(app.buffer.text(), text);
+    assert_eq!(
+        app.documents.path.as_deref(),
+        Some(std::path::Path::new("src/main.rs"))
+    );
+    assert_eq!(app.documents.language(), Some(lux_syntax::LanguageId::Rust));
+    assert!(!app.document_dirty());
+    let metrics = app.editor_view.metrics();
+    assert!(
+        (metrics.font_size - 26.0).abs() < 0.1,
+        "{}",
+        metrics.font_size
+    );
+    assert!(
+        (metrics.line_height - 13.0 * 1.4 * 2.0).abs() < 0.1,
+        "{}",
+        metrics.line_height
+    );
+    assert!(metrics.line_height > metrics.font_size);
+    assert_eq!(app.chrome.theme.name, "One Dark");
+    for name in crate::color_scheme::theme_setting_options() {
+        app.confirm_theme(name);
+        assert_eq!(app.buffer.text(), text, "{name}");
+        assert!(!app.document_dirty(), "{name}");
+        assert_eq!(
+            app.documents.language(),
+            Some(lux_syntax::LanguageId::Rust),
+            "{name}"
+        );
+        let metrics = app.editor_view.metrics();
+        assert!(
+            (metrics.font_size - 26.0).abs() < 0.1,
+            "{name} font {}",
+            metrics.font_size
+        );
+        assert!(
+            metrics.line_height > metrics.font_size,
+            "{name} line {}",
+            metrics.line_height
+        );
+    }
 }

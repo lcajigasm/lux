@@ -18,7 +18,7 @@ pub(crate) fn render_command_palette(
     tab_bar_height: f32,
     scale_factor: f32,
     stroke: f32,
-    font_size: f32,
+    _font_size: f32,
     font: FontRef<'static>,
     editor_view: &mut EditorView,
     atlas: &mut GlyphAtlas,
@@ -54,15 +54,16 @@ pub(crate) fn render_command_palette(
         theme,
     );
 
-    let palette_font_size = font_size * 0.92;
-    let family = editor_view.family().to_string();
+    let palette_font_size = 13.0 * scale_factor;
+    let (font, family) = crate::font::ui_font(font, editor_view.family());
     let style = lux_render::LineStyle {
         family: &family,
         font_size: palette_font_size,
         ligatures: false,
     };
 
-    let foreground = color(theme.foreground);
+    let foreground =
+        super::panel::readable_ink(color(theme.foreground), super::panel::card_fill(theme));
     let input_baseline = (chrome.input_height - palette_font_size) * 0.5;
     let text_x = chrome.left + 22.0 * scale_factor;
     let text_y = chrome.top + stroke + input_baseline;
@@ -115,7 +116,7 @@ pub(crate) fn render_command_palette(
         visual,
         start_idx,
         visible_count,
-        super::panel::selected_fill(),
+        super::panel::selected_fill(theme),
         color(theme.accent),
         scale_factor,
     );
@@ -132,7 +133,7 @@ pub(crate) fn render_command_palette(
         let icon_size = 16.0 * scale_factor;
         let icon_x = chrome.left + 16.0 * scale_factor;
         let hole = if is_selected {
-            super::panel::selected_fill()
+            super::panel::selected_fill(theme)
         } else {
             super::panel::card_fill(theme)
         };
@@ -142,7 +143,7 @@ pub(crate) fn render_command_palette(
             icon_x,
             row_y + (chrome.row_height - icon_size) * 0.5,
             icon_size,
-            color(theme.accent),
+            super::panel::readable_ink(color(theme.foreground), hole),
             hole,
         );
 
@@ -154,10 +155,15 @@ pub(crate) fn render_command_palette(
         let hits = fuzzy_spans(&entry.command.title, &palette.query);
         for cluster in title_line.clusters() {
             let hit = span_covers(&hits, &cluster.byte_range);
+            let row_fill = if is_selected {
+                super::panel::selected_fill(theme)
+            } else {
+                super::panel::card_fill(theme)
+            };
             let glyph_color = if hit {
                 super::panel::hit_ink(is_selected, theme)
             } else {
-                foreground
+                super::panel::readable_ink(color(theme.foreground), row_fill)
             };
             let draw = if hit && is_selected {
                 push_bold_glyph

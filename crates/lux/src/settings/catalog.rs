@@ -37,6 +37,7 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
 
     vec![
         number(
+            "Text",
             "editor.fontSize",
             "Font Size",
             "Typeface size in points (10 to 24)",
@@ -44,6 +45,7 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             &[10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 18.0, 20.0, 24.0],
         ),
         number(
+            "Text",
             "editor.lineHeight",
             "Line Height",
             "Multiplier of font size (1.2 to 2.0)",
@@ -51,12 +53,14 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             &[1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0],
         ),
         boolean(
+            "Text",
             "editor.fontLigatures",
             "Font Ligatures",
             "Enable or disable programming ligatures",
             font_ligatures,
         ),
         number(
+            "Editing",
             "editor.tabWidth",
             "Tab Size",
             "Number of columns a tab character occupies",
@@ -64,6 +68,7 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             &[2.0, 4.0, 8.0],
         ),
         enumeration(
+            "Editing",
             "editor.indentStyle",
             "Indent Style",
             "Indentation character (space or tab)",
@@ -71,30 +76,35 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             &["space", "tab"],
         ),
         boolean(
+            "Editing",
             "editor.trimTrailingWhitespace",
             "Trim Trailing Whitespace",
             "Remove whitespace at end of lines on save",
             trim_ws,
         ),
         boolean(
+            "Editing",
             "editor.trimTrailingWhitespacePreserveCursor",
             "Preserve Whitespace On Caret",
             "Keep trailing whitespace on lines with active cursors",
             preserve_cursor,
         ),
         boolean(
+            "Editing",
             "editor.insertFinalNewline",
             "Insert Final Newline",
             "Ensure file ends with a trailing newline",
             final_nl,
         ),
         boolean(
+            "Editing",
             "editor.wordWrap",
             "Word Wrap",
             "Wrap lines exceeding the viewport",
             word_wrap,
         ),
         number(
+            "Editing",
             "editor.distractionFreeColumnWidth",
             "Distraction Free Column Width",
             "Character width of centered text in distraction free mode",
@@ -102,22 +112,15 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             &[72.0, 80.0, 90.0, 100.0, 120.0],
         ),
         enumeration(
+            "Workbench",
             "workbench.colorTheme",
             "Color Theme",
             "Visual color palette. \"system\" follows the OS appearance",
             theme,
-            &[
-                "system",
-                "monokai",
-                "mariana",
-                "breakers",
-                "celeste",
-                "lux-dark",
-                "lux-light",
-                "high-contrast",
-            ],
+            crate::color_scheme::theme_setting_options(),
         ),
         enumeration(
+            "Workbench",
             "workbench.keymap",
             "Keymap Preset",
             "Keyboard shortcut mapping profile",
@@ -128,6 +131,7 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
 }
 
 fn number(
+    category: &'static str,
     key: &'static str,
     label: &'static str,
     description: &'static str,
@@ -135,6 +139,7 @@ fn number(
     options: &'static [f64],
 ) -> SettingItem {
     SettingItem {
+        category,
         key,
         label,
         description,
@@ -143,12 +148,14 @@ fn number(
 }
 
 fn boolean(
+    category: &'static str,
     key: &'static str,
     label: &'static str,
     description: &'static str,
     value: bool,
 ) -> SettingItem {
     SettingItem {
+        category,
         key,
         label,
         description,
@@ -157,6 +164,7 @@ fn boolean(
 }
 
 fn enumeration(
+    category: &'static str,
     key: &'static str,
     label: &'static str,
     description: &'static str,
@@ -164,6 +172,7 @@ fn enumeration(
     options: &'static [&'static str],
 ) -> SettingItem {
     SettingItem {
+        category,
         key,
         label,
         description,

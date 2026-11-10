@@ -141,7 +141,7 @@ fn settings_selection_stays_inside_the_card() {
         frame.window_height,
         frame.scale,
     );
-    let fill = selected_fill();
+    let fill = selected_fill(&lux_ui::Theme::MONOKAI);
     let page = layout.page;
     for quad in quads.iter().filter(|quad| same_rgb(quad.color, fill)) {
         let [x, y, w, h] = quad.rect;

@@ -91,7 +91,7 @@ impl SettingsState {
         let watcher =
             ConfigWatcher::new(Arc::clone(&config), [(Layer::User, settings_path.clone())]).ok();
 
-        let mut schemes = vec![crate::color_scheme::bundled_monokai()];
+        let mut schemes = crate::color_scheme::bundled_schemes().to_vec();
         if let Some(dir) = settings_path.parent() {
             schemes.extend(crate::color_scheme::load_user_schemes(&dir.join("themes")));
         }
@@ -127,12 +127,10 @@ impl SettingsState {
         let config = self.config.lock().unwrap();
         let resolved = config.resolved();
 
-        if let Some(size) = resolved["editor.fontSize"].as_f64() {
-            app.editor_view.metrics_mut().font_size = size as f32;
-        }
-        if let Some(lh) = resolved["editor.lineHeight"].as_f64() {
-            app.editor_view.metrics_mut().line_height = lh as f32;
-        }
+        let font_size = resolved["editor.fontSize"].as_f64().unwrap_or(13.0);
+        let line_height = resolved["editor.lineHeight"].as_f64().unwrap_or(1.4);
+        let (size, line) = physical_text_metrics(font_size, line_height, app.scale_factor);
+        app.editor_view.set_text_dimensions(size, line);
         if let Some(lig) = resolved["editor.fontLigatures"].as_bool() {
             app.editor_view.metrics_mut().ligatures = lig;
         }
@@ -274,6 +272,39 @@ impl SettingsState {
 
     pub(crate) fn import_jetbrains(&mut self, app: &mut App) -> String {
         importers::import_jetbrains(self, app)
+    }
+}
+
+/// `editor.lineHeight` below 8 is a multiplier of the font size, matching
+/// the settings page. 8 and above is a logical pixel height. Both are then
+/// multiplied by the display scale. Writing the multiplier straight into
+/// the pixel line height is what blanked the editor after a theme change.
+pub(crate) fn physical_text_metrics(font_size: f64, line_height: f64, scale: f32) -> (f32, f32) {
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    let size = if font_size.is_finite() && font_size > 0.0 {
+        font_size as f32
+    } else {
+        crate::app::FONT_SIZE
+    };
+    let logical_line = if (0.5..8.0).contains(&line_height) {
+        size * line_height as f32
+    } else if line_height.is_finite() && line_height >= 8.0 {
+        line_height as f32
+    } else {
+        size * 1.4
+    };
+    (size * scale, logical_line * scale)
+}
+
+impl App {
+    pub(crate) fn apply_user_settings(&mut self) {
+        let settings = std::mem::take(&mut self.ui.settings);
+        settings.apply_to_app(self);
+        self.ui.settings = settings;
     }
 }
 

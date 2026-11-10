@@ -115,7 +115,7 @@ pub(crate) fn render_goto(
         visual,
         start_idx,
         visible_count,
-        super::panel::selected_fill(),
+        super::panel::selected_fill(theme),
         color(theme.accent),
         scale_factor,
     );
@@ -138,7 +138,7 @@ pub(crate) fn render_goto(
         let icon_size = 16.0 * scale_factor;
         let icon_x = chrome.left + 16.0 * scale_factor;
         let hole = if is_selected {
-            super::panel::selected_fill()
+            super::panel::selected_fill(theme)
         } else {
             super::panel::card_fill(theme)
         };

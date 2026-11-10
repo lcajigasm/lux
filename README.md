@@ -118,7 +118,7 @@ The `.deb` depends on `libfontconfig1` and `libegl1` (the GPU loader the Linux b
 
 ### 🎨 Themes & Distraction Free Mode
 - **Authentic Sublime Color Schemes**: Pixel-perfect ports of **Monokai**, **Mariana**, **Breakers**, and **Celeste**, with WCAG AA compliance.
-- **Live Theme Picker (`Preferences: Color Theme`)**: Real-time theme preview with color swatches.
+- **Live Theme Picker (`Color Theme`)**: Real-time theme preview with color swatches.
 - **Distraction Free Mode (`Shift+F11` / `Cmd+Ctrl+Shift+F`)**: Clean fullscreen writing mode with centered text column, hiding tab bar, status bar, sidebar, minimap, and gutters.
 
 ### 🛠️ Developer Tooling & Deep Integration

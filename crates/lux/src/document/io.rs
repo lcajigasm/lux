@@ -65,6 +65,31 @@ pub(crate) fn save_snapshot(
     Ok(Some((path, snapshot.buffer.clone())))
 }
 
+/// `None` when `request` was applied or stored. `Some` when the caller
+/// should run it on the worker.
+pub(super) fn accept(app: &mut crate::app::App, request: super::Request) -> Option<super::Request> {
+    if app.documents.pending.is_some() {
+        if matches!(request, super::Request::Close | super::Request::New) {
+            app.documents.follow_up = Some(request);
+        }
+        return None;
+    }
+    if matches!(request, super::Request::New) {
+        open_untitled(app);
+        return None;
+    }
+    Some(request)
+}
+
+fn open_untitled(app: &mut crate::app::App) {
+    let buffer = Buffer::from_bytes(b"").expect("empty document decodes");
+    let tab_id = app.documents.tabs.open("Untitled");
+    app.documents
+        .entries
+        .push(super::DocumentEntry::new(tab_id, None, buffer));
+    app.switch_to_tab(tab_id);
+}
+
 pub(crate) fn execute(
     request: Request,
     snapshot: Snapshot,

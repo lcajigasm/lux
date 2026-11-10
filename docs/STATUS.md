@@ -18,6 +18,21 @@
 > border. Sublime's own minimap, breadcrumb, and lighter status chrome are
 > not copied. HiDPI text uses grayscale antialiasing when `scale_factor > 1`.
 > The job logged `display scale 1`, so the PNG does not prove Retina.
+> Confirming a theme reloads settings. `editor.lineHeight` below 8 is a
+> multiplier of the font size (the default 1.4 is not 1.4 pixels). The
+> font size and that line height are then multiplied by the window's
+> display scale, so a theme change keeps the buffer, its language, and
+> its clean/dirty flag, and the text stays on screen. A new buffer is
+> untitled, clean, and Plain Text. The palette lists one `Color Theme`
+> command. Its text is the system UI font at 13pt times the display
+> scale. Row text and match highlights meet WCAG AA against the row
+> fill. The selected row uses the theme's panel-row color. Settings has
+> a category sidebar, a search field, and a scrollbar. The free
+> macos-15 runner stays 1× unless a job records a scaled mode, so a
+> Retina capture of an external monitor is still solo-Mac.
+> `scripts/theme-break.sh` opens a Rust file on every bundled theme,
+> checks the editor, minimap, tabs, status bar, palette, and settings
+> by pixel, and writes `docs/evidence/themes/`.
 > The language picker uses that same card, ranks names with the palette's
 > fuzzy matcher, scrolls its own list, and applies the language on Enter
 > or a row click. Shift+Command+M and the status-bar language label open
@@ -26,9 +41,9 @@
 > `docs/compare/selectors.png` (compare run 41357599959) shows the command
 > palette in Lux, Sublime Text, and Zed with the query `sel`. Lux's card
 > sits under the tab bar, about half the window, with a shadow. The editor
-> stays visible above and beside it. The field shows `sel`. On the beige
-> selected row the matched letters are the foreground; other rows keep
-> the accent. Go to file keeps a contiguous run or a word-initial match
+> stays visible above and beside it. The field shows `sel`. The selected
+> row uses the theme's panel-row color, and matched letters stay at or
+> above WCAG AA against that row. Go to file keeps a contiguous run or a word-initial match
 > and drops a scattered hit when one of those exists. `mon` on the compare
 > fixtures keeps `monokai.rs`. The `sample-*.bin` names match only as
 > `m`…`o`…`n` (`sample`, a later `o`, and the `n` in `.bin`).
@@ -182,7 +197,7 @@ and Sublime Find in Files with virtual "Find Results" buffer (`crates/lux/src/fi
 and Sublime Multi-Column, Multi-Row & 2x2 Grid Layouts suite (`crates/lux/src/pane_view.rs`, `crates/lux/src/split.rs`, `crates/lux/src/render/split.rs`, `crates/lux/src/chrome.rs`, `crates/lux/src/input/layout_tests.rs`): real multi-pane architecture via bounded `PaneView` instances with independent viewports, active tabs, multicursors, fold states, bookmarks, and cached Tree-sitter syntax highlighting, standard presets Single (`Cmd+Alt+1`), 2 Columns (`Cmd+Alt+2`), 3 Columns (`Cmd+Alt+3`), 4 Columns (`Cmd+Alt+4`), 2 Rows (`Cmd+Alt+Shift+2`), 3 Rows (`Cmd+Alt+Shift+3`), Grid 2x2 (`Cmd+Alt+5`), direct group focusing (`Ctrl+1..4`), tab group relocation (`Ctrl+Shift+1..4`), click-to-focus on any pane, interactive mouse-draggable split dividers with ratio clamping, strict geometric bounding preventing cross-pane quad or glyph overflow, and full macOS View menu & Command Palette bindings,
 and Sublime Build System Runner suite (`crates/lux/src/build.rs`, `crates/lux/src/render/build.rs`, `crates/lux/src/input/build_tests.rs`): Build Runner (`Cmd+B` / `Ctrl+B`) with auto-detection for Cargo, npm, Python, Go, Make, Bash and Rustc, Build With... (`Cmd+Shift+B` / `Ctrl+Shift+B`) fuzzy modal variant picker with live filter query and command preview, background streaming PTY output dock, Cancel Build (`Cmd+Alt+C` / `Ctrl+Break`), and Compiler Error Navigation (`F4` / `Shift+F4`) with interactive jumping to error file, line and column,
 and Sublime Project files suite (`crates/lux-workspace/src/project/mod.rs`, `crates/lux/src/project.rs`, `crates/lux/src/render/project_picker.rs`, `crates/lux/src/input/project_tests.rs`): `.sublime-project` and `.lux-project` support with `folders` (path, excludes, name), project-scoped `settings` (tab size, indent), custom `build_systems` fed directly into Build Runner, Quick Switch Project (`Cmd+Ctrl+P` / `Ctrl+Alt+P`) modal picker with query filtering, active project indicators, Open Project, Save Project As, Close Project, and automatic workspace discovery,
-and Sublime Iconic Color Themes suite (`crates/lux-ui/src/theme.rs`, `crates/lux-syntax/src/theme/mod.rs`, `crates/lux-syntax/src/theme/presets.rs`, `crates/lux/src/theme_picker.rs`, `crates/lux/src/render/theme_picker.rs`, `crates/lux/src/input/theme_tests.rs`): built-in calibrated themes for Monokai (`#272822`), Mariana (`#303841`), Breakers (`#0C1014`), and Celeste (`#F8F9FA`) with simultaneous UI chrome & Tree-sitter scope token updates, live interactive preview theme picker modal (`Preferences: Color Theme` / `UI: Select Color Scheme`), real-time preview swatches, settings persistence, and native macOS App menu integration,
+and Sublime Iconic Color Themes suite (`crates/lux-ui/src/theme.rs`, `crates/lux-syntax/src/theme/mod.rs`, `crates/lux-syntax/src/theme/presets.rs`, `crates/lux/src/theme_picker.rs`, `crates/lux/src/render/theme_picker.rs`, `crates/lux/src/input/theme_tests.rs`): built-in calibrated themes for Monokai (`#272822`), Mariana (`#303841`), Breakers (`#0C1014`), and Celeste (`#F8F9FA`) with simultaneous UI chrome & Tree-sitter scope token updates, live interactive preview theme picker modal (`Color Theme`), real-time preview swatches, settings persistence, and native macOS App menu integration,
 and Sublime Distraction Free Mode suite (`crates/lux-platform/src/window.rs`, `crates/lux-platform/src/desktop/window.rs`, `crates/lux/src/distraction_free.rs`, `crates/lux/src/app/views.rs`, `crates/lux/src/render.rs`, `crates/lux/src/input.rs`, `crates/lux/src/input/distraction_free_tests.rs`): toggle via `Shift+F11` (Win/Linux) and `Cmd+Ctrl+Shift+F` (macOS), borderless fullscreen, complete chrome suppression (tab bar, status bar, sidebar, minimap, line number gutter), dynamically centered fixed-width document column (`editor.distractionFreeColumnWidth`, default 80 characters), mouse hit-testing offset with `text_left`, Escape dismissal back to normal mode, Command Palette command (`view.toggle_distraction_free`), and native macOS View menu integration (`Enter/Exit Distraction Free Mode`),
 and Sublime Clean Whitespace on Save suite (`crates/lux-core/src/edit_ops/whitespace.rs`, `crates/lux/src/document/save_ops.rs`, `crates/lux/src/document/whitespace_tests.rs`): automatic trimming of trailing whitespace on save (`editor.trimTrailingWhitespace`), configurable protection for lines with active carets (`editor.trimTrailingWhitespacePreserveCursor`), automatic final newline enforcement at EOF (`editor.insertFinalNewline`), manual Command Palette triggers (`File: Trim Trailing Whitespace`, `File: Ensure Final Newline`), and single-transaction undo/redo integration,
 and Sublime Extensible Snippet Engine suite (`crates/lux/src/snippets/`, `crates/lux-core/src/snippets/`, `crates/lux/src/render/snippet_picker.rs`, `crates/lux/src/input/snippet_tests.rs`): Sublime XML (`.sublime-snippet` with CDATA, `<tabTrigger>`, `<scope>`, `<description>`) and JSON formats, recursive custom snippet loading from `~/.config/lux/snippets/`, `~/.lux/snippets/`, and workspace folders, built-in library for Rust, Python, JavaScript/TypeScript, HTML, Go, C/C++, Markdown, CSS, and Lorem Ipsum, contextual scope matching with alias normalization, trigger word auto-expansion on `Tab` with no active selection, interactive multi-tabstop forward/backward traversal (`Tab` / `Shift+Tab`), multi-occurrence mirror synchronization during live typing and backspace, Escape session cancellation, and modal snippet picker (`Snippets: Insert Snippet...` / `Cmd+Alt+J` / `Ctrl+Alt+J`),

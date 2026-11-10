@@ -1,0 +1,41 @@
+{
+  "name": "Solarized Dark",
+  "globals": {
+    "background": "#002b36",
+    "foreground": "#839496",
+    "accent": "#268bd2",
+    "selection": "#073642",
+    "muted": "#586e75",
+    "sidebar": "#073642",
+    "tab_bar": "#073642",
+    "tab_inactive": "#073642",
+    "status_bar": "#073642",
+    "panel": "#073642",
+    "panel_input": "#073642",
+    "panel_row": "#073642",
+    "border": "#073642",
+    "gutter": "#002b36",
+    "line_highlight": "#073642"
+  },
+  "rules": [
+    { "scope": "comment", "foreground": "#586e75" },
+    { "scope": "keyword", "foreground": "#859900" },
+    { "scope": "conditional", "foreground": "#859900" },
+    { "scope": "repeat", "foreground": "#859900" },
+    { "scope": "import", "foreground": "#859900" },
+    { "scope": "string", "foreground": "#2aa198" },
+    { "scope": "character", "foreground": "#2aa198" },
+    { "scope": "number", "foreground": "#d33682" },
+    { "scope": "constant", "foreground": "#b58900" },
+    { "scope": "boolean", "foreground": "#b58900" },
+    { "scope": "type", "foreground": "#b58900" },
+    { "scope": "function", "foreground": "#268bd2" },
+    { "scope": "constructor", "foreground": "#268bd2" },
+    { "scope": "variable", "foreground": "#839496" },
+    { "scope": "parameter", "foreground": "#cb4b16" },
+    { "scope": "property", "foreground": "#cb4b16" },
+    { "scope": "tag", "foreground": "#268bd2" },
+    { "scope": "operator", "foreground": "#859900" },
+    { "scope": "punctuation", "foreground": "#586e75" }
+  ]
+}

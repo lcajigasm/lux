@@ -74,8 +74,7 @@ pub(crate) fn render_minimap(
     let char_w = 1.2 * scale_factor;
     let pad_left = 6.0 * scale_factor;
     let max_density_w = minimap_w - pad_left - 4.0 * scale_factor;
-    let fg = color(theme.foreground);
-    let bar_color = [fg[0], fg[1], fg[2], 0.28];
+    let bar_color = density_bar(color(theme.foreground), color(theme.background));
 
     for (row_idx, row) in frame.rows.iter().enumerate() {
         if row.content_columns == 0 {
@@ -142,5 +141,78 @@ pub(crate) fn render_minimap(
                 ));
             }
         }
+    }
+}
+
+/// Density bars are a fraction of the foreground, drawn on a slightly
+/// darker copy of the page. Solarized Dark's body color at 28% alpha
+/// lands 37 levels from `#002b36`, under the capture check, so the
+/// minimap reads as empty. Raise the alpha until the composited bar
+/// clears the page, and leave a strong foreground at the soft alpha.
+fn density_bar(foreground: [f32; 4], background: [f32; 4]) -> [f32; 4] {
+    let mut ink = foreground;
+    for _ in 0..8 {
+        for step in 0..=12 {
+            let alpha = 0.28 + step as f32 * 0.05;
+            let bar = [ink[0], ink[1], ink[2], alpha];
+            if composited_gap(bar, background) >= 56 {
+                return bar;
+            }
+        }
+        let sum = background[0] + background[1] + background[2];
+        let target = if sum < 1.5 { 1.0 } else { 0.0 };
+        ink = [
+            ink[0] + (target - ink[0]) * 0.2,
+            ink[1] + (target - ink[1]) * 0.2,
+            ink[2] + (target - ink[2]) * 0.2,
+            1.0,
+        ];
+    }
+    [ink[0], ink[1], ink[2], 0.88]
+}
+
+/// Chebyshev gap, in 8-bit levels, of a bar composited over the minimap
+/// well (`background * 0.95`) against the editor page. Straight alpha,
+/// the same space as the `Rgba8Unorm` snapshot.
+fn composited_gap(bar: [f32; 4], background: [f32; 4]) -> i32 {
+    let alpha = bar[3].clamp(0.0, 1.0);
+    let mut gap = 0;
+    for channel in 0..3 {
+        let under = background[channel] * 0.95;
+        let mixed = bar[channel] * alpha + under * (1.0 - alpha);
+        let left = (mixed.clamp(0.0, 1.0) * 255.0).round() as i32;
+        let right = (background[channel].clamp(0.0, 1.0) * 255.0).round() as i32;
+        gap = gap.max((left - right).abs());
+    }
+    gap
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{composited_gap, density_bar};
+    use crate::render::paint::color;
+
+    fn rgba(hex: &str) -> [f32; 4] {
+        color(lux_ui::Color::from_hex(hex).expect("hex"))
+    }
+
+    #[test]
+    fn solarized_dark_bars_clear_the_editor() {
+        let background = rgba("002b36");
+        let bar = density_bar(rgba("839496"), background);
+        assert!(composited_gap(bar, background) >= 56, "gap too small");
+    }
+
+    #[test]
+    fn solarized_light_bars_clear_the_editor() {
+        let background = rgba("fdf6e3");
+        let bar = density_bar(rgba("657b83"), background);
+        assert!(composited_gap(bar, background) >= 56);
+    }
+
+    #[test]
+    fn monokai_keeps_the_soft_bar() {
+        let bar = density_bar(rgba("f8f8f2"), rgba("272822"));
+        assert!((bar[3] - 0.28).abs() < 0.001);
     }
 }
