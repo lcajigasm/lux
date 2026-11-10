@@ -382,32 +382,10 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
             app.scheduler.invalidate_all();
         }
         "plugin.apply_theme" => {
-            if let Some(plugin) = app.ui.plugin.get("lux-dark-plus")
-                && let Some(theme_file) = plugin.themes.first()
-            {
-                let theme_path = app
-                    .ui
-                    .plugin
-                    .plugins_dir
-                    .join("lux-dark-plus")
-                    .join(theme_file);
-                if let Ok(bytes) = std::fs::read(&theme_path)
-                    && let Ok(val) = serde_json::from_slice::<serde_json::Value>(&bytes)
-                    && let Some(colors) = val.get("colors")
-                {
-                    if let Some(bg_str) = colors.get("editor.background").and_then(|v| v.as_str())
-                        && let Some(bg) = lux_ui::Color::from_hex(bg_str)
-                    {
-                        app.chrome.theme.background = bg;
-                    }
-                    if let Some(fg_str) = colors.get("editor.foreground").and_then(|v| v.as_str())
-                        && let Some(fg) = lux_ui::Color::from_hex(fg_str)
-                    {
-                        app.chrome.theme.foreground = fg;
-                    }
-                    app.scheduler.invalidate_all();
-                }
-            }
+            // The old command painted only the editor colors and left the
+            // tabs, status bar, and syntax theme behind. It is no longer
+            // listed. The id still opens the one Color Theme picker.
+            app.open_theme_picker();
         }
         "preferences.color_theme" | "workbench.action.selectTheme" => {
             app.open_theme_picker();

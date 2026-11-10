@@ -104,7 +104,7 @@ pub(crate) fn render_theme_picker(
         visual,
         scroll_offset,
         visible_count,
-        super::panel::selected_fill(),
+        super::panel::selected_fill(theme),
         accent,
         scale_factor,
     );
@@ -120,7 +120,7 @@ pub(crate) fn render_theme_picker(
         let row_y = chrome.rows_top + (row_idx as f32 * row_height);
         let icon_size = 16.0 * scale_factor;
         let hole = if is_selected {
-            super::panel::selected_fill()
+            super::panel::selected_fill(theme)
         } else {
             super::panel::card_fill(theme)
         };

@@ -45,7 +45,7 @@ pub(crate) fn render_settings_panel(
     let scale = layout.scale;
     let page_fill = color(theme.chrome.panel);
     let border = color(theme.chrome.border);
-    let foreground = color(theme.foreground);
+    let foreground = super::panel::readable_ink(color(theme.foreground), page_fill);
     let muted = color(theme.muted);
     let well = color(theme.chrome.panel_input);
     let on_track = color(theme.accent);
@@ -59,7 +59,7 @@ pub(crate) fn render_settings_panel(
         border,
     ));
 
-    let family = editor_view.family().to_string();
+    let (font, family) = crate::font::ui_font(font, editor_view.family());
     draw_line(
         editor_view,
         atlas,
@@ -82,20 +82,99 @@ pub(crate) fn render_settings_panel(
         font,
         &family,
         12.0 * scale,
-        "Changes apply immediately  ·  Esc closes  ·  ← → changes the control",
+        "Type to search  ·  Esc closes  ·  ← → changes the control",
         layout.hint_x,
         layout.hint_y,
         muted,
         glyph_instances,
     );
 
-    for (index, row) in layout.rows.iter().enumerate() {
-        if index == panel.selected_index
+    quad_instances.push(QuadInstance::solid(
+        [
+            layout.sidebar.right() - scale.max(1.0),
+            layout.sidebar.y,
+            scale.max(1.0),
+            layout.sidebar.h,
+        ],
+        border,
+    ));
+    let names = panel.categories();
+    for (index, rect) in layout.categories.iter().enumerate() {
+        if index == panel.category && panel.query.is_empty() {
+            quad_instances.push(QuadInstance::rounded(
+                [rect.x, rect.y, rect.w, rect.h],
+                selected_fill(theme),
+                6.0 * scale,
+            ));
+        }
+        let name = names.get(index).copied().unwrap_or("");
+        draw_line(
+            editor_view,
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            font,
+            &family,
+            13.0 * scale,
+            name,
+            rect.x + 10.0 * scale,
+            rect.y + (rect.h - 13.0 * scale) * 0.5,
+            if index == panel.category {
+                foreground
+            } else {
+                muted
+            },
+            glyph_instances,
+        );
+    }
+    quad_instances.push(QuadInstance::rounded(
+        [
+            layout.search.x,
+            layout.search.y,
+            layout.search.w,
+            layout.search.h,
+        ],
+        well,
+        6.0 * scale,
+    ));
+    let search_text = if panel.query.is_empty() {
+        "Search settings"
+    } else {
+        panel.query.as_str()
+    };
+    draw_line(
+        editor_view,
+        atlas,
+        atlas_dirty,
+        scale_cx,
+        font,
+        &family,
+        13.0 * scale,
+        search_text,
+        layout.search.x + 10.0 * scale,
+        layout.search.y + (layout.search.h - 13.0 * scale) * 0.5,
+        if panel.query.is_empty() {
+            muted
+        } else {
+            foreground
+        },
+        glyph_instances,
+    );
+    if let Some(bar) = layout.scrollbar {
+        quad_instances.push(QuadInstance::rounded(
+            [bar.x, bar.y, bar.w, bar.h],
+            muted,
+            bar.w * 0.5,
+        ));
+    }
+
+    for row in &layout.rows {
+        if row.index == panel.selected_index
             && let Some(selection) = layout.painted_selection(row)
         {
             quad_instances.push(QuadInstance::rounded(
                 [selection.x, selection.y, selection.w, selection.h],
-                selected_fill(),
+                selected_fill(theme),
                 8.0 * scale,
             ));
         }
@@ -165,6 +244,7 @@ pub(crate) fn render_settings_panel(
             foreground,
             well,
             border,
+            theme,
             quad_instances,
             glyph_instances,
         );
@@ -329,6 +409,7 @@ fn paint_menu(
     foreground: [f32; 4],
     well: [f32; 4],
     border: [f32; 4],
+    theme: &lux_ui::Theme,
     quads: &mut Vec<QuadInstance>,
     glyphs: &mut Vec<GlyphInstance>,
 ) {
@@ -351,7 +432,7 @@ fn paint_menu(
                     rect.w,
                     (rect.h - 2.0 * scale).max(1.0),
                 ],
-                selected_fill(),
+                selected_fill(theme),
                 5.0 * scale,
             ));
         }

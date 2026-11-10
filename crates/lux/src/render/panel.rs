@@ -50,8 +50,61 @@ pub(crate) fn field_fill(theme: &lux_ui::Theme) -> [f32; 4] {
     color(theme.background)
 }
 
-pub(crate) fn selected_fill() -> [f32; 4] {
-    color(lux_ui::Color::rgb(0x75, 0x71, 0x5E))
+pub(crate) fn selected_fill(theme: &lux_ui::Theme) -> [f32; 4] {
+    color(theme.chrome.panel_row)
+}
+
+/// WCAG contrast ratio. 4.5 is AA for normal text.
+pub(crate) fn contrast_ratio(a: [f32; 4], b: [f32; 4]) -> f32 {
+    fn channel(v: f32) -> f32 {
+        if v <= 0.03928 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    }
+    fn luminance(c: [f32; 4]) -> f32 {
+        0.2126 * channel(c[0]) + 0.7152 * channel(c[1]) + 0.0722 * channel(c[2])
+    }
+    let left = luminance(a);
+    let right = luminance(b);
+    let (hi, lo) = if left > right {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    (hi + 0.05) / (lo + 0.05)
+}
+
+/// Moves `ink` toward black or white until it clears WCAG AA on
+/// `background`. The theme color is kept when it already clears 4.8,
+/// which leaves a little room for antialiasing.
+pub(crate) fn readable_ink(ink: [f32; 4], background: [f32; 4]) -> [f32; 4] {
+    if contrast_ratio(ink, background) >= 4.8 {
+        return ink;
+    }
+    let mut best = ink;
+    let mut best_ratio = contrast_ratio(ink, background);
+    for target in [[0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 1.0, 1.0]] {
+        for step in 1..=16 {
+            let t = step as f32 / 16.0;
+            let mixed = [
+                ink[0] + (target[0] - ink[0]) * t,
+                ink[1] + (target[1] - ink[1]) * t,
+                ink[2] + (target[2] - ink[2]) * t,
+                1.0,
+            ];
+            let ratio = contrast_ratio(mixed, background);
+            if ratio >= 4.8 {
+                return mixed;
+            }
+            if ratio > best_ratio {
+                best = mixed;
+                best_ratio = ratio;
+            }
+        }
+    }
+    best
 }
 
 pub(crate) fn rim_color() -> [f32; 4] {
@@ -63,13 +116,77 @@ pub(crate) fn placeholder_ink(theme: &lux_ui::Theme) -> [f32; 4] {
     [ink[0] * 0.78, ink[1] * 0.78, ink[2] * 0.72, 1.0]
 }
 
-/// Accent pink fails on the beige selection. Hits there use the
-/// foreground; unselected hits stay on the accent.
+/// Match ink has to stay readable on the row it sits on. The accent is
+/// used only when it clears WCAG AA against that row.
 pub(crate) fn hit_ink(on_selection: bool, theme: &lux_ui::Theme) -> [f32; 4] {
-    if on_selection {
-        color(theme.foreground)
+    let background = if on_selection {
+        selected_fill(theme)
     } else {
-        color(theme.accent)
+        card_fill(theme)
+    };
+    let accent = color(theme.accent);
+    let foreground = color(theme.foreground);
+    let chosen = if contrast_ratio(accent, background) >= 4.5 {
+        accent
+    } else {
+        foreground
+    };
+    readable_ink(chosen, background)
+}
+
+#[cfg(test)]
+mod contrast_tests {
+    use super::*;
+
+    #[test]
+    fn palette_ink_meets_wcag_aa() {
+        for theme in [
+            lux_ui::Theme::MONOKAI,
+            lux_ui::Theme::CELESTE,
+            lux_ui::Theme::LUX_LIGHT,
+            lux_ui::Theme::LUX_DARK,
+        ] {
+            let card = card_fill(&theme);
+            let row = selected_fill(&theme);
+            let text = color(theme.foreground);
+            assert!(
+                contrast_ratio(text, card) >= 4.5,
+                "{} text/card {}",
+                theme.name,
+                contrast_ratio(text, card)
+            );
+            assert!(
+                contrast_ratio(text, row) >= 4.5,
+                "{} text/row {}",
+                theme.name,
+                contrast_ratio(text, row)
+            );
+            assert!(contrast_ratio(hit_ink(false, &theme), card) >= 4.5);
+            assert!(contrast_ratio(hit_ink(true, &theme), row) >= 4.5);
+            assert!(
+                contrast_ratio(readable_ink(text, row), row) >= 4.5,
+                "{}",
+                theme.name
+            );
+        }
+        let solarized = color(lux_ui::Color::from_hex("#657b83").unwrap());
+        let paper = color(lux_ui::Color::from_hex("#EEE8D5").unwrap());
+        assert!(contrast_ratio(readable_ink(solarized, paper), paper) >= 4.5);
+    }
+
+    #[test]
+    fn glyphs_outside_the_window_are_dropped() {
+        let glyph = |x| {
+            lux_render::GlyphInstance::new(
+                [x, 10.0, 8.0, 12.0],
+                [0.0, 0.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+                lux_render::GlyphKind::Monochrome,
+            )
+        };
+        let kept = crate::render::paint::clip_glyphs(&[glyph(1200.0), glyph(12.0)], 1000.0, 700.0);
+        assert_eq!(kept.len(), 1);
+        assert!((kept[0].rect[0] - 12.0).abs() < 0.1);
     }
 }
 

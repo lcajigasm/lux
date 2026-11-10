@@ -261,21 +261,7 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
             "Plugin: Run 'identity-fmt' Plugin",
             "Plugin",
         ),
-        (
-            "plugin.apply_theme",
-            "Plugin: Apply 'Lux Dark Plus' Theme",
-            "Plugin",
-        ),
-        (
-            "preferences.color_theme",
-            "Preferences: Color Theme",
-            "Preferences",
-        ),
-        (
-            "workbench.action.selectTheme",
-            "UI: Select Color Scheme",
-            "Preferences",
-        ),
+        ("preferences.color_theme", "Color Theme", "Preferences"),
         (
             "preferences.open_settings_json",
             "Preferences: Open Settings (JSON)",

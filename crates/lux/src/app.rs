@@ -102,6 +102,7 @@ impl App {
         let mut editor_view = EditorView::new(text_layout, font_bytes, metrics)
             .expect("system font bytes read from disk must parse as a real font");
         crate::font::install_coverage_fallbacks(editor_view.text_layout_mut());
+        crate::font::install_ui_font(editor_view.text_layout_mut());
 
         let buffer = Buffer::from_bytes(b"").expect("empty document decodes");
         let cursors = MultiCursor::new(Selection::cursor(Position::document_start()));

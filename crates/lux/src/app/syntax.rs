@@ -117,6 +117,24 @@ pub(crate) fn shift_tokens(tokens: &mut Vec<lux_syntax::Token>, edit: &InputEdit
 impl App {
     /// Initializes syntax state and starts the background highlighter when a document is opened.
     pub(crate) fn update_syntax_on_open(&mut self) {
+        if self.documents.path.is_none()
+            && self.buffer.text().is_empty()
+            && !self.history.can_undo()
+        {
+            self.documents.set_language(None);
+            self.documents.saved_version = self.history.state_id();
+            if let Some(entry) = self
+                .documents
+                .entries
+                .iter_mut()
+                .find(|entry| Some(entry.tab_id) == self.documents.active_tab)
+            {
+                entry.saved_version = self.documents.saved_version;
+                entry.language = None;
+            }
+            self.syntax = None;
+            return;
+        }
         if self.buffer.is_huge_file_mode() {
             self.syntax = None;
             return;

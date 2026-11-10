@@ -1,5 +1,8 @@
 # Monokai theme notice
 
+The other bundled themes, their sources, and their MIT terms are listed in
+`docs/THEMES.md`.
+
 `Monokai.sublime-color-scheme` is Lux's default dark theme. It is an
 adaptation of the Monokai palette published by Microsoft in the MIT-licensed
 Visual Studio Code extension `extensions/theme-monokai`:

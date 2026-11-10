@@ -361,6 +361,9 @@ fn write_texture(
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
+    let base_glyphs = paint::clip_glyphs(base.glyphs, capture.width as f32, capture.height as f32);
+    let overlay_glyphs =
+        paint::clip_glyphs(overlay.glyphs, capture.width as f32, capture.height as f32);
     let view = target.create_view(&wgpu::TextureViewDescriptor::default());
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("lux scale snapshot"),
@@ -388,7 +391,7 @@ fn write_texture(
             multiview_mask: None,
         });
         quads_pipe.draw(device, queue, &mut pass, base.quads);
-        text.draw(device, queue, &mut pass, base.glyphs);
+        text.draw(device, queue, &mut pass, &base_glyphs);
     }
     // Same instance-buffer rule as the window: submit the editor before the
     // selector draw replaces it. One submit kept only the clear color.
@@ -414,7 +417,7 @@ fn write_texture(
             multiview_mask: None,
         });
         quads_pipe.draw(device, queue, &mut pass, overlay.quads);
-        text.draw(device, queue, &mut pass, overlay.glyphs);
+        text.draw(device, queue, &mut pass, &overlay_glyphs);
     }
 
     let tight = capture.width * 4;

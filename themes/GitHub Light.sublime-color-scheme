@@ -1,0 +1,41 @@
+{
+  "name": "GitHub Light",
+  "globals": {
+    "background": "#ffffff",
+    "foreground": "#1f2328",
+    "accent": "#cf222e",
+    "selection": "#b6e3ff",
+    "muted": "#656d76",
+    "sidebar": "#f6f8fa",
+    "tab_bar": "#f6f8fa",
+    "tab_inactive": "#f6f8fa",
+    "status_bar": "#f6f8fa",
+    "panel": "#f6f8fa",
+    "panel_input": "#f6f8fa",
+    "panel_row": "#b6e3ff",
+    "border": "#f6f8fa",
+    "gutter": "#ffffff",
+    "line_highlight": "#f6f8fa"
+  },
+  "rules": [
+    { "scope": "comment", "foreground": "#656d76" },
+    { "scope": "keyword", "foreground": "#cf222e" },
+    { "scope": "conditional", "foreground": "#cf222e" },
+    { "scope": "repeat", "foreground": "#cf222e" },
+    { "scope": "import", "foreground": "#cf222e" },
+    { "scope": "string", "foreground": "#0a3069" },
+    { "scope": "character", "foreground": "#0a3069" },
+    { "scope": "number", "foreground": "#0550ae" },
+    { "scope": "constant", "foreground": "#0550ae" },
+    { "scope": "boolean", "foreground": "#0550ae" },
+    { "scope": "type", "foreground": "#953800" },
+    { "scope": "function", "foreground": "#8250df" },
+    { "scope": "constructor", "foreground": "#8250df" },
+    { "scope": "variable", "foreground": "#1f2328" },
+    { "scope": "parameter", "foreground": "#953800" },
+    { "scope": "property", "foreground": "#953800" },
+    { "scope": "tag", "foreground": "#116329" },
+    { "scope": "operator", "foreground": "#cf222e" },
+    { "scope": "punctuation", "foreground": "#656d76" }
+  ]
+}

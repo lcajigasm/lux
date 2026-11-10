@@ -418,8 +418,10 @@ pub(crate) fn execute_keymap_command(
         "zoom_out" | "view.zoom_out" => app.zoom_font(-1.0),
         "zoom_reset" | "view.zoom_reset" => app.reset_font_zoom(),
         "open_settings" | "preferences.open_settings_ui" => {
-            app.ui.settings.open_settings_ui();
-            app.scheduler.invalidate_all();
+            if crate::menu::claim_key(crate::menu::MenuAction::Preferences) {
+                app.ui.settings.open_settings_ui();
+                app.scheduler.invalidate_all();
+            }
         }
         "save_macro" | "save_macro_as" | "macro.save_as" => {
             crate::macros::dispatch::save_macro_as(app, "macro");

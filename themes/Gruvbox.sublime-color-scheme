@@ -1,0 +1,41 @@
+{
+  "name": "Gruvbox",
+  "globals": {
+    "background": "#282828",
+    "foreground": "#ebdbb2",
+    "accent": "#fe8019",
+    "selection": "#3c3836",
+    "muted": "#928374",
+    "sidebar": "#1d2021",
+    "tab_bar": "#1d2021",
+    "tab_inactive": "#3c3836",
+    "status_bar": "#3c3836",
+    "panel": "#1d2021",
+    "panel_input": "#3c3836",
+    "panel_row": "#3c3836",
+    "border": "#3c3836",
+    "gutter": "#282828",
+    "line_highlight": "#32302f"
+  },
+  "rules": [
+    { "scope": "comment", "foreground": "#928374" },
+    { "scope": "keyword", "foreground": "#fb4934" },
+    { "scope": "conditional", "foreground": "#fb4934" },
+    { "scope": "repeat", "foreground": "#fb4934" },
+    { "scope": "import", "foreground": "#fb4934" },
+    { "scope": "string", "foreground": "#b8bb26" },
+    { "scope": "character", "foreground": "#b8bb26" },
+    { "scope": "number", "foreground": "#d3869b" },
+    { "scope": "constant", "foreground": "#d3869b" },
+    { "scope": "boolean", "foreground": "#d3869b" },
+    { "scope": "type", "foreground": "#fabd2f" },
+    { "scope": "function", "foreground": "#83a598" },
+    { "scope": "constructor", "foreground": "#83a598" },
+    { "scope": "variable", "foreground": "#ebdbb2" },
+    { "scope": "parameter", "foreground": "#fe8019" },
+    { "scope": "property", "foreground": "#fe8019" },
+    { "scope": "tag", "foreground": "#fb4934" },
+    { "scope": "operator", "foreground": "#fe8019" },
+    { "scope": "punctuation", "foreground": "#928374" }
+  ]
+}

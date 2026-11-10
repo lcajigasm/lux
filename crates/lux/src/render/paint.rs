@@ -254,6 +254,19 @@ pub(crate) struct DrawList<'a> {
     pub glyphs: &'a [GlyphInstance],
 }
 
+/// Drops glyphs that sit completely outside the framebuffer. A collapsed
+/// line height used to place a leftover glyph past the window's right edge.
+pub(crate) fn clip_glyphs(glyphs: &[GlyphInstance], width: f32, height: f32) -> Vec<GlyphInstance> {
+    glyphs
+        .iter()
+        .copied()
+        .filter(|glyph| {
+            let [x, y, w, h] = glyph.rect;
+            w > 0.0 && h > 0.0 && x < width && y < height && x + w > 0.0 && y + h > 0.0
+        })
+        .collect()
+}
+
 pub(crate) fn paint(
     gpu_window: &mut GpuWindow,
     base: DrawList<'_>,
@@ -303,6 +316,9 @@ pub(crate) fn paint(
             return Outcome::Failed;
         }
     };
+    let win = gpu_window.window.inner_size();
+    let base_glyphs = clip_glyphs(base.glyphs, win.width as f32, win.height as f32);
+    let overlay_glyphs = clip_glyphs(overlay.glyphs, win.width as f32, win.height as f32);
     let view = texture
         .texture
         .create_view(&wgpu::TextureViewDescriptor::default());
@@ -337,7 +353,7 @@ pub(crate) fn paint(
             &gpu_window.gpu.device,
             &gpu_window.gpu.queue,
             &mut pass,
-            base.glyphs,
+            &base_glyphs,
         );
     }
     // `draw` writes one instance buffer per pipeline. A second pass in the
@@ -376,7 +392,7 @@ pub(crate) fn paint(
             &gpu_window.gpu.device,
             &gpu_window.gpu.queue,
             &mut pass,
-            overlay.glyphs,
+            &overlay_glyphs,
         );
     }
     gpu_window.window.pre_present_notify();

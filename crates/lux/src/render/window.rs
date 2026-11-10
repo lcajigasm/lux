@@ -69,7 +69,7 @@ impl App {
             quads,
             text,
         });
-        self.apply_saved_color_theme();
+        self.apply_user_settings();
         self.scheduler.invalidate_all();
         window.request_redraw();
     }

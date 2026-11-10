@@ -372,3 +372,45 @@ fn test_tab_switching_strictly_requires_exclusive_modifiers() {
     assert_eq!(app.documents.active_tab, Some(tab2_id));
     assert_eq!(app.buffer.text(), "B");
 }
+
+#[test]
+fn command_n_opens_a_clean_plain_text_buffer_and_comma_opens_settings() {
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    app.buffer = lux_core::buffer::Buffer::from_bytes(b"fn kept() {}\n").unwrap();
+    app.sync_active_document_to_entry();
+    let ctx = TestContext::new();
+    app.modifiers = Modifiers {
+        meta: cfg!(target_os = "macos"),
+        control: !cfg!(target_os = "macos"),
+        shift: false,
+        alt: false,
+    };
+    app.handle_keyboard_event(
+        &ctx,
+        &KeyEvent {
+            key: Key::Character("n".into()),
+            text: Some("n".into()),
+            state: ElementState::Pressed,
+            repeat: false,
+            physical: Some(lux_platform::PhysicalKey::Letter('n')),
+        },
+    );
+    ctx.complete(&mut app);
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+    assert!(app.documents.path.is_none());
+    assert!(app.buffer.text().is_empty());
+    assert!(!app.document_dirty());
+    assert!(app.documents.language().is_none());
+    assert!(app.ui.settings.panel.is_none());
+    app.handle_keyboard_event(
+        &ctx,
+        &KeyEvent {
+            key: Key::Character(",".into()),
+            text: Some(",".into()),
+            state: ElementState::Pressed,
+            repeat: false,
+            physical: Some(lux_platform::PhysicalKey::Comma),
+        },
+    );
+    assert!(app.ui.settings.panel.is_some());
+}

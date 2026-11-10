@@ -201,17 +201,6 @@ impl App {
         }
     }
 
-    pub(crate) fn apply_saved_color_theme(&mut self) {
-        let name = {
-            let config = self.ui.settings.config.lock().unwrap();
-            config.resolved()["workbench.colorTheme"]
-                .as_str()
-                .unwrap_or("monokai")
-                .to_string()
-        };
-        self.apply_color_theme_setting(&name);
-    }
-
     pub(crate) fn preview_theme(&mut self, name: &str) {
         self.set_theme(name);
     }
@@ -220,6 +209,7 @@ impl App {
         self.apply_color_theme_setting(name);
         let mut settings = std::mem::take(&mut self.ui.settings);
         settings.set_string_setting("workbench.colorTheme", name);
+        settings.apply_to_app(self);
         self.ui.settings = settings;
 
         let display_name = self.chrome.theme.name;
@@ -269,6 +259,7 @@ mod tests {
     #[test]
     fn default_is_monokai_until_the_user_asks_to_follow_the_os() {
         let mut app = app();
+        app.apply_user_settings();
         assert_eq!(app.chrome.theme, Theme::MONOKAI);
         assert!(!app.chrome.theme_follows_system);
         app.apply_system_scheme(ColorScheme::Light);

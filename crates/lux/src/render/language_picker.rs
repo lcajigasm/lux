@@ -87,7 +87,7 @@ pub(crate) fn render_language_picker(
             picker.selected_index as f32,
             start,
             visible_count,
-            super::panel::selected_fill(),
+            super::panel::selected_fill(theme),
             color(theme.accent),
             scale_factor,
         );

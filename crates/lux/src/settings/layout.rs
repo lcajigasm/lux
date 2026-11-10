@@ -6,7 +6,10 @@ use super::panel::{SettingKind, SettingsPanelState};
 /// Logical sizes, multiplied by the display scale. The page fills the
 /// editor well; these paddings are the same on every row.
 const PAD: f32 = 28.0;
-const HEADER: f32 = 84.0;
+const HEADER: f32 = 56.0;
+const SIDEBAR_W: f32 = 188.0;
+const SEARCH_H: f32 = 32.0;
+const CAT_H: f32 = 34.0;
 const ROW: f32 = 64.0;
 const GAP: f32 = 8.0;
 const CONTROL_H: f32 = 30.0;
@@ -116,6 +119,10 @@ pub(crate) struct MenuGeom {
 pub(crate) struct SettingsLayout {
     pub page: Rect,
     pub body: Rect,
+    pub sidebar: Rect,
+    pub search: Rect,
+    pub categories: Vec<Rect>,
+    pub scrollbar: Option<Rect>,
     pub scroll: f32,
     pub scale: f32,
     pub title_x: f32,
@@ -136,6 +143,8 @@ pub(crate) enum SettingsHit {
     StepPlus(usize),
     MenuButton(usize),
     MenuOption { item: usize, option: usize },
+    Category(usize),
+    Search,
 }
 
 pub(crate) fn layout_settings(
@@ -157,15 +166,39 @@ pub(crate) fn layout_settings(
         h: (height - bounds.tab_bar - bounds.status_bar).max(1.0),
     };
     let header = s(HEADER);
-    let body = Rect {
-        x: page.x + s(PAD),
+    let sidebar = Rect {
+        x: page.x,
         y: page.y + header,
-        w: (page.w - s(PAD) * 2.0).max(1.0),
-        h: (page.h - header - s(12.0)).max(1.0),
+        w: s(SIDEBAR_W),
+        h: (page.h - header).max(1.0),
     };
+    let search = Rect {
+        x: sidebar.right() + s(16.0),
+        y: page.y + header,
+        w: (page.right() - sidebar.right() - s(16.0) - s(PAD)).max(1.0),
+        h: s(SEARCH_H),
+    };
+    let body = Rect {
+        x: search.x,
+        y: search.bottom() + s(12.0),
+        w: (search.w - s(12.0)).max(1.0),
+        h: (page.bottom() - search.bottom() - s(24.0)).max(1.0),
+    };
+    let categories = panel
+        .categories()
+        .into_iter()
+        .enumerate()
+        .map(|(index, _)| Rect {
+            x: sidebar.x + s(12.0),
+            y: sidebar.y + s(12.0) + index as f32 * s(CAT_H),
+            w: (sidebar.w - s(24.0)).max(1.0),
+            h: s(CAT_H - 4.0),
+        })
+        .collect::<Vec<_>>();
     let row_h = s(ROW);
     let gap = s(GAP);
-    let count = panel.items.len();
+    let visible = panel.visible_indices();
+    let count = visible.len();
     let content_h = if count == 0 {
         0.0
     } else {
@@ -173,9 +206,31 @@ pub(crate) fn layout_settings(
     };
     let max_scroll = (content_h - body.h).max(0.0);
     let scroll = panel.scroll.clamp(0.0, max_scroll);
+    let scrollbar = if max_scroll > 0.5 {
+        let track_h = body.h;
+        let thumb_h = (track_h * (body.h / content_h.max(1.0))).clamp(s(24.0), track_h);
+        let travel = (track_h - thumb_h).max(0.0);
+        let thumb_y = body.y
+            + if max_scroll <= 0.0 {
+                0.0
+            } else {
+                travel * (scroll / max_scroll)
+            };
+        Some(Rect {
+            x: body.right() + s(4.0),
+            y: thumb_y,
+            w: s(4.0),
+            h: thumb_h,
+        })
+    } else {
+        None
+    };
     let mut rows = Vec::with_capacity(count);
     let mut y = body.y - scroll;
-    for (index, item) in panel.items.iter().enumerate() {
+    for index in visible {
+        let Some(item) = panel.items.get(index) else {
+            continue;
+        };
         let row = Rect {
             x: body.x,
             y,
@@ -223,12 +278,16 @@ pub(crate) fn layout_settings(
     SettingsLayout {
         page,
         body,
+        sidebar,
+        search,
+        categories,
+        scrollbar,
         scroll,
         scale,
         title_x: page.x + s(PAD),
-        title_y: page.y + s(22.0),
-        hint_x: page.x + s(PAD),
-        hint_y: page.y + s(48.0),
+        title_y: page.y + s(18.0),
+        hint_x: search.x,
+        hint_y: page.y + s(18.0),
         rows,
         menu,
     }
@@ -358,6 +417,14 @@ impl SettingsLayout {
             }
             if menu.panel.contains(x, y) {
                 return SettingsHit::Page;
+            }
+        }
+        if self.search.contains(x, y) {
+            return SettingsHit::Search;
+        }
+        for (index, rect) in self.categories.iter().enumerate() {
+            if rect.contains(x, y) {
+                return SettingsHit::Category(index);
             }
         }
         for row in &self.rows {

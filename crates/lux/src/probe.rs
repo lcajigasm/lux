@@ -309,6 +309,25 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         u8::from(app.ui.project_search.is_some()),
         u8::from(app.ui.settings.panel.is_some()),
     ));
+    let path = app
+        .documents
+        .active_entry()
+        .and_then(|entry| entry.path.as_ref())
+        .map(|path| path.display().to_string())
+        .unwrap_or_default();
+    let language = app
+        .documents
+        .language()
+        .map(|language| language.name())
+        .unwrap_or("Plain Text");
+    out.push_str(&format!(
+        "tabs={}\ndirty={}\nlanguage={language}\ntheme={}\nactive_path=",
+        app.documents.tabs.tabs().len(),
+        u8::from(app.document_dirty()),
+        app.chrome.theme.name,
+    ));
+    out.push_str(&escape(&path));
+    out.push('\n');
     let chord = app
         .ui
         .pending_chord

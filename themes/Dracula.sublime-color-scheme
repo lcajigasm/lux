@@ -1,0 +1,41 @@
+{
+  "name": "Dracula",
+  "globals": {
+    "background": "#282a36",
+    "foreground": "#f8f8f2",
+    "accent": "#ff79c6",
+    "selection": "#44475a",
+    "muted": "#6272a4",
+    "sidebar": "#21222c",
+    "tab_bar": "#21222c",
+    "tab_inactive": "#44475a",
+    "status_bar": "#44475a",
+    "panel": "#21222c",
+    "panel_input": "#44475a",
+    "panel_row": "#44475a",
+    "border": "#44475a",
+    "gutter": "#282a36",
+    "line_highlight": "#343746"
+  },
+  "rules": [
+    { "scope": "comment", "foreground": "#6272a4" },
+    { "scope": "keyword", "foreground": "#ff79c6" },
+    { "scope": "conditional", "foreground": "#ff79c6" },
+    { "scope": "repeat", "foreground": "#ff79c6" },
+    { "scope": "import", "foreground": "#ff79c6" },
+    { "scope": "string", "foreground": "#f1fa8c" },
+    { "scope": "character", "foreground": "#f1fa8c" },
+    { "scope": "number", "foreground": "#bd93f9" },
+    { "scope": "constant", "foreground": "#bd93f9" },
+    { "scope": "boolean", "foreground": "#bd93f9" },
+    { "scope": "type", "foreground": "#8be9fd" },
+    { "scope": "function", "foreground": "#50fa7b" },
+    { "scope": "constructor", "foreground": "#50fa7b" },
+    { "scope": "variable", "foreground": "#f8f8f2" },
+    { "scope": "parameter", "foreground": "#ffb86c" },
+    { "scope": "property", "foreground": "#ffb86c" },
+    { "scope": "tag", "foreground": "#ff79c6" },
+    { "scope": "operator", "foreground": "#ff79c6" },
+    { "scope": "punctuation", "foreground": "#6272a4" }
+  ]
+}

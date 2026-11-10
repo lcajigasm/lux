@@ -151,6 +151,22 @@ mod tests {
     }
 
     #[test]
+    fn one_color_theme_command() {
+        let mut palette = CommandPaletteState::new();
+        palette.query = crate::field::QueryField::from_text("theme");
+        let titles: Vec<_> = palette
+            .results(&Context::new())
+            .iter()
+            .map(|entry| entry.command.title.as_str())
+            .filter(|title| {
+                let lower = title.to_ascii_lowercase();
+                lower.contains("theme") || lower.contains("color scheme")
+            })
+            .collect();
+        assert_eq!(titles, vec!["Color Theme"]);
+    }
+
+    #[test]
     fn palette_search_filters_by_query() {
         let mut palette = CommandPaletteState::new();
         let ctx = Context::new();

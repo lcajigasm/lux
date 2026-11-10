@@ -1,0 +1,39 @@
+name: Theme break
+
+# Hot theme switch, Cmd+N / Cmd+,, settings, and palette on macos-15.
+# Pixel checks and the Zed comparison are scripts/theme-break.sh.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  themes:
+    name: themes settings palette (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Capture every theme
+        run: |
+          chmod +x scripts/theme-break.sh scripts/theme_pixels.py scripts/stage-lux-app.sh
+          ./scripts/theme-break.sh
+
+      - name: Upload theme captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: theme-break
+          path: |
+            docs/evidence/themes/**
+          if-no-files-found: warn
