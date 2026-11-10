@@ -19,17 +19,27 @@ mkdir -p "$out"
 report="$out/report.txt"
 : > "$report"
 pass() { echo "PASS $1" | tee -a "$report"; }
-fail() { echo "FAIL $1" | tee -a "$report" >&2; exit 1; }
+fail() {
+  echo "FAIL $1" | tee -a "$report" >&2
+  if [[ -n "${DRIVE_PROBE:-}" && -s "$DRIVE_PROBE" ]]; then
+    echo "probe:" | tee -a "$report" >&2
+    cat "$DRIVE_PROBE" | tee -a "$report" >&2
+  fi
+  exit 1
+}
 
 home="$out/home"
 mkdir -p "$home/.config/lux"
 fixture="$out/sample.rs"
 {
+  # Stay under the probe's 2000-character text dump so the job can
+  # compare the buffer after each theme. Fifty short lines still
+  # overflow a 700px window.
   echo "fn theme_probe(value: i32) -> i32 {"
-  for n in $(seq 1 80); do
-    echo "    let item_$n = value + $n;"
+  for n in $(seq 1 50); do
+    echo "    let n = 1;"
   done
-  echo "    item_1"
+  echo "    n"
   echo "}"
 } > "$fixture"
 
