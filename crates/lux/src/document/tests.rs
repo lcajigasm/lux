@@ -137,6 +137,33 @@ fn a_queued_path_opens_as_a_second_tab() {
 }
 
 #[test]
+fn opening_a_path_applies_the_language_stored_for_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("main.rs");
+    std::fs::write(&path, "fn main() {}\n").unwrap();
+    let session_file = dir.path().join(".lux-session");
+    let ctx = Context::new(None, None, SaveDecision::Discard);
+
+    let mut opened = app();
+    opened.ui.session.session_path = Some(session_file.clone());
+    opened.request_document(&ctx, Request::Open(Some(path.clone())));
+    ctx.complete(&mut opened);
+    opened
+        .documents
+        .set_language(Some(lux_syntax::LanguageId::CommonLisp));
+    crate::session::save_session(&opened, true).unwrap();
+
+    let mut again = app();
+    again.ui.session.session_path = Some(session_file);
+    again.request_document(&ctx, Request::Open(Some(path)));
+    ctx.complete(&mut again);
+    assert_eq!(
+        again.documents.language(),
+        Some(lux_syntax::LanguageId::CommonLisp)
+    );
+}
+
+#[test]
 fn reopening_the_current_file_after_confirming_save_keeps_the_saved_content() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("note");
