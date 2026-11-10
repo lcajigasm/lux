@@ -2,9 +2,22 @@
 
 ## Unreleased
 
+## 1.5.7 — 2026-11-10
+
+Test build for Mac. Not a closed release.
+
 ### Added
 
-- `lux path` from a terminal opens that path in the editor that is already running. The macOS bundle ships the command at `Lux.app/Contents/SharedSupport/bin/lux`.
+- `lux path` from a terminal opens that path in the editor that is already running. The macOS bundle ships the command at `Lux.app/Contents/SharedSupport/bin/lux` (#57).
+- Bundled color themes: Monokai, One Dark, Dracula, Solarized Dark, Solarized Light, Nord, Gruvbox, Tokyo Night, Catppuccin, Catppuccin Latte, GitHub Dark, GitHub Light, Ayu, and Rose Pine. The palette has one Color Theme command. Settings uses the same list (#58).
+- Git gutter markers, branch, status, diff, stage, commit, blame, and file history run off the UI thread (#60).
+- Quit stores the window frame and the hot-exit session. The next launch restores position, size, fullscreen or maximized state, and moves the window onto a visible display when that monitor is gone. Tabs, cursors, and unsaved buffers stay in the session (#61).
+
+### Fixed
+
+- `editor.lineHeight` below 8 is a multiplier of the font size, then both the size and the line height take the display scale. Changing the color theme no longer collapses the buffer. Cmd+N opens a clean Plain Text buffer and Cmd+, opens Settings (#58).
+- Buffer glyphs are clipped to the text viewport. The line-number margin is a later pass in the gutter color, so a sideways wheel leaves that strip unchanged. Word wrap stays off until the user turns it on (#62).
+- A wheel that arrives before the pointer has entered the view scrolls the editor (#61).
 
 ## 1.5.6 — 2026-11-10
 
