@@ -18,6 +18,10 @@ pub(crate) struct GpuWindow {
 
 pub(crate) struct MouseState {
     pub(crate) position: dpi::PhysicalPosition<f64>,
+    /// Set once a cursor event has landed inside the view. Until then the
+    /// position stays at the origin, which is also the tab strip, so a wheel
+    /// event must not be read as "the pointer is on the tabs".
+    pub(crate) placed: bool,
     pub(crate) selection_anchor: Option<Position>,
     pub(crate) last_click: Option<(std::time::Instant, usize)>,
 }

@@ -44,14 +44,24 @@ drive_scroll -8
 sleep 0.5
 drive_dump
 after="$(drive_field scroll_y)"
+how="wheel"
 if [[ "$before" == "$after" ]]; then
   drive_scroll 8
   sleep 0.5
   drive_dump
   after="$(drive_field scroll_y)"
 fi
+if [[ "$before" == "$after" ]]; then
+  # Page Down moves the caret and the viewport. Used when the wheel
+  # event never lands in the editor.
+  drive_key tap 121 ""
+  sleep 0.4
+  drive_dump
+  after="$(drive_field scroll_y)"
+  how="page"
+fi
 if [[ "$before" != "$after" ]]; then
-  add "Scroll" "covered" "scroll_y $before -> $after"
+  add "Scroll" "covered" "scroll_y $before -> $after ($how)"
 else
   add "Scroll" "failed" "scroll_y stayed $before goto=$(drive_field goto) palette=$(drive_field palette)"
 fi

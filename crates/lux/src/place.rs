@@ -14,6 +14,22 @@ pub(crate) fn remember(app: &mut App) {
     }
 }
 
+/// Records the inner size from a `Resized` event. This does not ask the
+/// window for its zoom state or its screen: those AppKit calls from inside
+/// `windowDidResize` rewrite the style mask and drop the next wheel event.
+pub(crate) fn note_resized(app: &mut App, width: u32, height: u32) {
+    let frame = frame_mut(app);
+    frame.width = width.max(1);
+    frame.height = height.max(1);
+}
+
+/// Records the outer origin from a `WindowMoved` event.
+pub(crate) fn note_moved(app: &mut App, x: i32, y: i32) {
+    let frame = frame_mut(app);
+    frame.x = x;
+    frame.y = y;
+}
+
 pub(crate) fn restored(ctx: &dyn PlatformContext) -> Option<PlacedWindow> {
     let path = default_session_path(None);
     let session = Session::load(&path).ok()?;
@@ -44,6 +60,21 @@ pub(crate) fn mirror_global(frame: &WindowFrame, written_to: &std::path::Path) {
     } else {
         let _ = session.save(&global);
     }
+}
+
+fn frame_mut(app: &mut App) -> &mut WindowFrame {
+    app.ui.session.frame.get_or_insert_with(|| WindowFrame {
+        x: 0,
+        y: 0,
+        width: 1000,
+        height: 700,
+        monitor_name: String::new(),
+        monitor_x: 0,
+        monitor_y: 0,
+        scale_millis: 1000,
+        fullscreen: false,
+        maximized: false,
+    })
 }
 
 fn capture(app: &App) -> Option<WindowFrame> {
@@ -78,5 +109,26 @@ fn monitor_rect(screen: Screen) -> MonitorRect {
         y: screen.y,
         width: screen.width,
         height: screen.height,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{note_moved, note_resized};
+
+    #[test]
+    fn resize_and_move_are_recorded_without_a_window() {
+        let mut app = crate::app::App::new(
+            include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec(),
+        );
+        note_resized(&mut app, 640, 480);
+        note_moved(&mut app, 12, 34);
+        let frame = app.ui.session.frame.expect("frame");
+        assert_eq!(
+            (frame.x, frame.y, frame.width, frame.height),
+            (12, 34, 640, 480)
+        );
+        assert!(!frame.maximized);
+        assert!(!frame.fullscreen);
     }
 }

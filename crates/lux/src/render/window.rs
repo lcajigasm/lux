@@ -116,6 +116,15 @@ impl App {
             .set_globals(&gpu_window.gpu.queue, size.width, size.height, clear);
     }
 
+    /// The tab strip takes the wheel only after the pointer has been seen
+    /// inside that strip. The origin is the default before any move, and it
+    /// sits in the strip's rectangle.
+    pub(crate) fn wheel_targets_tabs(&self) -> bool {
+        self.mouse.placed
+            && self.mouse.position.y < self.tab_bar_height() as f64
+            && self.mouse.position.x >= self.sidebar_width() as f64
+    }
+
     pub(crate) fn scroll(&mut self, delta: ScrollDelta) {
         let (dx, dy) = scroll_offset_delta(delta, self.editor_view.metrics().line_height.max(1.0));
         let mouse_x = self.mouse.position.x as f32;
@@ -237,6 +246,20 @@ mod tests {
         assert_eq!(app.viewport.scroll_x, 8.0);
         assert_eq!(app.viewport.scroll_y, 23.0);
         assert_ne!(app.viewport.scroll_y % LINE_HEIGHT, 0.0);
+    }
+
+    #[test]
+    fn a_wheel_before_any_pointer_move_is_not_the_tab_strip() {
+        let app = app();
+        assert!(!app.wheel_targets_tabs());
+    }
+
+    #[test]
+    fn a_wheel_on_the_tab_strip_stays_there() {
+        let mut app = app();
+        app.mouse.placed = true;
+        app.mouse.position = dpi::PhysicalPosition::new(200.0, 4.0);
+        assert!(app.wheel_targets_tabs());
     }
 
     #[test]

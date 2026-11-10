@@ -130,9 +130,16 @@ case "scroll":
     let lines = Int32(args.count > 4 ? args[4] : "-8") ?? -8
     let point = CGPoint(x: x, y: y)
     let source = CGEventSource(stateID: .hidSystemState)
-    if let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
-        move.post(tap: .cghidEventTap)
+    func postMouse(_ kind: CGEventType) {
+        if let event = CGEvent(mouseEventSource: source, mouseType: kind, mouseCursorPosition: point, mouseButton: .left) {
+            event.post(tap: .cghidEventTap)
+        }
     }
+    postMouse(.mouseMoved)
+    Thread.sleep(forTimeInterval: 0.05)
+    postMouse(.leftMouseDown)
+    Thread.sleep(forTimeInterval: 0.02)
+    postMouse(.leftMouseUp)
     Thread.sleep(forTimeInterval: 0.05)
     guard let wheel = CGEvent(scrollWheelEvent2Source: source, units: .line, wheelCount: 1, wheel1: lines, wheel2: 0, wheel3: 0) else {
         fputs("cannot build a scroll event\n", stderr)
@@ -140,6 +147,10 @@ case "scroll":
     }
     wheel.location = point
     wheel.post(tap: .cghidEventTap)
+    if let pixels = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 1, wheel1: lines * 24, wheel2: 0, wheel3: 0) {
+        pixels.location = point
+        pixels.post(tap: .cghidEventTap)
+    }
 default:
     fputs("unknown step\n", stderr)
     exit(2)
@@ -259,8 +270,9 @@ drive_scroll() {
   local line x y w h
   line="$(swift /tmp/lux-find-window.swift "$DRIVE_OWNER")"
   read -r x y w h <<<"$line"
-  local cx=$((x + w / 2))
-  local cy=$((y + h / 2))
+  # Below the title bar and the tab strip, right of the gutter.
+  local cx=$((x + w * 55 / 100))
+  local cy=$((y + h * 70 / 100))
   drive_key scroll "$cx" "$cy" "$lines"
 }
 
