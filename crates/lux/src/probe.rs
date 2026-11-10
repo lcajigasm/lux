@@ -209,6 +209,9 @@ pub(crate) fn on_frame(app: &App, frame: Duration) {
 
 /// Handles queued SIGUSR2 signals. Opening a bench file consumes one
 /// signal. Writing the probe file consumes one signal.
+///
+/// Redraw calls this before shaping. The wide-file check reads the dump
+/// from `about_to_wait`, which cannot run while that redraw is on the stack.
 pub(crate) fn poll(app: &mut App, ctx: &dyn PlatformContext) {
     loop {
         let armed = ARMED.load(Ordering::Acquire);

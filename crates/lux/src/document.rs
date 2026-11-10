@@ -83,9 +83,7 @@ impl DocumentEntry {
         static NEXT_BID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let buffer_id = NEXT_BID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let disk_snapshot = path.as_ref().map(|_| buffer.clone());
-        let language = path
-            .as_deref()
-            .and_then(|path| detect_language(Some(path), &buffer));
+        let language = detect_language(path.as_deref(), &buffer);
         Self {
             tab_id,
             buffer_id,

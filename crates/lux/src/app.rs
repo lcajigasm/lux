@@ -440,9 +440,6 @@ impl PlatformEventHandler for App {
                 }
             }
             PlatformEvent::RedrawRequested => {
-                // A probe signal that arrived before this frame has to be
-                // answered before shaping. The wide-file check reads it
-                // from about_to_wait, which cannot run until this returns.
                 crate::probe::poll(self, ctx);
                 let frame_began = Instant::now();
                 self.redraw(ctx);
