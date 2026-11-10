@@ -199,6 +199,15 @@ impl EditorView {
             ..placed.last().map(|(visual, _)| visual + 1).unwrap_or(0);
 
         let indent = buffer.indent();
+        // Unwrapped columns past the viewport are not shaped. The first
+        // frame of a 400-column line has to return so the run loop can
+        // answer a probe.
+        let char_w = self.reference_width("0").max(1.0);
+        let visible_chars = if self.metrics.word_wrap {
+            None
+        } else {
+            Some(((viewport.scroll_x.max(0.0) + text_width) / char_w).ceil() as usize + 8)
+        };
 
         let mut lines = Vec::with_capacity(placed.len());
         for (visual_idx, top) in placed {
@@ -211,6 +220,10 @@ impl EditorView {
                 .line_content(line_idx)
                 .expect("visible line is in range");
             let line_text = content.as_str();
+            let shaped = match visible_chars {
+                Some(keep) => wrap::prefix_chars(line_text, keep),
+                None => line_text,
+            };
             let style =
                 Self::line_style(&self.family, self.metrics.font_size, self.metrics.ligatures);
             let max_w = if self.metrics.word_wrap {
@@ -220,8 +233,8 @@ impl EditorView {
             };
             let layout = self
                 .text_layout
-                .layout_line_wrapped(&style, line_text, max_w, &[]);
-            let indent_guides = indent_guide_x(&layout, line_text, indent);
+                .layout_line_wrapped(&style, shaped, max_w, &[]);
+            let indent_guides = indent_guide_x(&layout, shaped, indent);
             let number = format!("{:>gutter_digits$}", line_idx + 1);
             let number_layout = self.text_layout.layout_line(&style, &number, &[]);
             lines.push(VisibleLine {

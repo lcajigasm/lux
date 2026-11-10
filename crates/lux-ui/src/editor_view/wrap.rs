@@ -31,6 +31,19 @@ pub(super) fn place_byte(layout: &LineLayout, byte_in_line: usize) -> (f32, u32)
     (x, row)
 }
 
+/// The prefix of `text` that fits in `count` Unicode scalars. A long
+/// unwrapped line only needs the columns that intersect the viewport;
+/// shaping the rest blocks the UI thread.
+pub(super) fn prefix_chars(text: &str, count: usize) -> &str {
+    if count == 0 {
+        return "";
+    }
+    match text.char_indices().nth(count) {
+        Some((index, _)) => &text[..index],
+        None => text,
+    }
+}
+
 pub(super) fn visible_slots(
     buffer: &Buffer,
     folds: Option<&FoldState>,
@@ -93,6 +106,14 @@ mod tests {
         assert_eq!(slots[0], (0, 0.0));
         assert_eq!(slots[1].0, 1);
         assert_eq!(slots[1].1, 5.0 * 20.0);
+    }
+
+    #[test]
+    fn prefix_chars_stops_on_a_scalar_boundary() {
+        assert_eq!(prefix_chars("abcdef", 3), "abc");
+        assert_eq!(prefix_chars("ééé", 2), "éé");
+        assert_eq!(prefix_chars("ab", 8), "ab");
+        assert_eq!(prefix_chars("ab", 0), "");
     }
 
     #[test]
