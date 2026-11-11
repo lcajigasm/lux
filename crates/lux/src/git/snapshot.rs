@@ -182,6 +182,22 @@ pub(crate) fn stage_hunk_on_disk(root: &Path, file: &Path, hunk: &Hunk) -> Resul
     lux_git::staging::stage_hunk(&repo, rel, hunk).map_err(|error| error.to_string())
 }
 
+/// Unstages the staged hunk whose new side covers 1-based `line`.
+/// The working tree file is not rewritten.
+pub(crate) fn unstage_hunk_at_line(root: &Path, file: &Path, line: u32) -> Result<(), String> {
+    let repo = discover_repo(root).ok_or_else(|| "not a git repository".to_string())?;
+    let rel = file.strip_prefix(root).unwrap_or(file);
+    let hunks = lux_git::staging::staged_hunks(&repo, rel).map_err(|error| error.to_string())?;
+    let Some(hunk) = hunks.into_iter().find(|hunk| {
+        let start = hunk.after_start;
+        let end = start + hunk.after_len.max(1);
+        line >= start && line < end
+    }) else {
+        return Err("No staged hunk on this line".into());
+    };
+    lux_git::staging::unstage_hunk(&repo, rel, &hunk).map_err(|error| error.to_string())
+}
+
 fn head_blob(repo: &lux_git::gix::Repository, file: &Path) -> Option<String> {
     let tree_id = repo.head_tree_id_or_empty().ok()?;
     let tree = repo.find_tree(tree_id).ok()?;

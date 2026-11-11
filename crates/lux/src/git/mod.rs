@@ -23,6 +23,7 @@ pub(crate) use branch_picker::handle_branch_picker_key;
 pub(crate) use job::{
     poll, register_waker, request_blame, request_branch_list, request_commit, request_diff,
     request_history, request_stage_cursor_hunk, request_stage_file, request_status,
+    request_unstage_cursor_hunk,
 };
 
 #[derive(Debug, Clone)]

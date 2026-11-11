@@ -1,10 +1,11 @@
 //! Stage/unstage: mutate the repository's index (`.git/index`) to match
 //! real files on disk, in-process via `gix` (no shell-out — ADR 0010).
 //!
-//! Per-hunk staging ([`unstaged_hunks`]/[`stage_hunk`]) reuses this
-//! crate's own diff engine (`gutter::diff_hunks`) rather than a second
-//! one, applying a single selected hunk onto whatever's currently staged
-//! (or `HEAD`'s content, if nothing is), the same base `git add -p` uses.
+//! Per-hunk staging ([`unstaged_hunks`]/[`stage_hunk`]) and unstaging
+//! ([`staged_hunks`]/[`unstage_hunk`]) reuse this crate's diff engine
+//! (`gutter::diff_hunks`). Staging applies one hunk onto the index.
+//! Unstaging puts that hunk's `HEAD` lines back into the index and leaves
+//! the working tree alone.
 
 use std::fmt;
 use std::path::Path;
@@ -206,6 +207,90 @@ pub fn stage_hunk(repo: &gix::Repository, path: &Path, hunk: &Hunk) -> Result<()
     write_staged_entry(repo, rel, &absolute, new_content.as_bytes())
 }
 
+/// Hunks between `HEAD` and the index for `path`. The working tree is not
+/// read. An unstaged-only edit does not appear here.
+pub fn staged_hunks(repo: &gix::Repository, path: &Path) -> Result<Vec<Hunk>, StagingError> {
+    let rel = path_to_bstr(path)?;
+    let Some(staged) = index_content(repo, rel)? else {
+        return Ok(Vec::new());
+    };
+    let head = head_content(repo, path)?;
+    Ok(diff_hunks(&head, &staged))
+}
+
+/// Removes one staged hunk from the index. `hunk` must be one
+/// [`staged_hunks`] returned for the same path. The file on disk is not
+/// rewritten, so the change becomes unstaged.
+pub fn unstage_hunk(repo: &gix::Repository, path: &Path, hunk: &Hunk) -> Result<(), StagingError> {
+    let rel = path_to_bstr(path)?;
+    let Some(staged) = index_content(repo, rel)? else {
+        return Ok(());
+    };
+    let head = head_content(repo, path)?;
+    let new_content = revert_hunk(&staged, &head, hunk);
+    if head.is_empty() && new_content.is_empty() {
+        return unstage(repo, path);
+    }
+    let work_dir = repo.workdir().ok_or(StagingError::BareRepository)?;
+    write_staged_entry(repo, rel, &work_dir.join(path), new_content.as_bytes())
+}
+
+fn index_content(repo: &gix::Repository, rel: &BStr) -> Result<Option<String>, StagingError> {
+    let index = open_or_create_index(repo)?;
+    let Some(entry) = index.entry_by_path(rel) else {
+        return Ok(None);
+    };
+    let blob = repo
+        .find_blob(entry.id)
+        .map_err(|e| StagingError::ReadBlob(Box::new(e)))?;
+    Ok(Some(String::from_utf8_lossy(&blob.data).into_owned()))
+}
+
+fn head_content(repo: &gix::Repository, path: &Path) -> Result<String, StagingError> {
+    let tree_id = repo
+        .head_tree_id_or_empty()
+        .map_err(|e| StagingError::ReadTree(Box::new(e)))?;
+    let tree = repo
+        .find_tree(tree_id)
+        .map_err(|e| StagingError::ReadTree(Box::new(e)))?;
+    match tree
+        .lookup_entry_by_path(path)
+        .map_err(|e| StagingError::ReadTree(Box::new(e)))?
+    {
+        Some(entry) => {
+            let blob = repo
+                .find_blob(entry.object_id())
+                .map_err(|e| StagingError::ReadBlob(Box::new(e)))?;
+            Ok(String::from_utf8_lossy(&blob.data).into_owned())
+        }
+        None => Ok(String::new()),
+    }
+}
+
+/// Puts `hunk`'s `HEAD` lines back into `staged`. `hunk.before_*` addresses
+/// `head` and `hunk.after_*` addresses `staged`.
+fn revert_hunk(staged: &str, head: &str, hunk: &Hunk) -> String {
+    let staged_lines: Vec<&str> = staged.lines().collect();
+    let head_lines: Vec<&str> = head.lines().collect();
+    let after_start = (hunk.after_start - 1) as usize;
+    let after_end = after_start + hunk.after_len as usize;
+    let before_start = (hunk.before_start - 1) as usize;
+    let before_end = before_start + hunk.before_len as usize;
+    let mut result_lines = Vec::with_capacity(staged_lines.len());
+    result_lines.extend_from_slice(&staged_lines[..after_start.min(staged_lines.len())]);
+    if before_end <= head_lines.len() && before_start <= before_end {
+        result_lines.extend_from_slice(&head_lines[before_start..before_end]);
+    }
+    if after_end <= staged_lines.len() {
+        result_lines.extend_from_slice(&staged_lines[after_end..]);
+    }
+    let mut result = result_lines.join("\n");
+    if !result.is_empty() {
+        result.push('\n');
+    }
+    result
+}
+
 /// Replaces `hunk`'s `before` range in `base` with its `after` range from
 /// `working`, leaving everything outside the hunk untouched.
 fn apply_hunk(base: &str, working: &str, hunk: &Hunk) -> String {
@@ -387,5 +472,31 @@ mod tests {
         let entry = index.entry_by_path("new.rs".into()).unwrap();
         let blob = repo.find_blob(entry.id).unwrap();
         assert_eq!(blob.data, b"brand new content\n");
+    }
+
+    #[test]
+    fn unstage_hunk_returns_one_staged_edit_and_keeps_the_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = init_repo(dir.path());
+        fs::write(dir.path().join("a.rs"), "one\ntwo\nthree\n").unwrap();
+        stage(&repo, Path::new("a.rs")).unwrap();
+        crate::commit::commit(&repo, "root", "Lux Test", "lux-test@example.com").unwrap();
+
+        fs::write(dir.path().join("a.rs"), "ONE\ntwo\nTHREE\n").unwrap();
+        stage(&repo, Path::new("a.rs")).unwrap();
+        let hunks = staged_hunks(&repo, Path::new("a.rs")).unwrap();
+        assert_eq!(hunks.len(), 2, "two staged edits");
+
+        unstage_hunk(&repo, Path::new("a.rs"), &hunks[0]).unwrap();
+
+        let index = repo.open_index().unwrap();
+        let entry = index.entry_by_path("a.rs".into()).unwrap();
+        let blob = repo.find_blob(entry.id).unwrap();
+        assert_eq!(blob.data, b"one\ntwo\nTHREE\n");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("a.rs")).unwrap(),
+            "ONE\ntwo\nTHREE\n",
+            "the working tree still has both edits"
+        );
     }
 }

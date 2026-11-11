@@ -231,6 +231,7 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
         ("git.stage_file", "Git: Stage Current File", "Git"),
         ("git.unstage_file", "Git: Unstage Current File", "Git"),
         ("git.stage_hunk", "Git: Stage Hunk", "Git"),
+        ("git.unstage_hunk", "Git: Unstage Hunk", "Git"),
         ("git.commit_staged", "Git: Commit Staged Changes", "Git"),
         ("git.status", "Git: Refresh Status", "Git"),
         ("git.blame", "Git: Blame", "Git"),

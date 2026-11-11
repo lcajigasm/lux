@@ -12,6 +12,7 @@ thread wakes it.
 | Branch | The current `HEAD` name in the status bar. The click, `Git: Switch Branch`, and `Git: Create Branch` open the branch list. Enter checks out a name when the worktree is clean, or creates a branch at the current commit without rewriting files | `create_branch_keeps_a_dirty_file_and_moves_head`, `switch_branch_refuses_a_dirty_worktree`, `switch_branch_checks_out_a_clean_tree` |
 | Diff | A unified diff tab of the open file against `HEAD` | `diff_shows_the_added_line` |
 | Stage hunk | Writes one hunk into the index. The gutter popup and `Git: Stage Hunk` both use it | `stage_hunk_records_that_hunk` |
+| Unstage hunk | Puts one staged hunk's `HEAD` lines back into the index. The file on disk stays. `Git: Unstage Hunk` uses the caret line | `unstage_hunk_returns_one_staged_edit_and_keeps_the_file` |
 | Commit | Commits the index as `Lux User <lux@example.com>` | `commit_writes_the_message` |
 | Blame | A tab of `short-id start+len` hunks for the file at `HEAD` | `blame_attributes_the_line` |
 | History | A tab of the commits that changed the file, newest first | `history_lists_the_commit` |
@@ -22,6 +23,7 @@ background snapshot lands on the gutter.
 
 Palette commands: `Git: Refresh Status`, `Git: View File Diff`,
 `Git: Stage Current File`, `Git: Unstage Current File`, `Git: Stage Hunk`,
+`Git: Unstage Hunk`,
 `Git: Commit Staged Changes`, `Git: Blame`, `Git: File History`.
 
 A file refresh does not walk the worktree. Status does, and only when

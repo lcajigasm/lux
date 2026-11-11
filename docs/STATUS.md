@@ -159,8 +159,10 @@
 
 Opening a file asks `lux-git` on a background thread for the branch and
 the gutter hunks of that buffer. `Git: Refresh Status`, `View File Diff`,
-`Stage Current File`, `Stage Hunk`, `Commit Staged Changes`, `Blame`, and
-`File History` run there too. The status-bar branch, `Git: Switch Branch`,
+`Stage Current File`, `Stage Hunk`, `Unstage Hunk`, `Commit Staged Changes`,
+`Blame`, and `File History` run there too. `Unstage Hunk` puts that
+staged hunk's `HEAD` lines back into the index and leaves the file on
+disk. The status-bar branch, `Git: Switch Branch`,
 and `Git: Create Branch` open the branch list. A checkout runs only when
 the worktree is clean. Creating a branch points `HEAD` at the current
 commit and leaves the files alone. `Git: Refresh Status` draws `M`, `A`,
