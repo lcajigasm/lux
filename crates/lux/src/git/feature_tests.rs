@@ -112,6 +112,63 @@ fn history_lists_the_commit() {
 }
 
 #[test]
+fn create_branch_keeps_a_dirty_file_and_moves_head() {
+    let (dir, file) = note_repo();
+    std::fs::write(&file, "alpha\nbeta\n").unwrap();
+    let name = snapshot::create_branch(dir.path(), "topic").expect("create");
+    assert_eq!(name, "topic");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "alpha\nbeta\n");
+    let repo = lux_git::gix::open(dir.path()).unwrap();
+    let head = repo.head_name().unwrap().unwrap();
+    assert_eq!(head.shorten().to_string(), "topic");
+}
+
+#[test]
+fn create_branch_keeps_a_dot_and_rejects_a_space() {
+    let (dir, _) = note_repo();
+    let name = snapshot::create_branch(dir.path(), "release-1.2").expect("dot");
+    assert_eq!(name, "release-1.2");
+    let error = snapshot::create_branch(dir.path(), "bad name").unwrap_err();
+    assert!(!error.is_empty(), "{error}");
+}
+
+#[test]
+fn switch_branch_refuses_a_dirty_worktree() {
+    let (dir, file) = note_repo();
+    let repo = lux_git::gix::open(dir.path()).unwrap();
+    let initial = repo.head_name().unwrap().unwrap().shorten().to_string();
+    drop(repo);
+    snapshot::create_branch(dir.path(), "topic").unwrap();
+    std::fs::write(&file, "alpha\nbeta\n").unwrap();
+    let error = snapshot::switch_branch(dir.path(), &initial).unwrap_err();
+    assert!(error.contains("Commit or discard"), "{error}");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "alpha\nbeta\n");
+}
+
+#[test]
+fn switch_branch_checks_out_a_clean_tree() {
+    let (dir, file) = note_repo();
+    std::fs::write(&file, "alpha\n").unwrap();
+    let repo = lux_git::gix::open(dir.path()).unwrap();
+    let initial = repo.head_name().unwrap().unwrap().shorten().to_string();
+    drop(repo);
+    snapshot::create_branch(dir.path(), "topic").unwrap();
+    std::fs::write(&file, "alpha\nonly-topic\n").unwrap();
+    let repo = lux_git::gix::open(dir.path()).unwrap();
+    lux_git::staging::stage(&repo, Path::new("note.txt")).unwrap();
+    lux_git::commit::commit(&repo, "topic text", "Lux Test", "lux-test@example.com").unwrap();
+    drop(repo);
+    snapshot::switch_branch(dir.path(), &initial).expect("switch");
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert_eq!(text, "alpha\n");
+    snapshot::switch_branch(dir.path(), "topic").expect("back");
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "alpha\nonly-topic\n"
+    );
+}
+
+#[test]
 fn the_worker_applies_gutter_markers() {
     let (_dir, file) = note_repo();
     let mut app = app();

@@ -49,6 +49,25 @@ pub(crate) fn render_all_modals(
         );
     }
 
+    if let Some(picker) = &ui.git.branch_picker {
+        super::branch_picker::render_branch_picker(
+            picker,
+            window_width,
+            tab_bar_height,
+            scale_factor,
+            stroke,
+            font_size,
+            font,
+            editor_view,
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            theme,
+            quad_instances,
+            glyph_instances,
+        );
+    }
+
     if let Some(picker) = &ui.language_picker {
         super::language_picker::render_language_picker(
             picker,

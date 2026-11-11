@@ -6,6 +6,10 @@ use super::{ModalGeometry, ModalMetrics};
 use crate::app::App;
 
 // 1. Language Picker
+pub(super) fn click_branch_picker(app: &mut App, mx: f32, my: f32) -> bool {
+    crate::git::branch_picker::handle_branch_picker_click(app, mx, my)
+}
+
 pub(super) fn click_language_picker(app: &mut App, mx: f32, my: f32) -> bool {
     crate::language_picker::handle_language_picker_click(app, mx, my)
 }

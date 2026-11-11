@@ -150,8 +150,11 @@
 Opening a file asks `lux-git` on a background thread for the branch and
 the gutter hunks of that buffer. `Git: Refresh Status`, `View File Diff`,
 `Stage Current File`, `Stage Hunk`, `Commit Staged Changes`, `Blame`, and
-`File History` run there too. Conflict markers in the buffer still resolve
-in the editor. See `docs/GIT.md`.
+`File History` run there too. The status-bar branch, `Git: Switch Branch`,
+and `Git: Create Branch` open the branch list. A checkout runs only when
+the worktree is clean. Creating a branch points `HEAD` at the current
+commit and leaves the files alone. Conflict markers in the buffer still
+resolve in the editor. See `docs/GIT.md`.
 
 Quitting writes the window's position, size, fullscreen or maximized state,
 and monitor into the session (`lux_workspace::WindowFrame`). The next launch
@@ -2476,7 +2479,7 @@ _Nothing is behind an `experimental.*` flag yet._
 
 ### ST-FIX-12: Panels, sidebar, tabs, and the status bar
 
-- **Status:** Escape and a click outside the command palette, language picker, and settings panel return focus to the editor and clear the sidebar highlight. The same focus return is on the other floating panels. In the sidebar, Arrow keys move the selection, Enter opens the row, N starts a new file, F2 renames it, and Delete moves it to the Trash. View: Reveal Active File expands to the open file and focuses the tree. A dirty tab draws a dot. Middle-click closes the tab under the pointer. Dragging a tab reorders the strip. A wheel over the strip scrolls tabs that do not fit. The status bar shows one-based Ln/Col, the selection size, language, encoding, EOL, indent, and the git branch already known to the app. Ln/Col opens Goto Line. Language opens the language picker. EOL, indent, and encoding still toggle. The branch click reports the known name and does not run git. Opening a file reads `HEAD` for that name and does not walk the worktree. The language picker uses the shared selector card. Monokai gutter matches the editor background (`#272822`) and the split border is `#3E3D32`.
+- **Status:** Escape and a click outside the command palette, language picker, and settings panel return focus to the editor and clear the sidebar highlight. The same focus return is on the other floating panels. In the sidebar, Arrow keys move the selection, Enter opens the row, N starts a new file, F2 renames it, and Delete moves it to the Trash. View: Reveal Active File expands to the open file and focuses the tree. A dirty tab draws a dot. Middle-click closes the tab under the pointer. Dragging a tab reorders the strip. A wheel over the strip scrolls tabs that do not fit. The status bar shows one-based Ln/Col, the selection size, language, encoding, EOL, indent, and the git branch already known to the app. Ln/Col opens Goto Line. Language opens the language picker. EOL, indent, and encoding still toggle. The branch click opens the branch list. A checkout runs only when the worktree is clean, and creating a branch leaves the files alone. Opening a file reads `HEAD` for that name and does not walk the worktree. The language picker uses the shared selector card. Monokai gutter matches the editor background (`#272822`) and the split border is `#3E3D32`.
 - **Verification:** `input::chrome_tests::escape_and_a_click_outside_return_focus_to_the_editor` goes through `handle_keyboard_event` and `handle_mouse_click_on_chrome`. `sidebar::behavior_tests::the_keyboard_creates_renames_and_trashes_and_reveal_selects_the_open_file` creates, renames, and trashes a real file. `document::tab_strip_tests` covers middle-click, overflow hit-testing, and drag reorder. `status_bar::tests::app_status_bar_clicks_dispatch_toggles` covers the clicks. `language_picker::tests::language_picker_click_selects_language_and_dismisses` uses the shared card geometry. `lux-ui` `monokai_chrome_uses_the_classic_wells` locks the gutter and border. This is not a Mac keystroke pass. Minimap and splits are unchanged.
 
 ### ST-FIX-11: Find, save all, tabs, zoom, and palette order

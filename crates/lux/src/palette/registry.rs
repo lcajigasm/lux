@@ -225,6 +225,8 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
         ),
         ("goto.word", "Goto: Go to Word in Document...", "Goto"),
         ("file.open_folder", "File: Open Workspace Folder", "File"),
+        ("git.switch_branch", "Git: Switch Branch", "Git"),
+        ("git.create_branch", "Git: Create Branch", "Git"),
         ("git.view_diff", "Git: View File Diff", "Git"),
         ("git.stage_file", "Git: Stage Current File", "Git"),
         ("git.unstage_file", "Git: Unstage Current File", "Git"),

@@ -263,7 +263,10 @@ mod tests {
         assert_eq!(app.ui.goto_anything.as_ref().unwrap().query.as_str(), ":");
         app.ui.git.branch_name = Some("main".into());
         app.handle_status_bar_click(110.0, 680.0);
-        assert_eq!(app.documents.message.as_deref(), Some("Git branch main"));
+        assert_eq!(
+            app.ui.announcement.as_deref(),
+            Some("Open a repository file first")
+        );
         assert_eq!(
             app.chrome.focus.current(),
             lux_ui::focus::FocusTarget::Editor

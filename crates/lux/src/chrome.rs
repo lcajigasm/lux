@@ -293,9 +293,7 @@ pub(crate) fn handle_status_bar_click(app: &mut App, mouse_x: f32, mouse_y: f32)
         crate::status_bar::toggle_encoding(&mut app.buffer);
         app.scheduler.invalidate_all();
     } else if layout.branch_rect.contains(mouse_x, mouse_y) {
-        if let Some(name) = app.ui.git.branch_name.clone() {
-            app.documents.message = Some(format!("Git branch {name}"));
-        }
+        crate::git::request_branch_list(app, false);
         crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
     } else if layout.cursor_rect.contains(mouse_x, mouse_y) {
