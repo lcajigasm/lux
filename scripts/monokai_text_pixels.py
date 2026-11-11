@@ -104,21 +104,24 @@ def near(color, target, tol):
 
 def check(path, background, foreground, zoom_path):
     width, height, rows = load_png(path)
+    # The stem is the authored foreground. Monokai #F8F8F2 has channel
+    # spread 6, so a cap of 36 still names it. Catppuccin #cdd6f4 has
+    # spread 39: run 43069249597 contains 15 pixels of that exact color,
+    # and the nearest pixel with spread <= 36 is an antialiased mix
+    # 16–20 away. Sublime and VS Code paint the scheme foreground, so a
+    # cap tighter than that color cannot see their stems either.
+    # Distance stays 12. A distance of 16 matches near-white chrome.
+    chroma = max(36, spread(foreground))
     stems = []
     for y in range(height):
         for x in range(width):
             color = pixel(rows, x, y)
-            # Grayscale antialiasing pulls a light-theme stem off the
-            # exact foreground. On macos-15 run 42986567243 Solarized
-            # Light's #657b83 had 18 pixels inside 8 and 40 inside 12,
-            # and those 18 had no colored fringe. Dark themes stay in
-            # the hundreds at either tolerance. 16 matches tens of
-            # thousands of near-white chrome pixels, so 12 is the
-            # widest tolerance that still names a stem.
-            if near(color, foreground, 12) and spread(color) <= 36:
+            if near(color, foreground, 12) and spread(color) <= chroma:
                 stems.append((x, y))
     if len(stems) < 20:
-        raise SystemExit(f"{path}: found {len(stems)} stem pixels near {foreground}, want >= 20")
+        return False, (
+            f"FAIL {path}: found {len(stems)} stem pixels near {foreground}, want >= 20"
+        )
     fringes = []
     for x, y in stems:
         for dx in (-3, -2, -1, 1, 2, 3):
@@ -148,7 +151,7 @@ def check(path, background, foreground, zoom_path):
             break
     if fringes:
         shown = ", ".join(f"{x},{y}={color}" for x, y, color, _ in fringes[:6])
-        raise SystemExit(f"{path}: colored fringe beside a neutral stem: {shown}")
+        return False, f"FAIL {path}: colored fringe beside a neutral stem: {shown}"
     # Background must actually be on the frame. Sample the modal-ish
     # corners of the editor by counting exact background hits.
     hits = 0
@@ -157,9 +160,11 @@ def check(path, background, foreground, zoom_path):
             if near(pixel(rows, x, y), background, 2):
                 hits += 1
     if hits < 50:
-        raise SystemExit(f"{path}: background {background} appears {hits} times, want >= 50")
+        return False, (
+            f"FAIL {path}: background {background} appears {hits} times, want >= 50"
+        )
     write_zoom(rows, width, height, stems, zoom_path)
-    print(f"PASS {path} stems={len(stems)} background_hits={hits} zoom={zoom_path}")
+    return True, f"PASS {path} stems={len(stems)} background_hits={hits} zoom={zoom_path}"
 
 
 def write_zoom(rows, width, height, stems, dest):
@@ -189,7 +194,9 @@ def main():
     if len(sys.argv) != 5:
         raise SystemExit("usage: monokai_text_pixels.py IMAGE #RRGGBB #RRGGBB ZOOM.png")
     _, image, background, foreground, zoom = sys.argv
-    check(image, parse_hex(background), parse_hex(foreground), zoom)
+    ok, message = check(image, parse_hex(background), parse_hex(foreground), zoom)
+    print(message)
+    raise SystemExit(0 if ok else 1)
 
 
 if __name__ == "__main__":
