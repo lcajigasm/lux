@@ -55,6 +55,7 @@ impl App {
         let is_current_dirty = self.document_dirty();
         let editor_top = tab_bar_height;
 
+        let (minimap_document, minimap_version) = self.minimap_cache_key();
         let App {
             gpu_window,
             editor_view,
@@ -422,7 +423,9 @@ impl App {
                 .as_ref()
                 .map(|s| (s.search_bar.matches(), s.search_bar.current_index()));
             minimap::render_minimap(
-                &ui.minimap,
+                &mut ui.minimap,
+                minimap_document,
+                minimap_version,
                 buffer,
                 viewport,
                 window_width,
