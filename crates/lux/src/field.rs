@@ -242,6 +242,9 @@ fn text_field(app: &mut App) -> Option<&mut QueryField> {
     if let Some(palette) = app.ui.command_palette.as_mut() {
         return Some(&mut palette.query);
     }
+    if let Some(picker) = app.ui.git.branch_picker.as_mut() {
+        return Some(&mut picker.query);
+    }
     if let Some(picker) = app.ui.language_picker.as_mut() {
         return Some(&mut picker.query);
     }
@@ -284,6 +287,15 @@ fn composing_flag(app: &App) -> bool {
     if app
         .ui
         .command_palette
+        .as_ref()
+        .is_some_and(|p| p.query.is_composing())
+    {
+        return true;
+    }
+    if app
+        .ui
+        .git
+        .branch_picker
         .as_ref()
         .is_some_and(|p| p.query.is_composing())
     {
@@ -357,6 +369,7 @@ fn composing_flag(app: &App) -> bool {
 
 pub(crate) fn panel_blocks_document_ime(app: &App) -> bool {
     app.ui.command_palette.is_some()
+        || app.ui.git.branch_picker.is_some()
         || app.ui.language_picker.is_some()
         || app.ui.build.picker.is_some()
         || app.ui.project.picker.is_some()
@@ -464,6 +477,7 @@ pub(crate) fn edit_focused_field(
 
 fn has_text_field(app: &App) -> bool {
     app.ui.command_palette.is_some()
+        || app.ui.git.branch_picker.is_some()
         || app.ui.language_picker.is_some()
         || app.ui.build.picker.is_some()
         || app.ui.project.picker.is_some()

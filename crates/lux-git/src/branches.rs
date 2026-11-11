@@ -264,13 +264,49 @@ pub fn switch(
         .detach();
 
     checkout_tree(repo, old_tree, new_tree)?;
+    point_head(repo, full_name, name, committer_name, committer_email)?;
 
+    Ok(Branch {
+        name: name.to_string(),
+        commit_id,
+    })
+}
+
+/// Points `HEAD` at `refs/heads/<name>` and does not rewrite the worktree.
+/// Used when the new branch is the current commit, so a dirty file stays.
+pub fn attach(
+    repo: &gix::Repository,
+    name: &str,
+    committer_name: &str,
+    committer_email: &str,
+) -> Result<Branch, BranchError> {
+    let full_name = branch_full_name(name)?;
+    let commit_id = repo
+        .find_reference(name)
+        .map_err(|e| BranchError::ListRefs(Box::new(e)))?
+        .into_fully_peeled_id()
+        .map_err(|e| BranchError::ListRefs(Box::new(e)))?
+        .detach();
+    point_head(repo, full_name, name, committer_name, committer_email)?;
+    Ok(Branch {
+        name: name.to_string(),
+        commit_id,
+    })
+}
+
+fn point_head(
+    repo: &gix::Repository,
+    full_name: gix::refs::FullName,
+    label: &str,
+    committer_name: &str,
+    committer_email: &str,
+) -> Result<(), BranchError> {
     let edit = RefEdit {
         change: Change::Update {
             log: LogChange {
                 mode: RefLog::AndReference,
                 force_create_reflog: false,
-                message: format!("checkout: moving to {name}").into(),
+                message: format!("checkout: moving to {label}").into(),
             },
             expected: PreviousValue::Any,
             new: Target::Symbolic(full_name),
@@ -286,11 +322,7 @@ pub fn switch(
     let mut time_buf = gix::date::parse::TimeBuf::default();
     repo.edit_references_as(Some(edit), Some(sig.to_ref(&mut time_buf)))
         .map_err(|e| BranchError::RefEdit(Box::new(e)))?;
-
-    Ok(Branch {
-        name: name.to_string(),
-        commit_id,
-    })
+    Ok(())
 }
 
 #[cfg(test)]

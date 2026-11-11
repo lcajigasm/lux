@@ -1,0 +1,38 @@
+name: Git branch
+
+# Real Lux.app on macos-15. The palette creates a branch and the probe
+# must report the new HEAD name. Captures are the compiled window.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  branch:
+    name: git branch (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Create a branch from the palette
+        run: |
+          chmod +x scripts/git-branch-e2e.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/git-branch-e2e.sh
+
+      - name: Upload branch captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: git-branch
+          path: docs/evidence/git-branch/**
+          if-no-files-found: warn

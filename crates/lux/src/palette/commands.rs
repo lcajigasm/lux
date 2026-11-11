@@ -169,11 +169,10 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         "view.toggle_encoding" | lux_ui::status_bar::CHANGE_ENCODING_COMMAND => {
             crate::status_bar::toggle_encoding(&mut app.buffer);
         }
-        lux_ui::status_bar::SHOW_BRANCH_COMMAND => {
-            if let Some(name) = app.ui.git.branch_name.clone() {
-                app.documents.message = Some(format!("Git branch {name}"));
-            }
+        lux_ui::status_bar::SHOW_BRANCH_COMMAND | "git.switch_branch" => {
+            crate::git::request_branch_list(app, false);
         }
+        "git.create_branch" => crate::git::request_branch_list(app, true),
         "view.change_language_mode" | lux_ui::status_bar::CHANGE_LANGUAGE_COMMAND => {
             app.open_language_picker();
         }

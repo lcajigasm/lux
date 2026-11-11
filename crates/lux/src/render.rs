@@ -3,6 +3,7 @@
 //! 600-line file limit — this is still `impl App`, just in its own file.
 
 mod about;
+mod branch_picker;
 mod build;
 mod clip;
 mod conflict;

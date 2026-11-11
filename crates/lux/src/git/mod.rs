@@ -14,12 +14,14 @@ use lux_platform::PlatformContext;
 use crate::app::App;
 use crate::document::DocumentEntry;
 
+pub(crate) mod branch_picker;
 mod job;
 mod snapshot;
 
+pub(crate) use branch_picker::handle_branch_picker_key;
 pub(crate) use job::{
-    poll, register_waker, request_blame, request_commit, request_diff, request_history,
-    request_stage_cursor_hunk, request_stage_file, request_status,
+    poll, register_waker, request_blame, request_branch_list, request_commit, request_diff,
+    request_history, request_stage_cursor_hunk, request_stage_file, request_status,
 };
 
 #[derive(Debug, Clone)]
@@ -57,6 +59,7 @@ pub(crate) struct GitState {
     pub(crate) conflict_blocks: Vec<ConflictMarkerBlock>,
     pub(crate) commit_message: String,
     pub(crate) source_control_visible: bool,
+    pub(crate) branch_picker: Option<branch_picker::BranchPicker>,
     /// Ignores a snapshot from an older refresh.
     pub(crate) generation: u64,
 }
@@ -86,6 +89,28 @@ pub(crate) fn head_label(repo: &lux_git::gix::Repository) -> Option<String> {
     }
     let hex = repo.head_id().ok()?.to_string();
     Some(hex.chars().take(7).collect())
+}
+
+pub(crate) fn open_branch_picker(app: &mut App, names: Vec<String>, creating: bool) {
+    app.ui.git.branch_picker = Some(branch_picker::BranchPicker::new(names, creating));
+    app.scheduler.invalidate_all();
+}
+
+pub(crate) fn apply_switched_file(app: &mut App, bytes: &[u8]) {
+    if app.document_dirty() {
+        return;
+    }
+    let Ok(buffer) = Buffer::from_bytes(bytes) else {
+        return;
+    };
+    app.buffer = buffer;
+    app.history = lux_core::history::History::new();
+    app.documents.saved_version = app.history.state_id();
+    app.cursors = lux_core::multicursor::MultiCursor::new(lux_core::selection::Selection::cursor(
+        lux_core::position::Position::document_start(),
+    ));
+    app.sync_active_document_to_entry();
+    app.update_syntax_on_open();
 }
 
 pub(crate) fn refresh_git_state(app: &mut App) {

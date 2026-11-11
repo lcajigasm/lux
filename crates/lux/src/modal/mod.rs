@@ -15,6 +15,7 @@ mod tests;
 pub(crate) fn is_any_modal_open(app: &App) -> bool {
     app.ui.command_palette.is_some()
         || app.ui.goto_anything.is_some()
+        || app.ui.git.branch_picker.is_some()
         || app.ui.language_picker.is_some()
         || app.ui.theme_picker.is_some()
         || app.ui.snippets.picker.is_some()
@@ -100,6 +101,7 @@ pub(crate) fn handle_modal_click(
     crate::about::click_about(app, mouse_x, mouse_y)
         || palette_goto::click_command_palette(app, ctx, mouse_x, mouse_y)
         || palette_goto::click_goto_anything(app, ctx, mouse_x, mouse_y)
+        || pickers::click_branch_picker(app, mouse_x, mouse_y)
         || pickers::click_language_picker(app, mouse_x, mouse_y)
         || pickers::click_theme_picker(app, mouse_x, mouse_y)
         || pickers::click_snippet_picker(app, mouse_x, mouse_y)

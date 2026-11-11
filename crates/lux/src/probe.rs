@@ -331,10 +331,12 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         .map(|language| language.name())
         .unwrap_or("Plain Text");
     out.push_str(&format!(
-        "tabs={}\ndirty={}\nlanguage={language}\ntheme={}\nactive_path=",
+        "tabs={}\ndirty={}\nlanguage={language}\ntheme={}\nbranch={}\nbranch_picker={}\nactive_path=",
         app.documents.tabs.tabs().len(),
         u8::from(app.document_dirty()),
         app.chrome.theme.name,
+        app.ui.git.branch_name.as_deref().unwrap_or(""),
+        u8::from(app.ui.git.branch_picker.is_some()),
     ));
     out.push_str(&escape(&path));
     out.push('\n');

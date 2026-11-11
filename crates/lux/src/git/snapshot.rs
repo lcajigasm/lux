@@ -133,6 +133,49 @@ pub(crate) fn commit_index(root: &Path, message: &str) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
+const GIT_NAME: &str = "Lux User";
+const GIT_EMAIL: &str = "lux@example.com";
+
+pub(crate) fn branch_names(root: &Path) -> Result<Vec<String>, String> {
+    let repo = discover_repo(root).ok_or_else(|| "not a git repository".to_string())?;
+    let mut names = lux_git::branches::list(&repo)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|branch| branch.name)
+        .collect::<Vec<_>>();
+    names.sort();
+    Ok(names)
+}
+
+/// Checks out `name` only when the worktree matches `HEAD`. A dirty tree
+/// is left untouched: `branches::switch` rewrites every file.
+pub(crate) fn switch_branch(root: &Path, name: &str) -> Result<String, String> {
+    let repo = discover_repo(root).ok_or_else(|| "not a git repository".to_string())?;
+    let status = lux_git::status::status(&repo).map_err(|error| error.to_string())?;
+    if !status.is_clean() {
+        return Err("Commit or discard changes before switching branches".into());
+    }
+    lux_git::branches::switch(&repo, name, GIT_NAME, GIT_EMAIL)
+        .map(|branch| branch.name)
+        .map_err(|error| error.to_string())
+}
+
+/// Creates `name` at the current commit and moves `HEAD` onto it.
+/// The worktree is not rewritten, so an unsaved edit stays on disk.
+pub(crate) fn create_branch(root: &Path, name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("Branch name is empty".into());
+    }
+    let repo = discover_repo(root).ok_or_else(|| "not a git repository".to_string())?;
+    let commit = repo.head_id().map_err(|error| error.to_string())?.detach();
+    lux_git::branches::create(&repo, name, commit, GIT_NAME, GIT_EMAIL)
+        .map_err(|error| error.to_string())?;
+    lux_git::branches::attach(&repo, name, GIT_NAME, GIT_EMAIL)
+        .map(|branch| branch.name)
+        .map_err(|error| error.to_string())
+}
+
 pub(crate) fn stage_hunk_on_disk(root: &Path, file: &Path, hunk: &Hunk) -> Result<(), String> {
     let repo = discover_repo(root).ok_or_else(|| "not a git repository".to_string())?;
     let rel = file.strip_prefix(root).unwrap_or(file);

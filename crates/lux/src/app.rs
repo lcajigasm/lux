@@ -304,12 +304,10 @@ impl App {
             return;
         }
 
-        // Floating and focused surfaces own input before the document. This
-        // prevents navigation/text intended for a modal from leaking into the
-        // editor while still allowing an unhandled global shortcut to fall
-        // through to the document/keymap dispatch below.
+        // Modals own keys before the document. An unhandled shortcut still falls through.
         if !crate::about::handle_about_key(self, ctx, key_event)
             && !crate::conflict::handle_conflict_key(self, ctx, key_event)
+            && !crate::git::handle_branch_picker_key(self, key_event)
             && !crate::palette::handle_palette_key(self, ctx, key_event)
             && !crate::language_picker::handle_language_picker_key(self, ctx, key_event)
             && !crate::build::handle_build_key(self, ctx, key_event)
@@ -510,6 +508,7 @@ impl PlatformEventHandler for App {
                         self.ui.project.picker = None;
                         self.ui.theme_picker = None;
                         self.ui.snippets.picker = None;
+                        self.ui.git.branch_picker = None;
                         crate::focus::focus_editor(self);
 
                         let pos = self.position_at_mouse();

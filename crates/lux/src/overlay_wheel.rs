@@ -22,6 +22,9 @@ pub(crate) fn scroll_open_overlay(app: &mut App, delta: ScrollDelta) -> bool {
     if scroll_palette(app, delta) {
         return true;
     }
+    if crate::git::branch_picker::scroll_branch_picker(app, delta) {
+        return true;
+    }
     if crate::language_picker::handle_language_picker_scroll(app, delta) {
         return true;
     }
