@@ -227,6 +227,27 @@ pub(crate) fn render_sidebar(
                     glyph_instances,
                 );
             }
+            if let Some(letter) = git_letter(sidebar, row.id) {
+                let label = letter.to_string();
+                let mark = editor_view
+                    .text_layout_mut()
+                    .layout_line(&style, &label, &[]);
+                let mark_x = sidebar_width - stroke - 16.0 * scale_factor;
+                for cluster in mark.clusters() {
+                    push_glyph(
+                        atlas,
+                        atlas_dirty,
+                        scale_cx,
+                        font,
+                        sidebar_font_size,
+                        &cluster,
+                        mark_x,
+                        row_y + baseline + mark.baseline(),
+                        accent,
+                        glyph_instances,
+                    );
+                }
+            }
         }
     }
 
@@ -269,4 +290,9 @@ pub(crate) fn render_sidebar(
             }
         }
     }
+}
+
+fn git_letter(sidebar: &SidebarState, id: lux_ui::file_tree::NodeId) -> Option<char> {
+    let path = sidebar.tree.as_ref()?.node_path(id)?;
+    sidebar.git_marks.get(path).copied()
 }

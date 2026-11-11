@@ -169,6 +169,34 @@ fn switch_branch_checks_out_a_clean_tree() {
 }
 
 #[test]
+fn a_modified_file_marks_itself_and_its_parent() {
+    let files = vec![lux_git::diff_panel::ChangedFile {
+        path: Path::new("src/note.txt").into(),
+        status: lux_git::diff_panel::ChangeStatus::Modified,
+    }];
+    let marks = super::git_mark_map(Path::new("/repo"), &files);
+    assert_eq!(marks.get(Path::new("/repo/src/note.txt")), Some(&'M'));
+    assert_eq!(marks.get(Path::new("/repo/src")), Some(&'M'));
+    assert!(!marks.contains_key(Path::new("/repo")));
+    assert_eq!(super::git_marks_label(&files), "src/note.txt:M");
+}
+
+#[test]
+fn status_copies_the_mark_onto_the_sidebar() {
+    let (dir, file) = note_repo();
+    let mut app = app();
+    app.ui.sidebar = crate::sidebar::SidebarState::open_folder(dir.path().to_path_buf());
+    app.ui.git.repo_root = Some(dir.path().to_path_buf());
+    app.ui.git.changed_files = vec![lux_git::diff_panel::ChangedFile {
+        path: Path::new("note.txt").into(),
+        status: lux_git::diff_panel::ChangeStatus::Modified,
+    }];
+    super::publish_git_marks(&mut app);
+    let marks = &app.ui.sidebar.as_ref().unwrap().git_marks;
+    assert_eq!(marks.get(file.as_path()), Some(&'M'));
+}
+
+#[test]
 fn the_worker_applies_gutter_markers() {
     let (_dir, file) = note_repo();
     let mut app = app();

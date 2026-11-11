@@ -163,8 +163,10 @@ the gutter hunks of that buffer. `Git: Refresh Status`, `View File Diff`,
 `File History` run there too. The status-bar branch, `Git: Switch Branch`,
 and `Git: Create Branch` open the branch list. A checkout runs only when
 the worktree is clean. Creating a branch points `HEAD` at the current
-commit and leaves the files alone. Conflict markers in the buffer still
-resolve in the editor. See `docs/GIT.md`.
+commit and leaves the files alone. `Git: Refresh Status` draws `M`, `A`,
+or `D` on the changed row in the file tree, and the same letter on each
+parent directory. Conflict markers in the buffer still resolve in the
+editor. See `docs/GIT.md`.
 
 Quitting writes the window's position, size, fullscreen or maximized state,
 and monitor into the session (`lux_workspace::WindowFrame`). The next launch

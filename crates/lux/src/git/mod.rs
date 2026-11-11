@@ -3,6 +3,7 @@
 //! Provides gutter change indicators against HEAD, hunk staging/reverting popup,
 //! Source Control sidebar panel, diff views, and inline merge conflict resolution.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use lux_core::buffer::Buffer;
@@ -68,6 +69,57 @@ pub(crate) struct GitState {
 impl GitState {
     pub(crate) fn new() -> Self {
         Self::default()
+    }
+}
+
+/// `M`, `A`, or `D` for each changed path, plus the same letter on every
+/// parent directory under `root`. The repository root itself is unmarked.
+pub(crate) fn git_mark_map(root: &Path, files: &[ChangedFile]) -> HashMap<PathBuf, char> {
+    let mut marks = HashMap::new();
+    for file in files {
+        let letter = match file.status {
+            lux_git::diff_panel::ChangeStatus::Added => 'A',
+            lux_git::diff_panel::ChangeStatus::Modified => 'M',
+            lux_git::diff_panel::ChangeStatus::Deleted => 'D',
+        };
+        let absolute = root.join(&file.path);
+        marks.insert(absolute.clone(), letter);
+        let mut parent = absolute.parent();
+        while let Some(dir) = parent {
+            if dir == root {
+                break;
+            }
+            marks.entry(dir.to_path_buf()).or_insert(letter);
+            parent = dir.parent();
+        }
+    }
+    marks
+}
+
+/// Probe and test label: relative paths, sorted, `path:M`.
+pub(crate) fn git_marks_label(files: &[ChangedFile]) -> String {
+    let mut parts = files
+        .iter()
+        .map(|file| {
+            let letter = match file.status {
+                lux_git::diff_panel::ChangeStatus::Added => 'A',
+                lux_git::diff_panel::ChangeStatus::Modified => 'M',
+                lux_git::diff_panel::ChangeStatus::Deleted => 'D',
+            };
+            format!("{}:{letter}", file.path.display())
+        })
+        .collect::<Vec<_>>();
+    parts.sort();
+    parts.join(",")
+}
+
+pub(crate) fn publish_git_marks(app: &mut App) {
+    let Some(root) = app.ui.git.repo_root.clone() else {
+        return;
+    };
+    let marks = git_mark_map(&root, &app.ui.git.changed_files);
+    if let Some(sidebar) = app.ui.sidebar.as_mut() {
+        sidebar.git_marks = marks;
     }
 }
 
