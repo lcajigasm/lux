@@ -39,8 +39,9 @@ impl App {
         let gpu = pollster::block_on(GpuContext::new(None))
             .expect("a real GPU adapter must be available to run the Lux desktop app");
         eprintln!(
-            "Lux: phase gpu {:.1} ms",
-            phase.elapsed().as_secs_f64() * 1000.0
+            "Lux: phase gpu {:.1} ms backend {:?}",
+            phase.elapsed().as_secs_f64() * 1000.0,
+            gpu.adapter.get_info().backend
         );
         let phase = std::time::Instant::now();
         let surface = Surface::new(&gpu.instance, &gpu.adapter, &gpu.device, window, size)
