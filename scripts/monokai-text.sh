@@ -100,9 +100,97 @@ capture_theme "dracula" "dracula" "$root/themes/Dracula.sublime-color-scheme"
 capture_theme "solarized light" "solarized-light" "$root/themes/Solarized Light.sublime-color-scheme"
 drive_stop
 
+# Lux is done. Sublime and VS Code use the runner account, not the
+# temporary Lux home.
+export HOME="$real_home"
+
+sublime_compare() {
+  local note="$out/sublime.txt"
+  echo "Sublime Text: real window of the same fixture. No PNG means the window did not appear." | tee "$note"
+  export HOMEBREW_NO_AUTO_UPDATE=1
+  export NONINTERACTIVE=1
+  local app="/Applications/Sublime Text.app"
+  if [[ ! -d "$app" ]]; then
+    brew install --cask sublime-text >>"$note" 2>&1 || {
+      echo "Sublime Text window did not appear: brew install --cask sublime-text failed" | tee -a "$note"
+      return 0
+    }
+  fi
+  if ! command -v magick >/dev/null 2>&1; then
+    brew install imagemagick >>"$note" 2>&1 || {
+      echo "imagemagick is not available; the side-by-side will not be written" | tee -a "$note"
+    }
+  fi
+  local subl="$app/Contents/SharedSupport/bin/subl"
+  if [[ ! -x "$subl" ]]; then
+    echo "Sublime Text window did not appear: no subl binary at $subl" | tee -a "$note"
+    return 0
+  fi
+  xattr -dr com.apple.quarantine "$app" || true
+  local pref_dir="$HOME/Library/Application Support/Sublime Text/Packages/User"
+  mkdir -p "$pref_dir"
+  cat > "$pref_dir/Preferences.sublime-settings" << 'JSON'
 {
-  echo "Lux captures are screencapture of the live window."
-  echo "VS Code: attempting a real window. A missing file means it did not appear."
+  "color_scheme": "Monokai.sublime-color-scheme",
+  "font_size": 16,
+  "font_face": "Menlo",
+  "hot_exit": false,
+  "remember_open_files": false,
+  "update_check": false,
+  "ignored_packages": ["Vintage"]
+}
+JSON
+  local lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+  if [[ -x "$lsregister" ]]; then
+    "$lsregister" -f "$app" || true
+  fi
+  # Opening the bundle path does not need a LaunchServices name lookup.
+  open "$app" || true
+  local appeared=0
+  local _
+  for _ in $(seq 1 30); do
+    if swift /tmp/lux-window-id.swift "Sublime Text" >/dev/null 2>&1; then
+      appeared=1
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$appeared" != 1 ]]; then
+    echo "Sublime Text window did not appear" | tee -a "$note"
+    return 0
+  fi
+  "$subl" -n "$fixture" || true
+  sleep 2
+  if ! swift /tmp/lux-window-id.swift "Sublime Text" >/dev/null 2>&1; then
+    echo "Sublime Text window did not appear after opening the fixture" | tee -a "$note"
+    return 0
+  fi
+  local id
+  id="$(swift /tmp/lux-window-id.swift "Sublime Text")"
+  screencapture -l "$id" -o "$out/sublime-monokai.png" || true
+  osascript -e 'tell application "Sublime Text" to quit' >/dev/null 2>&1 || true
+  if [[ ! -s "$out/sublime-monokai.png" ]]; then
+    echo "Sublime Text window did not appear" | tee -a "$note"
+    return 0
+  fi
+  echo "captured $out/sublime-monokai.png" | tee -a "$note"
+  python3 "$root/scripts/monokai_text_pixels.py" \
+    "$out/sublime-monokai.png" "#272822" "#F8F8F2" "$out/sublime-monokai-zoom.png" \
+    >>"$note" 2>&1 || echo "Sublime pixel check did not pass; the PNG is still the real window" | tee -a "$note"
+  if command -v magick >/dev/null 2>&1 && [[ -s "$out/monokai.png" ]]; then
+    magick "$out/monokai.png" "$out/sublime-monokai.png" +append "$out/monokai-side-by-side.png" \
+      || echo "side-by-side was not written" | tee -a "$note"
+    if [[ -s "$out/monokai-side-by-side.png" ]]; then
+      echo "captured $out/monokai-side-by-side.png" | tee -a "$note"
+    fi
+  fi
+}
+
+sublime_compare
+
+{
+  echo "Lux captures are screencapture of the live window at scale 1, plus an 8x crop."
+  echo "VS Code: attempting a real window. A missing PNG means it did not appear."
 } > "$out/vscode.txt"
 
 if ! command -v code >/dev/null 2>&1; then
@@ -133,9 +221,11 @@ if command -v code >/dev/null 2>&1; then
         "$out/vscode-monokai.png" "#272822" "#F8F8F2" "$out/vscode-monokai-zoom.png" \
         >>"$out/vscode.txt" 2>&1 || echo "VS Code pixel check did not pass; the PNG is still the real window" | tee -a "$out/vscode.txt"
     fi
-  else
-    echo "VS Code window did not appear" | tee -a "$out/vscode.txt"
   fi
+fi
+
+if [[ -s "$out/vscode-monokai.png" ]]; then
+  echo "VS Code window captured" | tee -a "$out/vscode.txt"
 else
-  echo "code is not on PATH" | tee -a "$out/vscode.txt"
+  echo "VS Code window did not appear. Delivering Lux Monokai, Dracula, and Solarized Light at 1x with 8x crops, and the Sublime comparison when that window appeared." | tee -a "$out/vscode.txt"
 fi

@@ -108,7 +108,14 @@ def check(path, background, foreground, zoom_path):
     for y in range(height):
         for x in range(width):
             color = pixel(rows, x, y)
-            if near(color, foreground, 8) and spread(color) <= 36:
+            # Grayscale antialiasing pulls a light-theme stem off the
+            # exact foreground. On macos-15 run 42986567243 Solarized
+            # Light's #657b83 had 18 pixels inside 8 and 40 inside 12,
+            # and those 18 had no colored fringe. Dark themes stay in
+            # the hundreds at either tolerance. 16 matches tens of
+            # thousands of near-white chrome pixels, so 12 is the
+            # widest tolerance that still names a stem.
+            if near(color, foreground, 12) and spread(color) <= 36:
                 stems.append((x, y))
     if len(stems) < 20:
         raise SystemExit(f"{path}: found {len(stems)} stem pixels near {foreground}, want >= 20")
