@@ -236,6 +236,15 @@ The 8 ms release ceiling holds. 242 ms to load 100 MB is this VM. There is still
 
 ## macos-15 runner, release Lux.app
 
-`p0-macos.yml` measures the rows below on the free runner. Lux H1 is process start until the first presented frame, median of 10. H3 and H4 are a warm process opening the file on SIGUSR2 until that buffer's first presented frame. H2 is the key event until the next presented frame, p99, on a 20k-line file. H5 is the slowest redraw while a 50k-line file is scrolling. H6 is extra RSS across the 100 MB open. Sublime and Zed, when the free cask installs, are timed only until a window is listed. That clock is not H1. H2 and H5 are not readable from those processes. A missed budget stays in the table and does not fail the job.
+`scripts/p0-perf.sh` on `macos-15` is the H1–H6 measurement. A missed budget is recorded and does not fail the job. Numbers below are copied from [run 42737030748](https://github.com/lcajigasm/lux/actions/runs/42737030748) (`6fe35ab`, 2026-11-10). Nothing in this table is estimated.
 
-The numbers are copied from the performance artifact after the run. This revision does not invent them.
+| Id | What the Lux cell is | Budget | Lux | Comparable with Sublime, Zed, or VS Code? |
+|---|---|---|---|---|
+| H1 | Process start until the first presented frame, median of 10 | < 150 ms | 473.9 ms | No. Sublime and Zed, when the cask installs, are timed only until a window is listed. That is a different clock. On this run Sublime's window did not appear and `open -a Zed` failed. VS Code is not installed by the job. |
+| H2 | Key event until the next presented frame, p99, 20k-line file | < 8 ms | 34.96 ms (n=39) | Not measurable. The other editors do not expose this clock. |
+| H3 | Warm process, SIGUSR2 open of 10 MB until that buffer's first presented frame | < 150 ms | 121.4 ms | Not measurable the same way. |
+| H4 | Same clock for 100 MB | < 1 s | 1249.5 ms | Not measurable the same way. |
+| H5 | Slowest redraw while a 50k-line file is scrolling | no frame > 16 ms | 68.42 ms (n=141) | Not measurable. Frame times stay inside the Lux process. |
+| H6 | Extra RSS across the 100 MB open | < 3× file | 5.25× | Not measured for the other editors. |
+
+H7 is the rule for the table: only a cell that uses the same clock as Lux can be compared. Window-listed time is a real measurement when the window appears, and it is still not H1. H2 and H5 have no equivalent outside the process. VS Code has no row until a run installs it and records a named clock.
