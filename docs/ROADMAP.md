@@ -122,10 +122,10 @@ allows redistribution.
 
 ### 0.3 Text and selectors — hecho
 
-HiDPI frames (`scale_factor > 1`) rasterize grayscale masks and blend them
-with the quad already drawn for that surface. Scale 1 still uses subpixel
-AA for editor text. Selector glyphs are grayscale even at scale 1, so they
-composite on the panel instead of the editor-background uniform. Ligatures
+Text at every scale, including scale 1, rasterizes a grayscale mask and
+blends it with the quad already drawn for that surface. Selector glyphs
+are grayscale too, so they composite on the panel instead of the
+editor-background uniform. Ligatures
 and the SF Mono fallback list were already there. The command palette,
 go-to-file, and theme picker are about 46% of the window, sit below the
 tab bar with a gap, and draw a lifted card (`#414339`), a light rim, a
