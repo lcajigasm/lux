@@ -58,6 +58,9 @@ git -C "$repo" add note.rs
 git -C "$repo" commit -m "base"
 printf 'ONE\ntwo\nTHREE\n' > "$repo/note.rs"
 git -C "$repo" add note.rs
+# gix stores the workdir with symlinks resolved. The opened path has to
+# use that same spelling or the hunk lookup misses the index entry.
+repo="$(cd "$repo" && pwd -P)"
 
 drive_launch "$repo/note.rs"
 for _ in $(seq 1 40); do
@@ -67,11 +70,23 @@ for _ in $(seq 1 40); do
   sleep 0.25
 done
 [[ "$(drive_field active_path)" == "$repo/note.rs" ]] || {
-  echo "note.rs never became active" >&2
+  echo "note.rs never became active (active=$(drive_field active_path))" >&2
   exit 1
 }
-drive_key tap 35 cmd,shift
-sleep 0.35
+opened=0
+for _ in $(seq 1 4); do
+  drive_key tap 35 cmd,shift
+  sleep 0.4
+  drive_dump || true
+  if [[ "$(drive_field palette)" == "1" ]]; then
+    opened=1
+    break
+  fi
+done
+[[ "$opened" == 1 ]] || {
+  echo "palette did not open" >&2
+  exit 1
+}
 drive_key chars "unstage hunk"
 sleep 0.35
 drive_key tap 36 none
@@ -90,6 +105,8 @@ done
   echo "index still has the first hunk or the file was rewritten" >&2
   git -C "$repo" diff --cached -- note.rs >&2 || true
   echo "disk=$(cat "$repo/note.rs")" >&2
+  drive_dump || true
+  echo "palette=$(drive_field palette) dirty=$(drive_field dirty) branch=$(drive_field branch)" >&2
   exit 1
 }
 sleep 0.3
