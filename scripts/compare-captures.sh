@@ -221,9 +221,16 @@ echo "--> Opening the Monokai fixture in Lux and Sublime Text"
 "$bin" "$fixture" >"$log" 2>&1 &
 lux_pid=$!
 echo "--> lux pid $lux_pid"
-# `open` returns once launchd has started the app. `subl` is only used
-# after a window exists, so it does not wait on the first-run socket.
-bound 30 open -a "Sublime Text" || true
+# `open -a` looks the name up in LaunchServices. A cask that just landed
+# in /Applications is often not indexed yet, and the lookup fails with
+# "Unable to find application named Sublime Text". Opening the bundle
+# path does not need that index. `subl` still waits until a window exists.
+app="/Applications/Sublime Text.app"
+lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+if [[ -x "$lsregister" && -d "$app" ]]; then
+  "$lsregister" -f "$app" || true
+fi
+bound 30 open "$app" || true
 
 lux_bounds="$(wait_window lux "$lux_pid")" || {
   echo "Lux did not open a window" >&2
