@@ -309,9 +309,15 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         None => (0, 0),
     };
     out.push_str(&format!(
-        "find={find}\nreplace={replace}\nproject_search={}\nsettings={}\n",
+        "find={find}\nreplace={replace}\nproject_search={}\nsettings={}\nsettings_scroll={}\n",
         u8::from(app.ui.project_search.is_some()),
         u8::from(app.ui.settings.panel.is_some()),
+        app.ui
+            .settings
+            .panel
+            .as_ref()
+            .map(|panel| panel.scroll.round() as i64)
+            .unwrap_or(0),
     ));
     let path = app
         .documents

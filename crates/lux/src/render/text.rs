@@ -192,6 +192,32 @@ pub(crate) fn render_text_lines(
     }
 }
 
+/// Left margin of the digit column, in physical pixels. A digit drawn on
+/// the window edge is clipped by the framebuffer.
+pub(crate) fn gutter_number_pad(scale: f32) -> f32 {
+    (4.0 * scale).max(1.0)
+}
+
+/// Digit column, its left margin, and the lane for the change marker and
+/// fold chevron.
+pub(crate) fn gutter_total_width(digit_width: f32, scale: f32) -> f32 {
+    if digit_width <= 0.0 {
+        0.0
+    } else {
+        digit_width + gutter_number_pad(scale) + 16.0 * scale
+    }
+}
+
+/// Change marker, in the lane to the right of the digits. The gap is at
+/// least one physical pixel so the marker cannot cover a glyph.
+pub(crate) fn gutter_marker_x(sidebar: f32, digit_width: f32, scale: f32) -> f32 {
+    sidebar + gutter_number_pad(scale) + digit_width + (2.0 * scale).max(1.0)
+}
+
+pub(crate) fn gutter_fold_x(sidebar: f32, digit_width: f32, scale: f32) -> f32 {
+    gutter_marker_x(sidebar, digit_width, scale) + 5.0 * scale
+}
+
 /// Opaque gutter. Drawn after the text so a horizontal scroll cannot cover
 /// the line numbers. It does not move with `scroll_x`.
 #[allow(clippy::too_many_arguments)]
@@ -259,7 +285,7 @@ pub(crate) fn render_gutter(
                 font,
                 font_size,
                 &cluster,
-                sidebar_width + 8.0,
+                sidebar_width + gutter_number_pad(stroke),
                 y + line_pad_y + line.number_layout.baseline(),
                 num_color,
                 glyph_instances,
@@ -268,7 +294,7 @@ pub(crate) fn render_gutter(
         }
 
         if line.is_folded || line.is_foldable {
-            let icon_x = sidebar_width + 8.0 + frame.gutter_width + 2.0 * stroke;
+            let icon_x = gutter_fold_x(sidebar_width, frame.gutter_width, stroke);
             let icon_color = if line.is_folded { foreground } else { muted };
             let tri_h = (line_height * 0.40).clamp(5.0 * stroke, 9.0 * stroke);
             let tri_y = y + (line_height - tri_h) / 2.0;
@@ -342,5 +368,29 @@ pub(crate) fn render_carets(
 fn push_quad(out: &mut Vec<QuadInstance>, rect: [f32; 4], color: [f32; 4], bounds: [f32; 4]) {
     if let Some(rect) = clip_rect(rect, bounds) {
         out.push(QuadInstance::solid(rect, color));
+    }
+}
+
+#[cfg(test)]
+mod gutter_layout_tests {
+    use super::*;
+
+    #[test]
+    fn the_digit_column_clears_the_window_edge_and_the_change_marker() {
+        for scale in [1.0_f32, 2.0] {
+            let digits = 14.0 * scale;
+            let pad = gutter_number_pad(scale);
+            assert!(pad >= 1.0, "scale {scale}");
+            let digit_right = pad + digits;
+            let marker = gutter_marker_x(0.0, digits, scale);
+            assert!(
+                marker >= digit_right + 1.0,
+                "scale {scale}: marker {marker} digit_right {digit_right}"
+            );
+            let total = gutter_total_width(digits, scale);
+            assert!(marker + 3.0 * scale <= total);
+            let fold = gutter_fold_x(0.0, digits, scale);
+            assert!(fold >= marker + 3.0 * scale);
+        }
     }
 }

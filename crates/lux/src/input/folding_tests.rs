@@ -197,7 +197,8 @@ fn test_inline_pill_unfold_click() {
     let line_h = crate::app::LINE_HEIGHT * app.scale_factor;
     let digits = app.buffer.len_lines().max(1).to_string().len();
     let gutter_w = app.editor_view.reference_width(&"0".repeat(digits));
-    let text_left = gutter_w + 22.0 * app.scale_factor;
+    let text_left = crate::render::text::gutter_total_width(gutter_w, app.scale_factor)
+        + 6.0 * app.scale_factor;
 
     let content = app.buffer.line_content(0).unwrap_or_default();
     let trimmed = content.trim_end_matches(['\r', '\n']);

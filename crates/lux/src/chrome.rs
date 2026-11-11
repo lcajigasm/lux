@@ -115,7 +115,8 @@ pub(crate) fn handle_mouse_click_on_chrome(
     if button == MouseButton::Left && mouse_y >= app.tab_bar_height() {
         let digits = app.buffer.len_lines().max(1).to_string().len();
         let gutter_w = app.editor_view.reference_width(&"0".repeat(digits));
-        let gutter_end = sidebar_w + gutter_w + 16.0 * app.scale_factor;
+        let gutter_end =
+            sidebar_w + crate::render::text::gutter_total_width(gutter_w, app.scale_factor);
         if mouse_x >= sidebar_w && mouse_x < gutter_end {
             let line_h = app.editor_view.metrics().line_height.max(1.0);
             let visual_line =

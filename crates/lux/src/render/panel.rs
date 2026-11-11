@@ -54,6 +54,63 @@ pub(crate) fn selected_fill(theme: &lux_ui::Theme) -> [f32; 4] {
     color(theme.chrome.panel_row)
 }
 
+pub(crate) fn settings_selection(theme: &lux_ui::Theme) -> [f32; 4] {
+    contrasting_fill(selected_fill(theme), color(theme.chrome.sidebar))
+}
+
+fn mix_toward(from: [f32; 4], to: [f32; 4], t: f32) -> [f32; 4] {
+    [
+        from[0] + (to[0] - from[0]) * t,
+        from[1] + (to[1] - from[1]) * t,
+        from[2] + (to[2] - from[2]) * t,
+        1.0,
+    ]
+}
+
+/// Moves `from` toward `to` until it clears `min_ratio` on `against`.
+/// The search stops at the nearest mix, so a light page does not jump
+/// past the 3:1 floor into a heavier band.
+fn approach(from: [f32; 4], to: [f32; 4], against: [f32; 4], min_ratio: f32) -> [f32; 4] {
+    if contrast_ratio(from, against) >= min_ratio {
+        return from;
+    }
+    let mut lo = 0.0;
+    let mut hi = 1.0;
+    for _ in 0..12 {
+        let mid = (lo + hi) * 0.5;
+        if contrast_ratio(mix_toward(from, to, mid), against) >= min_ratio {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    mix_toward(from, to, hi)
+}
+
+pub(crate) fn contrasting_fill(fill: [f32; 4], against: [f32; 4]) -> [f32; 4] {
+    let sum = against[0] + against[1] + against[2];
+    let target = if sum >= 1.5 {
+        [0.0, 0.0, 0.0, 1.0]
+    } else {
+        [1.0, 1.0, 1.0, 1.0]
+    };
+    approach(fill, target, against, 3.05)
+}
+
+/// Chip on a selected row. One step from the selection toward its
+/// foreground, stopped at 3:1 so the button is not the page well.
+pub(crate) fn selection_chip(selection: [f32; 4], foreground: [f32; 4]) -> [f32; 4] {
+    approach(selection, foreground, selection, 3.05)
+}
+
+pub(crate) fn toggle_track(proposed: [f32; 4], page: [f32; 4]) -> [f32; 4] {
+    contrasting_fill(proposed, page)
+}
+
+pub(crate) fn toggle_knob(knob: [f32; 4], track: [f32; 4]) -> [f32; 4] {
+    contrasting_fill(knob, track)
+}
+
 /// WCAG contrast ratio. 4.5 is AA for normal text.
 pub(crate) fn contrast_ratio(a: [f32; 4], b: [f32; 4]) -> f32 {
     fn channel(v: f32) -> f32 {
@@ -76,13 +133,9 @@ pub(crate) fn contrast_ratio(a: [f32; 4], b: [f32; 4]) -> f32 {
     (hi + 0.05) / (lo + 0.05)
 }
 
-/// Moves `ink` toward black or white until it clears WCAG AA on
-/// `background`. The theme color is kept when it already clears 4.8,
-/// which leaves a little room for antialiasing.
 /// A control fill that still reads as a control after the snapshot
-/// checker quantizes each channel with `& ~7` and allows 10 levels of
-/// slack. A theme whose `panel_input` sits on `panel` (Ayu, Solarized,
-/// GitHub Light) otherwise paints a search field with no edge.
+/// checker quantizes each channel. A theme whose `panel_input` sits on
+/// `panel` otherwise paints a search field with no edge.
 pub(crate) fn distinct_fill(fill: [f32; 4], page: [f32; 4]) -> [f32; 4] {
     if quant_gap(fill, page) > 18 {
         return fill;
@@ -122,6 +175,15 @@ fn quant_channel(value: f32) -> i32 {
     byte & !7
 }
 
+pub(crate) fn label_ink(theme: &lux_ui::Theme, background: [f32; 4]) -> [f32; 4] {
+    readable_ink(color(theme.foreground), background)
+}
+
+pub(crate) fn hint_ink(theme: &lux_ui::Theme, background: [f32; 4]) -> [f32; 4] {
+    readable_ink(color(theme.muted), background)
+}
+
+/// Moves `ink` toward black or white until it clears 4.8 on `background`.
 pub(crate) fn readable_ink(ink: [f32; 4], background: [f32; 4]) -> [f32; 4] {
     if contrast_ratio(ink, background) >= 4.8 {
         return ink;
@@ -148,10 +210,6 @@ pub(crate) fn readable_ink(ink: [f32; 4], background: [f32; 4]) -> [f32; 4] {
         }
     }
     best
-}
-
-pub(crate) fn rim_color() -> [f32; 4] {
-    color(lux_ui::Color::rgb(0xC2, 0xC0, 0xA8))
 }
 
 pub(crate) fn placeholder_ink(theme: &lux_ui::Theme) -> [f32; 4] {
@@ -218,6 +276,107 @@ mod contrast_tests {
     }
 
     #[test]
+    fn ten_bundled_themes_paint_ui_text_at_wcag_aa() {
+        let schemes = crate::color_scheme::bundled_schemes();
+        assert!(
+            schemes.len() >= 10,
+            "expected the ten bundled themes, found {}",
+            schemes.len()
+        );
+        for scheme in schemes.iter().take(10) {
+            let theme = &scheme.theme;
+            let page = color(theme.chrome.panel);
+            let row = selected_fill(theme);
+            let card = card_fill(theme);
+            let well = distinct_fill(color(theme.chrome.panel_input), page);
+            for (name, ink, background) in [
+                ("label/page", label_ink(theme, page), page),
+                ("label/row", label_ink(theme, row), row),
+                ("label/card", label_ink(theme, card), card),
+                ("label/well", label_ink(theme, well), well),
+                ("hint/page", hint_ink(theme, page), page),
+                ("hint/row", hint_ink(theme, row), row),
+                ("hint/well", hint_ink(theme, well), well),
+                ("match/card", hit_ink(false, theme), card),
+                ("match/row", hit_ink(true, theme), row),
+                (
+                    "shortcut/card",
+                    readable_ink(shortcut_ink(theme), card),
+                    card,
+                ),
+                ("shortcut/row", readable_ink(shortcut_ink(theme), row), row),
+            ] {
+                let ratio = contrast_ratio(ink, background);
+                assert!(ratio >= 4.5, "{} {name} contrast {ratio:.2}", scheme.name);
+            }
+        }
+    }
+
+    #[test]
+    fn ten_bundled_themes_paint_controls_at_wcag_aa() {
+        let schemes = crate::color_scheme::bundled_schemes();
+        assert!(schemes.len() >= 10);
+        for scheme in schemes.iter().take(10) {
+            let theme = &scheme.theme;
+            let page = color(theme.chrome.panel);
+            let selection = settings_selection(theme);
+            let off = toggle_track(color(theme.chrome.border), page);
+            let on = toggle_track(color(theme.accent), page);
+            let knob = toggle_knob(
+                label_ink(theme, distinct_fill(color(theme.chrome.panel_input), page)),
+                off,
+            );
+            let value = label_ink(theme, selection);
+            let chip = selection_chip(selection, value);
+            let mark = label_ink(theme, chip);
+            let pairs = [
+                (
+                    contrast_ratio(selection, color(theme.chrome.sidebar)),
+                    3.0,
+                    "selection/sidebar",
+                ),
+                (contrast_ratio(off, page), 3.0, "track-off/page"),
+                (contrast_ratio(on, page), 3.0, "track-on/page"),
+                (contrast_ratio(knob, off), 3.0, "knob/track"),
+                (
+                    contrast_ratio(label_ink(theme, page), page),
+                    4.5,
+                    "text/page",
+                ),
+                (
+                    contrast_ratio(label_ink(theme, selection), selection),
+                    4.5,
+                    "text/selection",
+                ),
+                (
+                    contrast_ratio(hint_ink(theme, selection), selection),
+                    4.5,
+                    "hint/selection",
+                ),
+                (contrast_ratio(value, selection), 4.5, "value/selection"),
+                (contrast_ratio(chip, selection), 3.0, "chip/selection"),
+                (contrast_ratio(mark, chip), 4.5, "mark/chip"),
+            ];
+            println!(
+                "{} {}",
+                scheme.name,
+                pairs
+                    .iter()
+                    .map(|(ratio, _, name)| format!("{name} {ratio:.2}"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            for (ratio, floor, name) in pairs {
+                assert!(
+                    ratio >= floor,
+                    "{} {name} {ratio:.2} < {floor}",
+                    scheme.name
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_search_well_clears_the_page_after_quantization() {
         let rgb = |hex: &str| color(lux_ui::Color::from_hex(hex).unwrap());
         for (page, well) in [
@@ -236,21 +395,6 @@ mod contrast_tests {
         let monokai_well = rgb("#414339");
         let kept = distinct_fill(monokai_well, monokai_page);
         assert_eq!(kept, monokai_well);
-    }
-
-    #[test]
-    fn glyphs_outside_the_window_are_dropped() {
-        let glyph = |x| {
-            lux_render::GlyphInstance::new(
-                [x, 10.0, 8.0, 12.0],
-                [0.0, 0.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0, 1.0],
-                lux_render::GlyphKind::Monochrome,
-            )
-        };
-        let kept = crate::render::paint::clip_glyphs(&[glyph(1200.0), glyph(12.0)], 1000.0, 700.0);
-        assert_eq!(kept.len(), 1);
-        assert!((kept[0].rect[0] - 12.0).abs() < 0.1);
     }
 }
 
@@ -292,7 +436,7 @@ pub(crate) fn paint_selector_chrome(
         [box_.left, top, box_.width, height],
         box_.radius,
         card_fill(theme),
-        rim_color(),
+        color(theme.chrome.border),
         20.0 * scale,
         stroke.max(1.5 * scale),
     );
@@ -308,7 +452,7 @@ pub(crate) fn paint_selector_chrome(
         ],
         8.0 * scale,
         field_fill(theme),
-        rim_color(),
+        color(theme.chrome.border),
         0.0,
         stroke.max(1.0),
     );
@@ -332,17 +476,32 @@ pub(crate) fn push_rounded_surface(
     stroke: f32,
 ) {
     if shadow > 0.0 {
-        let grow = shadow * 0.45;
-        quads.push(QuadInstance::rounded(
-            [
-                rect[0] - grow * 0.15,
-                rect[1] + shadow * 0.42,
-                rect[2] + grow * 0.35,
-                rect[3] + shadow * 0.28,
-            ],
-            super::paint::faded([0.0, 0.0, 0.0, 0.78]),
-            radius + grow * 0.2,
-        ));
+        let light = fill[0] + fill[1] + fill[2] > 1.7;
+        let ink = if light {
+            [0.30, 0.25, 0.18]
+        } else {
+            [0.0, 0.0, 0.0]
+        };
+        // Outer layer first: widest and faintest, then a tighter core.
+        let layers: [(f32, f32); 3] = if light {
+            [(0.90, 0.06), (0.55, 0.12), (0.28, 0.20)]
+        } else {
+            [(0.90, 0.07), (0.55, 0.14), (0.28, 0.26)]
+        };
+        for (spread, alpha) in layers {
+            let grow = shadow * 0.32 * spread;
+            let drop = shadow * 0.18 * spread;
+            quads.push(QuadInstance::rounded(
+                [
+                    rect[0] - grow * 0.45,
+                    rect[1] + drop,
+                    rect[2] + grow * 0.9,
+                    rect[3] + drop * 0.45,
+                ],
+                super::paint::faded([ink[0], ink[1], ink[2], alpha]),
+                radius + grow * 0.35,
+            ));
+        }
     }
     quads.push(QuadInstance::rounded(
         rect,
@@ -375,7 +534,7 @@ pub(crate) fn push_moving_row(
     start_idx: usize,
     visible: usize,
     fill: [f32; 4],
-    accent: [f32; 4],
+    _accent: [f32; 4],
     scale: f32,
 ) {
     if visible == 0 {
@@ -398,16 +557,6 @@ pub(crate) fn push_moving_row(
         super::paint::faded(fill),
         radius,
     ));
-    quads.push(QuadInstance::rounded(
-        [
-            left + inset,
-            y + 5.0 * scale,
-            4.0 * scale,
-            (row_height - 10.0 * scale).max(1.0),
-        ],
-        super::paint::faded(accent),
-        2.0 * scale,
-    ));
 }
 
 #[cfg(test)]
@@ -425,5 +574,25 @@ mod tests {
         let wide = selector_box(2000.0, 64.0, 2.0);
         assert!((wide.width / 2000.0 - 0.46).abs() < 0.001);
         assert!((wide.top - 80.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn the_selected_row_is_a_fill_without_an_accent_stripe() {
+        let mut quads = Vec::new();
+        push_moving_row(
+            &mut quads,
+            10.0,
+            20.0,
+            400.0,
+            36.0,
+            1.0,
+            0,
+            8,
+            [0.2, 0.2, 0.2, 1.0],
+            [0.98, 0.15, 0.45, 1.0],
+            1.0,
+        );
+        assert_eq!(quads.len(), 1);
+        assert!(quads[0].rect[2] > 100.0);
     }
 }

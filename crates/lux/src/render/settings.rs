@@ -8,7 +8,7 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::render::paint::{color, overlay_text, push_glyph};
-use crate::render::panel::selected_fill;
+use crate::render::panel::settings_selection;
 use crate::settings::layout::{
     ControlGeom, SettingsBounds, SettingsLayout, format_number, layout_settings,
 };
@@ -45,9 +45,14 @@ pub(crate) fn render_settings_panel(
     let scale = layout.scale;
     let page_fill = color(theme.chrome.panel);
     let border = color(theme.chrome.border);
-    let foreground = super::panel::readable_ink(color(theme.foreground), page_fill);
-    let muted = color(theme.muted);
+    let row_fill = settings_selection(theme);
     let well = super::panel::distinct_fill(color(theme.chrome.panel_input), page_fill);
+    let label_on_page = super::panel::label_ink(theme, page_fill);
+    let hint_on_page = super::panel::hint_ink(theme, page_fill);
+    let label_on_row = super::panel::label_ink(theme, row_fill);
+    let hint_on_row = super::panel::hint_ink(theme, row_fill);
+    let label_on_well = super::panel::label_ink(theme, well);
+    let hint_on_well = super::panel::hint_ink(theme, well);
     let on_track = color(theme.accent);
 
     quad_instances.push(QuadInstance::solid(
@@ -71,7 +76,7 @@ pub(crate) fn render_settings_panel(
         "Settings",
         layout.title_x,
         layout.title_y,
-        foreground,
+        label_on_page,
         glyph_instances,
     );
     draw_line(
@@ -81,11 +86,11 @@ pub(crate) fn render_settings_panel(
         scale_cx,
         font,
         &family,
-        12.0 * scale,
+        13.0 * scale,
         "Type to search  ·  Esc closes  ·  ← → changes the control",
         layout.hint_x,
         layout.hint_y,
-        muted,
+        hint_on_page,
         glyph_instances,
     );
 
@@ -103,11 +108,12 @@ pub(crate) fn render_settings_panel(
         if index == panel.category && panel.query.is_empty() {
             quad_instances.push(QuadInstance::rounded(
                 [rect.x, rect.y, rect.w, rect.h],
-                selected_fill(theme),
+                row_fill,
                 6.0 * scale,
             ));
         }
         let name = names.get(index).copied().unwrap_or("");
+        let pill = index == panel.category && panel.query.is_empty();
         draw_line(
             editor_view,
             atlas,
@@ -119,10 +125,12 @@ pub(crate) fn render_settings_panel(
             name,
             rect.x + 10.0 * scale,
             rect.y + (rect.h - 13.0 * scale) * 0.5,
-            if index == panel.category {
-                foreground
+            if pill {
+                label_on_row
+            } else if index == panel.category {
+                label_on_page
             } else {
-                muted
+                hint_on_page
             },
             glyph_instances,
         );
@@ -154,16 +162,16 @@ pub(crate) fn render_settings_panel(
         layout.search.x + 10.0 * scale,
         layout.search.y + (layout.search.h - 13.0 * scale) * 0.5,
         if panel.query.is_empty() {
-            muted
+            hint_on_well
         } else {
-            foreground
+            label_on_well
         },
         glyph_instances,
     );
     if let Some(bar) = layout.scrollbar {
         quad_instances.push(QuadInstance::rounded(
             [bar.x, bar.y, bar.w, bar.h],
-            muted,
+            hint_on_page,
             bar.w * 0.5,
         ));
     }
@@ -174,7 +182,7 @@ pub(crate) fn render_settings_panel(
         {
             quad_instances.push(QuadInstance::rounded(
                 [selection.x, selection.y, selection.w, selection.h],
-                selected_fill(theme),
+                row_fill,
                 8.0 * scale,
             ));
         }
@@ -182,6 +190,7 @@ pub(crate) fn render_settings_panel(
             continue;
         }
         let item = &panel.items[row.index];
+        let selected = row.index == panel.selected_index;
         draw_line(
             editor_view,
             atlas,
@@ -193,7 +202,11 @@ pub(crate) fn render_settings_panel(
             item.label,
             row.label.x,
             row.label.y,
-            foreground,
+            if selected {
+                label_on_row
+            } else {
+                label_on_page
+            },
             glyph_instances,
         );
         draw_line(
@@ -203,11 +216,11 @@ pub(crate) fn render_settings_panel(
             scale_cx,
             font,
             &family,
-            11.5 * scale,
+            13.0 * scale,
             item.description,
             row.description.x,
             row.description.y,
-            muted,
+            if selected { hint_on_row } else { hint_on_page },
             glyph_instances,
         );
         paint_control(
@@ -220,11 +233,14 @@ pub(crate) fn render_settings_panel(
             font,
             &family,
             scale,
-            foreground,
-            muted,
+            label_on_well,
+            hint_on_well,
             well,
             border,
             on_track,
+            page_fill,
+            if selected { Some(row_fill) } else { None },
+            theme,
             quad_instances,
             glyph_instances,
         );
@@ -241,7 +257,7 @@ pub(crate) fn render_settings_panel(
             scale_cx,
             font,
             &family,
-            foreground,
+            label_on_well,
             well,
             border,
             theme,
@@ -267,12 +283,17 @@ fn paint_control(
     well: [f32; 4],
     border: [f32; 4],
     on_track: [f32; 4],
+    page: [f32; 4],
+    on_selection: Option<[f32; 4]>,
+    theme: &lux_ui::Theme,
     quads: &mut Vec<QuadInstance>,
     glyphs: &mut Vec<GlyphInstance>,
 ) {
+    let paint = selected_control_colors(theme, on_selection, foreground, muted, well, border);
     match (kind, geom) {
         (SettingKind::Boolean { value }, ControlGeom::Toggle { track, knob }) => {
-            let fill = if *value { on_track } else { border };
+            let fill = super::panel::toggle_track(if *value { on_track } else { border }, page);
+            let knob_fill = super::panel::toggle_knob(foreground, fill);
             quads.push(QuadInstance::rounded(
                 [track.x, track.y, track.w, track.h],
                 fill,
@@ -280,7 +301,7 @@ fn paint_control(
             ));
             quads.push(QuadInstance::rounded(
                 [knob.x, knob.y, knob.w, knob.h],
-                foreground,
+                knob_fill,
                 knob.h * 0.5,
             ));
         }
@@ -292,8 +313,8 @@ fn paint_control(
                 plus,
             },
         ) => {
-            paint_button(*minus, well, border, scale, quads);
-            paint_button(*plus, well, border, scale, quads);
+            paint_button(*minus, paint.chip, paint.edge, scale, quads);
+            paint_button(*plus, paint.chip, paint.edge, scale, quads);
             centered(
                 editor_view,
                 atlas,
@@ -304,7 +325,7 @@ fn paint_control(
                 13.0 * scale,
                 &format_number(*value),
                 *well_rect,
-                foreground,
+                paint.value,
                 glyphs,
             );
             centered(
@@ -317,7 +338,7 @@ fn paint_control(
                 16.0 * scale,
                 "−",
                 *minus,
-                foreground,
+                paint.mark,
                 glyphs,
             );
             centered(
@@ -330,12 +351,12 @@ fn paint_control(
                 16.0 * scale,
                 "+",
                 *plus,
-                foreground,
+                paint.mark,
                 glyphs,
             );
         }
         (SettingKind::Enum { value, .. }, ControlGeom::Menu { button }) => {
-            paint_button(*button, well, border, scale, quads);
+            paint_button(*button, paint.chip, paint.edge, scale, quads);
             draw_line(
                 editor_view,
                 atlas,
@@ -347,7 +368,11 @@ fn paint_control(
                 value,
                 button.x + 12.0 * scale,
                 button.y + (button.h - 13.0 * scale) * 0.5,
-                foreground,
+                if on_selection.is_some() {
+                    paint.mark
+                } else {
+                    paint.value
+                },
                 glyphs,
             );
             draw_line(
@@ -357,15 +382,54 @@ fn paint_control(
                 scale_cx,
                 font,
                 family,
-                11.0 * scale,
+                13.0 * scale,
                 "▾",
                 button.right() - 18.0 * scale,
-                button.y + (button.h - 11.0 * scale) * 0.5,
-                muted,
+                button.y + (button.h - 13.0 * scale) * 0.5,
+                paint.caret,
                 glyphs,
             );
         }
         _ => {}
+    }
+}
+
+struct ControlPaint {
+    value: [f32; 4],
+    chip: [f32; 4],
+    edge: [f32; 4],
+    mark: [f32; 4],
+    caret: [f32; 4],
+}
+
+/// Value ink sits on the selection. The chip fill and its − / + marks
+/// sit on each other. An unselected row keeps the page well.
+fn selected_control_colors(
+    theme: &lux_ui::Theme,
+    on_selection: Option<[f32; 4]>,
+    foreground: [f32; 4],
+    muted: [f32; 4],
+    well: [f32; 4],
+    border: [f32; 4],
+) -> ControlPaint {
+    let Some(selection) = on_selection else {
+        return ControlPaint {
+            value: foreground,
+            chip: well,
+            edge: border,
+            mark: foreground,
+            caret: muted,
+        };
+    };
+    let value = super::panel::label_ink(theme, selection);
+    let chip = super::panel::selection_chip(selection, value);
+    let mark = super::panel::label_ink(theme, chip);
+    ControlPaint {
+        value,
+        chip,
+        edge: value,
+        mark,
+        caret: mark,
     }
 }
 
@@ -432,7 +496,7 @@ fn paint_menu(
                     rect.w,
                     (rect.h - 2.0 * scale).max(1.0),
                 ],
-                selected_fill(theme),
+                settings_selection(theme),
                 5.0 * scale,
             ));
         }
@@ -447,7 +511,11 @@ fn paint_menu(
             option,
             rect.x + 8.0 * scale,
             rect.y + (rect.h - 13.0 * scale) * 0.5,
-            foreground,
+            if highlight == Some(index) {
+                super::panel::label_ink(theme, settings_selection(theme))
+            } else {
+                foreground
+            },
             glyphs,
         );
     }

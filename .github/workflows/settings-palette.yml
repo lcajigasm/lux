@@ -1,0 +1,38 @@
+name: Settings palette
+
+# Settings scroll, ten live theme switches, and a restart on macos-15.
+# The screenshots are the compiled app.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  settings:
+    name: settings palette (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Settings, themes, and palette
+        run: |
+          chmod +x scripts/settings-e2e.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/settings-e2e.sh
+
+      - name: Upload settings and palette captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: settings-palette
+          path: docs/evidence/settings/**
+          if-no-files-found: warn

@@ -212,7 +212,8 @@ fn render_single_pane(
         Some(fold_state),
     );
 
-    let gutter_total_width = frame.gutter_width + 16.0 * params.scale_factor;
+    let gutter_total_width =
+        super::text::gutter_total_width(frame.gutter_width, params.scale_factor);
     let text_left = px + gutter_total_width + 6.0 * params.scale_factor;
     let text_bounds = [text_left, py, (px + pw - text_left).max(0.0), ph];
 

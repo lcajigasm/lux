@@ -93,7 +93,7 @@ pub(crate) fn render_gutter_markers(
         return;
     }
     let marker_w = 3.0 * scale_factor;
-    let marker_x = sidebar_width + gutter_width + 1.0 * scale_factor;
+    let marker_x = super::text::gutter_marker_x(sidebar_width, gutter_width, scale_factor);
 
     for marker in markers {
         let line_0 = marker.line.saturating_sub(1);
@@ -131,7 +131,7 @@ pub(crate) fn render_hunk_popup(
 ) {
     let card_w = 260.0 * scale_factor;
     let card_h = 56.0 * scale_factor;
-    let card_x = sidebar_width + gutter_width + 16.0 * scale_factor;
+    let card_x = sidebar_width + super::text::gutter_total_width(gutter_width, scale_factor);
     let card_y = (editor_top + popup.line_index.saturating_sub(1) as f32 * line_height - scroll_y)
         .max(editor_top + 4.0);
 

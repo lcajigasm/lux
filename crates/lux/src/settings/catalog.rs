@@ -37,7 +37,7 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
 
     vec![
         number(
-            "Text",
+            "Editor",
             "editor.fontSize",
             "Font Size",
             "Typeface size in points (10 to 24)",
@@ -45,7 +45,7 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             &[10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 18.0, 20.0, 24.0],
         ),
         number(
-            "Text",
+            "Editor",
             "editor.lineHeight",
             "Line Height",
             "Multiplier of font size (1.2 to 2.0)",
@@ -53,14 +53,14 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             &[1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0],
         ),
         boolean(
-            "Text",
+            "Editor",
             "editor.fontLigatures",
             "Font Ligatures",
             "Enable or disable programming ligatures",
             font_ligatures,
         ),
         number(
-            "Editing",
+            "Editor",
             "editor.tabWidth",
             "Tab Size",
             "Number of columns a tab character occupies",
@@ -68,7 +68,7 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             &[2.0, 4.0, 8.0],
         ),
         enumeration(
-            "Editing",
+            "Editor",
             "editor.indentStyle",
             "Indent Style",
             "Indentation character (space or tab)",
@@ -76,35 +76,14 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             &["space", "tab"],
         ),
         boolean(
-            "Editing",
-            "editor.trimTrailingWhitespace",
-            "Trim Trailing Whitespace",
-            "Remove whitespace at end of lines on save",
-            trim_ws,
-        ),
-        boolean(
-            "Editing",
-            "editor.trimTrailingWhitespacePreserveCursor",
-            "Preserve Whitespace On Caret",
-            "Keep trailing whitespace on lines with active cursors",
-            preserve_cursor,
-        ),
-        boolean(
-            "Editing",
-            "editor.insertFinalNewline",
-            "Insert Final Newline",
-            "Ensure file ends with a trailing newline",
-            final_nl,
-        ),
-        boolean(
-            "Editing",
+            "Editor",
             "editor.wordWrap",
             "Word Wrap",
             "Wrap lines exceeding the viewport",
             word_wrap,
         ),
         number(
-            "Editing",
+            "Editor",
             "editor.distractionFreeColumnWidth",
             "Distraction Free Column Width",
             "Character width of centered text in distraction free mode",
@@ -112,7 +91,7 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             &[72.0, 80.0, 90.0, 100.0, 120.0],
         ),
         enumeration(
-            "Workbench",
+            "Appearance",
             "workbench.colorTheme",
             "Color Theme",
             "Visual color palette. \"system\" follows the OS appearance",
@@ -120,12 +99,43 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             crate::color_scheme::theme_setting_options(),
         ),
         enumeration(
-            "Workbench",
+            "Keys",
             "workbench.keymap",
             "Keymap Preset",
             "Keyboard shortcut mapping profile",
             keymap,
             &["sublime", "vscode", "jetbrains"],
+        ),
+        boolean(
+            "Files",
+            "editor.trimTrailingWhitespace",
+            "Trim Trailing Whitespace",
+            "Remove whitespace at end of lines on save",
+            trim_ws,
+        ),
+        boolean(
+            "Files",
+            "editor.trimTrailingWhitespacePreserveCursor",
+            "Preserve Whitespace On Caret",
+            "Keep trailing whitespace on lines with active cursors",
+            preserve_cursor,
+        ),
+        boolean(
+            "Files",
+            "editor.insertFinalNewline",
+            "Insert Final Newline",
+            "Ensure file ends with a trailing newline",
+            final_nl,
+        ),
+        info(
+            "Git",
+            "Git",
+            "Gutter, status, diff, stage, commit, blame, and history are palette commands",
+        ),
+        info(
+            "CLI",
+            "lux command",
+            "Install or remove the lux command from the palette. It is this app's binary",
         ),
     ]
 }
@@ -160,6 +170,16 @@ fn boolean(
         label,
         description,
         kind: SettingKind::Boolean { value },
+    }
+}
+
+fn info(category: &'static str, label: &'static str, description: &'static str) -> SettingItem {
+    SettingItem {
+        category,
+        key: "",
+        label,
+        description,
+        kind: SettingKind::Info,
     }
 }
 

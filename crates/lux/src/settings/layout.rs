@@ -10,7 +10,7 @@ const HEADER: f32 = 56.0;
 const SIDEBAR_W: f32 = 188.0;
 const SEARCH_H: f32 = 32.0;
 const CAT_H: f32 = 34.0;
-const ROW: f32 = 64.0;
+const ROW: f32 = 72.0;
 const GAP: f32 = 8.0;
 const CONTROL_H: f32 = 30.0;
 const TOGGLE_H: f32 = 24.0;
@@ -94,6 +94,7 @@ pub(crate) enum ControlGeom {
     Menu {
         button: Rect,
     },
+    None,
 }
 
 #[derive(Clone, Debug)]
@@ -249,7 +250,7 @@ pub(crate) fn layout_settings(
             x: label.x,
             y: label.bottom() + s(4.0),
             w: label.w,
-            h: s(16.0),
+            h: s(18.0),
         };
         let selection = Rect {
             x: page.x + s(SEL_INSET),
@@ -295,6 +296,18 @@ pub(crate) fn layout_settings(
 
 fn control_geom(kind: &SettingKind, row: Rect, body: Rect, scale: f32) -> (Rect, ControlGeom) {
     let s = |logical: f32| logical * scale;
+    if matches!(kind, SettingKind::Info) {
+        let height = s(CONTROL_H);
+        return (
+            Rect {
+                x: body.right(),
+                y: row.y + (row.h - height) * 0.5,
+                w: 0.0,
+                h: height,
+            },
+            ControlGeom::None,
+        );
+    }
     let height = match kind {
         SettingKind::Boolean { .. } => s(TOGGLE_H),
         _ => s(CONTROL_H),
@@ -303,6 +316,7 @@ fn control_geom(kind: &SettingKind, row: Rect, body: Rect, scale: f32) -> (Rect,
         SettingKind::Boolean { .. } => s(46.0),
         SettingKind::Number { .. } => s(156.0),
         SettingKind::Enum { .. } => s(196.0),
+        SettingKind::Info => 0.0,
     };
     let control = Rect {
         x: body.right() - width,
@@ -355,6 +369,7 @@ fn control_geom(kind: &SettingKind, row: Rect, body: Rect, scale: f32) -> (Rect,
             }
         }
         SettingKind::Enum { .. } => ControlGeom::Menu { button: control },
+        SettingKind::Info => ControlGeom::None,
     };
     (control, geom)
 }
