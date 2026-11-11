@@ -58,11 +58,11 @@ is 1×, so Sublime is not in the scale-2 file. Block 0 is closed.
    `theme.foreground` against that fill. Git added/removed colors and
    diagnostic red/amber stay semantic.
 
-3. **HiDPI glyphs are grayscale masks.** When `scale_factor` is above 1,
-   rasterization uses `TextRenderingMode::Grayscale`. Quads are drawn
+3. **Glyphs are grayscale masks at every scale.** Rasterization uses
+   `TextRenderingMode::Grayscale`, including scale 1. Quads are drawn
    first, so the mask blends with the surface already in the framebuffer.
-   Scale 1 still uses subpixel AA. Hinting is unchanged. A cluster paints
-   every glyph parley produced, including a combining mark.
+   Hinting is unchanged. A cluster paints every glyph parley produced,
+   including a combining mark.
 
 4. **Selectors are rounded and move.** The command palette, goto, theme
    picker, and completion list draw a shadowed rounded surface (radius 0
@@ -122,10 +122,10 @@ allows redistribution.
 
 ### 0.3 Text and selectors — hecho
 
-HiDPI frames (`scale_factor > 1`) rasterize grayscale masks and blend them
-with the quad already drawn for that surface. Scale 1 still uses subpixel
-AA for editor text. Selector glyphs are grayscale even at scale 1, so they
-composite on the panel instead of the editor-background uniform. Ligatures
+Text at every scale, including scale 1, rasterizes a grayscale mask and
+blends it with the quad already drawn for that surface. Selector glyphs
+are grayscale too, so they composite on the panel instead of the
+editor-background uniform. Ligatures
 and the SF Mono fallback list were already there. The command palette,
 go-to-file, and theme picker are about 46% of the window, sit below the
 tab bar with a gap, and draw a lifted card (`#414339`), a light rim, a

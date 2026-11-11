@@ -1,0 +1,38 @@
+name: Monokai text
+
+# Real Lux window on macos-15. Grayscale stems must not carry an LCD
+# color fringe. The zoom PNGs are nearest-neighbor crops of that capture.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  monokai:
+    name: monokai text (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Capture text and check pixels
+        run: |
+          chmod +x scripts/monokai-text.sh scripts/monokai_text_pixels.py scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/monokai-text.sh
+
+      - name: Upload text captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monokai-text
+          path: docs/evidence/monokai-text/**
+          if-no-files-found: warn

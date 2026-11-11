@@ -22,7 +22,8 @@
 > choice is written back to that setting. An untitled buffer stays Plain
 > Text until a language is chosen or the file is saved with an extension.
 > Sublime's own minimap, breadcrumb, and lighter status chrome are
-> not copied. HiDPI text uses grayscale antialiasing when `scale_factor > 1`.
+> not copied. Text is a grayscale mask at every display scale, including
+> scale 1. The 1× capture used to paint LCD fringes beside `#F8F8F2`.
 > The job logged `display scale 1`, so the PNG does not prove Retina.
 > Confirming a theme reloads settings. `editor.lineHeight` below 8 is a
 > multiplier of the font size (the default 1.4 is not 1.4 pixels). The

@@ -420,4 +420,38 @@ mod tests {
         assert!(theme_setting_options().contains(&"One Dark"));
         assert!(theme_setting_options().contains(&"monokai"));
     }
+
+    #[test]
+    fn bundled_monokai_uses_the_official_palette() {
+        let loaded = bundled_monokai();
+        assert_eq!(
+            (
+                loaded.theme.background.r,
+                loaded.theme.background.g,
+                loaded.theme.background.b,
+                loaded.theme.background.a
+            ),
+            (0x27, 0x28, 0x22, 0xFF)
+        );
+        assert_eq!(
+            (
+                loaded.theme.foreground.r,
+                loaded.theme.foreground.g,
+                loaded.theme.foreground.b,
+                loaded.theme.foreground.a
+            ),
+            (0xF8, 0xF8, 0xF2, 0xFF)
+        );
+        let scope = |name: &str| {
+            let color = loaded.syntax.color_for_scope(name);
+            (color.r, color.g, color.b)
+        };
+        assert_eq!(scope("keyword"), (0xF9, 0x26, 0x72));
+        assert_eq!(scope("function"), (0xA6, 0xE2, 0x2E));
+        assert_eq!(scope("type"), (0x66, 0xD9, 0xEF));
+        assert_eq!(scope("string"), (0xE6, 0xDB, 0x74));
+        assert_eq!(scope("constant"), (0xAE, 0x81, 0xFF));
+        assert_eq!(scope("parameter"), (0xFD, 0x97, 0x1F));
+        assert_eq!(scope("comment"), (0x75, 0x71, 0x5E));
+    }
 }

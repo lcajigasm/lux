@@ -48,15 +48,16 @@ pub(crate) fn faded(color: [f32; 4]) -> [f32; 4] {
     }
 }
 
-/// Retina and other HiDPI framebuffers (`scale_factor > 1`) rasterize
-/// grayscale masks. Those masks blend with the quads already in the
-/// framebuffer. Scale 1 keeps subpixel AA against the editor background.
-pub(crate) fn rendering_mode_for_scale(scale_factor: f32) -> TextRenderingMode {
-    if scale_factor > 1.0 {
-        TextRenderingMode::Grayscale
-    } else {
-        TextRenderingMode::Subpixel
-    }
+/// Every scale rasterizes grayscale masks and blends them with the quad
+/// already in the framebuffer.
+///
+/// LCD subpixel masks were the scale-1 path. On the 1× macos-15 capture
+/// (`docs/compare/monokai-side-by-side.png`, run 41348580486) a near-white
+/// stem `#F8F8F2` is flanked by `(133, 89, 38)` and `(153, 202, 234)`.
+/// Sublime's stem in the same file steps through neutral grays only.
+/// macOS, VS Code, Zed, and Sublime do not paint LCD fringes.
+pub(crate) fn rendering_mode_for_scale(_scale_factor: f32) -> TextRenderingMode {
+    TextRenderingMode::Grayscale
 }
 
 pub(crate) fn set_hidpi_grayscale(scale_factor: f32) {
@@ -83,15 +84,13 @@ pub(crate) fn active_theme() -> lux_ui::Theme {
 }
 
 fn text_mode() -> TextRenderingMode {
-    if GRAYSCALE_TEXT.with(|cell| cell.get()) {
-        TextRenderingMode::Grayscale
-    } else {
-        TextRenderingMode::Subpixel
-    }
+    // Scale 1 used to request an LCD subpixel mask. That mask paints the
+    // colored fringe measured on the 1× capture, so every glyph is grayscale.
+    TextRenderingMode::Grayscale
 }
 
 /// Selector glyphs composite against the panel already in the framebuffer.
-/// Scale-1 editor text stays subpixel; this guard covers only the overlay.
+/// Editor text is grayscale too; this guard covers only the overlay.
 pub(crate) struct OverlayText {
     previous: bool,
 }
@@ -507,10 +506,10 @@ mod tests {
     use lux_render::TextRenderingMode;
 
     #[test]
-    fn retina_scale_uses_grayscale_and_scale_one_stays_subpixel() {
+    fn every_scale_rasterizes_grayscale_text() {
         assert_eq!(rendering_mode_for_scale(2.0), TextRenderingMode::Grayscale);
         assert_eq!(rendering_mode_for_scale(1.5), TextRenderingMode::Grayscale);
-        assert_eq!(rendering_mode_for_scale(1.0), TextRenderingMode::Subpixel);
+        assert_eq!(rendering_mode_for_scale(1.0), TextRenderingMode::Grayscale);
     }
 
     #[test]
