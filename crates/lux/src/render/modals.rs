@@ -56,10 +56,11 @@ pub(crate) fn render_all_modals(
         super::branch_picker::render_branch_picker(
             picker,
             window_width,
+            window_height,
             tab_bar_height,
+            status_bar_height,
             scale_factor,
             stroke,
-            font_size,
             font,
             editor_view,
             atlas,
