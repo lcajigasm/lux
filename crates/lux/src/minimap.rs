@@ -9,6 +9,8 @@ pub(crate) const MINIMAP_ROW_HEIGHT: f32 = 3.0;
 pub(crate) struct MinimapState {
     pub(crate) inner: Minimap,
     pub(crate) width: f32,
+    pub(crate) edited_line: Option<usize>,
+    pub(crate) model: lux_ui::minimap::MinimapModel,
 }
 
 impl Default for MinimapState {
@@ -16,6 +18,8 @@ impl Default for MinimapState {
         Self {
             inner: Minimap::new(),
             width: MINIMAP_WIDTH,
+            edited_line: None,
+            model: lux_ui::minimap::MinimapModel::default(),
         }
     }
 }
