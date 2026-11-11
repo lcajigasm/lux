@@ -58,11 +58,11 @@ is 1×, so Sublime is not in the scale-2 file. Block 0 is closed.
    `theme.foreground` against that fill. Git added/removed colors and
    diagnostic red/amber stay semantic.
 
-3. **HiDPI glyphs are grayscale masks.** When `scale_factor` is above 1,
-   rasterization uses `TextRenderingMode::Grayscale`. Quads are drawn
+3. **Glyphs are grayscale masks at every scale.** Rasterization uses
+   `TextRenderingMode::Grayscale`, including scale 1. Quads are drawn
    first, so the mask blends with the surface already in the framebuffer.
-   Scale 1 still uses subpixel AA. Hinting is unchanged. A cluster paints
-   every glyph parley produced, including a combining mark.
+   Hinting is unchanged. A cluster paints every glyph parley produced,
+   including a combining mark.
 
 4. **Selectors are rounded and move.** The command palette, goto, theme
    picker, and completion list draw a shadowed rounded surface (radius 0
