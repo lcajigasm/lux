@@ -257,6 +257,7 @@ pub(crate) fn poll(app: &mut App) {
                 app.ui.git.repo_root = Some(shot.root);
                 app.ui.git.branch_name = shot.branch;
                 app.ui.git.changed_files = shot.files;
+                super::publish_git_marks(app);
                 app.scheduler.invalidate_all();
             }
             Event::Text { title, body } => {
