@@ -1,6 +1,5 @@
-//! Frame drawing: window/GPU setup and the actual per-frame draw calls.
-//! Kept apart from `crate::app`'s event handling only to stay under the
-//! 600-line file limit — this is still `impl App`, just in its own file.
+//! Frame drawing: window/GPU setup and the per-frame draw calls.
+//! Split from `crate::app` so this `impl App` stays under the 600-line limit.
 
 mod about;
 mod branch_picker;
