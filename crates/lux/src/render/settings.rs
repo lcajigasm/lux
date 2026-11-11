@@ -500,6 +500,7 @@ fn paint_menu(
                 5.0 * scale,
             ));
         }
+        super::theme_sample::paint_bundled(option, *rect, scale, quads);
         draw_line(
             editor_view,
             atlas,
