@@ -6,7 +6,6 @@ use lux_platform::event::KeyEvent;
 use lux_platform::{Key, NamedKey};
 
 use crate::field::QueryField;
-use crate::render::panel::{self, SelectorBox};
 
 #[derive(Clone)]
 pub(crate) struct BranchPicker {
@@ -129,7 +128,7 @@ pub(crate) fn handle_branch_picker_click(
         return false;
     };
     let rows = picker.rows();
-    let card = card(app, picker.selected_index, rows.len());
+    let card = list_frame(app, picker.selected_index, rows.len());
     let inside = mouse_x >= card.left
         && mouse_x <= card.left + card.width
         && mouse_y >= card.top
@@ -140,7 +139,7 @@ pub(crate) fn handle_branch_picker_click(
     }
     if mouse_y >= card.rows_top && card.row_height > 0.0 {
         let display = ((mouse_y - card.rows_top) / card.row_height) as usize;
-        let index = card.start + display;
+        let index = card.origin + display;
         if display < card.visible && index < rows.len() {
             if let Some(picker) = app.ui.git.branch_picker.as_mut() {
                 picker.selected_index = index;
@@ -159,62 +158,35 @@ pub(crate) fn scroll_branch_picker(
         return false;
     };
     let total = picker.rows().len();
-    let steps = match delta {
-        lux_platform::ScrollDelta::Lines { y, .. } => (-y).round() as isize,
-        lux_platform::ScrollDelta::Pixels(position) => {
-            if position.y.abs() < 16.0 {
-                0
-            } else {
-                -position.y.signum() as isize
-            }
-        }
-    };
+    let steps = crate::overlay_list::wheel_steps(7, delta, app.scale_factor);
     if steps == 0 || total == 0 {
         return true;
     }
     if let Some(picker) = app.ui.git.branch_picker.as_mut() {
-        let next = picker.selected_index as isize + steps;
-        picker.selected_index = next.clamp(0, total as isize - 1) as usize;
+        picker.selected_index = picker
+            .selected_index
+            .saturating_add_signed(steps)
+            .min(total - 1);
     }
     app.scheduler.invalidate_all();
     true
 }
 
-struct Card {
-    left: f32,
-    top: f32,
-    width: f32,
-    height: f32,
-    rows_top: f32,
-    row_height: f32,
-    visible: usize,
-    start: usize,
-}
-
-fn card(app: &crate::app::App, selected: usize, total: usize) -> Card {
-    let scale = app.scale_factor.max(1.0);
-    let width = app
-        .gpu_window
-        .as_ref()
-        .map(|gpu| gpu.window.inner_size().width as f32)
-        .unwrap_or(app.viewport.width);
-    let box_: SelectorBox = panel::selector_box(width, app.tab_bar_height(), scale);
-    let visible = total.clamp(1, panel::SELECTOR_VISIBLE);
-    let start = if selected >= visible {
-        selected + 1 - visible
-    } else {
-        0
-    };
-    Card {
-        left: box_.left,
-        top: box_.top,
-        width: box_.width,
-        height: panel::panel_height(box_.input_height, box_.row_height, visible, scale),
-        rows_top: panel::rows_top(box_.top, box_.input_height, scale),
-        row_height: box_.row_height,
-        visible,
-        start,
-    }
+fn list_frame(
+    app: &crate::app::App,
+    selected: usize,
+    total: usize,
+) -> crate::overlay_list::ListFrame {
+    let metrics = crate::modal::ModalMetrics::from_app(app);
+    crate::overlay_list::centered_frame(
+        metrics.vp_width,
+        metrics.vp_height,
+        metrics.tab_bar_height,
+        metrics.status_bar,
+        metrics.scale,
+        total,
+        selected,
+    )
 }
 
 fn close(app: &mut crate::app::App) {
