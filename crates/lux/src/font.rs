@@ -91,10 +91,35 @@ pub fn install_coverage_fallbacks(layout: &mut lux_render::TextLayoutContext) {
         ),
     ];
     for (path, scripts, emoji) in FACES {
+        let started = std::time::Instant::now();
         let Ok(bytes) = std::fs::read(path) else {
             continue;
         };
-        layout.register_coverage_font(&bytes, scripts, *emoji);
+        let read_ms = started.elapsed().as_secs_f64() * 1000.0;
+        let register_started = std::time::Instant::now();
+        let registered = layout.register_coverage_font(&bytes, scripts, *emoji);
+        let register_ms = register_started.elapsed().as_secs_f64() * 1000.0;
+        eprintln!(
+            "Lux: coverage {path} {} KB read {read_ms:.1} ms register {register_ms:.1} ms ok={registered}",
+            bytes.len() / 1024
+        );
+    }
+}
+
+/// Coverage faces are large. The first presented frame does not wait for them.
+/// The next redraw picks them up.
+pub(crate) fn load_coverage_after_first_frame(app: &mut crate::app::App) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static DONE: AtomicBool = AtomicBool::new(false);
+    if DONE.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let started = std::time::Instant::now();
+    install_coverage_fallbacks(app.editor_view.text_layout_mut());
+    let ms = started.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("Lux: phase coverage {ms:.1} ms");
+    if let Some(gpu) = &app.gpu_window {
+        gpu.window.request_redraw();
     }
 }
 

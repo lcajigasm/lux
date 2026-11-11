@@ -174,6 +174,9 @@ tabs, cursor offsets, and unsaved buffer text; a launch with no path
 restores them. The editor has one window, stored as the single entry of
 `Session.windows`.
 
+Han, kana, Hangul, and color emoji faces load after the first presented
+frame. The primary monospace file is what that frame shapes.
+
 `lux file:line:col` opens that file and places the cursor. `lux -` reads
 stdin into an untitled buffer. `--wait` blocks the client until those
 buffers close. `--new-window` starts another window. The palette commands
