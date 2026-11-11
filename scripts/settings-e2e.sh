@@ -72,7 +72,8 @@ drive_launch "$fixture" \
   --snapshot-on-usr1 "$out/settings-monokai.png" \
   --snapshot-on-usr1 "$out/palette-monokai.png" \
   --snapshot-on-usr1 "$out/settings-solarized-light.png" \
-  --snapshot-on-usr1 "$out/palette-solarized-light.png"
+  --snapshot-on-usr1 "$out/palette-solarized-light.png" \
+  --snapshot-on-usr1 "$out/color-theme-chips.png"
 
 opened=0
 for _ in $(seq 1 40); do
@@ -208,6 +209,30 @@ sleep 0.3
 drive_key chars "th"
 sleep 0.3
 capture "$out/palette-solarized-light.png"
+drive_key tap 53 ""
+sleep 0.25
+opened_chips=0
+for _ in $(seq 1 4); do
+  drive_key tap 43 cmd
+  sleep 0.4
+  drive_dump
+  if [[ "$(drive_field settings)" == "1" ]]; then
+    opened_chips=1
+    break
+  fi
+done
+[[ "$opened_chips" == 1 ]] || fail "Settings did not open for the color menu"
+drive_key chars "color"
+sleep 0.35
+drive_key tap 36 ""
+sleep 0.45
+drive_dump
+[[ "$(drive_field settings)" == "1" ]] || fail "color filter left Settings"
+capture "$out/color-theme-chips.png"
+[[ -s "$out/color-theme-chips.png" ]] || fail "color-theme-chips.png was not written"
+pass "color theme menu shows the chips"
+drive_key tap 53 ""
+sleep 0.2
 python3 "$root/scripts/gutter_pixels.py" --margin \
   "$out/palette-monokai.png" \
   "$out/palette-solarized-light.png" \
