@@ -271,6 +271,7 @@ impl App {
                     editor_top,
                     viewport.height,
                     &chrome.theme,
+                    crate::color_scheme::syntax_theme(&ui.settings.schemes, chrome.theme.name),
                     &mut quad_instances,
                     &mut glyph_instances,
                 );
