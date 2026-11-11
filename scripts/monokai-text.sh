@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Real Lux window on macos-15. Scale 1 used to paint an LCD fringe
 # beside neutral stems. The capture is the window itself, then an 8×
-# nearest-neighbor crop of a stem. A second dark theme and a light theme
-# take the same path.
+# nearest-neighbor crop of a stem. Every bundled scheme takes the same
+# path.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -95,9 +95,18 @@ capture_theme() {
   python3 "$root/scripts/monokai_text_pixels.py" "$out/$slug.png" "$bg" "$fg" "$out/$slug-zoom.png"
 }
 
-capture_theme "monokai" "monokai" "$root/themes/Monokai.sublime-color-scheme"
-capture_theme "dracula" "dracula" "$root/themes/Dracula.sublime-color-scheme"
-capture_theme "solarized light" "solarized-light" "$root/themes/Solarized Light.sublime-color-scheme"
+count=0
+for scheme in "$root"/themes/*.sublime-color-scheme; do
+  base="$(basename "$scheme" .sublime-color-scheme)"
+  name="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')"
+  slug="$(printf '%s' "$name" | tr ' ' '-')"
+  capture_theme "$name" "$slug" "$scheme"
+  count=$((count + 1))
+done
+[[ "$count" -ge 12 ]] || {
+  echo "expected every bundled scheme, found $count" >&2
+  exit 1
+}
 drive_stop
 
 # Lux is done. Sublime and VS Code use the runner account, not the
