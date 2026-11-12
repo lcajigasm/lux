@@ -331,6 +331,29 @@ fn render_dump(app: &App, slot: &Slot) -> String {
             .map(|panel| panel.scroll.round() as i64)
             .unwrap_or(0),
     ));
+    out.push_str("edit_menu=");
+    match &app.mouse.context_menu {
+        Some(menu) => {
+            out.push('1');
+            for row in &menu.rows {
+                out.push('\t');
+                match row {
+                    crate::edit_menu::EditMenuRow::Separator => out.push('-'),
+                    crate::edit_menu::EditMenuRow::Action { action, enabled } => {
+                        if !enabled {
+                            out.push('!');
+                        }
+                        out.push_str(action.label());
+                    }
+                }
+            }
+        }
+        None => out.push('0'),
+    }
+    out.push('\n');
+    out.push_str("edit_menu_geom=");
+    out.push_str(&crate::edit_menu::geometry_probe(app));
+    out.push('\n');
     let path = app
         .documents
         .active_entry()

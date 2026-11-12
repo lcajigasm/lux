@@ -130,6 +130,25 @@ impl App {
             return;
         };
         let position = self.position_at_mouse();
+        if let Some(word) = self.mouse.word_anchor {
+            let point = selection_ops::expand_to_word(&self.buffer, Selection::cursor(position));
+            let (origin_start, origin_end) = word.ordered();
+            let (point_start, point_end) = point.ordered();
+            let start = if origin_start.char <= point_start.char {
+                origin_start
+            } else {
+                point_start
+            };
+            let end = if origin_end.char >= point_end.char {
+                origin_end
+            } else {
+                point_end
+            };
+            self.cursors = MultiCursor::new(Selection::new(start, end));
+            self.snippet_session = None;
+            self.reset_goal_columns();
+            return;
+        }
         if self.modifiers.alt {
             self.cursors = selection_ops::box_select(&self.buffer, anchor, position);
         } else if self.command_modifier() {

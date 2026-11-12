@@ -7,6 +7,7 @@ mod branch_picker;
 mod build;
 mod clip;
 mod conflict;
+mod edit_menu;
 mod git;
 mod goto;
 mod icons;
@@ -456,6 +457,7 @@ impl App {
             &mut atlas_state.scale_cx,
             &mut overlay_quads,
             &mut overlay_glyphs,
+            self.mouse.context_menu.as_ref(),
         );
 
         git::render_git(

@@ -170,6 +170,34 @@ case "scrollx", "scrollshift":
         Thread.sleep(forTimeInterval: 0.05)
         post(56, false, [])
     }
+case "click", "right", "double":
+    guard args.count >= 4, let x = Double(args[2]), let y = Double(args[3]) else { exit(2) }
+    let point = CGPoint(x: x, y: y)
+    let source = CGEventSource(stateID: .hidSystemState)
+    let button: CGMouseButton = args[1] == "right" ? .right : .left
+    let downType: CGEventType = args[1] == "right" ? .rightMouseDown : .leftMouseDown
+    let upType: CGEventType = args[1] == "right" ? .rightMouseUp : .leftMouseUp
+    func clickOnce(_ count: Int64) {
+        if let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: button) {
+            move.post(tap: .cghidEventTap)
+        }
+        Thread.sleep(forTimeInterval: 0.03)
+        guard let down = CGEvent(mouseEventSource: source, mouseType: downType, mouseCursorPosition: point, mouseButton: button),
+              let up = CGEvent(mouseEventSource: source, mouseType: upType, mouseCursorPosition: point, mouseButton: button) else {
+            fputs("cannot build a click\n", stderr)
+            exit(1)
+        }
+        down.setIntegerValueField(.mouseEventClickState, value: count)
+        up.setIntegerValueField(.mouseEventClickState, value: count)
+        down.post(tap: .cghidEventTap)
+        Thread.sleep(forTimeInterval: 0.03)
+        up.post(tap: .cghidEventTap)
+    }
+    clickOnce(1)
+    if args[1] == "double" {
+        Thread.sleep(forTimeInterval: 0.05)
+        clickOnce(2)
+    }
 default:
     fputs("unknown step\n", stderr)
     exit(2)
