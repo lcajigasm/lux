@@ -283,6 +283,20 @@ mod tests {
             cached.status.success() && !text.contains("+ONE") && text.contains("+THREE"),
             "system git index is not the unstaged hunk:\n{text}"
         );
+        let worktree = std::process::Command::new("git")
+            .current_dir(repo)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .args(["diff", "--", "note.rs"])
+            .output()
+            .expect("git diff worktree");
+        let worktree_text = String::from_utf8_lossy(&worktree.stdout);
+        assert!(
+            worktree.status.success()
+                && worktree_text.contains("+ONE")
+                && !worktree_text.contains("+THREE"),
+            "worktree diff ignored the file:\n{worktree_text}"
+        );
         let index_bytes = std::fs::read(repo.join(".git/index")).unwrap();
         assert!(
             !index_bytes.windows(4).any(|window| window == b"TREE"),

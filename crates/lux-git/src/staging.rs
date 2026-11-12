@@ -96,8 +96,17 @@ fn write_staged_entry(
         .map_err(|e| StagingError::WriteBlob(Box::new(e)))?;
     let metadata =
         gix::index::fs::Metadata::from_path_no_follow(absolute).map_err(StagingError::Metadata)?;
-    let stat = entry::Stat::from_fs(&metadata).map_err(StagingError::Stat)?;
     let mode = mode_for(&metadata);
+    // Apple git reuses the worktree file for `git diff --cached` when this
+    // stat matches the file, and prints that file's hunks under the stored
+    // blob id. A partial stage keeps different bytes in the index, so the
+    // stat has to miss and git has to read the blob.
+    let on_disk = std::fs::read(absolute).map_err(StagingError::ReadFile)?;
+    let stat = if on_disk == content {
+        entry::Stat::from_fs(&metadata).map_err(StagingError::Stat)?
+    } else {
+        entry::Stat::default()
+    };
 
     let mut index = open_or_create_index(repo)?;
     index.remove_entries(|_, entry_path, _| entry_path == rel);
