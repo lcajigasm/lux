@@ -170,7 +170,7 @@ case "scrollx", "scrollshift":
         Thread.sleep(forTimeInterval: 0.05)
         post(56, false, [])
     }
-case "click", "right", "double":
+case "click", "right", "double", "triple":
     guard args.count >= 4, let x = Double(args[2]), let y = Double(args[3]) else { exit(2) }
     let point = CGPoint(x: x, y: y)
     let source = CGEventSource(stateID: .hidSystemState)
@@ -194,9 +194,13 @@ case "click", "right", "double":
         up.post(tap: .cghidEventTap)
     }
     clickOnce(1)
-    if args[1] == "double" {
+    if args[1] == "double" || args[1] == "triple" {
         Thread.sleep(forTimeInterval: 0.05)
         clickOnce(2)
+    }
+    if args[1] == "triple" {
+        Thread.sleep(forTimeInterval: 0.05)
+        clickOnce(3)
     }
 default:
     fputs("unknown step\n", stderr)

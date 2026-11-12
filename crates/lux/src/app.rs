@@ -137,6 +137,7 @@ impl App {
                 selection_anchor: None,
                 last_click: None,
                 word_anchor: None,
+                line_anchor: None,
                 context_menu: None,
             },
             accessibility_active: false,
@@ -463,6 +464,7 @@ impl PlatformEventHandler for App {
                 self.modifiers = Modifiers::default();
                 self.mouse.selection_anchor = None;
                 self.mouse.word_anchor = None;
+                self.mouse.line_anchor = None;
                 self.mouse.context_menu = None;
             }
             PlatformEvent::Ime(ime_event) => {
@@ -509,6 +511,7 @@ impl PlatformEventHandler for App {
                 } else if button == MouseButton::Left {
                     self.mouse.selection_anchor = None;
                     self.mouse.word_anchor = None;
+                    self.mouse.line_anchor = None;
                     self.documents.tab_drag = None;
                     self.end_divider_drag();
                 }

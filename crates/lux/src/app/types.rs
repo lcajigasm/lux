@@ -24,9 +24,12 @@ pub(crate) struct MouseState {
     /// event must not be read as "the pointer is on the tabs".
     pub(crate) placed: bool,
     pub(crate) selection_anchor: Option<Position>,
-    pub(crate) last_click: Option<(std::time::Instant, usize)>,
+    /// Time, line, and how many clicks have landed on that line.
+    pub(crate) last_click: Option<(std::time::Instant, usize, u8)>,
     /// The word a double click selected. A drag unions further words onto it.
     pub(crate) word_anchor: Option<Selection>,
+    /// The line a triple click selected. A drag unions further lines onto it.
+    pub(crate) line_anchor: Option<Selection>,
     pub(crate) context_menu: Option<crate::edit_menu::BufferContextMenu>,
 }
 
