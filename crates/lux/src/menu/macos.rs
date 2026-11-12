@@ -1,7 +1,7 @@
 //! macOS Cocoa AppKit native menu bar implementation (T03).
 
 use objc2::rc::Retained;
-use objc2::{AnyThread, ClassType, MainThreadMarker, define_class, msg_send, sel};
+use objc2::{AnyThread, ClassType, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSApplication, NSControlStateValueOff, NSControlStateValueOn, NSMenu, NSMenuItem,
 };
