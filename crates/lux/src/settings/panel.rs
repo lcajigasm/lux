@@ -5,7 +5,7 @@ use lux_platform::{Key, NamedKey, ScrollDelta};
 use serde_json::Value;
 
 use super::SettingsState;
-use super::layout::{SettingsBounds, SettingsHit, layout_settings};
+use super::layout::{SettingsBounds, SettingsHit, layout_settings, reveal_menu};
 use crate::app::App;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -38,6 +38,8 @@ pub(crate) struct SettingItem {
 pub(crate) struct SettingsMenu {
     pub(crate) item: usize,
     pub(crate) highlight: usize,
+    /// First option row painted. The rest of the list is below this window.
+    pub(crate) scroll: usize,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -253,7 +255,7 @@ impl SettingsState {
                 self.select(index);
                 self.edit(app, index, Edit::Step(true));
             }
-            SettingsHit::MenuButton(index) => self.toggle_menu(index),
+            SettingsHit::MenuButton(index) => self.toggle_menu(index, bounds),
             SettingsHit::MenuOption { item, option } => {
                 self.edit(app, item, Edit::Choose(option));
                 if let Some(panel) = self.panel.as_mut() {
@@ -283,7 +285,7 @@ impl SettingsState {
         true
     }
 
-    pub(crate) fn scroll_by(&mut self, delta: ScrollDelta, scale: f32) -> bool {
+    pub(in crate::settings) fn scroll_by(&mut self, delta: ScrollDelta, scale: f32) -> bool {
         let Some(panel) = self.panel.as_mut() else {
             return false;
         };
@@ -296,7 +298,7 @@ impl SettingsState {
         true
     }
 
-    fn move_selection(&mut self, bounds: SettingsBounds, delta: isize) {
+    pub(in crate::settings) fn move_selection(&mut self, bounds: SettingsBounds, delta: isize) {
         let Some(panel) = self.panel.as_mut() else {
             return;
         };
@@ -314,6 +316,13 @@ impl SettingsState {
                 } else if len > 0 {
                     menu.highlight = (menu.highlight + delta as usize).min(len - 1);
                 }
+            }
+            let visible = layout_settings(panel, bounds)
+                .menu
+                .map(|menu| menu.options.len())
+                .unwrap_or(1);
+            if let Some(menu) = panel.menu.as_mut() {
+                menu.scroll = reveal_menu(menu.highlight, menu.scroll, visible);
             }
             return;
         }
@@ -366,7 +375,10 @@ impl SettingsState {
                 let next = !*value;
                 self.edit(app, index, Edit::SetBool(next));
             }
-            Some(SettingKind::Enum { .. }) => self.toggle_menu(index),
+            Some(SettingKind::Enum { .. }) => {
+                let bounds = bounds_for(app);
+                self.toggle_menu(index, bounds);
+            }
             Some(SettingKind::Number { .. }) => self.edit(app, index, Edit::Step(true)),
             Some(SettingKind::Info) | None => {}
         }
@@ -391,7 +403,7 @@ impl SettingsState {
         true
     }
 
-    fn toggle_menu(&mut self, index: usize) {
+    fn toggle_menu(&mut self, index: usize, bounds: SettingsBounds) {
         let Some(panel) = self.panel.as_mut() else {
             return;
         };
@@ -411,7 +423,15 @@ impl SettingsState {
         panel.menu = Some(SettingsMenu {
             item: index,
             highlight,
+            scroll: 0,
         });
+        let visible = layout_settings(panel, bounds)
+            .menu
+            .map(|menu| menu.options.len())
+            .unwrap_or(1);
+        if let Some(menu) = panel.menu.as_mut() {
+            menu.scroll = reveal_menu(menu.highlight, menu.scroll, visible);
+        }
     }
 
     fn select(&mut self, index: usize) {
@@ -534,25 +554,6 @@ pub(crate) fn bounds_for(app: &App) -> SettingsBounds {
         status_bar,
         scale: app.scale_factor,
     }
-}
-
-pub(crate) fn scroll_settings(app: &mut App, delta: ScrollDelta) -> bool {
-    if app.ui.settings.panel.is_none() {
-        return false;
-    }
-    let scale = app.scale_factor;
-    let mut settings = std::mem::take(&mut app.ui.settings);
-    let scrolled = settings.scroll_by(delta, scale);
-    if scrolled {
-        let bounds = bounds_for(app);
-        if let Some(panel) = settings.panel.as_mut() {
-            let layout = layout_settings(panel, bounds);
-            panel.scroll = layout.scroll;
-        }
-        app.scheduler.invalidate_all();
-    }
-    app.ui.settings = settings;
-    scrolled
 }
 
 fn reveal(panel: &mut SettingsPanelState, bounds: SettingsBounds) {

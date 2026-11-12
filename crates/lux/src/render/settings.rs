@@ -10,7 +10,7 @@ use swash::scale::ScaleContext;
 use crate::render::paint::{color, overlay_text, push_glyph};
 use crate::render::panel::settings_selection;
 use crate::settings::layout::{
-    ControlGeom, SettingsBounds, SettingsLayout, format_number, layout_settings,
+    ControlGeom, SettingsBounds, format_number, layout_settings,
 };
 use crate::settings::{SettingKind, SettingsPanelState};
 
@@ -30,6 +30,7 @@ pub(crate) fn render_settings_panel(
     status_bar_height: f32,
     scale_factor: f32,
     theme: &lux_ui::Theme,
+    system: lux_ui::SystemScheme,
 ) {
     let _text = overlay_text();
     let layout = layout_settings(
@@ -247,7 +248,8 @@ pub(crate) fn render_settings_panel(
     }
 
     if let Some(menu) = &layout.menu {
-        paint_menu(
+        let covered = glyph_instances.len();
+        super::theme_sample::paint_menu(
             menu,
             panel,
             &layout,
@@ -261,8 +263,14 @@ pub(crate) fn render_settings_panel(
             well,
             border,
             theme,
+            system,
             quad_instances,
             glyph_instances,
+        );
+        super::clip::remove_glyphs_under(
+            glyph_instances,
+            covered,
+            [menu.panel.x, menu.panel.y, menu.panel.w, menu.panel.h],
         );
     }
 }
@@ -433,7 +441,7 @@ fn selected_control_colors(
     }
 }
 
-fn paint_button(
+pub(super) fn paint_button(
     rect: crate::settings::layout::Rect,
     fill: [f32; 4],
     border: [f32; 4],
@@ -460,70 +468,7 @@ fn paint_button(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn paint_menu(
-    menu: &crate::settings::layout::MenuGeom,
-    panel: &SettingsPanelState,
-    layout: &SettingsLayout,
-    editor_view: &mut EditorView,
-    atlas: &mut GlyphAtlas,
-    atlas_dirty: &mut bool,
-    scale_cx: &mut ScaleContext,
-    font: FontRef<'static>,
-    family: &str,
-    foreground: [f32; 4],
-    well: [f32; 4],
-    border: [f32; 4],
-    theme: &lux_ui::Theme,
-    quads: &mut Vec<QuadInstance>,
-    glyphs: &mut Vec<GlyphInstance>,
-) {
-    let Some(SettingKind::Enum { options, .. }) = panel.items.get(menu.item).map(|item| &item.kind)
-    else {
-        return;
-    };
-    let scale = layout.scale;
-    paint_button(menu.panel, well, border, scale, quads);
-    let highlight = panel.menu.map(|state| state.highlight);
-    for (index, option) in options.iter().enumerate() {
-        let Some(rect) = menu.options.get(index) else {
-            continue;
-        };
-        if highlight == Some(index) {
-            quads.push(QuadInstance::rounded(
-                [
-                    rect.x,
-                    rect.y + scale,
-                    rect.w,
-                    (rect.h - 2.0 * scale).max(1.0),
-                ],
-                settings_selection(theme),
-                5.0 * scale,
-            ));
-        }
-        super::theme_sample::paint_bundled(option, *rect, scale, quads);
-        draw_line(
-            editor_view,
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            font,
-            family,
-            13.0 * scale,
-            option,
-            rect.x + 8.0 * scale,
-            rect.y + (rect.h - 13.0 * scale) * 0.5,
-            if highlight == Some(index) {
-                super::panel::label_ink(theme, settings_selection(theme))
-            } else {
-                foreground
-            },
-            glyphs,
-        );
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn draw_line(
+pub(super) fn draw_line(
     editor_view: &mut EditorView,
     atlas: &mut GlyphAtlas,
     atlas_dirty: &mut bool,

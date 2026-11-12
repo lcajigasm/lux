@@ -46,6 +46,34 @@ pub(crate) fn clip_glyph(glyph: &mut GlyphInstance, bounds: [f32; 4]) -> bool {
     true
 }
 
+/// Drops glyphs in `..end` that intersect `bounds`. Glyphs at `end` and
+/// after stay, so a menu can cover the control text drawn before it.
+/// The text pass is one batch with no depth, and a later quad cannot hide
+/// an earlier glyph.
+pub(crate) fn remove_glyphs_under(
+    glyphs: &mut Vec<GlyphInstance>,
+    mut end: usize,
+    bounds: [f32; 4],
+) {
+    end = end.min(glyphs.len());
+    let mut index = 0;
+    while index < end {
+        let [x, y, w, h] = glyphs[index].rect;
+        let hits = w > 0.0
+            && h > 0.0
+            && x < bounds[0] + bounds[2]
+            && x + w > bounds[0]
+            && y < bounds[1] + bounds[3]
+            && y + h > bounds[1];
+        if hits {
+            glyphs.remove(index);
+            end -= 1;
+        } else {
+            index += 1;
+        }
+    }
+}
+
 pub(crate) fn clip_glyphs(glyphs: &mut Vec<GlyphInstance>, start: usize, bounds: [f32; 4]) {
     let mut index = start;
     while index < glyphs.len() {
@@ -123,5 +151,34 @@ mod tests {
         assert_eq!(quads[1].rect, [0.0, 90.0, 40.0, 10.0]);
         assert_eq!(quads[2].rect, [4.0, 40.0, 16.0, 16.0]);
         assert!((quads[2].radius - 4.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn a_menu_panel_covers_the_control_glyph_and_keeps_its_own() {
+        let mut glyphs = vec![
+            GlyphInstance::new(
+                [10.0, 10.0, 40.0, 12.0],
+                [0.0, 0.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+                GlyphKind::Monochrome,
+            ),
+            GlyphInstance::new(
+                [200.0, 10.0, 20.0, 12.0],
+                [0.0, 0.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+                GlyphKind::Monochrome,
+            ),
+        ];
+        let end = glyphs.len();
+        glyphs.push(GlyphInstance::new(
+            [12.0, 12.0, 30.0, 12.0],
+            [0.0, 0.0, 1.0, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
+            GlyphKind::Monochrome,
+        ));
+        remove_glyphs_under(&mut glyphs, end, [0.0, 0.0, 80.0, 40.0]);
+        assert_eq!(glyphs.len(), 2);
+        assert_eq!(glyphs[0].rect[0], 200.0);
+        assert_eq!(glyphs[1].rect[0], 12.0);
     }
 }

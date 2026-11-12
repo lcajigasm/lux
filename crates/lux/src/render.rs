@@ -520,6 +520,7 @@ impl App {
                 status_bar_height,
                 *scale_factor,
                 &chrome.theme,
+                chrome.system_scheme,
             );
         }
 

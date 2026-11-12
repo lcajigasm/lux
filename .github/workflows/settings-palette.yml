@@ -42,5 +42,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: color-theme-chips
-          path: docs/evidence/settings/color-theme-chips.png
+          path: |
+            docs/evidence/settings/color-theme-chips.png
+            docs/evidence/settings/color-theme-chips-scrolled.png
           if-no-files-found: error

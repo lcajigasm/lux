@@ -230,7 +230,21 @@ drive_dump
 [[ "$(drive_field settings)" == "1" ]] || fail "color filter left Settings"
 capture "$out/color-theme-chips.png"
 [[ -s "$out/color-theme-chips.png" ]] || fail "color-theme-chips.png was not written"
-pass "color theme menu shows the chips"
+[[ "$(drive_field settings_menu_count)" -gt 1 ]] || fail "color menu did not open"
+for _ in $(seq 1 40); do
+  if [[ "$(drive_field settings_menu)" -eq $(($(drive_field settings_menu_count) - 1)) ]]; then
+    break
+  fi
+  drive_key tap 125 ""
+  sleep 0.08
+  drive_dump || true
+done
+[[ "$(drive_field settings_menu)" -eq $(($(drive_field settings_menu_count) - 1)) ]] \
+  || fail "color menu did not reach the last theme"
+[[ "$(drive_field settings_menu_first)" -gt 0 ]] || fail "color menu did not scroll"
+capture "$out/color-theme-chips-scrolled.png"
+[[ -s "$out/color-theme-chips-scrolled.png" ]] || fail "scrolled color menu was not written"
+pass "color theme menu shows the chips and scrolls"
 drive_key tap 53 ""
 sleep 0.2
 python3 "$root/scripts/gutter_pixels.py" --margin \
