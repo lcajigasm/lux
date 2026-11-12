@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.5.9 — 2026-11-11
+
+Test build. v1.5.8 was published with a binary that reports 1.5.7; use 1.5.9.
+
+### Fixed
+
+- Editor text is a grayscale mask at every scale (#73).
+
 ## 1.5.7 — 2026-11-10
 
 Test build for Mac. Not a closed release.
