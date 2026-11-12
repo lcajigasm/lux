@@ -130,9 +130,14 @@ impl App {
             return;
         };
         let position = self.position_at_mouse();
-        if let Some(word) = self.mouse.word_anchor {
-            let point = selection_ops::expand_to_word(&self.buffer, Selection::cursor(position));
-            let (origin_start, origin_end) = word.ordered();
+        if let Some(origin) = self.mouse.line_anchor.or(self.mouse.word_anchor) {
+            let point = Selection::cursor(position);
+            let point = if self.mouse.line_anchor.is_some() {
+                selection_ops::expand_to_line(&self.buffer, point)
+            } else {
+                selection_ops::expand_to_word(&self.buffer, point)
+            };
+            let (origin_start, origin_end) = origin.ordered();
             let (point_start, point_end) = point.ordered();
             let start = if origin_start.char <= point_start.char {
                 origin_start

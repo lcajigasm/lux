@@ -57,7 +57,8 @@
 > share one logical layout scaled into physical pixels, and the panel is
 > as wide as the longest label plus its padding. A double click selects
 > the word under the pointer, and dragging from that click extends the
-> selection by whole words.
+> selection by whole words. A third click on the same line selects that
+> whole line, and dragging from it extends the selection by lines.
 > The free macos-15 runner stays 1× unless a job records a scaled mode,
 > so a Retina capture of an external monitor is still solo-Mac.
 > `scripts/theme-break.sh` opens a Rust file on every bundled theme,

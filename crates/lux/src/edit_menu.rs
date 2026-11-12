@@ -223,18 +223,31 @@ pub(crate) fn press_editor(app: &mut App, ctx: &dyn PlatformContext, button: Mou
     crate::focus::focus_editor(app);
     let pos = app.position_at_mouse();
     let now = std::time::Instant::now();
-    let double = app
-        .mouse
-        .last_click
-        .is_some_and(|(last, line)| now.duration_since(last).as_millis() < 400 && line == pos.line);
-    app.mouse.last_click = Some((now, pos.line));
+    let clicks = match app.mouse.last_click {
+        Some((last, line, count))
+            if now.duration_since(last).as_millis() < 400 && line == pos.line =>
+        {
+            count.saturating_add(1)
+        }
+        _ => 1,
+    };
+    app.mouse.last_click = Some((now, pos.line, clicks));
     app.mouse.word_anchor = None;
-    if double && app.is_find_results_active() {
+    app.mouse.line_anchor = None;
+    if clicks == 2 && app.is_find_results_active() {
         crate::find_results::open_find_result_at_line(app, Some(ctx), pos.line);
         return;
     }
     app.begin_mouse_selection();
-    if double && app.mouse.selection_anchor.is_some() {
+    if app.mouse.selection_anchor.is_none() {
+        return;
+    }
+    if clicks >= 3 {
+        app.expand_to_line();
+        let line = app.cursors.primary();
+        app.mouse.line_anchor = Some(line);
+        app.mouse.selection_anchor = Some(line.anchor);
+    } else if clicks == 2 {
         app.expand_to_word();
         let word = app.cursors.primary();
         app.mouse.word_anchor = Some(word);
@@ -255,6 +268,7 @@ fn open_context_menu(app: &mut App) {
     app.mouse.context_menu = Some(BufferContextMenu::at(app, x, y));
     app.mouse.selection_anchor = None;
     app.mouse.word_anchor = None;
+    app.mouse.line_anchor = None;
     app.scheduler.invalidate_all();
 }
 

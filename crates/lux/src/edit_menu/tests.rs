@@ -322,6 +322,40 @@ fn the_panel_contains_every_row_and_anchors_at_the_pointer() {
 }
 
 #[test]
+fn triple_click_selects_the_line_and_a_drag_extends_by_lines() {
+    let mut app = app("alpha beta\ngamma delta\n");
+    let host = ctx();
+    click(&mut app, &host, MouseButton::Left, 48.0, 40.0);
+    click(&mut app, &host, MouseButton::Left, 48.0, 40.0);
+    click(&mut app, &host, MouseButton::Left, 48.0, 40.0);
+    let line = app.cursors.primary().char_range();
+    let selected = &app.buffer.text()[line];
+    assert!(
+        selected.starts_with("alpha beta"),
+        "triple click should take the first line, got {selected:?}"
+    );
+    assert!(
+        !selected.contains("gamma"),
+        "the next line stays outside, got {selected:?}"
+    );
+    let mut y = 40.0;
+    for _ in 0..30 {
+        y += 8.0;
+        app.mouse.position = dpi::PhysicalPosition::new(48.0, y);
+        if app.position_at_mouse().line >= 1 {
+            break;
+        }
+    }
+    app.update_mouse_selection();
+    let dragged = app.cursors.primary().char_range();
+    let text = &app.buffer.text()[dragged];
+    assert!(
+        text.contains("alpha beta") && text.contains("gamma"),
+        "drag should cover both lines, got {text:?}"
+    );
+}
+
+#[test]
 fn command_palette_row_opens_the_palette() {
     let mut app = app("alpha");
     let host = ctx();
