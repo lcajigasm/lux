@@ -115,6 +115,20 @@ def mode(colors):
     return max(counts, key=counts.get), counts[max(counts, key=counts.get)]
 
 
+def rule_color(rows, channels, y, width):
+    """A chrome hairline, such as the tab/editor border, is one color
+    across the row. A selection never is: glyphs and the rest of the
+    line stay other colors. Counting that hairline made it the mode."""
+    counts = {}
+    for x in range(width):
+        color = pixel(rows, channels, x, y)
+        counts[color] = counts.get(color, 0) + 1
+    for color, count in counts.items():
+        if count * 10 >= width * 9:
+            return color
+    return None
+
+
 def measure(path):
     width, height, channels, rows = load_png(path)
     background_samples = []
@@ -127,10 +141,15 @@ def measure(path):
     y0 = int(height * 0.04)
     y1 = int(height * 0.72)
     band_score = [0] * height
+    rules = [None] * height
     for y in range(y0, y1):
+        rules[y] = rule_color(rows, channels, y, width)
         score = 0
         for x in range(width):
-            distance = chebyshev(pixel(rows, channels, x, y), background)
+            color = pixel(rows, channels, x, y)
+            if color == rules[y]:
+                continue
+            distance = chebyshev(color, background)
             if 12 <= distance <= 90:
                 score += 1
         band_score[y] = score
@@ -146,6 +165,8 @@ def measure(path):
     for y in range(best_y, min(height, best_y + window)):
         for x in range(width):
             color = pixel(rows, channels, x, y)
+            if color == rules[y]:
+                continue
             distance = chebyshev(color, background)
             if 12 <= distance <= 90:
                 chosen.append(color)
@@ -201,7 +222,46 @@ def crop_rows(measured, rows_high):
     return width, out
 
 
+def self_test():
+    """A full-width border sits on top of a shorter selection rect.
+    The measured color is the selection, not the border."""
+    width, height = 200, 80
+    background = MONOKAI_BACKGROUND
+    border = (0x3E, 0x3D, 0x32)
+    rows = []
+    for y in range(height):
+        row = bytearray()
+        for x in range(width):
+            if y in (10, 11):
+                color = border
+            elif 20 <= y < 44 and 8 <= x < 90:
+                color = MONOKAI_SELECTION
+            else:
+                color = background
+            row.extend(color)
+        rows.append(bytes(row))
+    path = Path(__file__).with_name("_selection_contrast_selftest.png")
+    write_png(path, width, height, rows)
+    try:
+        measured = measure(path)
+    finally:
+        path.unlink(missing_ok=True)
+    if measured["selection"] != MONOKAI_SELECTION:
+        raise SystemExit(
+            f"self-test measured {hex_of(measured['selection'])}, want #49483E"
+        )
+    if measured["ratio"] < FLOOR:
+        raise SystemExit(f"self-test contrast {measured['ratio']:.3f} is below {FLOOR}")
+    print(
+        f"self-test selection {hex_of(measured['selection'])} "
+        f"contrast {measured['ratio']:.3f}"
+    )
+
+
 def main():
+    if len(sys.argv) == 2 and sys.argv[1] == "--self-test":
+        self_test()
+        return
     if len(sys.argv) != 4:
         raise SystemExit("usage: selection_contrast.py LINE.png WORD.png OUT_DIR")
     line_path, word_path, out_dir = sys.argv[1:]

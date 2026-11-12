@@ -5,6 +5,7 @@
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
+python3 "$root/scripts/selection_contrast.py" --self-test
 # shellcheck source=macos-drive.sh
 source "$root/scripts/macos-drive.sh"
 
