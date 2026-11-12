@@ -22,7 +22,7 @@ pub(crate) fn render_buffer_menu(
     quads: &mut Vec<QuadInstance>,
     glyphs: &mut Vec<GlyphInstance>,
 ) {
-    let [x, y, w, h] = menu.rect;
+    let [x, y, w, h] = menu.rect(scale);
     let border = color(theme.chrome.border);
     let fill = color(theme.chrome.panel_input);
     quads.push(QuadInstance::solid(

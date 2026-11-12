@@ -239,6 +239,88 @@ fn double_click_selects_the_word_and_a_drag_extends_by_words() {
     );
 }
 
+fn assert_rows_inside(menu: &BufferContextMenu, scale: f32) {
+    let panel = menu.rect(scale);
+    for row in menu.row_rects(scale) {
+        assert!(
+            row[0] + 0.05 >= panel[0] && row[1] + 0.05 >= panel[1],
+            "row {row:?} starts outside panel {panel:?}"
+        );
+        assert!(
+            row[0] + row[2] <= panel[0] + panel[2] + 0.05
+                && row[1] + row[3] <= panel[1] + panel[3] + 0.05,
+            "row {row:?} extends outside panel {panel:?}"
+        );
+    }
+}
+
+#[test]
+fn the_panel_contains_every_row_and_anchors_at_the_pointer() {
+    let mut app = app("alpha beta gamma");
+    let host = ctx();
+    click(&mut app, &host, MouseButton::Right, 180.0, 120.0);
+    let menu = app.mouse.context_menu.clone().unwrap();
+    let panel = menu.rect(1.0);
+    assert!((panel[0] - 180.0).abs() < 0.5, "x {}", panel[0]);
+    assert!((panel[1] - 120.0).abs() < 0.5, "y {}", panel[1]);
+    assert_rows_inside(&menu, 1.0);
+    assert_rows_inside(&menu, 2.0);
+    let family = app.editor_view.family().to_string();
+    let style = lux_render::LineStyle {
+        family: &family,
+        font_size: 13.0,
+        ligatures: false,
+    };
+    let mut longest = 0.0_f32;
+    for row in &menu.rows {
+        if let EditMenuRow::Action { action, .. } = row {
+            let measured = app
+                .editor_view
+                .text_layout_mut()
+                .layout_line(&style, action.label(), &[])
+                .width();
+            longest = longest.max(measured);
+        }
+    }
+    assert!(
+        panel[2] + 0.5 >= longest + 24.0,
+        "panel {} should cover the longest label {longest}",
+        panel[2]
+    );
+
+    app.scale_factor = 2.0;
+    app.mouse.context_menu = None;
+    click(&mut app, &host, MouseButton::Right, 180.0, 120.0);
+    let menu = app.mouse.context_menu.clone().unwrap();
+    let panel = menu.rect(2.0);
+    assert!((panel[0] - 180.0).abs() < 0.5, "retina x {}", panel[0]);
+    assert!((panel[1] - 120.0).abs() < 0.5, "retina y {}", panel[1]);
+    assert_rows_inside(&menu, 2.0);
+
+    let (win_w, win_h) = super::window_size(&app);
+    click(
+        &mut app,
+        &host,
+        MouseButton::Right,
+        win_w - 3.0,
+        win_h - 3.0,
+    );
+    let menu = app.mouse.context_menu.as_ref().unwrap();
+    let panel = menu.rect(2.0);
+    assert!(panel[0] >= -0.5 && panel[1] >= -0.5, "{panel:?}");
+    assert!(
+        panel[0] + panel[2] <= win_w + 0.5,
+        "{panel:?} window {win_w}"
+    );
+    assert!(
+        panel[1] + panel[3] <= win_h + 0.5,
+        "{panel:?} window {win_h}"
+    );
+    assert!(panel[0] + 1.0 < win_w - 3.0, "flipped left {panel:?}");
+    assert!(panel[1] + 1.0 < win_h - 3.0, "flipped up {panel:?}");
+    assert_rows_inside(menu, 2.0);
+}
+
 #[test]
 fn command_palette_row_opens_the_palette() {
     let mut app = app("alpha");

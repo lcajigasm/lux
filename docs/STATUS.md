@@ -52,8 +52,12 @@
 > disabled when the caret is not on a diff hunk. There is no Revert Hunk
 > command, so the menu does not add one. A right click outside the
 > selection moves the caret there; a right click inside it keeps the
-> selection. A double click selects the word under the pointer, and
-> dragging from that click extends the selection by whole words.
+> selection. The menu's top-left corner is the pointer, and it flips
+> inside the window only when it would not fit. The panel and every row
+> share one logical layout scaled into physical pixels, and the panel is
+> as wide as the longest label plus its padding. A double click selects
+> the word under the pointer, and dragging from that click extends the
+> selection by whole words.
 > The free macos-15 runner stays 1× unless a job records a scaled mode,
 > so a Retina capture of an external monitor is still solo-Mac.
 > `scripts/theme-break.sh` opens a Rust file on every bundled theme,

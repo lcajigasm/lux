@@ -9,8 +9,9 @@ use crate::app::App;
 
 const ITEM_H: f32 = 24.0;
 const SEP_H: f32 = 9.0;
-const PAD: f32 = 4.0;
-const WIDTH: f32 = 196.0;
+const PAD_Y: f32 = 4.0;
+const PAD_X: f32 = 12.0;
+const LABEL_SIZE: f32 = 13.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EditMenuAction {
@@ -66,42 +67,72 @@ pub(crate) enum EditMenuRow {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct BufferContextMenu {
-    pub(crate) rect: [f32; 4],
+    /// Top-left and size in logical points. Physical pixels are `rect(scale)`.
+    origin: [f32; 2],
+    size: [f32; 2],
     pub(crate) rows: Vec<EditMenuRow>,
 }
 
 impl BufferContextMenu {
-    pub(crate) fn at(app: &App, x: f32, y: f32) -> Self {
+    pub(crate) fn at(app: &mut App, x: f32, y: f32) -> Self {
         let rows = menu_rows(app);
-        let mut height = PAD * 2.0;
+        let scale = app.scale_factor.max(0.5);
+        let family = app.editor_view.family().to_string();
+        let style = lux_render::LineStyle {
+            family: &family,
+            font_size: LABEL_SIZE,
+            ligatures: false,
+        };
+        let mut width = 0.0_f32;
+        for row in &rows {
+            if let EditMenuRow::Action { action, .. } = row {
+                let measured = app
+                    .editor_view
+                    .text_layout_mut()
+                    .layout_line(&style, action.label(), &[])
+                    .width();
+                width = width.max(measured);
+            }
+        }
+        width += PAD_X * 2.0;
+        let mut height = PAD_Y * 2.0;
         for row in &rows {
             height += match row {
                 EditMenuRow::Separator => SEP_H,
                 EditMenuRow::Action { .. } => ITEM_H,
             };
         }
-        let scale = app.scale_factor.max(0.5);
-        let width = WIDTH * scale;
-        let height = height * scale;
         let (window_w, window_h) = window_size(app);
-        let mut origin_x = x;
-        let mut origin_y = y;
-        if origin_x + width > window_w {
-            origin_x = (window_w - width).max(0.0);
+        let mut origin_x = x / scale;
+        let mut origin_y = y / scale;
+        if origin_x + width > window_w / scale {
+            origin_x = (window_w / scale - width).max(0.0);
         }
-        if origin_y + height > window_h {
-            origin_y = (window_h - height).max(0.0);
+        if origin_y + height > window_h / scale {
+            origin_y = (window_h / scale - height).max(0.0);
         }
         Self {
-            rect: [origin_x, origin_y, width, height],
+            origin: [origin_x, origin_y],
+            size: [width, height],
             rows,
         }
     }
 
-    pub(crate) fn row_rects(&self, scale: f32) -> Vec<[f32; 4]> {
+    /// Panel rectangle in physical pixels at `scale`.
+    pub(crate) fn rect(&self, scale: f32) -> [f32; 4] {
         let scale = scale.max(0.5);
-        let [x, mut y, w, _] = self.rect;
-        y += PAD * scale;
+        [
+            self.origin[0] * scale,
+            self.origin[1] * scale,
+            self.size[0] * scale,
+            self.size[1] * scale,
+        ]
+    }
+
+    pub(crate) fn row_rects(&self, scale: f32) -> Vec<[f32; 4]> {
+        let [x, mut y, w, _] = self.rect(scale);
+        let scale = scale.max(0.5);
+        y += PAD_Y * scale;
         let mut rects = Vec::with_capacity(self.rows.len());
         for row in &self.rows {
             let h = match row {
@@ -115,7 +146,7 @@ impl BufferContextMenu {
     }
 
     pub(crate) fn action_at(&self, mouse_x: f32, mouse_y: f32, scale: f32) -> Option<EditMenuRow> {
-        let [x, y, w, h] = self.rect;
+        let [x, y, w, h] = self.rect(scale);
         if mouse_x < x || mouse_x > x + w || mouse_y < y || mouse_y > y + h {
             return None;
         }
@@ -324,6 +355,27 @@ fn caret_on_hunk(app: &App) -> bool {
             line >= hunk.after_start && line < hunk.after_start + hunk.after_len
         }
     })
+}
+
+pub(crate) fn geometry_probe(app: &App) -> String {
+    let Some(menu) = &app.mouse.context_menu else {
+        return "0".to_string();
+    };
+    let scale = app.scale_factor;
+    let (window_w, window_h) = window_size(app);
+    let [x, y, w, h] = menu.rect(scale);
+    let mut out = format!(
+        "{window_w:.1},{window_h:.1},{:.1},{:.1};{x:.1},{y:.1},{w:.1},{h:.1}",
+        app.mouse.position.x, app.mouse.position.y
+    );
+    for rect in menu.row_rects(scale) {
+        out.push(';');
+        out.push_str(&format!(
+            "{:.1},{:.1},{:.1},{:.1}",
+            rect[0], rect[1], rect[2], rect[3]
+        ));
+    }
+    out
 }
 
 fn window_size(app: &App) -> (f32, f32) {

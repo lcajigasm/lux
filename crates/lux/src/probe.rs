@@ -351,6 +351,9 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         None => out.push('0'),
     }
     out.push('\n');
+    out.push_str("edit_menu_geom=");
+    out.push_str(&crate::edit_menu::geometry_probe(app));
+    out.push('\n');
     let path = app
         .documents
         .active_entry()
