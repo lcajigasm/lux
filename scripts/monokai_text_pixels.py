@@ -3,9 +3,10 @@
 
 A scale-1 LCD mask paints a colored fringe beside a neutral stem. On
 docs/compare/monokai-side-by-side.png (macos-15 run 41348580486) the
-pixel to the right of a #F8F8F2 stem is (133, 89, 38). A grayscale ramp
-between two low-chroma colors stays low-chroma. This fails the image
-when that fringe is present, and writes an 8× nearest-neighbor crop.
+pixel to the right of a #F8F8F2 stem is (133, 89, 38). Antialiasing of
+the authored color stays on the line between the background and the
+foreground. A pixel off that line fails the image. The check also
+writes an 8× nearest-neighbor crop.
 """
 
 import sys
@@ -102,6 +103,23 @@ def near(color, target, tol):
     return all(abs(color[i] - target[i]) <= tol for i in range(3))
 
 
+def off_axis(color, background, foreground):
+    """Distance from the line through the background and the foreground.
+
+    A grayscale mask blends those two colors, so antialiasing stays on
+    the line. A subpixel fringe (orange or cyan beside a neutral stem)
+    does not.
+    """
+    axis = tuple(foreground[i] - background[i] for i in range(3))
+    length = sum(component * component for component in axis)
+    if length == 0:
+        return float(max(abs(color[i] - background[i]) for i in range(3)))
+    along = sum((color[i] - background[i]) * axis[i] for i in range(3)) / length
+    return (
+        sum(((color[i] - background[i]) - along * axis[i]) ** 2 for i in range(3)) ** 0.5
+    )
+
+
 def check(path, background, foreground, zoom_path):
     width, height, rows = load_png(path)
     # The stem is the authored foreground. Monokai #F8F8F2 has channel
@@ -113,14 +131,23 @@ def check(path, background, foreground, zoom_path):
     # Distance stays 12. A distance of 16 matches near-white chrome.
     chroma = max(36, spread(foreground))
     stems = []
+    exact = 0
     for y in range(height):
         for x in range(width):
             color = pixel(rows, x, y)
+            if color == foreground:
+                exact += 1
             if near(color, foreground, 12) and spread(color) <= chroma:
                 stems.append((x, y))
-    if len(stems) < 20:
+    # GitHub Light #1f2328 has 14 exact pixels on run 43122346979
+    # (editor rows 47–77 and the status line). Distance 20 finds no
+    # further pixels, so a floor of 20 near-matches cannot see that
+    # face. Ten exact pixels of the authored color is the stem Sublime
+    # and VS Code paint. The near-match floor stays 20.
+    if exact < 10 and len(stems) < 20:
         return False, (
-            f"FAIL {path}: found {len(stems)} stem pixels near {foreground}, want >= 20"
+            f"FAIL {path}: found {exact} exact and {len(stems)} near {foreground}, "
+            "want >= 10 exact or >= 20 near"
         )
     fringes = []
     for x, y in stems:
@@ -131,7 +158,15 @@ def check(path, background, foreground, zoom_path):
             color = pixel(rows, nx, y)
             if near(color, background, 8) or near(color, foreground, 12):
                 continue
-            if spread(color) <= 45:
+            # Run 43122346979 measured every neighbor that sits on the
+            # editor well. The largest distance off the background-
+            # foreground line was 13.1 (Solarized Dark). Gruvbox's
+            # spread>45 pixels were residual <= 3.8 from #ebdbb2 over
+            # #282828, and Tokyo Night's were <= 1.8: the mask's own
+            # coverage, which a chromatic face makes look "colored".
+            # The documented Monokai fringe (133, 89, 38) is residual 63,
+            # and a subpixel orange beside that face is residual ~148.
+            if off_axis(color, background, foreground) <= 18:
                 continue
             # The fringe sits on the editor well. A traffic-light or
             # title-bar pixel can be chromatic beside white chrome, and
