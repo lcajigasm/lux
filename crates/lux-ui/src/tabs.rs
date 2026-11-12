@@ -12,6 +12,12 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TabId(u64);
 
+impl TabId {
+    pub const fn as_u64(self) -> u64 {
+        self.0
+    }
+}
+
 /// One open tab.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tab {

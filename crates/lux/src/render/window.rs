@@ -39,6 +39,7 @@ impl App {
             .expect("a real GPU adapter must be available to run the Lux desktop app");
         let surface = Surface::new(&gpu.instance, &gpu.adapter, &gpu.device, window, size)
             .expect("failed to create the window's wgpu surface");
+        eprintln!("Lux: present mode {:?}", surface.config().present_mode);
         let format = surface.config().format;
         let quads = QuadPipeline::new(&gpu.device, format);
         let text = TextPipeline::new(&gpu.device, format, ATLAS_SIDE);

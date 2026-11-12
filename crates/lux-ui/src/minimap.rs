@@ -15,7 +15,6 @@
 //! (the one with the most content), so a long line is never hidden by
 //! averaging it away with its blank neighbors.
 
-use crate::editor_view::line_index::LineIndex;
 use lux_core::buffer::Buffer;
 use std::ops::Range;
 
@@ -83,44 +82,191 @@ pub fn build_frame(
     if !minimap.enabled {
         return None;
     }
-    let text = buffer.text();
-    let index = LineIndex::build(&text);
-    let total_lines = index.len();
-    let total_visual = folds.map_or(total_lines, |f| f.total_visual_lines(total_lines));
-    let per_row = lines_per_row(total_visual, available_rows);
+    let lines = line_densities(buffer);
+    Some(frame_from_densities(
+        &lines,
+        visible_line_range,
+        available_rows,
+        folds,
+    ))
+}
 
-    let rows = (0..row_count(total_visual, available_rows))
-        .map(|row| {
-            densest_row(
-                &index,
-                &text,
-                row,
-                per_row,
-                total_visual,
-                total_lines,
-                folds,
-            )
-        })
-        .collect();
+/// Remembers one document's row bars so a scroll does not walk the rope again.
+/// `version` is the history state. `document` distinguishes two buffers that
+/// both still have state 0. `edited_line` patches one line after a key.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MinimapModel {
+    version: u64,
+    document: u64,
+    available_rows: usize,
+    fold_stamp: u64,
+    lines: Vec<(u32, u32)>,
+    rows: Vec<MinimapRow>,
+}
 
+pub struct MinimapSample<'a> {
+    pub version: u64,
+    pub document: u64,
+    pub edited_line: Option<usize>,
+    pub buffer: &'a Buffer,
+    pub visible: Range<usize>,
+    pub available_rows: usize,
+    pub folds: Option<&'a lux_core::folding::FoldState>,
+}
+
+impl MinimapModel {
+    pub fn frame(&mut self, minimap: &Minimap, sample: MinimapSample<'_>) -> Option<MinimapFrame> {
+        if !minimap.enabled || sample.available_rows == 0 {
+            return None;
+        }
+        let total_lines = sample.buffer.len_lines();
+        let fold_stamp = fold_stamp(sample.folds);
+        let same = self.rows_match(
+            sample.version,
+            sample.document,
+            sample.available_rows,
+            total_lines,
+            fold_stamp,
+        );
+        if !same {
+            let patched = self.try_patch(&sample, total_lines, fold_stamp);
+            if !patched {
+                self.lines = line_densities(sample.buffer);
+                self.rows = rows_from_densities(&self.lines, sample.available_rows, sample.folds);
+            }
+            self.version = sample.version;
+            self.document = sample.document;
+            self.available_rows = sample.available_rows;
+            self.fold_stamp = fold_stamp;
+        }
+        Some(frame_from_densities_rows(
+            &self.rows,
+            &self.lines,
+            sample.visible,
+            sample.available_rows,
+            sample.folds,
+        ))
+    }
+
+    fn rows_match(
+        &self,
+        version: u64,
+        document: u64,
+        available_rows: usize,
+        total_lines: usize,
+        fold_stamp: u64,
+    ) -> bool {
+        !self.rows.is_empty()
+            && self.version == version
+            && self.document == document
+            && self.available_rows == available_rows
+            && self.lines.len() == total_lines
+            && self.fold_stamp == fold_stamp
+    }
+
+    fn try_patch(
+        &mut self,
+        sample: &MinimapSample<'_>,
+        total_lines: usize,
+        fold_stamp: u64,
+    ) -> bool {
+        let Some(line) = sample.edited_line else {
+            return false;
+        };
+        if self.document != sample.document
+            || self.available_rows != sample.available_rows
+            || self.fold_stamp != fold_stamp
+            || self.lines.len() != total_lines
+            || line >= self.lines.len()
+        {
+            return false;
+        }
+        self.lines[line] = sample.buffer.line_columns(line).unwrap_or((0, 0));
+        self.rows = rows_from_densities(&self.lines, sample.available_rows, sample.folds);
+        true
+    }
+}
+
+fn line_densities(buffer: &Buffer) -> Vec<(u32, u32)> {
+    (0..buffer.len_lines())
+        .map(|line| buffer.line_columns(line).unwrap_or((0, 0)))
+        .collect()
+}
+
+fn fold_stamp(folds: Option<&lux_core::folding::FoldState>) -> u64 {
+    let Some(folds) = folds else {
+        return 0;
+    };
+    let mut stamp = folds.folded_ranges().len() as u64;
+    for (start, range) in folds.folded_ranges() {
+        stamp = stamp
+            .wrapping_mul(31)
+            .wrapping_add(*start as u64)
+            .wrapping_mul(31)
+            .wrapping_add(range.end_line as u64);
+    }
+    stamp
+}
+
+fn frame_from_densities(
+    lines: &[(u32, u32)],
+    visible_line_range: Range<usize>,
+    available_rows: usize,
+    folds: Option<&lux_core::folding::FoldState>,
+) -> MinimapFrame {
+    let rows = rows_from_densities(lines, available_rows, folds);
+    frame_from_rows(&rows, lines, visible_line_range, available_rows, folds)
+}
+
+fn frame_from_densities_rows(
+    rows: &[MinimapRow],
+    lines: &[(u32, u32)],
+    visible_line_range: Range<usize>,
+    available_rows: usize,
+    folds: Option<&lux_core::folding::FoldState>,
+) -> MinimapFrame {
+    frame_from_rows(rows, lines, visible_line_range, available_rows, folds)
+}
+
+fn frame_from_rows(
+    rows: &[MinimapRow],
+    lines: &[(u32, u32)],
+    visible_line_range: Range<usize>,
+    available_rows: usize,
+    folds: Option<&lux_core::folding::FoldState>,
+) -> MinimapFrame {
+    let total_lines = lines.len();
+    let total_visual = folds.map_or(total_lines, |folds| folds.total_visual_lines(total_lines));
     let viewport_rows = if visible_line_range.is_empty() {
         0..0
     } else {
         let first_row = row_for_line(total_visual, available_rows, visible_line_range.start);
-        let last_row = row_for_line(
-            total_visual,
-            available_rows,
-            (visible_line_range.end.saturating_sub(1)).min(total_visual.saturating_sub(1)),
-        );
+        let last_line = visible_line_range
+            .end
+            .saturating_sub(1)
+            .min(total_visual.saturating_sub(1));
+        let last_row = row_for_line(total_visual, available_rows, last_line);
         first_row..last_row + 1
     };
-
-    Some(MinimapFrame {
-        rows,
+    MinimapFrame {
+        rows: rows.to_vec(),
         viewport: ViewportIndicator {
             rows: viewport_rows,
         },
-    })
+    }
+}
+
+fn rows_from_densities(
+    lines: &[(u32, u32)],
+    available_rows: usize,
+    folds: Option<&lux_core::folding::FoldState>,
+) -> Vec<MinimapRow> {
+    let total_lines = lines.len();
+    let total_visual = folds.map_or(total_lines, |folds| folds.total_visual_lines(total_lines));
+    let per_row = lines_per_row(total_visual, available_rows);
+    (0..row_count(total_visual, available_rows))
+        .map(|row| densest_row(lines, row, per_row, total_visual, total_lines, folds))
+        .collect()
 }
 
 /// Maps a click at minimap row `row` to the document line it represents —
@@ -193,8 +339,7 @@ pub fn row_for_buffer_line(
 }
 
 fn densest_row(
-    index: &LineIndex,
-    text: &str,
+    lines: &[(u32, u32)],
     row: usize,
     per_row: usize,
     total_visual: usize,
@@ -203,25 +348,24 @@ fn densest_row(
 ) -> MinimapRow {
     let start_v = row * per_row;
     let end_v = (start_v + per_row).min(total_visual);
-    let first_buf = folds.map_or(start_v, |f| f.visual_to_buffer_line(start_v, total_lines));
+    let first_buf = folds.map_or(start_v, |folds| {
+        folds.visual_to_buffer_line(start_v, total_lines)
+    });
     let mut best = MinimapRow {
         line: first_buf,
         indent_columns: 0,
         content_columns: 0,
     };
-    for v in start_v..end_v {
-        let line = folds.map_or(v, |f| f.visual_to_buffer_line(v, total_lines));
-        let line_text = &text[index.line_byte_range(text, line)];
-        let leading = line_text
-            .chars()
-            .take_while(|&c| c == ' ' || c == '\t')
-            .count();
-        let content_columns = line_text.chars().count() - leading;
-        if content_columns > best.content_columns {
+    for visual in start_v..end_v {
+        let line = folds.map_or(visual, |folds| {
+            folds.visual_to_buffer_line(visual, total_lines)
+        });
+        let (indent, content) = lines.get(line).copied().unwrap_or((0, 0));
+        if content as usize > best.content_columns {
             best = MinimapRow {
                 line,
-                indent_columns: leading,
-                content_columns,
+                indent_columns: indent as usize,
+                content_columns: content as usize,
             };
         }
     }
@@ -376,5 +520,59 @@ mod tests {
         assert_eq!(frame.rows.len(), 3);
         assert_eq!(frame.rows[0].line, 0);
         assert_eq!(frame.rows[1].line, 3);
+    }
+
+    fn sample<'a>(
+        buffer: &'a Buffer,
+        version: u64,
+        edited_line: Option<usize>,
+        visible: Range<usize>,
+        available_rows: usize,
+    ) -> MinimapSample<'a> {
+        MinimapSample {
+            version,
+            document: 7,
+            edited_line,
+            buffer,
+            visible,
+            available_rows,
+            folds: None,
+        }
+    }
+
+    #[test]
+    fn scrolling_reuses_the_row_bars() {
+        let mut text = String::new();
+        for i in 0..200 {
+            text.push_str(&format!("line {i}\n"));
+        }
+        let buffer = Buffer::from_bytes(text.as_bytes()).unwrap();
+        let minimap = Minimap::new();
+        let mut model = MinimapModel::default();
+        let top = model
+            .frame(&minimap, sample(&buffer, 1, None, 0..10, 40))
+            .unwrap();
+        let scrolled = model
+            .frame(&minimap, sample(&buffer, 1, None, 80..100, 40))
+            .unwrap();
+        assert_eq!(top.rows, scrolled.rows);
+        assert_ne!(top.viewport.rows, scrolled.viewport.rows);
+    }
+
+    #[test]
+    fn one_typed_line_patches_that_bar() {
+        let mut buffer = Buffer::from_bytes(b"a\nb\n").unwrap();
+        let minimap = Minimap::new();
+        let mut model = MinimapModel::default();
+        let before = model
+            .frame(&minimap, sample(&buffer, 1, None, 0..2, 100))
+            .unwrap();
+        buffer.insert(0, "zzz");
+        let after = model
+            .frame(&minimap, sample(&buffer, 2, Some(0), 0..2, 100))
+            .unwrap();
+        assert_eq!(before.rows[0].content_columns, 1);
+        assert_eq!(after.rows[0].content_columns, 4);
+        assert_eq!(after.rows[1], before.rows[1]);
     }
 }

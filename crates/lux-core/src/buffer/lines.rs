@@ -20,6 +20,32 @@ impl Buffer {
         Some(text)
     }
 
+    /// Leading spaces or tabs, then the remaining characters, excluding the
+    /// line break. Does not allocate the line.
+    pub fn line_columns(&self, line: usize) -> Option<(u32, u32)> {
+        if line >= self.len_lines() {
+            return None;
+        }
+        let mut indent = 0u32;
+        let mut content = 0u32;
+        let mut body = false;
+        for ch in self.rope.line(line).chars() {
+            if matches!(
+                ch,
+                '\n' | '\r' | '\u{000b}' | '\u{000c}' | '\u{0085}' | '\u{2028}' | '\u{2029}'
+            ) {
+                break;
+            }
+            if !body && (ch == ' ' || ch == '\t') {
+                indent = indent.saturating_add(1);
+            } else {
+                body = true;
+                content = content.saturating_add(1);
+            }
+        }
+        Some((indent, content))
+    }
+
     /// Byte offset of the first character of a line, in O(log N) time.
     pub fn line_start_byte(&self, line: usize) -> Option<usize> {
         (line < self.len_lines()).then(|| self.rope.line_to_byte(line))
