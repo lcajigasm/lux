@@ -227,6 +227,20 @@ pub(crate) fn defer_stage_hunk(app: &mut App, hunk: Hunk) {
     );
 }
 
+pub(crate) fn request_unstage_cursor_hunk(app: &mut App) {
+    let Some((root, file)) = root_and_file(app) else {
+        app.ui.announcement = Some("Open a repository file first".into());
+        return;
+    };
+    let line = app.cursors.primary().head.line as u32 + 1;
+    spawn(
+        move || match snapshot::unstage_hunk_at_line(&root, &file, line) {
+            Ok(()) => Event::Again,
+            Err(error) => Event::Failed(error),
+        },
+    );
+}
+
 pub(crate) fn request_stage_cursor_hunk(app: &mut App) {
     let line = app.cursors.primary().head.line as u32 + 1;
     let Some(hunk) = app.ui.git.hunks.iter().copied().find(|hunk| {

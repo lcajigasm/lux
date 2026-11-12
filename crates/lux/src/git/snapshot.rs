@@ -45,10 +45,11 @@ pub(crate) fn file_shot(path: Option<&Path>, text: &str) -> FileShot {
     let mut hunks = Vec::new();
     if path.is_file()
         && let Some(root) = &repo_root
-        && let Ok(rel) = path.strip_prefix(root)
-        && let Ok(found) = hunks_against_head(&repo, rel, text)
     {
-        hunks = found;
+        let rel = path_in_repo(root, path);
+        if let Ok(found) = hunks_against_head(&repo, &rel, text) {
+            hunks = found;
+        }
     }
     let markers = gutter_markers(&hunks);
     FileShot {
@@ -178,8 +179,25 @@ pub(crate) fn create_branch(root: &Path, name: &str) -> Result<String, String> {
 
 pub(crate) fn stage_hunk_on_disk(root: &Path, file: &Path, hunk: &Hunk) -> Result<(), String> {
     let repo = discover_repo(root).ok_or_else(|| "not a git repository".to_string())?;
-    let rel = file.strip_prefix(root).unwrap_or(file);
-    lux_git::staging::stage_hunk(&repo, rel, hunk).map_err(|error| error.to_string())
+    let rel = path_in_repo(root, file);
+    lux_git::staging::stage_hunk(&repo, &rel, hunk).map_err(|error| error.to_string())
+}
+
+/// The file's path relative to `root`. `gix` stores the workdir with
+/// symlinks resolved, and the opened path may still be the link
+/// (`/var` versus `/private/var` on macOS). A failed strip used to hand
+/// the absolute path to the index, which then found no hunk.
+fn path_in_repo(root: &Path, file: &Path) -> PathBuf {
+    if let Ok(rel) = file.strip_prefix(root) {
+        return rel.to_path_buf();
+    }
+    let Ok(root) = std::fs::canonicalize(root) else {
+        return file.to_path_buf();
+    };
+    let Ok(file) = std::fs::canonicalize(file) else {
+        return file.to_path_buf();
+    };
+    file.strip_prefix(root).unwrap_or(&file).to_path_buf()
 }
 
 fn head_blob(repo: &lux_git::gix::Repository, file: &Path) -> Option<String> {
@@ -188,4 +206,108 @@ fn head_blob(repo: &lux_git::gix::Repository, file: &Path) -> Option<String> {
     let entry = tree.lookup_entry_by_path(file).ok()??;
     let object = entry.object().ok()?;
     String::from_utf8(object.data.clone()).ok()
+}
+
+/// Unstages the staged hunk whose new side covers 1-based `line`.
+/// The working tree file is not rewritten.
+pub(crate) fn unstage_hunk_at_line(root: &Path, file: &Path, line: u32) -> Result<(), String> {
+    let repo = discover_repo(root).ok_or_else(|| "not a git repository".to_string())?;
+    let rel = path_in_repo(root, file);
+    let hunks = lux_git::staging::staged_hunks(&repo, &rel).map_err(|error| error.to_string())?;
+    let Some(hunk) = hunks.into_iter().find(|hunk| {
+        let start = hunk.after_start;
+        let end = start + hunk.after_len.max(1);
+        line >= start && line < end
+    }) else {
+        return Err("No staged hunk on this line".into());
+    };
+    lux_git::staging::unstage_hunk(&repo, &rel, &hunk).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::path_in_repo;
+    use std::path::Path;
+
+    #[test]
+    fn path_in_repo_resolves_a_symlink_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        let note = real.join("note.rs");
+        std::fs::write(&note, "one\n").unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert_eq!(
+            path_in_repo(&real, &link.join("note.rs")),
+            Path::new("note.rs")
+        );
+    }
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .current_dir(dir)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .args(args)
+            .status()
+            .expect("git");
+        assert!(status.success(), "{args:?} -> {status}");
+    }
+
+    #[test]
+    fn unstage_hunk_at_line_uses_a_system_git_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path();
+        git(repo, &["init", "-b", "main"]);
+        git(repo, &["config", "user.email", "lux@example.com"]);
+        git(repo, &["config", "user.name", "Lux User"]);
+        let note = repo.join("note.rs");
+        std::fs::write(&note, "one\ntwo\nthree\n").unwrap();
+        git(repo, &["add", "note.rs"]);
+        git(repo, &["commit", "-m", "base"]);
+        std::fs::write(&note, "ONE\ntwo\nTHREE\n").unwrap();
+        git(repo, &["add", "note.rs"]);
+
+        super::unstage_hunk_at_line(repo, &note, 1).expect("unstage line 1");
+
+        let cached = std::process::Command::new("git")
+            .current_dir(repo)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .args(["diff", "--cached", "--", "note.rs"])
+            .output()
+            .expect("git diff");
+        let text = String::from_utf8_lossy(&cached.stdout);
+        assert!(
+            cached.status.success() && !text.contains("+ONE") && text.contains("+THREE"),
+            "system git index is not the unstaged hunk:\n{text}"
+        );
+        let worktree = std::process::Command::new("git")
+            .current_dir(repo)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .args(["diff", "--", "note.rs"])
+            .output()
+            .expect("git diff worktree");
+        let worktree_text = String::from_utf8_lossy(&worktree.stdout);
+        assert!(
+            worktree.status.success()
+                && worktree_text.contains("+ONE")
+                && !worktree_text.contains("+THREE"),
+            "worktree diff ignored the file:\n{worktree_text}"
+        );
+        let index_bytes = std::fs::read(repo.join(".git/index")).unwrap();
+        assert!(
+            !index_bytes.windows(4).any(|window| window == b"TREE"),
+            "index still has a tree cache"
+        );
+
+        let opened = lux_git::gix::open(repo).unwrap();
+        let index = opened.open_index().unwrap();
+        let entry = index.entry_by_path("note.rs".into()).unwrap();
+        let blob = opened.find_blob(entry.id).unwrap();
+        assert_eq!(&blob.data[..], b"one\ntwo\nTHREE\n");
+        assert_eq!(std::fs::read_to_string(&note).unwrap(), "ONE\ntwo\nTHREE\n");
+    }
 }

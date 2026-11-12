@@ -300,10 +300,22 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     out.push_str("goto_query=");
     out.push_str(&escape(goto_query));
     out.push('\n');
+    let palette_query = app
+        .ui
+        .command_palette
+        .as_ref()
+        .map(|palette| palette.query.text())
+        .unwrap_or("");
     out.push_str(&format!(
         "palette={}\n",
         u8::from(app.ui.command_palette.is_some())
     ));
+    out.push_str("palette_query=");
+    out.push_str(&escape(palette_query));
+    out.push('\n');
+    out.push_str("announcement=");
+    out.push_str(&escape(app.ui.announcement.as_deref().unwrap_or("")));
+    out.push('\n');
     let (find, replace) = match &app.ui.search_bar {
         Some(search) => (1, u8::from(search.replace_mode)),
         None => (0, 0),
