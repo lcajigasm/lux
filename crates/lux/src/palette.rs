@@ -108,7 +108,13 @@ pub(crate) fn handle_palette_key(
                 app.ui.command_palette = None;
                 crate::focus::focus_editor(app);
                 execute_command(app, ctx, &cmd_id);
+                // The unstage worker prints this line with its Result.
+                // Any other command never starts that worker.
+                if cmd_id != "git.unstage_hunk" {
+                    eprintln!("palette-enter id={cmd_id} result=not-run");
+                }
             } else {
+                eprintln!("palette-enter id=(none) result=not-run");
                 app.ui.command_palette = None;
                 crate::focus::focus_editor(app);
             }

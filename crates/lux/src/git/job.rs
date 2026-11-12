@@ -229,16 +229,28 @@ pub(crate) fn defer_stage_hunk(app: &mut App, hunk: Hunk) {
 
 pub(crate) fn request_unstage_cursor_hunk(app: &mut App) {
     let Some((root, file)) = root_and_file(app) else {
+        eprintln!("palette-enter id=git.unstage_hunk result=Err(Open a repository file first)");
         app.ui.announcement = Some("Open a repository file first".into());
         return;
     };
     let line = app.cursors.primary().head.line as u32 + 1;
-    spawn(
-        move || match snapshot::unstage_hunk_at_line(&root, &file, line) {
-            Ok(()) => Event::Again,
-            Err(error) => Event::Failed(error),
-        },
-    );
+    spawn(move || {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            snapshot::unstage_hunk_at_line(&root, &file, line)
+        }));
+        match &result {
+            Ok(Ok(())) => eprintln!("palette-enter id=git.unstage_hunk result=Ok(())"),
+            Ok(Err(error)) => {
+                eprintln!("palette-enter id=git.unstage_hunk result=Err({error})")
+            }
+            Err(_) => eprintln!("palette-enter id=git.unstage_hunk result=Err(panic)"),
+        }
+        match result {
+            Ok(Ok(())) => Event::Again,
+            Ok(Err(error)) => Event::Failed(error),
+            Err(_) => Event::Failed("git task failed".into()),
+        }
+    });
 }
 
 pub(crate) fn request_stage_cursor_hunk(app: &mut App) {
