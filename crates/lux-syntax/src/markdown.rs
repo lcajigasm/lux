@@ -317,6 +317,15 @@ fn slice(source: &str, node: Node) -> String {
     source[start..end].to_string()
 }
 
+fn inline_language() -> tree_sitter::Language {
+    unsafe extern "C" {
+        fn tree_sitter_markdown_inline() -> *const ();
+    }
+    tree_sitter::Language::new(unsafe {
+        tree_sitter_language::LanguageFn::from_raw(tree_sitter_markdown_inline)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,13 +346,4 @@ mod tests {
             "fence body dropped indent: {text:?}"
         );
     }
-}
-
-fn inline_language() -> tree_sitter::Language {
-    unsafe extern "C" {
-        fn tree_sitter_markdown_inline() -> *const ();
-    }
-    tree_sitter::Language::new(unsafe {
-        tree_sitter_language::LanguageFn::from_raw(tree_sitter_markdown_inline)
-    })
 }

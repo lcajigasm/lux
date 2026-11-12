@@ -11,6 +11,7 @@ mod edit_menu;
 mod git;
 mod goto;
 mod icons;
+mod ime;
 mod language_picker;
 mod lsp;
 pub(crate) mod markdown;
@@ -39,7 +40,7 @@ use std::time::Instant;
 use crate::presentation::Outcome;
 use lux_platform::PlatformContext;
 use lux_render::QuadInstance;
-use paint::{DrawList, color, push_glyph, set_active_theme, set_hidpi_grayscale};
+use paint::{DrawList, color, set_active_theme, set_hidpi_grayscale};
 
 use crate::app::{App, BLINK_INTERVAL, TEXT_LEFT_PADDING};
 
@@ -300,54 +301,21 @@ impl App {
             );
         }
 
-        if ime.is_composing()
-            && let Some((x, y)) = cursor_screen
-        {
-            let family = editor_view.family().to_string();
-            let style = lux_render::LineStyle {
-                family: &family,
-                font_size,
-                ligatures: false,
-            };
-            let preedit_text = ime.preedit_text().to_string();
-            let layout = editor_view
-                .text_layout_mut()
-                .layout_line(&style, &preedit_text, &[]);
-            for cluster in layout.clusters() {
-                push_glyph(
-                    &mut atlas_state.atlas,
-                    &mut atlas_state.dirty,
-                    &mut atlas_state.scale_cx,
-                    font,
-                    font_size,
-                    &cluster,
-                    x,
-                    y + layout.baseline(),
-                    foreground,
-                    &mut glyph_instances,
-                );
-            }
-            // A thin underline marks in-progress composition, the same
-            // convention a desktop IME uses for uncommitted text.
-            quad_instances.push(QuadInstance::solid(
-                [
-                    x,
-                    y + line_height - 2.0 * stroke,
-                    layout.width().max(stroke),
-                    2.0 * stroke,
-                ],
-                color(chrome.theme.accent),
-            ));
-            gpu_window.window.set_ime_cursor_area(
-                dpi::PhysicalPosition::new(x as i32, y as i32),
-                dpi::PhysicalSize::new(layout.width().max(stroke) as u32, line_height as u32),
-            );
-        } else if let Some((x, y)) = cursor_screen {
-            gpu_window.window.set_ime_cursor_area(
-                dpi::PhysicalPosition::new(x as i32, y as i32),
-                dpi::PhysicalSize::new((2.0 * stroke) as u32, line_height as u32),
-            );
-        }
+        ime::paint_composition(
+            ime,
+            cursor_screen,
+            gpu_window.window,
+            editor_view,
+            atlas_state,
+            font,
+            font_size,
+            line_height,
+            stroke,
+            foreground,
+            color(chrome.theme.accent),
+            &mut quad_instances,
+            &mut glyph_instances,
+        );
         let language_id = documents.language();
         if let Some(search_state) = &mut ui.search_bar {
             let search_bar_top = editor_top + viewport.height;
