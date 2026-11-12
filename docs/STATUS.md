@@ -2528,7 +2528,7 @@ _Nothing is behind an `experimental.*` flag yet._
 
 ### ST-FIX-08: Grammar coverage and Markdown preview
 
-- **Status:** The languages in `crates/lux-syntax/vendor/SOURCES.md` highlight from vendored Tree-sitter grammars. Markdown paragraphs highlight emphasis, strong text, code spans, and links, and Command+Shift+V (Control+Shift+V) toggles a preview built from that parse tree. A fenced block names a language (`rust`, `python`, `ts`, and the other extensions this build highlights) and that fence is painted with the active syntax theme. A fence with no language stays one foreground color.
+- **Status:** The languages in `crates/lux-syntax/vendor/SOURCES.md` highlight from vendored Tree-sitter grammars. Markdown paragraphs highlight emphasis, strong text, code spans, and links, and Command+Shift+V (Control+Shift+V) toggles a preview built from that parse tree. A fenced block names a language (`rust`, `python`, `ts`, and the other extensions this build highlights) and that fence is painted with the active syntax theme. The whole line is shaped once, so the spaces between tokens and the indent keep their width. A fence with no language stays one foreground color.
 - **Verification:** `lux-syntax` tests `coverage`, `golden_tokens`, and `input::syntax_tests` (Makefile, Dockerfile, PHP, a Ruby shebang, Command+/ on PHP, Command+Shift+V on a Markdown buffer).
 
 ### ST-FIX-07: Tab stops and the painted caret

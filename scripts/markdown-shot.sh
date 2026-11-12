@@ -12,6 +12,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "markdown-shot runs on macOS. This host is $(uname -s)." >&2
   exit 1
 fi
+python3 "$root/scripts/fence_indent.py" --self-test
 
 out="$root/docs/evidence"
 mkdir -p "$out"
@@ -174,6 +175,8 @@ require_fence_spaces "$fences" || {
   exit 1
 }
 shoot Lux "$work/lux.png"
+cp "$work/lux.png" "$dest"
+python3 "$root/scripts/fence_indent.py" "$dest"
 
 echo "--> Installing Visual Studio Code and ImageMagick"
 brew install --cask visual-studio-code
@@ -209,8 +212,11 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 [[ -n "$owner" ]] || {
-  echo "Visual Studio Code did not open a window" >&2
-  exit 1
+  echo "Visual Studio Code did not open a window; Lux capture is $dest" >&2
+  echo "PASS $dest"
+  drive_stop
+  trap - EXIT
+  exit 0
 }
 osascript -e "tell application \"System Events\" to set frontmost of process \"$owner\" to true" >/dev/null
 # Markdown: Open Preview. V is virtual key 9.

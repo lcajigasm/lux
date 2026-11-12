@@ -207,26 +207,17 @@ pub(super) fn render_preview(
                 let size = font_size * 0.9;
                 if let Some(lines) = fence_runs(&text, &info, syntax) {
                     for line in lines {
-                        let mut x = text_left + font_size;
-                        for run in line {
-                            x += draw_line(
-                                editor_view,
-                                atlas_state,
-                                font,
-                                &family,
-                                &run.text,
-                                x,
-                                y,
-                                size,
-                                [
-                                    run.rgb.0 as f32 / 255.0,
-                                    run.rgb.1 as f32 / 255.0,
-                                    run.rgb.2 as f32 / 255.0,
-                                    1.0,
-                                ],
-                                glyph_instances,
-                            );
-                        }
+                        draw_fence_line(
+                            editor_view,
+                            atlas_state,
+                            font,
+                            &family,
+                            &line,
+                            text_left + font_size,
+                            y,
+                            size,
+                            glyph_instances,
+                        );
                         y += size * 1.3;
                     }
                 } else {
@@ -366,18 +357,83 @@ fn draw_line(
             glyph_instances,
         );
     }
-    // `LineLayout::width` drops trailing whitespace. A run that is only
-    // the space between `fn` and `main`, or a line's indent, is entirely
-    // trailing, so its width is 0 and the next token is painted against
-    // the previous one. The cluster end is the advance the caret already
-    // uses.
-    painted_advance(&line)
+    // Paragraph spans are not whitespace-only. A fence is: the space
+    // between `fn` and `main` is its own run, and laying that run out by
+    // itself makes the space trailing. `width()` then returns 0. Fences
+    // use `draw_fence_line`, which lays the whole line out once.
+    line.width()
 }
 
-fn painted_advance(line: &lux_render::LineLayout) -> f32 {
-    line.clusters()
-        .iter()
-        .fold(0.0_f32, |end, cluster| end.max(cluster.x + cluster.advance))
+/// One layout for the whole fence line. Cluster `x` already includes
+/// the spaces the highlighter did not color, so indent and the gap
+/// between tokens stay where they are in the source.
+#[allow(clippy::too_many_arguments)]
+fn draw_fence_line(
+    editor_view: &mut lux_ui::editor_view::EditorView,
+    atlas_state: &mut AtlasState,
+    font: FontRef<'_>,
+    family: &str,
+    runs: &[FenceRun],
+    x: f32,
+    y: f32,
+    font_size: f32,
+    glyph_instances: &mut Vec<lux_render::GlyphInstance>,
+) {
+    let text = join_runs(runs);
+    if text.is_empty() {
+        return;
+    }
+    let style = lux_render::LineStyle {
+        family,
+        font_size,
+        ligatures: false,
+    };
+    let line = editor_view
+        .text_layout_mut()
+        .layout_line(&style, &text, &[]);
+    let baseline = y + line.baseline();
+    for cluster in line.clusters() {
+        let byte = cluster.byte_range.start;
+        push_glyph(
+            &mut atlas_state.atlas,
+            &mut atlas_state.dirty,
+            &mut atlas_state.scale_cx,
+            font,
+            font_size,
+            &cluster,
+            x,
+            baseline,
+            color_at(runs, byte),
+            glyph_instances,
+        );
+    }
+}
+
+fn join_runs(runs: &[FenceRun]) -> String {
+    let mut text = String::new();
+    for run in runs {
+        text.push_str(&run.text);
+    }
+    text
+}
+
+fn color_at(runs: &[FenceRun], byte: usize) -> [f32; 4] {
+    let mut at = 0usize;
+    let mut rgb = runs.first().map(|run| run.rgb).unwrap_or((0, 0, 0));
+    for run in runs {
+        let next = at + run.text.len();
+        if byte < next {
+            rgb = run.rgb;
+            break;
+        }
+        at = next;
+    }
+    [
+        rgb.0 as f32 / 255.0,
+        rgb.1 as f32 / 255.0,
+        rgb.2 as f32 / 255.0,
+        1.0,
+    ]
 }
 
 #[cfg(test)]
@@ -437,7 +493,6 @@ mod tests {
             "highlight runs dropped the spaces: {painted:?}"
         );
 
-        let lines = super::fence_runs(&codes[0].1, "rust", syntax).expect("rust fence");
         let mut cx = lux_render::TextLayoutContext::new();
         let family = cx
             .register_font(include_bytes!(
@@ -449,35 +504,49 @@ mod tests {
             font_size: 16.0,
             ligatures: false,
         };
-        for line in lines {
-            let text: String = line.iter().map(|run| run.text.as_str()).collect();
-            if text.is_empty() {
-                continue;
-            }
-            let whole = cx.layout_line(&style, &text, &[]);
-            let mut sum = 0.0_f32;
-            for run in &line {
-                if run.text.chars().all(char::is_whitespace) && !run.text.is_empty() {
-                    let laid = cx.layout_line(&style, &run.text, &[]);
-                    assert!(
-                        super::painted_advance(&laid) > laid.width(),
-                        "a whitespace run must advance past LineLayout::width, which drops it: {text:?}"
-                    );
-                }
-                if run.text.is_empty() {
-                    continue;
-                }
-                let laid = cx.layout_line(&style, &run.text, &[]);
-                sum += super::painted_advance(&laid);
-            }
-            let advance = super::painted_advance(&whole);
+        let cell = cx.layout_line(&style, "n", &[]).clusters()[0].advance;
+        // Laying a space out on its own is the bug: it is trailing
+        // whitespace, and `width()` is 0. The painter lays the joined
+        // line out once, so these positions are the ones it paints.
+        let space = cx.layout_line(&style, " ", &[]);
+        assert!(
+            space.width() + cell * 0.5 < cell,
+            "a lone space is trailing and width() drops it"
+        );
+        for (info, line_needle, word, cells) in [
+            ("rust", "fn main() {", "main", 3.0_f32),
+            ("rust", "    let name", "let", 4.0),
+            ("javascript", "function main() {", "main", 9.0),
+            ("javascript", "    const name", "const", 4.0),
+            ("python", "def main():", "main", 4.0),
+            ("python", "    name =", "name", 4.0),
+        ] {
+            let text = codes
+                .iter()
+                .find(|(lang, _)| lang == info)
+                .map(|(_, body)| body.as_str())
+                .expect(info);
+            let lines = super::fence_runs(text, info, syntax).expect(info);
+            let line = lines
+                .iter()
+                .find(|line| super::join_runs(line).contains(line_needle))
+                .unwrap_or_else(|| panic!("{info} lost {line_needle}"));
+            let joined = super::join_runs(line);
+            let word_at = joined
+                .find(word)
+                .unwrap_or_else(|| panic!("{word} missing"));
+            let laid = cx.layout_line(&style, &joined, &[]);
+            let cluster = laid
+                .clusters()
+                .into_iter()
+                .find(|cluster| cluster.byte_range.start == word_at)
+                .unwrap_or_else(|| panic!("{word} has no cluster"));
+            let expect = cells * cell;
             assert!(
-                (sum - advance).abs() < 0.5,
-                "painted runs lost whitespace on {text:?}: runs {sum}, line {advance}"
+                (cluster.x - expect).abs() < 0.5,
+                "{info} {word:?} painted at {}, want {expect}",
+                cluster.x
             );
-            if text.chars().any(|ch| ch == ' ' || ch == '\t') {
-                assert!(advance > 0.0, "indent or spaces painted at x=0: {text:?}");
-            }
         }
     }
 }

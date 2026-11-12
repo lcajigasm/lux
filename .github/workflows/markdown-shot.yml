@@ -26,5 +26,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: markdown-fence
-          path: docs/evidence/markdown-fence.png
+          path: docs/evidence/markdown-fence*.png
           if-no-files-found: error
