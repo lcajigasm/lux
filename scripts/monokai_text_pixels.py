@@ -3,9 +3,10 @@
 
 A scale-1 LCD mask paints a colored fringe beside a neutral stem. On
 docs/compare/monokai-side-by-side.png (macos-15 run 41348580486) the
-pixel to the right of a #F8F8F2 stem is (133, 89, 38). A grayscale ramp
-between two low-chroma colors stays low-chroma. This fails the image
-when that fringe is present, and writes an 8× nearest-neighbor crop.
+pixel to the right of a #F8F8F2 stem is (133, 89, 38). Antialiasing of
+the authored color stays on the line between the background and the
+foreground. A pixel off that line fails the image. The check also
+writes an 8× nearest-neighbor crop.
 """
 
 import sys
@@ -102,23 +103,52 @@ def near(color, target, tol):
     return all(abs(color[i] - target[i]) <= tol for i in range(3))
 
 
+def off_axis(color, background, foreground):
+    """Distance from the line through the background and the foreground.
+
+    A grayscale mask blends those two colors, so antialiasing stays on
+    the line. A subpixel fringe (orange or cyan beside a neutral stem)
+    does not.
+    """
+    axis = tuple(foreground[i] - background[i] for i in range(3))
+    length = sum(component * component for component in axis)
+    if length == 0:
+        return float(max(abs(color[i] - background[i]) for i in range(3)))
+    along = sum((color[i] - background[i]) * axis[i] for i in range(3)) / length
+    return (
+        sum(((color[i] - background[i]) - along * axis[i]) ** 2 for i in range(3)) ** 0.5
+    )
+
+
 def check(path, background, foreground, zoom_path):
     width, height, rows = load_png(path)
+    # The stem is the authored foreground. Monokai #F8F8F2 has channel
+    # spread 6, so a cap of 36 still names it. Catppuccin #cdd6f4 has
+    # spread 39: run 43069249597 contains 15 pixels of that exact color,
+    # and the nearest pixel with spread <= 36 is an antialiased mix
+    # 16–20 away. Sublime and VS Code paint the scheme foreground, so a
+    # cap tighter than that color cannot see their stems either.
+    # Distance stays 12. A distance of 16 matches near-white chrome.
+    chroma = max(36, spread(foreground))
     stems = []
+    exact = 0
     for y in range(height):
         for x in range(width):
             color = pixel(rows, x, y)
-            # Grayscale antialiasing pulls a light-theme stem off the
-            # exact foreground. On macos-15 run 42986567243 Solarized
-            # Light's #657b83 had 18 pixels inside 8 and 40 inside 12,
-            # and those 18 had no colored fringe. Dark themes stay in
-            # the hundreds at either tolerance. 16 matches tens of
-            # thousands of near-white chrome pixels, so 12 is the
-            # widest tolerance that still names a stem.
-            if near(color, foreground, 12) and spread(color) <= 36:
+            if color == foreground:
+                exact += 1
+            if near(color, foreground, 12) and spread(color) <= chroma:
                 stems.append((x, y))
-    if len(stems) < 20:
-        raise SystemExit(f"{path}: found {len(stems)} stem pixels near {foreground}, want >= 20")
+    # GitHub Light #1f2328 has 14 exact pixels on run 43122346979
+    # (editor rows 47–77 and the status line). Distance 20 finds no
+    # further pixels, so a floor of 20 near-matches cannot see that
+    # face. Ten exact pixels of the authored color is the stem Sublime
+    # and VS Code paint. The near-match floor stays 20.
+    if exact < 10 and len(stems) < 20:
+        return False, (
+            f"FAIL {path}: found {exact} exact and {len(stems)} near {foreground}, "
+            "want >= 10 exact or >= 20 near"
+        )
     fringes = []
     for x, y in stems:
         for dx in (-3, -2, -1, 1, 2, 3):
@@ -128,7 +158,15 @@ def check(path, background, foreground, zoom_path):
             color = pixel(rows, nx, y)
             if near(color, background, 8) or near(color, foreground, 12):
                 continue
-            if spread(color) <= 45:
+            # Run 43122346979 measured every neighbor that sits on the
+            # editor well. The largest distance off the background-
+            # foreground line was 13.1 (Solarized Dark). Gruvbox's
+            # spread>45 pixels were residual <= 3.8 from #ebdbb2 over
+            # #282828, and Tokyo Night's were <= 1.8: the mask's own
+            # coverage, which a chromatic face makes look "colored".
+            # The documented Monokai fringe (133, 89, 38) is residual 63,
+            # and a subpixel orange beside that face is residual ~148.
+            if off_axis(color, background, foreground) <= 18:
                 continue
             # The fringe sits on the editor well. A traffic-light or
             # title-bar pixel can be chromatic beside white chrome, and
@@ -148,7 +186,7 @@ def check(path, background, foreground, zoom_path):
             break
     if fringes:
         shown = ", ".join(f"{x},{y}={color}" for x, y, color, _ in fringes[:6])
-        raise SystemExit(f"{path}: colored fringe beside a neutral stem: {shown}")
+        return False, f"FAIL {path}: colored fringe beside a neutral stem: {shown}"
     # Background must actually be on the frame. Sample the modal-ish
     # corners of the editor by counting exact background hits.
     hits = 0
@@ -157,9 +195,11 @@ def check(path, background, foreground, zoom_path):
             if near(pixel(rows, x, y), background, 2):
                 hits += 1
     if hits < 50:
-        raise SystemExit(f"{path}: background {background} appears {hits} times, want >= 50")
+        return False, (
+            f"FAIL {path}: background {background} appears {hits} times, want >= 50"
+        )
     write_zoom(rows, width, height, stems, zoom_path)
-    print(f"PASS {path} stems={len(stems)} background_hits={hits} zoom={zoom_path}")
+    return True, f"PASS {path} stems={len(stems)} background_hits={hits} zoom={zoom_path}"
 
 
 def write_zoom(rows, width, height, stems, dest):
@@ -189,7 +229,9 @@ def main():
     if len(sys.argv) != 5:
         raise SystemExit("usage: monokai_text_pixels.py IMAGE #RRGGBB #RRGGBB ZOOM.png")
     _, image, background, foreground, zoom = sys.argv
-    check(image, parse_hex(background), parse_hex(foreground), zoom)
+    ok, message = check(image, parse_hex(background), parse_hex(foreground), zoom)
+    print(message)
+    raise SystemExit(0 if ok else 1)
 
 
 if __name__ == "__main__":

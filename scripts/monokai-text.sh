@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Real Lux window on macos-15. Scale 1 used to paint an LCD fringe
 # beside neutral stems. The capture is the window itself, then an 8×
-# nearest-neighbor crop of a stem. A second dark theme and a light theme
-# take the same path.
+# nearest-neighbor crop of a stem. Every bundled scheme takes the same
+# path.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -84,20 +84,38 @@ shoot() {
 capture_theme() {
   local name="$1"
   local slug="$2"
-  local scheme="$3"
   write_theme "$name"
   drive_launch "$fixture"
   sleep 0.6
   shoot "$out/$slug.png"
-  local bg fg
-  bg="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["globals"]["background"])' "$scheme")"
-  fg="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["globals"]["foreground"])' "$scheme")"
-  python3 "$root/scripts/monokai_text_pixels.py" "$out/$slug.png" "$bg" "$fg" "$out/$slug-zoom.png"
 }
 
-capture_theme "monokai" "monokai" "$root/themes/Monokai.sublime-color-scheme"
-capture_theme "dracula" "dracula" "$root/themes/Dracula.sublime-color-scheme"
-capture_theme "solarized light" "solarized-light" "$root/themes/Solarized Light.sublime-color-scheme"
+count=0
+failed=0
+results="$out/schemes.txt"
+: > "$results"
+for scheme in "$root"/themes/*.sublime-color-scheme; do
+  base="$(basename "$scheme" .sublime-color-scheme)"
+  name="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')"
+  slug="$(printf '%s' "$name" | tr ' ' '-')"
+  capture_theme "$name" "$slug"
+  bg="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["globals"]["background"])' "$scheme")"
+  fg="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["globals"]["foreground"])' "$scheme")"
+  # One row per scheme. A miss does not stop the loop.
+  line="$(python3 "$root/scripts/monokai_text_pixels.py" "$out/$slug.png" "$bg" "$fg" "$out/$slug-zoom.png" 2>&1)" || true
+  printf '%s\n' "$line" | tee -a "$results"
+  case "$line" in
+    PASS*) ;;
+    *) failed=1 ;;
+  esac
+  count=$((count + 1))
+done
+[[ "$count" -ge 12 ]] || {
+  echo "expected every bundled scheme, found $count" >&2
+  exit 1
+}
+echo "---- schemes ----"
+cat "$results"
 drive_stop
 
 # Lux is done. Sublime and VS Code use the runner account, not the
@@ -227,5 +245,12 @@ fi
 if [[ -s "$out/vscode-monokai.png" ]]; then
   echo "VS Code window captured" | tee -a "$out/vscode.txt"
 else
-  echo "VS Code window did not appear. Delivering Lux Monokai, Dracula, and Solarized Light at 1x with 8x crops, and the Sublime comparison when that window appeared." | tee -a "$out/vscode.txt"
+  echo "VS Code window did not appear. Delivering the Lux scheme captures at 1x with 8x crops, and the Sublime comparison when that window appeared." | tee -a "$out/vscode.txt"
+fi
+
+echo "---- schemes ----"
+cat "$results"
+if [[ "$failed" != 0 ]]; then
+  echo "one or more schemes failed the stem check" >&2
+  exit 1
 fi
