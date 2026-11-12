@@ -271,6 +271,24 @@ mod tests {
 
         super::unstage_hunk_at_line(repo, &note, 1).expect("unstage line 1");
 
+        let cached = std::process::Command::new("git")
+            .current_dir(repo)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .args(["diff", "--cached", "--", "note.rs"])
+            .output()
+            .expect("git diff");
+        let text = String::from_utf8_lossy(&cached.stdout);
+        assert!(
+            cached.status.success() && !text.contains("+ONE") && text.contains("+THREE"),
+            "system git index is not the unstaged hunk:\n{text}"
+        );
+        let index_bytes = std::fs::read(repo.join(".git/index")).unwrap();
+        assert!(
+            !index_bytes.windows(4).any(|window| window == b"TREE"),
+            "index still has a tree cache"
+        );
+
         let opened = lux_git::gix::open(repo).unwrap();
         let index = opened.open_index().unwrap();
         let entry = index.entry_by_path("note.rs".into()).unwrap();

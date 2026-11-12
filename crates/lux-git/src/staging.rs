@@ -103,10 +103,7 @@ fn write_staged_entry(
     index.remove_entries(|_, entry_path, _| entry_path == rel);
     index.dangerously_push_entry(stat, blob_id.detach(), entry::Flags::empty(), mode, rel);
     index.sort_entries();
-    index
-        .write(gix::index::write::Options::default())
-        .map_err(|e| StagingError::WriteIndex(Box::new(e)))?;
-    Ok(())
+    write_index(&mut index)
 }
 
 /// Stages `path` (relative to the repository's working directory): writes
@@ -128,10 +125,19 @@ pub fn unstage(repo: &gix::Repository, path: &Path) -> Result<(), StagingError> 
     let rel = path_to_bstr(path)?;
     let mut index = open_or_create_index(repo)?;
     index.remove_entries(|_, entry_path, _| entry_path == rel);
+    write_index(&mut index)
+}
+
+/// Writes `index` without the tree-cache extension.
+///
+/// `gix` serializes that extension as it was read. After an entry changes,
+/// a still-valid cache makes `git diff --cached` and `git write-tree` report
+/// the previous tree. Dropping it forces git to read the entries.
+fn write_index(index: &mut gix::index::File) -> Result<(), StagingError> {
+    index.remove_tree();
     index
         .write(gix::index::write::Options::default())
-        .map_err(|e| StagingError::WriteIndex(Box::new(e)))?;
-    Ok(())
+        .map_err(|e| StagingError::WriteIndex(Box::new(e)))
 }
 
 /// Returns whether `path` currently has an index entry.
