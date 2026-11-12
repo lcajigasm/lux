@@ -200,6 +200,14 @@ fn path_in_repo(root: &Path, file: &Path) -> PathBuf {
     file.strip_prefix(root).unwrap_or(&file).to_path_buf()
 }
 
+fn head_blob(repo: &lux_git::gix::Repository, file: &Path) -> Option<String> {
+    let tree_id = repo.head_tree_id_or_empty().ok()?;
+    let tree = repo.find_tree(tree_id).ok()?;
+    let entry = tree.lookup_entry_by_path(file).ok()??;
+    let object = entry.object().ok()?;
+    String::from_utf8(object.data.clone()).ok()
+}
+
 /// Unstages the staged hunk whose new side covers 1-based `line`.
 /// The working tree file is not rewritten.
 pub(crate) fn unstage_hunk_at_line(root: &Path, file: &Path, line: u32) -> Result<(), String> {
@@ -235,12 +243,39 @@ mod tests {
             Path::new("note.rs")
         );
     }
-}
 
-fn head_blob(repo: &lux_git::gix::Repository, file: &Path) -> Option<String> {
-    let tree_id = repo.head_tree_id_or_empty().ok()?;
-    let tree = repo.find_tree(tree_id).ok()?;
-    let entry = tree.lookup_entry_by_path(file).ok()??;
-    let object = entry.object().ok()?;
-    String::from_utf8(object.data.clone()).ok()
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .current_dir(dir)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .args(args)
+            .status()
+            .expect("git");
+        assert!(status.success(), "{args:?} -> {status}");
+    }
+
+    #[test]
+    fn unstage_hunk_at_line_uses_a_system_git_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path();
+        git(repo, &["init", "-b", "main"]);
+        git(repo, &["config", "user.email", "lux@example.com"]);
+        git(repo, &["config", "user.name", "Lux User"]);
+        let note = repo.join("note.rs");
+        std::fs::write(&note, "one\ntwo\nthree\n").unwrap();
+        git(repo, &["add", "note.rs"]);
+        git(repo, &["commit", "-m", "base"]);
+        std::fs::write(&note, "ONE\ntwo\nTHREE\n").unwrap();
+        git(repo, &["add", "note.rs"]);
+
+        super::unstage_hunk_at_line(repo, &note, 1).expect("unstage line 1");
+
+        let opened = lux_git::gix::open(repo).unwrap();
+        let index = opened.open_index().unwrap();
+        let entry = index.entry_by_path("note.rs".into()).unwrap();
+        let blob = opened.find_blob(entry.id).unwrap();
+        assert_eq!(&blob.data[..], b"one\ntwo\nTHREE\n");
+        assert_eq!(std::fs::read_to_string(&note).unwrap(), "ONE\ntwo\nTHREE\n");
+    }
 }

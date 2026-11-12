@@ -179,6 +179,8 @@ mod tests {
             palette.results(&ctx)[0].command.id,
             "preferences.color_theme"
         );
+        palette.query = crate::field::QueryField::from_text("unstage hunk");
+        assert_eq!(palette.results(&ctx)[0].command.id, "git.unstage_hunk");
         palette.query = crate::field::QueryField::from_text("open settings ui");
         assert_eq!(
             palette.results(&ctx)[0].command.id,

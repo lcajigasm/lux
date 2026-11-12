@@ -73,6 +73,23 @@ done
   echo "note.rs never became active (active=$(drive_field active_path))" >&2
   exit 1
 }
+# Command-Up is document start. The first staged hunk covers that line.
+# The branch name arrives from the git worker; unstage before that still
+# has the file path, but the caret has to be on the hunk.
+drive_key tap 126 cmd
+ready=0
+for _ in $(seq 1 40); do
+  drive_dump || true
+  if [[ -n "$(drive_field branch)" && "$(drive_field sel)" == "0:0" ]]; then
+    ready=1
+    break
+  fi
+  sleep 0.25
+done
+[[ "$ready" == 1 ]] || {
+  echo "caret or branch never settled (sel=$(drive_field sel) branch=$(drive_field branch))" >&2
+  exit 1
+}
 opened=0
 for _ in $(seq 1 4); do
   drive_key tap 35 cmd,shift
@@ -88,8 +105,23 @@ done
   exit 1
 }
 drive_key chars "unstage hunk"
-sleep 0.35
-drive_key tap 36 none
+# Enter before the query lands runs the first command, which does not
+# touch the index. Wait until the field shows the words that select
+# Git: Unstage Hunk.
+typed=0
+for _ in $(seq 1 40); do
+  sleep 0.25
+  drive_dump || true
+  if [[ "$(drive_field palette_query)" == "unstage hunk" ]]; then
+    typed=1
+    break
+  fi
+done
+[[ "$typed" == 1 ]] || {
+  echo "palette query is '$(drive_field palette_query)', want unstage hunk" >&2
+  exit 1
+}
+drive_key tap 36 ""
 
 unstaged=0
 for _ in $(seq 1 40); do
@@ -106,7 +138,9 @@ done
   git -C "$repo" diff --cached -- note.rs >&2 || true
   echo "disk=$(cat "$repo/note.rs")" >&2
   drive_dump || true
-  echo "palette=$(drive_field palette) dirty=$(drive_field dirty) branch=$(drive_field branch)" >&2
+  echo "palette=$(drive_field palette) query=$(drive_field palette_query) sel=$(drive_field sel) dirty=$(drive_field dirty) branch=$(drive_field branch)" >&2
+  echo "announcement=$(drive_field announcement)" >&2
+  tail -40 "${DRIVE_LOG:-}" >&2 || true
   exit 1
 }
 sleep 0.3
