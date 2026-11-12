@@ -239,3 +239,15 @@ The 8 ms release ceiling holds. 242 ms to load 100 MB is this VM. There is still
 `p0-macos.yml` measures the rows below on the free runner. Lux H1 is process start until the first presented frame, median of 10. H3 and H4 are a warm process opening the file on SIGUSR2 until that buffer's first presented frame. H2 is the key event until the next presented frame, p99, on a 20k-line file. H5 is the slowest redraw while a 50k-line file is scrolling. H6 is extra RSS across the 100 MB open. Sublime and Zed, when the free cask installs, are timed only until a window is listed. That clock is not H1. H2 and H5 are not readable from those processes. A missed budget stays in the table and does not fail the job.
 
 The numbers are copied from the performance artifact after the run. This revision does not invent them.
+
+Copied from artifact `perf-macos` (13916032375) on [43152259652](https://github.com/lcajigasm/lux/actions/runs/43152259652), built from `95874f5`. Budgets are not a job failure.
+
+| Id | Measurement | Budget | Lux | Sublime | Zed |
+|---|---|---|---|---|---|
+| H1 | Cold start, median of 10 | < 150 ms | 1052.5 ms | window did not appear | open -a Zed failed |
+| H2 | Key to next presented frame, p99, 20k lines | < 8 ms | 23.29 ms (n=39) | not measurable the same way | not measurable the same way |
+| H3 | Open 10 MB, warm process | < 150 ms | 721.3 ms | not measurable the same way | not measurable the same way |
+| H4 | Open 100 MB, warm process | < 1 s | 6717.5 ms | not measurable the same way | not measurable the same way |
+| H5 | Scroll 50k lines, slowest recorded frame | no frame > 16 ms | 41.48 ms (n=141) | not measurable the same way | not measurable the same way |
+| H6 | Extra RSS while opening 100 MB | < 3× file | 8.47× | not measurable the same way | not measurable the same way |
+| H7 | Same method on all three | — | H1's Lux cell is first presented frame. Sublime and Zed are window-listed. H2 and H5 have no external equivalent. | window-listed only | window-listed only |

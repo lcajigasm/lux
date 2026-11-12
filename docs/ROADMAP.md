@@ -221,19 +221,19 @@ does not fail the job. Run URLs land here after the jobs finish.
 
 | Id | What the job checks | Run |
 |---|---|---|
-| A9 | Block 3 chords on US, and on Spanish when the runner can select that layout. Each chord changes the file or the probe. A missing Spanish layout is `layout-unavailable`, not a pass. | pending |
-| C2 | Typed `()[]{}""` and `''`, including the skip of a closer and backspace of a pair. The saved file is the assertion. | pending |
-| C4 | `ab`, a pause, `c`, then Command-Z restores `ab` and the caret. `hello world` then Command-Z restores `hello ` and the caret. | pending |
-| E1 | solo-Mac. `displayplacer list` on macos-15 showed one 1024×768 screen, `scaling:off`, and modes from 640×480 to 1920×1080. None had `scaling:on`, so a screencapture of the window cannot be scale 2. | [42593509340](https://github.com/lcajigasm/lux/actions/runs/42593509340) |
-| I3 | `docs/receipts/p0-macos-ci.md` is written by the checklist job from that run. | pending |
-| H1 | Cold start to the first presented frame, median of 10, release binary. | pending |
-| H2 | Key event to the next presented frame, p99, 20k-line file. | pending |
-| H3 | Warm process, SIGUSR2 opens a 10 MB file, time to that buffer's first presented frame. | pending |
-| H4 | Same open, 100 MB. | pending |
-| H5 | Slowest redraw while scrolling a 50k-line file. | pending |
-| H6 | Extra RSS across the 100 MB open, against 3× the file. | pending |
-| H7 | Sublime and Zed are timed only until a window is listed. That is not H1's clock. H2 and H5 have no equivalent outside the process. | pending |
-| H8 | The table in `docs/PERFORMANCE.md` copied from the performance artifact. | pending |
+| A9 | Block 3 chords on US, and on Spanish when the runner can select that layout. Each chord changes the file or the probe. A missing Spanish layout is `layout-unavailable`, not a pass. | [43152259652](https://github.com/lcajigasm/lux/actions/runs/43152259652). US and Spanish-ISO, every chord passed. Artifact `shortcut-matrix` 13916086906. |
+| C2 | Typed `()[]{}""` and `''`, including the skip of a closer and backspace of a pair. The saved file is the assertion. | Same run. Five pairs passed. Artifact `editing-report` 13913819501. |
+| C4 | `ab`, a pause, `c`, then Command-Z restores `ab` and the caret. `hello world` then Command-Z restores `hello ` and the caret. | Same run. Undo pause and undo word passed. Same artifact. |
+| E1 | solo-Mac. `displayplacer list` on macos-15 showed one 1024×768 screen, `scaling:off`, and modes from 640×480 to 1920×1080. None had `scaling:on`, so a screencapture of the window cannot be scale 2. | [42593509340](https://github.com/lcajigasm/lux/actions/runs/42593509340). Run 43152259652 records the same `RESULT solo-mac`. |
+| I3 | `docs/receipts/p0-macos-ci.md` is written by the checklist job from that run. | [43152259652](https://github.com/lcajigasm/lux/actions/runs/43152259652). Artifact `p0-receipt` 13915317833. Light/dark, traffic lights, and Finder Open With stay solo-Mac. |
+| H1 | Cold start to the first presented frame, median of 10, release binary. | Same run. Median 1052.5 ms. Artifact `perf-macos` 13916032375. |
+| H2 | Key event to the next presented frame, p99, 20k-line file. | Same run. 23.29 ms, n=39. |
+| H3 | Warm process, SIGUSR2 opens a 10 MB file, time to that buffer's first presented frame. | Same run. 721.3 ms. |
+| H4 | Same open, 100 MB. | Same run. 6717.5 ms. |
+| H5 | Slowest redraw while scrolling a 50k-line file. | Same run. 41.48 ms, n=141. |
+| H6 | Extra RSS across the 100 MB open, against 3× the file. | Same run. 8.47×. |
+| H7 | Sublime and Zed are timed only until a window is listed. That is not H1's clock. H2 and H5 have no equivalent outside the process. | Same run. Sublime's window did not appear. `open -a Zed` failed. |
+| H8 | The table in `docs/PERFORMANCE.md` copied from the performance artifact. | Same run. The table is the `perf.md` inside artifact 13916032375. |
 
 ## Block 1 — Interface — parcial
 
