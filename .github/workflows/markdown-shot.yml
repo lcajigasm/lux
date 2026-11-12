@@ -1,6 +1,6 @@
 name: Markdown fence
 
-# Free macos-15. One PNG of the compiled preview with a rust fence.
+# Free macos-15. Lux's preview of three fences beside Visual Studio Code.
 on:
   pull_request:
   workflow_dispatch:
@@ -12,7 +12,7 @@ jobs:
   shot:
     name: markdown fence (macos-15)
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - run: rustup show

@@ -13,7 +13,7 @@ mod goto;
 mod icons;
 mod language_picker;
 mod lsp;
-mod markdown;
+pub(crate) mod markdown;
 mod minimap;
 mod modals;
 pub(crate) mod paint;

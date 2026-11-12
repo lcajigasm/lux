@@ -33,6 +33,41 @@ pub(super) fn fence_runs(
     Some(lines)
 }
 
+/// The fence text the preview paints, one block after another.
+///
+/// Highlight runs keep the bytes between tokens, including spaces and
+/// indent. Joining them is the string a reader should be able to copy.
+pub(crate) fn rendered_code_blocks(
+    source: &str,
+    syntax: &lux_syntax::theme::SyntaxTheme,
+) -> String {
+    let mut doc = lux_syntax::Document::new(lux_syntax::LanguageId::Markdown);
+    doc.set_text(source);
+    let mut out = String::new();
+    for block in lux_syntax::preview_document(&doc, source) {
+        let PreviewBlock::Code { info, text } = block else {
+            continue;
+        };
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        match fence_runs(&text, &info, syntax) {
+            Some(lines) => {
+                for (index, line) in lines.iter().enumerate() {
+                    if index > 0 {
+                        out.push('\n');
+                    }
+                    for run in line {
+                        out.push_str(&run.text);
+                    }
+                }
+            }
+            None => out.push_str(&text),
+        }
+    }
+    out
+}
+
 pub(super) struct FenceRun {
     pub text: String,
     pub rgb: (u8, u8, u8),
@@ -92,6 +127,8 @@ fn line_runs(
                 .min()
                 .unwrap_or(end);
             if next > at {
+                // The gap is the source bytes the highlighter did not
+                // capture. Spaces and indent live here and have to be painted.
                 runs.push(FenceRun {
                     text: text[at..next].to_string(),
                     rgb: (plain.r, plain.g, plain.b),
@@ -329,7 +366,18 @@ fn draw_line(
             glyph_instances,
         );
     }
-    line.width()
+    // `LineLayout::width` drops trailing whitespace. A run that is only
+    // the space between `fn` and `main`, or a line's indent, is entirely
+    // trailing, so its width is 0 and the next token is painted against
+    // the previous one. The cluster end is the advance the caret already
+    // uses.
+    painted_advance(&line)
+}
+
+fn painted_advance(line: &lux_render::LineLayout) -> f32 {
+    line.clusters()
+        .iter()
+        .fold(0.0_f32, |end, cluster| end.max(cluster.x + cluster.advance))
 }
 
 #[cfg(test)]
@@ -347,5 +395,89 @@ mod tests {
             .expect("fn token");
         assert_eq!(keyword.rgb, (0xF9, 0x26, 0x72));
         assert!(fence_runs("fn main() {}\n", "", syntax).is_none());
+    }
+
+    #[test]
+    fn a_fence_keeps_spaces_and_indent_when_the_runs_are_painted() {
+        let syntax = lux_syntax::theme::by_name("Monokai").expect("monokai");
+        let source = include_str!("fixtures/fences.md");
+        let mut doc = lux_syntax::Document::new(lux_syntax::LanguageId::Markdown);
+        doc.set_text(source);
+        let codes: Vec<_> = lux_syntax::preview_document(&doc, source)
+            .into_iter()
+            .filter_map(|block| match block {
+                lux_syntax::PreviewBlock::Code { info, text } => Some((info, text)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(codes.len(), 3, "rust, javascript, and python fences");
+        for (info, text) in &codes {
+            let lines = text.lines().count();
+            assert!(lines >= 8, "{info} has {lines} lines:\n{text}");
+            assert!(text.contains("    "), "{info} dropped its indent:\n{text}");
+        }
+        let painted = super::rendered_code_blocks(source, syntax);
+        for needle in [
+            "fn main() {",
+            "function main() {",
+            "def main():",
+            "    let name",
+            "    const name",
+            "    name =",
+        ] {
+            assert!(
+                painted.contains(needle),
+                "painted fence lost {needle:?}:\n{painted}"
+            );
+        }
+        assert!(
+            !painted.contains("fnmain")
+                && !painted.contains("functionmain")
+                && !painted.contains("defmain"),
+            "highlight runs dropped the spaces: {painted:?}"
+        );
+
+        let lines = super::fence_runs(&codes[0].1, "rust", syntax).expect("rust fence");
+        let mut cx = lux_render::TextLayoutContext::new();
+        let family = cx
+            .register_font(include_bytes!(
+                "../../../lux-render/tests/fixtures/ahem.ttf"
+            ))
+            .expect("ahem");
+        let style = lux_render::LineStyle {
+            family: &family,
+            font_size: 16.0,
+            ligatures: false,
+        };
+        for line in lines {
+            let text: String = line.iter().map(|run| run.text.as_str()).collect();
+            if text.is_empty() {
+                continue;
+            }
+            let whole = cx.layout_line(&style, &text, &[]);
+            let mut sum = 0.0_f32;
+            for run in &line {
+                if run.text.chars().all(char::is_whitespace) && !run.text.is_empty() {
+                    let laid = cx.layout_line(&style, &run.text, &[]);
+                    assert!(
+                        super::painted_advance(&laid) > laid.width(),
+                        "a whitespace run must advance past LineLayout::width, which drops it: {text:?}"
+                    );
+                }
+                if run.text.is_empty() {
+                    continue;
+                }
+                let laid = cx.layout_line(&style, &run.text, &[]);
+                sum += super::painted_advance(&laid);
+            }
+            let advance = super::painted_advance(&whole);
+            assert!(
+                (sum - advance).abs() < 0.5,
+                "painted runs lost whitespace on {text:?}: runs {sum}, line {advance}"
+            );
+            if text.chars().any(|ch| ch == ' ' || ch == '\t') {
+                assert!(advance > 0.0, "indent or spaces painted at x=0: {text:?}");
+            }
+        }
     }
 }
