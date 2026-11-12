@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Open the real File menu on Lux.app and capture it. Fails if Open Recent,
-# New Window, Save All, Reopen Closed Tab, or Clear Recent is missing.
+# New Window, Save All, Reopen Closed Tab, or Clear Recent is missing, or if
+# New Window is not Shift-Command-N.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -41,6 +42,7 @@ fi
 
 items="$out/menu-items.txt"
 recent="$out/recent-items.txt"
+shortcut="$out/new-window-shortcut.txt"
 shot="$out/file-menu.png"
 subshot="$out/file-menu-recent.png"
 err="$out/menu.err"
@@ -71,8 +73,19 @@ tell application "System Events"
         end if
       end try
     end repeat
+    set nwChar to ""
+    set nwMods to ""
+    try
+      set nw to menu item "New Window" of fileMenu
+      set nwChar to (value of attribute "AXMenuItemCmdChar" of nw) as text
+    end try
+    try
+      set nwMods to (value of attribute "AXMenuItemCmdModifiers" of nw) as text
+    end try
+    set shortcutLine to nwChar & linefeed & nwMods
     do shell script "printf %s " & quoted form of fileNames & " > " & quoted form of "$items"
     do shell script "printf %s " & quoted form of recentNames & " > " & quoted form of "$recent"
+    do shell script "printf %s " & quoted form of shortcutLine & " > " & quoted form of "$shortcut"
     do shell script "screencapture -x " & quoted form of "$shot"
     click menu item "Open Recent" of fileMenu
     delay 0.5
@@ -98,6 +111,15 @@ fail() {
 for name in "New Window" "Open Recent" "Save All" "Reopen Closed Tab"; do
   grep -F -q "$name" "$items" || fail "File menu is missing $name"
 done
+# Command is the default. Shift is bit 1. Option, Control, and No Command
+# (2, 4, 8) must stay off, so the mask is exactly 1: Shift-Command-N.
+nw_char="$(sed -n '1p' "$shortcut" | tr '[:upper:]' '[:lower:]')"
+nw_mods="$(sed -n '2p' "$shortcut" | tr -d '[:space:]')"
+if [[ "$nw_char" != "n" || "$nw_mods" != "1" ]]; then
+  echo "New Window shortcut:" >&2
+  cat "$shortcut" >&2 || true
+  fail "New Window is not Shift-Command-N (char=$nw_char mods=$nw_mods)"
+fi
 grep -F -q "file-menu-sample.rs" "$recent" || fail "Open Recent does not list the opened file"
 grep -F -q "Clear Recent" "$recent" || fail "Open Recent is missing Clear Recent"
 if grep -F -q "No Recent Files" "$recent"; then

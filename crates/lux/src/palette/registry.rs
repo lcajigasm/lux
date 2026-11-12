@@ -7,6 +7,7 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
 
     let commands = [
         ("file.new", "File: New File", "File"),
+        ("file.new_window", "File: New Window", "File"),
         ("file.open", "File: Open File...", "File"),
         ("file.save", "File: Save", "File"),
         ("file.save_as", "File: Save As...", "File"),

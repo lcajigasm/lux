@@ -7,6 +7,7 @@ use crate::app::App;
 pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_id: &str) {
     match command_id {
         "file.new" => app.request_document(ctx, crate::document::Request::New),
+        "file.new_window" => crate::menu::file::open_new_window(app),
         "file.open" => app.request_document(ctx, crate::document::Request::Open(None)),
         "file.save" => app.request_document(ctx, crate::document::Request::Save { save_as: false }),
         "file.save_all" => app.save_all(ctx),

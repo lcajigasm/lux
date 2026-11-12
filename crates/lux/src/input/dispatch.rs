@@ -405,6 +405,9 @@ pub(crate) fn execute_keymap_command(
             crate::macros::dispatch::playback_macro(app);
             return;
         }
+        "new_window" | "file.new_window" => {
+            crate::menu::file::open_new_window(app);
+        }
         "save_all" | "file.save_all" => {
             if let Some(ctx) = ctx {
                 app.save_all(ctx);

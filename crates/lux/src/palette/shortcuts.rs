@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use lux_config::keymap::Platform;
 
 const MAP: &[(&str, &str)] = &[
+    ("file.new_window", "new_window"),
     ("file.save", "save"),
     ("file.save_all", "save_all"),
     ("file.reopen_closed_tab", "reopen_closed_tab"),

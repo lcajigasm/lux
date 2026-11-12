@@ -148,11 +148,12 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         key(MenuAction::NewFile),
         Some(MenuAction::NewFile),
     );
-    add_item(
+    add_item_with_mask(
         mtm,
         &file_menu,
         "New Window",
-        "",
+        key(MenuAction::NewWindow),
+        1048576 | 131072,
         Some(MenuAction::NewWindow),
     );
     add_item(
