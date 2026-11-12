@@ -119,8 +119,23 @@ done
   echo "opened as $(drive_field language)" >&2
   exit 1
 }
-drive_key tap 35 cmd,shift
-sleep 0.35
+opened=0
+for _ in $(seq 1 4); do
+  drive_key tap 35 cmd,shift
+  sleep 0.4
+  drive_dump || true
+  if [[ "$(drive_field palette)" == "1" ]]; then
+    opened=1
+    break
+  fi
+done
+[[ "$opened" == 1 ]] || {
+  echo "palette did not open" >&2
+  echo "palette=$(drive_field palette) active=$(drive_field active_path)" >&2
+  echo "announcement=$(drive_field announcement)" >&2
+  tail -40 "${DRIVE_LOG:-}" >&2 || true
+  exit 1
+}
 drive_key chars "toggle preview"
 typed=0
 for _ in $(seq 1 40); do
@@ -133,6 +148,9 @@ for _ in $(seq 1 40); do
 done
 [[ "$typed" == 1 ]] || {
   echo "palette query is '$(drive_field palette_query)', want toggle preview" >&2
+  echo "palette=$(drive_field palette) active=$(drive_field active_path)" >&2
+  echo "announcement=$(drive_field announcement)" >&2
+  tail -40 "${DRIVE_LOG:-}" >&2 || true
   exit 1
 }
 drive_key tap 36 none
