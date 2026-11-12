@@ -13,6 +13,7 @@ mod conflict;
 mod dialog;
 mod distraction_free;
 mod document;
+mod edit_menu;
 mod field;
 mod find_results;
 mod focus;

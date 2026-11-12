@@ -236,10 +236,7 @@ impl App {
             }
             return true;
         }
-        if event.key == Key::Named(NamedKey::Escape)
-            && self.documents.tab_context_menu.take().is_some()
-        {
-            self.scheduler.invalidate_all();
+        if crate::edit_menu::dismiss_on_escape(self, event) {
             return true;
         }
         if !command {

@@ -1,6 +1,7 @@
 //! Supporting state structs for the Lux desktop application.
 
 use lux_core::position::Position;
+use lux_core::selection::Selection;
 use lux_platform::{PlatformWindow, WindowId};
 use lux_render::{GlyphAtlas, GpuContext, QuadPipeline, Surface, TextPipeline};
 use swash::scale::ScaleContext;
@@ -24,6 +25,9 @@ pub(crate) struct MouseState {
     pub(crate) placed: bool,
     pub(crate) selection_anchor: Option<Position>,
     pub(crate) last_click: Option<(std::time::Instant, usize)>,
+    /// The word a double click selected. A drag unions further words onto it.
+    pub(crate) word_anchor: Option<Selection>,
+    pub(crate) context_menu: Option<crate::edit_menu::BufferContextMenu>,
 }
 
 pub(crate) struct SyntaxState {

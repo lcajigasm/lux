@@ -44,9 +44,18 @@
 > clear 4.5:1, and a selected stepper's value and its −/+ chips to
 > clear 4.5:1 and 3:1 against that selection, on those same ten themes. `scripts/settings-e2e.sh` opens Settings, scrolls to the end,
 > cycles those ten themes with the buffer and cursor in place, and
-> checks the theme after a restart. The free
-> macos-15 runner stays 1× unless a job records a scaled mode, so a
-> Retina capture of an external monitor is still solo-Mac.
+> checks the theme after a restart. A right click or Control-click in
+> the buffer opens a context menu: Cut, Copy, Paste, Select All, Toggle
+> Comment, Go to Definition when that command is registered, Stage Hunk
+> and Unstage Hunk when those commands are registered, then Command
+> Palette. Cut and Copy are disabled with no selection. The git rows are
+> disabled when the caret is not on a diff hunk. There is no Revert Hunk
+> command, so the menu does not add one. A right click outside the
+> selection moves the caret there; a right click inside it keeps the
+> selection. A double click selects the word under the pointer, and
+> dragging from that click extends the selection by whole words.
+> The free macos-15 runner stays 1× unless a job records a scaled mode,
+> so a Retina capture of an external monitor is still solo-Mac.
 > `scripts/theme-break.sh` opens a Rust file on every bundled theme,
 > checks the editor, minimap, tabs, status bar, palette, and settings
 > by pixel, and writes `docs/evidence/themes/`.

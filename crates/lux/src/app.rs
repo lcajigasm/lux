@@ -136,6 +136,8 @@ impl App {
                 placed: false,
                 selection_anchor: None,
                 last_click: None,
+                word_anchor: None,
+                context_menu: None,
             },
             accessibility_active: false,
             viewport: Viewport {
@@ -460,6 +462,8 @@ impl PlatformEventHandler for App {
             PlatformEvent::Focused(false) => {
                 self.modifiers = Modifiers::default();
                 self.mouse.selection_anchor = None;
+                self.mouse.word_anchor = None;
+                self.mouse.context_menu = None;
             }
             PlatformEvent::Ime(ime_event) => {
                 crate::ime_hold::observe(self, ime_event);
@@ -497,43 +501,14 @@ impl PlatformEventHandler for App {
             }
             PlatformEvent::MouseButton { button, state } => {
                 if state == ElementState::Pressed {
-                    if !self.handle_mouse_click_on_chrome(ctx, button)
-                        && button == MouseButton::Left
+                    if !crate::edit_menu::take_menu_click(self, ctx, button)
+                        && !self.handle_mouse_click_on_chrome(ctx, button)
                     {
-                        self.ui.project_search = None;
-                        self.ui.command_palette = None;
-                        self.ui.goto_anything = None;
-                        self.ui.language_picker = None;
-                        self.ui.build.picker = None;
-                        self.ui.project.picker = None;
-                        self.ui.theme_picker = None;
-                        self.ui.snippets.picker = None;
-                        self.ui.git.branch_picker = None;
-                        crate::focus::focus_editor(self);
-
-                        let pos = self.position_at_mouse();
-                        let now = std::time::Instant::now();
-                        let is_double_click = if let Some((last_time, last_line)) =
-                            self.mouse.last_click
-                        {
-                            now.duration_since(last_time).as_millis() < 400 && last_line == pos.line
-                        } else {
-                            false
-                        };
-                        self.mouse.last_click = Some((now, pos.line));
-
-                        if is_double_click && self.is_find_results_active() {
-                            crate::find_results::open_find_result_at_line(
-                                self,
-                                Some(ctx),
-                                pos.line,
-                            );
-                        } else {
-                            self.begin_mouse_selection();
-                        }
+                        crate::edit_menu::press_editor(self, ctx, button);
                     }
                 } else if button == MouseButton::Left {
                     self.mouse.selection_anchor = None;
+                    self.mouse.word_anchor = None;
                     self.documents.tab_drag = None;
                     self.end_divider_drag();
                 }

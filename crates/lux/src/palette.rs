@@ -60,6 +60,19 @@ fn populate_registry(registry: &mut CommandRegistry) {
     registry::populate_registry(registry);
 }
 
+pub(crate) fn command_exists(id: &str) -> bool {
+    use std::sync::OnceLock;
+    static REGISTRY: OnceLock<CommandRegistry> = OnceLock::new();
+    REGISTRY
+        .get_or_init(|| {
+            let mut registry = CommandRegistry::new();
+            populate_registry(&mut registry);
+            registry
+        })
+        .commands()
+        .any(|command| command.id == id)
+}
+
 pub(crate) fn handle_palette_key(
     app: &mut crate::app::App,
     ctx: &dyn PlatformContext,
