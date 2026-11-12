@@ -50,10 +50,13 @@
 > `scripts/theme-break.sh` opens a Rust file on every bundled theme,
 > checks the editor, minimap, tabs, status bar, palette, and settings
 > by pixel, and writes `docs/evidence/themes/`.
-> The language picker uses that same card, ranks names with the palette's
-> fuzzy matcher, scrolls its own list, and applies the language on Enter
-> or a row click. Shift+Command+M and the status-bar language label open
-> it. A chained typing undo groups one word; a one-second gap before the
+> Language, theme, command, goto, project, snippet, build, and completion
+> lists share one card. It is about 60% of the window, keeps the selection
+> on screen, and draws a scrollbar when the list is longer than that.
+> Wheel, arrows, Page Up/Down, Home, and End move the selection. Every
+> list filters with the same fuzzy matcher and draws the match on the
+> row. Shift+Command+M and the status-bar language label open the
+> language list, and Enter applies the row. A chained typing undo groups one word; a one-second gap before the
 > next edit starts another step, and undo restores the earlier selections.
 > `docs/compare/selectors.png` (compare run 41357599959) shows the command
 > palette in Lux, Sublime Text, and Zed with the query `sel`. Lux's card
@@ -2577,8 +2580,13 @@ _Nothing is behind an `experimental.*` flag yet._
     - `scripts/check-limits.sh` passes (< 600 lines/file, <= 25 fields/struct).
     - `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` pass with 0 warnings.
 
+### UI-OVERLAY: One card for every list popup
+
+- **Status:** The language picker, command palette, theme picker, goto anything (including go to line), project switcher, snippet picker, build picker, and completion popup paint through `render::overlay_list::paint_overlay`. The card is 60% of the window height, with a six-row floor on an empty query, and it shrinks when the list is shorter. Rows are virtualized. The selection stays inside the visible slice. A scrollbar is drawn when there is more to show. Text is the system UI face at 13pt. The shadow is the same soft halo as Settings. Escape closes the popup that owns the card. A wheel line, or 16 logical trackpad pixels, moves one row. That wheel moves the selection and the window follows, which is Sublime's palette rather than a VS Code quick pick that leaves the highlight still. Completion stays anchored to the caret and caps lower so the caret line remains visible. Match ink and row text clear 4.5:1, and the selection and scrollbar clear 3:1, on all ten bundled themes. Theme rows carry four chips from the loaded scheme (background, foreground, accent, selection), including schemes that are not one of the seven built-in themes. Palette "Go to Line" is the status-bar command; it opens the same goto card as "Goto: Go to Line...". Reopening a file applies the language stored for that path in the session, so a chosen mode survives a restart that launches the same path.
+- **Verification:** `overlay_list::tests::a_tall_window_shows_more_than_eight_rows`, `the_selection_stays_inside_the_visible_slice`, and `home_and_end_are_recognized`. `render::overlay_list::tests::ten_bundled_themes_paint_overlay_at_wcag_aa`. `scripts/overlay-e2e.sh` on macos-15 opens the language picker, wheels, presses End, applies the last language, and checks it after a restart. The same scroll reaches the end of the theme picker and the palette. Screenshots are the compiled app.
+
 ### E13 / UI-SETTINGS: Settings page
 
-- **Status:** Command+, and Preferences: Open Settings UI open an opaque settings page between the tab bar and the status bar. The editor text is under that page. The page edge is the neutral chrome border, not the theme accent. The sidebar is All, Editor, Appearance, Keys, Files, Git, and CLI. Search filters every category. A selected row is inset inside the page. Labels are at least 13pt. A boolean is a toggle, a number is a stepper, and a theme or keymap is a menu. Git and CLI rows describe the real palette commands and do not write a setting. The wheel, Page Down, Page Up, End, and Home scroll the page and leave the editor scroll where it was. Escape closes an open menu first, then the page. The command palette draws match highlights, shows each command's shortcut, and closes on Escape. Its selection is the panel-row fill. Confirming a theme keeps the buffer, cursor, and scroll, and the next launch reads that theme back.
+- **Status:** Command+, and Preferences: Open Settings UI open an opaque settings page between the tab bar and the status bar. The editor text is under that page. The page edge is the neutral chrome border, not the theme accent. The sidebar is All, Editor, Appearance, Keys, Files, Git, and CLI. Search filters every category. A selected row is inset inside the page. Labels are at least 13pt. A boolean is a toggle, a number is a stepper, and a theme or keymap is a menu. Git and CLI rows describe the real palette commands and do not write a setting. The wheel, Page Down, Page Up, End, and Home scroll the page and leave the editor scroll where it was. Escape closes an open menu first, then the page. The command palette draws match highlights, shows each command's shortcut, and closes on Escape. Its selection clears 3:1 against the card. Confirming a theme keeps the buffer, cursor, and scroll, and the next launch reads that theme back.
 - **Verification:** `settings::visual_tests::settings_panel_has_no_debug_magenta_border`, `settings::visual_tests::settings_selection_stays_inside_the_card`, and `settings::visual_tests::settings_row_lays_out_label_description_and_value`. `settings::visual_tests::settings_toggle_stepper_and_menu_change_the_stored_value` changes ligatures, font size, and the color theme. `settings::visual_tests::settings_wheel_scrolls_the_page_and_not_the_editor`, `settings::visual_tests::end_and_home_scroll_the_settings_page`, and `settings::visual_tests::escape_closes_the_menu_before_the_page`. `settings::tests::theme_reload_keeps_the_buffer_and_scales_line_height` cycles every theme setting and reloads Solarized Light. `render::panel::contrast_tests::ten_bundled_themes_paint_ui_text_at_wcag_aa` and `ten_bundled_themes_paint_controls_at_wcag_aa` compute WCAG AA for text, the toggle, the selected category, and the stepper value and chips on that selection. `scripts/settings-e2e.sh` is the macos-15 job. `docs/compare/settings.png` is `lux --settings` rendered at scale factor 2.
 

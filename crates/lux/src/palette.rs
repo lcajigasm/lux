@@ -37,12 +37,14 @@ impl CommandPaletteState {
         self.registry.search(&self.query, ctx)
     }
 
+    #[cfg(test)]
     pub(crate) fn select_next(&mut self, total: usize) {
         if total > 0 && self.selected_index + 1 < total {
             self.selected_index += 1;
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn select_prev(&mut self) {
         if self.selected_index > 0 {
             self.selected_index -= 1;
@@ -65,15 +67,30 @@ pub(crate) fn handle_palette_key(
     ctx: &dyn PlatformContext,
     event: &KeyEvent,
 ) -> bool {
+    if app.ui.command_palette.is_none() {
+        return false;
+    }
+    let has_selection = !app.cursors.primary().is_empty();
+    let total = {
+        let Some(palette) = app.ui.command_palette.as_ref() else {
+            return false;
+        };
+        let mut context = Context::new();
+        context.set("editorFocus", true);
+        context.set("hasSelection", has_selection);
+        palette.results(&context).len()
+    };
+    let metrics = crate::modal::ModalMetrics::from_app(app);
+    let visible = crate::overlay_list::visible_rows(
+        metrics.vp_height,
+        metrics.tab_bar_height,
+        metrics.status_bar,
+        metrics.scale,
+        total,
+    );
     let Some(palette) = app.ui.command_palette.as_mut() else {
         return false;
     };
-
-    let mut context = Context::new();
-    context.set("editorFocus", true);
-    context.set("hasSelection", !app.cursors.primary().is_empty());
-    let results = palette.results(&context);
-    let total = results.len();
 
     match &event.key {
         Key::Named(NamedKey::Escape) => {
@@ -82,13 +99,7 @@ pub(crate) fn handle_palette_key(
             app.scheduler.invalidate_all();
             true
         }
-        Key::Named(NamedKey::ArrowDown) => {
-            palette.select_next(total);
-            app.scheduler.invalidate_all();
-            true
-        }
-        Key::Named(NamedKey::ArrowUp) => {
-            palette.select_prev();
+        key if crate::overlay_list::nudge(&mut palette.selected_index, total, visible, key) => {
             app.scheduler.invalidate_all();
             true
         }
@@ -99,6 +110,10 @@ pub(crate) fn handle_palette_key(
             true
         }
         Key::Named(NamedKey::Enter) => {
+            let mut context = Context::new();
+            context.set("editorFocus", true);
+            context.set("hasSelection", has_selection);
+            let results = palette.results(&context);
             if let Some(entry) = results.get(palette.selected_index) {
                 let cmd_id = entry.command.id.clone();
                 palette.registry.record_use(&cmd_id);
@@ -181,6 +196,15 @@ mod tests {
         );
         palette.query = crate::field::QueryField::from_text("unstage hunk");
         assert_eq!(palette.results(&ctx)[0].command.id, "git.unstage_hunk");
+        palette.query = crate::field::QueryField::from_text("go to line");
+        let line_ids: Vec<_> = palette
+            .results(&ctx)
+            .iter()
+            .map(|entry| entry.command.id.as_str())
+            .take(4)
+            .collect();
+        assert_eq!(line_ids[0], "status_bar.goto_line");
+        assert!(line_ids.contains(&"goto.line"), "{line_ids:?}");
         palette.query = crate::field::QueryField::from_text("open settings ui");
         assert_eq!(
             palette.results(&ctx)[0].command.id,
@@ -293,5 +317,23 @@ mod tests {
         let eol_before = app.buffer.eol();
         execute_command(&mut app, &ctx, "view.toggle_line_endings");
         assert_ne!(app.buffer.eol(), eol_before);
+
+        execute_command(&mut app, &ctx, "goto.line");
+        assert_eq!(
+            app.ui
+                .goto_anything
+                .as_ref()
+                .map(|state| state.query.as_str()),
+            Some(":")
+        );
+        app.ui.goto_anything = None;
+        execute_command(&mut app, &ctx, lux_ui::status_bar::GOTO_LINE_COMMAND);
+        assert_eq!(
+            app.ui
+                .goto_anything
+                .as_ref()
+                .map(|state| state.query.as_str()),
+            Some(":")
+        );
     }
 }

@@ -1,6 +1,5 @@
-//! Frame drawing: window/GPU setup and the actual per-frame draw calls.
-//! Kept apart from `crate::app`'s event handling only to stay under the
-//! 600-line file limit — this is still `impl App`, just in its own file.
+//! Frame drawing: window/GPU setup and the per-frame draw calls.
+//! Split from `crate::app` so this `impl App` stays under the 600-line limit.
 
 mod about;
 mod branch_picker;
@@ -15,6 +14,7 @@ mod lsp;
 mod markdown;
 mod minimap;
 mod modals;
+pub(crate) mod overlay_list;
 pub(crate) mod paint;
 mod palette;
 pub(crate) mod panel;
@@ -442,8 +442,10 @@ impl App {
             ui,
             viewport,
             window_width,
+            window_height,
             sidebar_width,
             tab_bar_height,
+            status_bar_height,
             *scale_factor,
             stroke,
             font_size,

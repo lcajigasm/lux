@@ -151,12 +151,14 @@ impl GotoState {
         );
     }
 
+    #[cfg(test)]
     pub(crate) fn select_next(&mut self, total: usize) {
         if total > 0 && self.selected_index + 1 < total {
             self.selected_index += 1;
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn select_prev(&mut self) {
         if self.selected_index > 0 {
             self.selected_index -= 1;
@@ -174,6 +176,14 @@ pub(crate) fn handle_goto_key(
     } else {
         return false;
     };
+    let metrics = crate::modal::ModalMetrics::from_app(app);
+    let visible = crate::overlay_list::visible_rows(
+        metrics.vp_height,
+        metrics.tab_bar_height,
+        metrics.status_bar,
+        metrics.scale,
+        total,
+    );
 
     match &event.key {
         Key::Named(NamedKey::Escape) => {
@@ -194,18 +204,13 @@ pub(crate) fn handle_goto_key(
             app.scheduler.invalidate_all();
             true
         }
-        Key::Named(NamedKey::ArrowDown) => {
-            if let Some(goto) = app.ui.goto_anything.as_mut() {
-                goto.select_next(total);
-            }
-            update_live_preview(app);
-            app.scheduler.invalidate_all();
-            true
-        }
-        Key::Named(NamedKey::ArrowUp) => {
-            if let Some(goto) = app.ui.goto_anything.as_mut() {
-                goto.select_prev();
-            }
+        key if {
+            let Some(goto) = app.ui.goto_anything.as_mut() else {
+                return false;
+            };
+            crate::overlay_list::nudge(&mut goto.selected_index, total, visible, key)
+        } =>
+        {
             update_live_preview(app);
             app.scheduler.invalidate_all();
             true

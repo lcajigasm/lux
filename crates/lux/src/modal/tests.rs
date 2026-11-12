@@ -224,8 +224,8 @@ fn test_snippet_picker_click_and_outside() {
         },
     ]));
 
-    // Hover row 1
-    let hovered = handle_modal_hover(&mut app, 500.0, 119.0);
+    // Shared card: rows start at 88 and are 36 tall. Row 1 midpoint is 142.
+    let hovered = handle_modal_hover(&mut app, 500.0, 142.0);
     assert!(hovered);
     assert_eq!(app.ui.snippets.picker.as_ref().unwrap().selected_index, 1);
 
@@ -242,7 +242,7 @@ fn test_snippet_picker_click_and_outside() {
         description: "A test function".into(),
         scope: None,
     }]));
-    let clicked = handle_modal_click(&mut app, &ctx, 500.0, 93.0);
+    let clicked = handle_modal_click(&mut app, &ctx, 500.0, 106.0);
     assert!(clicked);
     assert!(app.ui.snippets.picker.is_none());
 }

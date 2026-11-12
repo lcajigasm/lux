@@ -28,6 +28,7 @@ mod markdown_preview;
 mod menu;
 mod minimap;
 mod modal;
+mod overlay_list;
 mod overlay_motion;
 mod overlay_wheel;
 mod palette;

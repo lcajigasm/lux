@@ -88,8 +88,20 @@ done
 drive_key tap 125 ""
 drive_key tap 125 ""
 drive_key tap 124 ""
+sleep 0.2
+drive_dump
+before_page="$(drive_field sel)"
 drive_key tap 121 ""
-sleep 0.3
+paged=0
+for _ in $(seq 1 20); do
+  sleep 0.2
+  drive_dump
+  if [[ "$(drive_field sel)" != "$before_page" ]]; then
+    paged=1
+    break
+  fi
+done
+[[ "$paged" == 1 ]] || fail "Page Down did not move the cursor from $before_page"
 drive_dump
 text="$(drive_field text)"
 sel="$(drive_field sel)"

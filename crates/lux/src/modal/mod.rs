@@ -35,17 +35,52 @@ pub(crate) fn modal_viewport_width(app: &App) -> f32 {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ModalMetrics {
     pub(crate) vp_width: f32,
+    pub(crate) vp_height: f32,
     pub(crate) tab_bar_height: f32,
+    pub(crate) status_bar: f32,
     pub(crate) scale: f32,
 }
 
 impl ModalMetrics {
     pub(crate) fn from_app(app: &App) -> Self {
+        let status = crate::status_bar::STATUS_BAR_HEIGHT;
+        let tab = app.tab_bar_height();
+        let height = app
+            .gpu_window
+            .as_ref()
+            .map(|gpu| gpu.window.inner_size().height as f32)
+            .unwrap_or_else(|| {
+                crate::overlay_list::window_height(app.viewport.height, tab, status)
+            });
         Self {
             vp_width: modal_viewport_width(app),
-            tab_bar_height: app.tab_bar_height(),
+            vp_height: height,
+            tab_bar_height: tab,
+            status_bar: status,
             scale: app.scale_factor,
         }
+    }
+}
+
+pub(super) fn list_geometry(m: ModalMetrics, total: usize, selected: usize) -> ModalGeometry {
+    let frame = crate::overlay_list::centered_frame(
+        m.vp_width,
+        m.vp_height,
+        m.tab_bar_height,
+        m.status_bar,
+        m.scale,
+        total,
+        selected,
+    );
+    ModalGeometry {
+        left: frame.left,
+        top: frame.top,
+        width: frame.width,
+        total_height: frame.height,
+        rows_top: frame.rows_top,
+        row_height: frame.row_height,
+        visible_count: frame.visible,
+        start_idx: frame.origin,
     }
 }
 

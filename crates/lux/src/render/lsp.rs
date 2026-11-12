@@ -58,6 +58,8 @@ pub(crate) fn render_lsp(
             font,
             cursor_x,
             cursor_y + line_height,
+            viewport_width,
+            editor_top + viewport_height + crate::status_bar::STATUS_BAR_HEIGHT,
             scale_factor,
         );
     }
@@ -154,101 +156,61 @@ fn render_completion_popup(
     font: FontRef,
     anchor_x: f32,
     anchor_y: f32,
+    viewport_width: f32,
+    window_height: f32,
     scale_factor: f32,
 ) {
-    let item_h = 22.0 * scale_factor;
-    let visible_items = popup.items.len().min(8);
-    let card_w = 260.0 * scale_factor;
-    let card_h = visible_items as f32 * item_h + 8.0 * scale_factor;
-
     let now = std::time::Instant::now();
     let reduced = crate::overlay_motion::reduced_motion();
-    let draw_y = anchor_y + popup.motion.open_offset(now, reduced, -6.0 * scale_factor);
-    popup.rect = [anchor_x, anchor_y, card_w, card_h];
-
-    super::panel::push_rounded_surface(
-        quad_instances,
-        [anchor_x, draw_y, card_w, card_h],
-        8.0 * scale_factor,
-        color(active_theme().chrome.panel),
-        color(active_theme().chrome.border),
-        5.0 * scale_factor,
-        scale_factor,
-    );
-
-    let font_size = 11.0 * scale_factor;
-    let family = editor_view.family().to_string();
-    let style = lux_render::LineStyle {
-        family: &family,
-        font_size,
-        ligatures: false,
-    };
-
-    let start_idx = popup.selected_index.saturating_sub(visible_items / 2);
-    let end_idx = (start_idx + visible_items).min(popup.items.len());
-    let rows_top = draw_y + 4.0 * scale_factor;
-    let visual = popup.motion.row(popup.selected_index, now, reduced);
-    super::panel::push_moving_row(
-        quad_instances,
+    let labels: Vec<&str> = popup.items.iter().map(|item| item.label.as_str()).collect();
+    let details: Vec<Option<&str>> = popup
+        .items
+        .iter()
+        .map(|item| item.detail.as_deref().filter(|text| !text.is_empty()))
+        .collect();
+    let items: Vec<super::overlay_list::OverlayItem<'_>> = labels
+        .iter()
+        .zip(popup.items.iter())
+        .zip(details.iter())
+        .map(|((title, item), detail)| super::overlay_list::OverlayItem {
+            title,
+            badge: None,
+            detail: *detail,
+            icon: Some(completion_icon(item.kind)),
+            swatches: None,
+        })
+        .collect();
+    let cap = (window_height * 0.40).max(36.0 * scale_factor * 4.0);
+    let frame = crate::overlay_list::anchored_frame(
         anchor_x,
-        rows_top,
-        card_w,
-        item_h,
-        visual,
-        start_idx,
-        end_idx - start_idx,
-        color(active_theme().chrome.panel_row),
-        color(active_theme().accent),
+        anchor_y,
+        (viewport_width * 0.46).clamp(320.0 * scale_factor, 560.0 * scale_factor),
+        cap,
         scale_factor,
+        items.len(),
+        popup.selected_index,
     );
-
-    for (display_idx, idx) in (start_idx..end_idx).enumerate() {
-        let item_y = rows_top + display_idx as f32 * item_h;
-        let is_selected = idx == popup.selected_index;
-
-        let item = &popup.items[idx];
-        let icon_size = 12.0 * scale_factor;
-        let hole = if is_selected {
-            color(active_theme().chrome.panel_row)
-        } else {
-            color(active_theme().chrome.panel)
-        };
-        super::icons::push_icon(
-            completion_icon(item.kind),
-            quad_instances,
-            anchor_x + 8.0 * scale_factor,
-            item_y + (item_h - icon_size) * 0.5,
-            icon_size,
-            color(active_theme().accent),
-            hole,
-        );
-        let label_text = editor_view
-            .text_layout_mut()
-            .layout_line(&style, &item.label, &[]);
-        let label_x = anchor_x + 8.0 * scale_factor + icon_size + 6.0 * scale_factor;
-        let label_y = item_y + 3.0 * scale_factor;
-
-        let text_color = if is_selected {
-            [1.0, 1.0, 1.0, 1.0]
-        } else {
-            color(active_theme().foreground)
-        };
-
-        for cluster in label_text.clusters() {
-            push_glyph(
-                atlas,
-                atlas_dirty,
-                scale_cx,
-                font,
-                font_size,
-                &cluster,
-                label_x,
-                label_y + label_text.baseline(),
-                text_color,
-                glyph_instances,
-            );
-        }
-    }
+    popup.rect = [frame.left, frame.top, frame.width, frame.height];
+    let theme = active_theme();
+    super::overlay_list::paint_overlay(
+        &frame,
+        "",
+        "",
+        &items,
+        popup.selected_index,
+        popup.motion.row(popup.selected_index, now, reduced),
+        popup.motion.open_offset(now, reduced, -6.0 * scale_factor),
+        scale_factor,
+        scale_factor,
+        font,
+        editor_view,
+        atlas,
+        atlas_dirty,
+        scale_cx,
+        &theme,
+        quad_instances,
+        glyph_instances,
+    );
     crate::overlay_motion::note_if_animating(&popup.motion, now);
 }
 
