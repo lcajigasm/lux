@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 1.5.10 — 2026-11-13
+
+Test build. Not a closed release.
+
+### Added
+
+- The File menu has Open Recent, New Window (Shift+Command+N), Save All, and Reopen Closed Tab (#86).
+- Dragging a selection moves it. Option-drag copies it (#88).
+- Dropping files on the window opens them (#89).
+- Dragging a sidebar row onto a folder moves that file or folder on disk (#90).
+
+### Fixed
+
+- The Markdown preview keeps the indentation inside a fenced code block (#77).
+- Selection contrast is higher on the bundled themes, including Monokai (#87).
+
 ## 1.5.9 — 2026-11-11
 
 Test build. v1.5.8 was published with a binary that reports 1.5.7; use 1.5.9.
