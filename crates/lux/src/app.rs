@@ -542,6 +542,9 @@ impl PlatformEventHandler for App {
                 }
             }
             PlatformEvent::AccessibilityDeactivated => self.accessibility_active = false,
+            PlatformEvent::DroppedFile(path) => {
+                crate::document::open_queue::enqueue(self, ctx, path);
+            }
             _ => {}
         }
     }

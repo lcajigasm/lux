@@ -270,6 +270,7 @@ pub(super) fn window_event(event: winit::event::WindowEvent) -> Option<PlatformE
         },
         W::MouseWheel { delta, .. } => PlatformEvent::MouseWheel(scroll_delta(delta)),
         W::Touch(t) => PlatformEvent::Touch(touch(t.id, t.phase, t.location, t.force)),
+        W::DroppedFile(path) => PlatformEvent::DroppedFile(path),
         _ => return None,
     })
 }
@@ -398,5 +399,14 @@ mod tests {
             Some(PlatformEvent::ColorSchemeChanged(ColorScheme::Light))
         );
         assert_eq!(color_scheme(winit::window::Theme::Dark), ColorScheme::Dark);
+    }
+
+    #[test]
+    fn a_dropped_file_becomes_a_platform_event() {
+        let path = std::path::PathBuf::from("/tmp/note.txt");
+        assert_eq!(
+            window_event(winit::event::WindowEvent::DroppedFile(path.clone())),
+            Some(PlatformEvent::DroppedFile(path))
+        );
     }
 }

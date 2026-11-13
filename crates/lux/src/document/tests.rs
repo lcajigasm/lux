@@ -41,7 +41,7 @@ impl FileDialogs for Dialogs {
     }
 }
 
-struct Context {
+pub(super) struct Context {
     dialogs: Arc<Dialogs>,
     events: Receiver<()>,
     sender: Sender<()>,
@@ -49,7 +49,11 @@ struct Context {
 }
 
 impl Context {
-    fn new(open: Option<PathBuf>, save: Option<PathBuf>, decision: SaveDecision) -> Self {
+    pub(super) fn new(
+        open: Option<PathBuf>,
+        save: Option<PathBuf>,
+        decision: SaveDecision,
+    ) -> Self {
         let (sender, events) = mpsc::channel();
         Self {
             dialogs: Arc::new(Dialogs {
@@ -63,7 +67,7 @@ impl Context {
             exited: Cell::new(false),
         }
     }
-    fn complete(&self, app: &mut App) {
+    pub(super) fn complete(&self, app: &mut App) {
         self.events
             .recv_timeout(Duration::from_secs(10))
             .expect("worker must notify completion");
@@ -107,7 +111,7 @@ impl PlatformContext for Context {
     }
 }
 
-fn app() -> App {
+pub(super) fn app() -> App {
     App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec())
 }
 

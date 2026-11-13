@@ -585,6 +585,8 @@ impl App {
 }
 
 #[cfg(test)]
+mod drop_tests;
+#[cfg(test)]
 mod save_all_tests;
 #[cfg(test)]
 mod shortcut_tests;
