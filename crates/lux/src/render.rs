@@ -181,7 +181,18 @@ impl App {
             let show_preview = documents.active_entry().is_some_and(|entry| {
                 entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Markdown)
             });
-            if !show_preview {
+            let content_width = (viewport.width - sidebar_width).max(1.0);
+            let pane_cap = (content_width * 0.62).max(1.0);
+            let preview_width = if show_preview {
+                (content_width * 0.46).clamp(180.0_f32.min(pane_cap), pane_cap)
+            } else {
+                0.0
+            };
+            let mut editor_viewport = *viewport;
+            if show_preview {
+                editor_viewport.width = (content_width - preview_width).max(1.0);
+            }
+            {
                 for cursor in &frame.cursors {
                     if cursor.primary {
                         let cur_y = editor_top + cursor.y - viewport.scroll_y;
@@ -190,7 +201,7 @@ impl App {
                             let h_w = if is_df {
                                 window_width
                             } else {
-                                (sidebar_width + viewport.width - text_left).max(0.0)
+                                (sidebar_width + editor_viewport.width - text_left).max(0.0)
                             };
                             quad_instances.push(QuadInstance::solid(
                                 [h_x, cur_y, h_w, line_height],
@@ -203,7 +214,7 @@ impl App {
                     &frame,
                     buffer,
                     syntax.as_ref(),
-                    viewport,
+                    &editor_viewport,
                     editor_top,
                     line_height,
                     sidebar_width,
@@ -221,7 +232,7 @@ impl App {
                         search_state,
                         buffer,
                         editor_view,
-                        viewport,
+                        &editor_viewport,
                         editor_top,
                         line_height,
                         TEXT_LEFT_PADDING * *scale_factor,
@@ -232,7 +243,7 @@ impl App {
                 let caret_h = font_size + 2.0 * stroke;
                 cursor_screen = text::render_carets(
                     &frame,
-                    viewport,
+                    &editor_viewport,
                     editor_top,
                     text_left,
                     sidebar_width,
@@ -246,7 +257,7 @@ impl App {
                     text::render_gutter(
                         &frame,
                         Some(bookmarks),
-                        viewport,
+                        &editor_viewport,
                         editor_top,
                         line_height,
                         sidebar_width,
@@ -260,7 +271,17 @@ impl App {
                         &mut gutter_glyphs,
                     );
                 }
-            } else {
+            }
+            if show_preview {
+                let pane_x = sidebar_width + editor_viewport.width;
+                quad_instances.push(QuadInstance::solid(
+                    [pane_x, editor_top, preview_width, viewport.height],
+                    color(chrome.theme.chrome.panel),
+                ));
+                quad_instances.push(QuadInstance::solid(
+                    [pane_x, editor_top, stroke, viewport.height],
+                    color(chrome.theme.chrome.border),
+                ));
                 markdown::render_preview(
                     buffer,
                     editor_view,
@@ -268,9 +289,10 @@ impl App {
                     font,
                     font_size,
                     line_height,
-                    text_left,
+                    pane_x + 16.0 * *scale_factor,
                     editor_top,
                     viewport.height,
+                    preview_width - 16.0 * *scale_factor,
                     &chrome.theme,
                     crate::color_scheme::syntax_theme(&ui.settings.schemes, chrome.theme.name),
                     &mut quad_instances,

@@ -365,15 +365,25 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         .language()
         .map(|language| language.name())
         .unwrap_or("Plain Text");
-    let preview_fences = if app
+    let preview_on = app
         .documents
         .active_entry()
-        .is_some_and(|entry| entry.markdown_preview)
-    {
+        .is_some_and(|entry| entry.markdown_preview);
+    let preview_fences = if preview_on {
         crate::render::markdown::rendered_code_blocks(&app.buffer.text(), app.active_syntax_theme())
     } else {
         String::new()
     };
+    out.push_str("preview=");
+    out.push(if preview_on { '1' } else { '0' });
+    out.push('\n');
+    out.push_str("preview_blocks=");
+    if preview_on {
+        out.push_str(&escape(&crate::markdown_preview::summary(
+            &app.buffer.text(),
+        )));
+    }
+    out.push('\n');
     out.push_str("preview_fences=");
     out.push_str(&escape(&preview_fences));
     out.push('\n');

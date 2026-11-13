@@ -1,0 +1,38 @@
+name: Markdown preview
+
+# Real Lux.app on macos-15. The preview pane renders a heading, list,
+# code block, and link, then changes when the source is edited.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  markdown-preview:
+    name: markdown preview (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Render and edit the preview
+        run: |
+          chmod +x scripts/markdown-preview.sh scripts/markdown_preview_pixels.py scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/markdown-preview.sh
+
+      - name: Upload markdown preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: markdown-preview
+          path: docs/evidence/markdown-preview/**
+          if-no-files-found: warn
