@@ -37,7 +37,7 @@
       <a href="#" class="brand">
         <img src="assets/icon.png" alt="Lux Logo" class="brand-logo">
         <span class="brand-name">Lux</span>
-        <span class="brand-tag">v1.5.9</span>
+        <span class="brand-tag">v1.5.10</span>
       </a>
 
       <nav class="nav-menu">
@@ -64,8 +64,8 @@
   <section class="hero-section">
     <div class="container hero-container">
       <div class="release-pill-wrapper">
-        <a href="https://github.com/lcajigasm/lux/releases/tag/v1.5.9" target="_blank" rel="noopener" class="release-pill">
-          <span class="pill-badge">v1.5.9</span>
+        <a href="https://github.com/lcajigasm/lux/releases/tag/v1.5.10" target="_blank" rel="noopener" class="release-pill">
+          <span class="pill-badge">v1.5.10</span>
           <span class="pill-text">Universal macOS disk image and Linux packages on the tag</span>
           <span class="pill-arrow">→</span>
         </a>
@@ -82,21 +82,21 @@
       </p>
 
       <div class="hero-cta-group">
-        <a href="https://github.com/lcajigasm/lux/releases/tag/v1.5.9" class="btn btn-hero-primary">
+        <a href="https://github.com/lcajigasm/lux/releases/tag/v1.5.10" class="btn btn-hero-primary">
           <svg class="icon-apple" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" shape-rendering="geometricPrecision">
             <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/>
           </svg>
           <div class="btn-text-block">
-            <span class="btn-main-label">GitHub Release v1.5.9</span>
+            <span class="btn-main-label">GitHub Release v1.5.10</span>
             <span class="btn-sub-label">tag release</span>
           </div>
         </a>
 
-        <a href="https://github.com/lcajigasm/lux/releases/download/v1.5.9/lux-macos-universal.dmg" class="btn btn-hero-secondary">
+        <a href="https://github.com/lcajigasm/lux/releases/download/v1.5.10/lux-macos-universal.dmg" class="btn btn-hero-secondary">
           <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
           </svg>
-          <span>v1.5.9 macOS disk image</span>
+          <span>v1.5.10 macOS disk image</span>
         </a>
       </div>
 
@@ -151,43 +151,65 @@
   <section id="whats-new" class="section">
     <div class="container">
       <div class="section-header text-center">
-        <span class="section-tag">v1.5.9</span>
-        <h2 class="section-title">Since 1.5.7. v1.5.8 is skipped.</h2>
+        <span class="section-tag">v1.5.10</span>
+        <h2 class="section-title">Since 1.5.9, on main</h2>
         <p class="section-desc">
-          The disk image and
-          <code>brew install --cask lcajigasm/tap/lux</code>
-          are the
-          <a href="https://github.com/lcajigasm/lux/releases/tag/v1.5.9">v1.5.9</a>
+          Test build. The disk image is the
+          <a href="https://github.com/lcajigasm/lux/releases/tag/v1.5.10">v1.5.10</a>
           tag.
-          v1.5.8 was published with a binary that reports 1.5.7, so that tag is not the install.
+          The Homebrew cask is still 1.5.9.
+          These shots are the macos-15 captures of the features on main
+          <code>4925a5c</code>.
         </p>
       </div>
       <ul class="feature-list">
         <li>
           <div class="list-bullet">✓</div>
-          <div>Editor text is a grayscale mask at every scale, so a stem keeps the theme's foreground (#73).</div>
+          <div>The File menu has Open Recent, with Clear Recent, New Window (Shift+Command+N), Save All, and Reopen Closed Tab (#86).</div>
         </li>
         <li>
           <div class="list-bullet">✓</div>
-          <div>The file tree shows a git status letter on each changed file (#69).</div>
+          <div>Selection contrast is higher on the bundled themes, including Monokai (#87).</div>
         </li>
         <li>
           <div class="list-bullet">✓</div>
-          <div>The status bar switches and creates branches (#68).</div>
+          <div>The Markdown preview keeps the indentation inside a fenced code block (#77).</div>
         </li>
         <li>
           <div class="list-bullet">✓</div>
-          <div>Settings is a page with a search field, and the command palette uses the same list (#64).</div>
+          <div>Dragging a selection moves it. Option-drag copies it (#88).</div>
         </li>
         <li>
           <div class="list-bullet">✓</div>
-          <div><code>lux</code> waits for the open, prints locations, and can install itself on <code>PATH</code> (#59). That command is inside this disk image.</div>
+          <div>Dropping files on the window opens them (#89).</div>
         </li>
       </ul>
-      <figure class="editor-shot">
-        <img src="assets/screenshots/status-tree.png" alt="Lux file tree with a modified git status mark beside note.txt">
-        <figcaption>Git status letter in the file tree. Run 43070109211 on macos-15, the v1.5.9 tree.</figcaption>
-      </figure>
+      <div class="shot-row">
+        <figure class="editor-shot shot-wide">
+          <img src="assets/screenshots/file-menu.png" alt="Lux File menu open, with Open Recent showing a file and Clear Recent">
+          <figcaption>File menu. New Window is Shift+Command+N. Open Recent lists the file and Clear Recent. Run 43265925703 on macos-15, head 008936c (#86).</figcaption>
+        </figure>
+        <figure class="editor-shot shot-wide">
+          <img src="assets/screenshots/selection-contrast.png" alt="Monokai line selection and word selection side by side">
+          <figcaption>Monokai line selection and word selection. Run 43380385851 on macos-15, the 1.5.10 tree.</figcaption>
+        </figure>
+        <figure class="editor-shot shot-wide">
+          <img src="assets/screenshots/markdown-fence.png" alt="Lux Markdown preview of indented Rust, JavaScript, and Python fences">
+          <figcaption>Markdown preview. The indent inside the Rust, JavaScript, and Python fences is kept. Run 43380386696 on macos-15, the 1.5.10 tree.</figcaption>
+        </figure>
+        <figure class="editor-shot">
+          <img src="assets/screenshots/selection-moved.png" alt="Lux after dragging the word beta to a new place in the line">
+          <figcaption>Dragging the word beta moves it. The status bar shows 4 selected. Run 43380385892 on macos-15, the 1.5.10 tree.</figcaption>
+        </figure>
+        <figure class="editor-shot">
+          <img src="assets/screenshots/selection-copied.png" alt="Lux after Option-dragging the word beta, with the original still in place">
+          <figcaption>Option-drag copies beta and keeps the original. Run 43380385892 on macos-15, the 1.5.10 tree.</figcaption>
+        </figure>
+        <figure class="editor-shot shot-wide">
+          <img src="assets/screenshots/file-drop.png" alt="Lux with drop-me.txt open showing the text dropped-from-finder">
+          <figcaption>A file dropped from Finder opens in a tab. Run 43336278610 on macos-15, head ae8b6c0 (#89).</figcaption>
+        </figure>
+      </div>
     </div>
   </section>
 
@@ -441,32 +463,33 @@
       <div class="download-card">
         <div class="download-content">
           <span class="section-tag">Get Started Today</span>
-          <h2 class="download-title">Download Lux v1.5.9</h2>
+          <h2 class="download-title">Download Lux v1.5.10</h2>
           <p class="download-desc">
             macOS is the focus. The
-            <a href="https://github.com/lcajigasm/lux/releases/tag/v1.5.9">v1.5.9</a>
+            <a href="https://github.com/lcajigasm/lux/releases/tag/v1.5.10">v1.5.10</a>
             GitHub Release includes the universal disk image
             <code>lux-macos-universal.dmg</code>, plus
             <code>lux-linux-x86_64</code> and <code>lux-linux-amd64.deb</code>.
+            The Homebrew cask is still 1.5.9.
           </p>
 
           <div class="download-buttons">
-            <a href="https://github.com/lcajigasm/lux/releases/tag/v1.5.9" class="btn btn-hero-primary btn-large">
+            <a href="https://github.com/lcajigasm/lux/releases/tag/v1.5.10" class="btn btn-hero-primary btn-large">
               <svg class="icon-apple" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" shape-rendering="geometricPrecision">
                 <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/>
               </svg>
               <div class="btn-text-block">
-                <span class="btn-main-label">GitHub Release v1.5.9</span>
+                <span class="btn-main-label">GitHub Release v1.5.10</span>
                 <span class="btn-sub-label">Linux packages on the tag</span>
               </div>
             </a>
 
-            <a href="https://github.com/lcajigasm/lux/releases/download/v1.5.9/lux-macos-universal.dmg" class="btn btn-outline btn-large">
+            <a href="https://github.com/lcajigasm/lux/releases/download/v1.5.10/lux-macos-universal.dmg" class="btn btn-outline btn-large">
               <svg class="icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
               </svg>
               <div class="btn-text-block">
-                <span class="btn-main-label">v1.5.9 macOS disk image</span>
+                <span class="btn-main-label">v1.5.10 macOS disk image</span>
                 <span class="btn-sub-label">Universal .dmg</span>
               </div>
             </a>
