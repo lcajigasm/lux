@@ -225,12 +225,21 @@ impl FileTree {
     /// structural change.
     pub fn rows(&mut self) -> &[Row] {
         if self.rows_dirty {
-            let mut rows = Vec::new();
-            self.push_rows(self.root, 0, &mut rows);
-            self.rows = rows;
+            self.rows = self.preview_rows();
             self.rows_dirty = false;
         }
         &self.rows
+    }
+
+    /// Visible rows through a shared borrow. Does not clear `rows_dirty`,
+    /// so a later `rows()` still rebuilds the cache the painter uses.
+    pub fn preview_rows(&self) -> Vec<Row> {
+        if !self.rows_dirty {
+            return self.rows.clone();
+        }
+        let mut rows = Vec::new();
+        self.push_rows(self.root, 0, &mut rows);
+        rows
     }
 
     fn push_rows(&self, id: NodeId, depth: usize, rows: &mut Vec<Row>) {

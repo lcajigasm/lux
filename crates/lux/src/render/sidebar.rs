@@ -33,9 +33,15 @@ pub(crate) fn render_sidebar(
 
     let root_title = sidebar.root_name().to_uppercase();
 
+    let drop_target = sidebar
+        .drag
+        .as_ref()
+        .filter(|drag| drag.active)
+        .and_then(|drag| drag.drop_target);
     let Some(tree) = sidebar.tree.as_mut() else {
         return;
     };
+    let root_id = tree.root();
 
     let foreground = color(theme.foreground);
     let muted = color(theme.muted);
@@ -86,6 +92,17 @@ pub(crate) fn render_sidebar(
         ],
         color(theme.chrome.border),
     ));
+    if drop_target == Some(root_id) {
+        quad_instances.push(QuadInstance::solid(
+            [
+                0.0,
+                tab_bar_height + header_h - 2.0 * stroke,
+                sidebar_width,
+                2.0 * stroke,
+            ],
+            accent,
+        ));
+    }
 
     let header_line = editor_view
         .text_layout_mut()
@@ -129,6 +146,17 @@ pub(crate) fn render_sidebar(
             ));
             quad_instances.push(QuadInstance::solid(
                 [0.0, row_y, 2.0 * stroke, row_h],
+                accent,
+            ));
+        }
+        if drop_target == Some(row.id) {
+            quad_instances.push(QuadInstance::solid(
+                [
+                    0.0,
+                    row_y + row_h - 2.0 * stroke,
+                    sidebar_width - stroke,
+                    2.0 * stroke,
+                ],
                 accent,
             ));
         }

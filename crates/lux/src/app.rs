@@ -467,6 +467,7 @@ impl PlatformEventHandler for App {
                 self.mouse.word_anchor = None;
                 self.mouse.line_anchor = None;
                 self.mouse.context_menu = None;
+                crate::sidebar::drag::cancel(self);
             }
             PlatformEvent::Ime(ime_event) => {
                 crate::ime_hold::observe(self, ime_event);
@@ -488,6 +489,11 @@ impl PlatformEventHandler for App {
                     gpu_window.window.request_redraw();
                 }
                 if crate::chrome::drag_tab(self)
+                    && let Some(gpu_window) = &self.gpu_window
+                {
+                    gpu_window.window.request_redraw();
+                }
+                if crate::sidebar::drag::update(self, position.x as f32, position.y as f32)
                     && let Some(gpu_window) = &self.gpu_window
                 {
                     gpu_window.window.request_redraw();
@@ -516,6 +522,7 @@ impl PlatformEventHandler for App {
                         crate::edit_menu::press_editor(self, ctx, button);
                     }
                 } else if button == MouseButton::Left {
+                    crate::sidebar::drag::release(self, ctx);
                     self.finish_selection_drag();
                     self.mouse.selection_anchor = None;
                     self.mouse.word_anchor = None;

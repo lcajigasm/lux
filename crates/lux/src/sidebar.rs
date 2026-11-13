@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use lux_platform::PlatformContext;
 use lux_ui::file_tree::{FileTree, NodeId, NodeKind, Row};
 
+pub(crate) mod drag;
 pub(crate) mod menu;
 pub(crate) mod ops;
 
@@ -28,6 +29,9 @@ pub(crate) struct SidebarState {
     pub(crate) inline_input: Option<ops::InlineInputState>,
     /// Absolute paths of files and parent directories that differ from `HEAD`.
     pub(crate) git_marks: HashMap<PathBuf, char>,
+    /// Row press that becomes a move once the pointer travels, or a click
+    /// if it does not.
+    pub(crate) drag: Option<drag::TreeDrag>,
 }
 
 impl Default for SidebarState {
@@ -43,6 +47,7 @@ impl Default for SidebarState {
             context_menu: None,
             inline_input: None,
             git_marks: HashMap::new(),
+            drag: None,
         }
     }
 }
@@ -61,6 +66,7 @@ impl SidebarState {
             context_menu: None,
             inline_input: None,
             git_marks: HashMap::new(),
+            drag: None,
         })
     }
 
@@ -103,8 +109,7 @@ impl SidebarState {
 
 /// Rows the sidebar paints and hit-tests. An expanded root is the header,
 /// not a second copy of the folder name, and depths start at the children.
-pub(crate) fn listed_rows(tree: &mut FileTree) -> Vec<Row> {
-    let mut rows = tree.rows().to_vec();
+fn present_rows(mut rows: Vec<Row>) -> Vec<Row> {
     let hide_root = rows
         .first()
         .is_some_and(|row| row.depth == 0 && row.kind == NodeKind::Directory && row.expanded);
@@ -115,6 +120,22 @@ pub(crate) fn listed_rows(tree: &mut FileTree) -> Vec<Row> {
         }
     }
     rows
+}
+
+pub(crate) fn listed_rows(tree: &mut FileTree) -> Vec<Row> {
+    present_rows(tree.rows().to_vec())
+}
+
+/// `depth:name` pairs the probe prints, in paint order.
+pub(crate) fn tree_label(sidebar: &SidebarState) -> String {
+    let Some(tree) = sidebar.tree.as_ref() else {
+        return String::new();
+    };
+    present_rows(tree.preview_rows())
+        .iter()
+        .map(|row| format!("{}:{}", row.depth, row.name))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 pub(crate) fn reveal_open_document(app: &mut crate::app::App) {
@@ -185,75 +206,35 @@ pub(crate) fn handle_sidebar_click(
         return true;
     }
 
-    let tab_bar_h = app.tab_bar_height();
-    let header_h = SIDEBAR_HEADER_HEIGHT * app.scale_factor;
-    let row_h = SIDEBAR_ROW_HEIGHT * app.scale_factor;
-
-    let relative_y = mouse_y - tab_bar_h;
-    if relative_y < 0.0 {
-        return false;
-    }
-
-    if relative_y < header_h {
-        return true;
-    }
-
-    let row_idx = ((relative_y - header_h) / row_h) as usize;
-
-    let click_action = {
-        let Some(sidebar) = app.ui.sidebar.as_mut() else {
-            return false;
-        };
-        let Some(tree) = sidebar.tree.as_mut() else {
-            return false;
-        };
-        let rows: Vec<Row> = listed_rows(tree);
-        if let Some(row) = rows.get(row_idx) {
-            let id = row.id;
-            let kind = row.kind;
-            let path = tree.node_path(id).map(Path::to_path_buf);
-            sidebar.selected_node = Some(id);
-            Some((id, kind, path))
-        } else {
-            None
-        }
-    };
-
-    let Some((id, kind, path)) = click_action else {
-        return true;
-    };
-
-    match button {
-        lux_platform::MouseButton::Right => {
-            if let Some(sidebar) = app.ui.sidebar.as_mut() {
-                sidebar.context_menu = Some(menu::SidebarContextMenu::new(
-                    id,
-                    kind == NodeKind::Directory,
-                    mouse_x,
-                    mouse_y,
-                    app.scale_factor,
-                ));
-            }
-            app.scheduler.invalidate_all();
-            true
-        }
-        lux_platform::MouseButton::Left => {
-            match kind {
-                NodeKind::Directory => {
-                    if let Some(sidebar) = app.ui.sidebar.as_mut() {
-                        sidebar.toggle_node(id);
-                    }
-                    app.scheduler.invalidate_all();
+    match drag::hit(app, mouse_x, mouse_y) {
+        drag::Hit::Outside => false,
+        drag::Hit::Header | drag::Hit::Empty => true,
+        drag::Hit::Row { id, kind } => match button {
+            lux_platform::MouseButton::Right => {
+                if let Some(sidebar) = app.ui.sidebar.as_mut() {
+                    sidebar.selected_node = Some(id);
+                    sidebar.drag = None;
+                    sidebar.context_menu = Some(menu::SidebarContextMenu::new(
+                        id,
+                        kind == NodeKind::Directory,
+                        mouse_x,
+                        mouse_y,
+                        app.scale_factor,
+                    ));
                 }
-                NodeKind::File => {
-                    if let Some(file_path) = path {
-                        app.request_document(ctx, crate::document::Request::Open(Some(file_path)));
-                    }
-                }
+                app.scheduler.invalidate_all();
+                true
             }
-            true
-        }
-        _ => true,
+            lux_platform::MouseButton::Left => {
+                if let Some(sidebar) = app.ui.sidebar.as_mut() {
+                    sidebar.selected_node = Some(id);
+                }
+                drag::arm(app, id, mouse_x, mouse_y);
+                app.scheduler.invalidate_all();
+                true
+            }
+            _ => true,
+        },
     }
 }
 
