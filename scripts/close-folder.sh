@@ -53,15 +53,7 @@ fi
 
 line="$(swift /tmp/lux-find-window.swift "$DRIVE_OWNER")"
 read -r x y w h <<<"$line"
-# Points: tab 32, header 28, one file row, then the second folder's ×.
-click_x=$((x + 206))
-click_y=$((y + 93))
-drive_click "$click_x" "$click_y"
-sleep 0.4
-
-drive_dump
-roots="$(drive_field roots)"
-tree="$(drive_field tree)"
+echo "window $x $y $w $h"
 
 capture() {
   rm -f "$out/closed.png"
@@ -77,16 +69,41 @@ capture() {
   return 1
 }
 
-if [[ "$roots" != "alpha-project" ]]; then
+# The window-list rect includes the title bar, so a point measured from
+# the content origin (tab 32 + header 28 + one row) misses the ×. Walk
+# the close strip from the lower rows upward and stop when beta leaves.
+closed=0
+click_x=""
+click_y=""
+roots=""
+tree=""
+for dy in $(seq 170 -8 56); do
+  for dx in 196 206 216; do
+    click_x=$((x + dx))
+    click_y=$((y + dy))
+    drive_click "$click_x" "$click_y"
+    sleep 0.25
+    drive_dump || true
+    roots="$(drive_field roots)"
+    tree="$(drive_field tree)"
+    if [[ "$roots" == "alpha-project" && "$tree" == *keep.txt* && "$tree" != *gone.txt* && "$tree" != *beta-project* ]]; then
+      closed=1
+      echo "closed beta at $click_x $click_y"
+      break 2
+    fi
+    if [[ "$roots" != "alpha-project|beta-project" ]]; then
+      capture || true
+      echo "click $click_x $click_y left roots=$roots" >&2
+      echo "tree=$tree" >&2
+      exit 1
+    fi
+  done
+done
+if [[ "$closed" != 1 ]]; then
   capture || true
   echo "close left roots=$roots" >&2
   echo "tree=$tree" >&2
-  echo "click $click_x $click_y" >&2
-  exit 1
-fi
-if [[ "$tree" != *keep.txt* || "$tree" == *gone.txt* || "$tree" == *beta-project* ]]; then
-  capture || true
-  echo "sidebar still shows the closed folder: $tree" >&2
+  echo "window $x $y $w $h" >&2
   exit 1
 fi
 if [[ ! -f "$beta/gone.txt" || ! -d "$beta" ]]; then
