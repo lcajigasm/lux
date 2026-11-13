@@ -238,4 +238,15 @@ The 8 ms release ceiling holds. 242 ms to load 100 MB is this VM. There is still
 
 `p0-macos.yml` measures the rows below on the free runner. Lux H1 is process start until the first presented frame, median of 10. H3 and H4 are a warm process opening the file on SIGUSR2 until that buffer's first presented frame. H2 is the key event until the next presented frame, p99, on a 20k-line file. H5 is the slowest redraw while a 50k-line file is scrolling. H6 is extra RSS across the 100 MB open. Sublime and Zed, when the free cask installs, are timed only until a window is listed. That clock is not H1. H2 and H5 are not readable from those processes. A missed budget stays in the table and does not fail the job.
 
-The numbers are copied from the performance artifact after the run. This revision does not invent them.
+Run [42737030748](https://github.com/lcajigasm/lux/actions/runs/42737030748), artifact `perf-macos`, on `6fe35ab` (squash-merged as `4103eed`). The job built the release binary. A missed budget stays in the table.
+
+| Id | Measurement | Budget | Lux | Result |
+|---|---|---|---|---|
+| H1 | Cold start, median of 10 | < 150 ms | 473.9 ms | miss |
+| H2 | Key to next presented frame, p99, 20k lines | < 8 ms | 34.96 ms (n=39) | miss |
+| H3 | Open 10 MB, warm process | < 150 ms | 121.4 ms | pass |
+| H4 | Open 100 MB, warm process | < 1 s | 1249.5 ms | miss |
+| H5 | Scroll 50k lines, slowest recorded frame | no frame > 16 ms | 68.42 ms (n=141) | miss |
+| H6 | Extra RSS while opening 100 MB | < 3× file | 5.25× | miss |
+
+H1's ten samples, in order, were 4476.9, 1064.6, 398.6, 422.9, 392.9, 612.8, 505.3, 427.0, 442.5, and 597.7 ms. The reported value is the median, 473.9 ms. Sublime Text's window did not appear. `open -a Zed` failed with `Unable to find application named 'Zed'`. Those are not an H1 comparison. H2 and H5 have no reading outside the Lux process. The raw log is `perf-raw.txt` in the same artifact.
