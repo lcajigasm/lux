@@ -401,3 +401,96 @@ fn reveal_outside_the_root_returns_none() {
     assert_eq!(tree.reveal("/definitely/not/in/this/tree").unwrap(), None);
     fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn a_created_file_joins_a_loaded_directory_and_a_removed_file_leaves() {
+    let dir = temp_dir();
+    fs::write(dir.join("keep.txt"), "k").unwrap();
+    let mut tree = FileTree::open(&dir).unwrap();
+
+    let arrived = dir.join("arrived.txt");
+    fs::write(&arrived, "a").unwrap();
+    assert!(tree.note_created(&arrived));
+    assert!(!tree.note_created(&arrived));
+    assert!(names(tree.rows()).contains(&"arrived.txt"));
+
+    assert!(tree.note_removed(&arrived));
+    assert!(!names(tree.rows()).contains(&"arrived.txt"));
+    assert!(names(tree.rows()).contains(&"keep.txt"));
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_created_file_in_a_collapsed_loaded_folder_shows_on_expand() {
+    let dir = temp_dir();
+    fs::write(dir.join("keep.txt"), "k").unwrap();
+    let mut tree = FileTree::open(&dir).unwrap();
+    tree.collapse(tree.root());
+
+    let arrived = dir.join("arrived.txt");
+    fs::write(&arrived, "a").unwrap();
+    assert!(tree.note_created(&fs::canonicalize(&arrived).unwrap()));
+    tree.expand(tree.root()).unwrap();
+    assert!(names(tree.rows()).contains(&"arrived.txt"));
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_file_inside_an_unloaded_folder_waits_for_expand() {
+    let dir = temp_dir();
+    let sub = dir.join("sub");
+    fs::create_dir(&sub).unwrap();
+    let mut tree = FileTree::open(&dir).unwrap();
+    let inside = sub.join("inside.txt");
+    fs::write(&inside, "i").unwrap();
+    assert!(!tree.note_created(&inside));
+    let sub_id = tree.rows().iter().find(|row| row.name == "sub").unwrap().id;
+    tree.expand(sub_id).unwrap();
+    assert!(names(tree.rows()).contains(&"inside.txt"));
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn removing_a_directory_drops_its_loaded_children() {
+    let dir = temp_dir();
+    let sub = dir.join("sub");
+    fs::create_dir(&sub).unwrap();
+    fs::write(sub.join("inside.txt"), "i").unwrap();
+    let mut tree = FileTree::open(&dir).unwrap();
+    let sub_id = tree.rows().iter().find(|row| row.name == "sub").unwrap().id;
+    tree.expand(sub_id).unwrap();
+    assert!(names(tree.rows()).contains(&"inside.txt"));
+    fs::remove_dir_all(&sub).unwrap();
+    assert!(tree.note_removed(&sub));
+    let left = names(tree.rows());
+    assert!(!left.contains(&"sub"));
+    assert!(!left.contains(&"inside.txt"));
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_hidden_directory_create_is_ignored() {
+    let dir = temp_dir();
+    let mut tree = FileTree::open(&dir).unwrap();
+    let git = dir.join(".git");
+    fs::create_dir(&git).unwrap();
+    assert!(!tree.note_created(&git));
+    assert!(!names(tree.rows()).contains(&".git"));
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_canonical_create_lands_in_a_tree_opened_through_a_symlink() {
+    let dir = temp_dir();
+    let real = dir.join("real");
+    let link = dir.join("link");
+    fs::create_dir(&real).unwrap();
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    fs::write(real.join("keep.txt"), "k").unwrap();
+    let mut tree = FileTree::open(&link).unwrap();
+    let arrived = real.join("arrived.txt");
+    fs::write(&arrived, "a").unwrap();
+    assert!(tree.note_created(&fs::canonicalize(&arrived).unwrap()));
+    assert!(names(tree.rows()).contains(&"arrived.txt"));
+    fs::remove_dir_all(&dir).ok();
+}

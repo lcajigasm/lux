@@ -330,7 +330,11 @@ pub(crate) fn poll_file_watcher(app: &mut App) {
                     repaint_needed = true;
                 }
             }
-            _ => {}
+            ChangeKind::Created | ChangeKind::Removed => {
+                if crate::sidebar::watch::apply(app, &change.path, change.kind) {
+                    repaint_needed = true;
+                }
+            }
         }
     }
 

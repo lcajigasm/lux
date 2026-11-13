@@ -6,6 +6,8 @@
 //! folder reads that one directory on the caller; keep the read to the
 //! directory the user opened.
 
+mod external;
+
 use std::collections::HashMap;
 use std::fs;
 use std::io;

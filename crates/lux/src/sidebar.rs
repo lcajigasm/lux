@@ -12,6 +12,7 @@ use lux_ui::file_tree::{FileTree, NodeId, NodeKind, Row};
 pub(crate) mod drag;
 pub(crate) mod menu;
 pub(crate) mod ops;
+pub(crate) mod watch;
 
 pub(crate) const DEFAULT_SIDEBAR_WIDTH: f32 = 220.0;
 pub(crate) const SIDEBAR_ROW_HEIGHT: f32 = 22.0;

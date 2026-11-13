@@ -882,9 +882,10 @@ Gate: `cargo test -p lux sidebar::` and `cargo test -p lux-ui file_tree::`. Veri
 deliverable, tracked in
 `docs/receipts/phase-04-watchers-nativos-notify-debouncer.md`)**: the
 "Native FS watchers" row above stays `not-started` — `FileWatcher` is
-verified directly against the real OS backend (not mocked), but nothing
-consumes its output yet: no file tree auto-refresh, no editor reload
-prompt, nothing wired into the `lux` binary. What exists and is verified:
+verified directly against the real OS backend (not mocked). The editor
+consumes those events: a clean open file reloads and a dirty one asks
+(ST-FIX-13), and a loaded sidebar row appears or disappears when a file
+is created or removed (ST-FIX-14). What exists and is verified:
 `notify` 8.2.0 + `notify-debouncer-full` 0.7.0 (the version that actually
 pairs with `notify` 8.2.0, not the crate registry's default "latest," which
 tracks `notify` 9's still-unstable RC — see `docs/DEPENDENCIES.md`), fully
@@ -2504,6 +2505,11 @@ _Nothing is behind an `experimental.*` flag yet._
   - **Language picker wheel ownership:** line-wheel movement changes the selected language row; precise trackpad movement accumulates by row height. While the picker is open, the underlying editor viewport remains unchanged.
   - **Focus restoration:** dismissing or executing the Command Palette returns focus to the editor unless the selected command opens another focused surface.
   - **Automated tests:** the four `desktop_pass` tests pass, including press/release deduplication, modal isolation, language-list scrolling, `Cmd/Ctrl+Shift+P`, and literal `Cmd/Ctrl+N` tab creation through the real keyboard pipeline. Sidebar delete (`sidebar::tests::sidebar_duplicate_and_delete_operations`) moves the file with `NSFileManager.trashItemAtURL` on macOS. The earlier failure was `trash`'s default Finder AppleScript, which returns an error when the process has no Automation permission; the file still goes to the real Trash. `cargo clippy -p lux -- -D warnings`, `cargo fmt --check`, and `scripts/check-limits.sh` pass.
+
+### ST-FIX-14: File tree refresh from the watcher
+
+- **Status:** A file or folder created under a directory the sidebar has already read appears in that directory, including when the directory is collapsed. Removing it drops the row and any loaded children. A create inside a folder that has never been expanded waits for the next expand, which reads that directory. `.git` and the other hidden version-control directories stay out. The root row is not removed. The macOS capture writes `arrived.txt` beside an open folder and the sidebar lists it before the file is deleted again.
+- **Verification:** `file_tree::tests::a_created_file_joins_a_loaded_directory_and_a_removed_file_leaves`, `a_created_file_in_a_collapsed_loaded_folder_shows_on_expand`, `a_file_inside_an_unloaded_folder_waits_for_expand`, `removing_a_directory_drops_its_loaded_children`, and `a_canonical_create_lands_in_a_tree_opened_through_a_symlink`. `sidebar::watch::tests::a_created_file_appears_and_a_removed_file_disappears` uses the real watcher. `scripts/tree-watch.sh` is the macos-15 capture.
 
 ### ST-FIX-13: Reload, hot exit, comments, scroll, and menu chords
 
