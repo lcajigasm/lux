@@ -1,7 +1,8 @@
 name: Close folder
 
-# Real Lux.app on macos-15. Two folders open. Closing one from the sidebar
-# removes it from the tree and leaves the directory on disk.
+# Real Lux.app on macos-15. Two folders open. Closing beta removes it
+# from the tree, leaves the directory, and leaves no tab of its files.
+# A missing frame fails the upload. A tab that stays open fails the script.
 on:
   pull_request:
   workflow_dispatch:
@@ -33,6 +34,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: close-folder
+          name: close-tabs
           path: docs/evidence/close-folder/**
-          if-no-files-found: warn
+          if-no-files-found: error

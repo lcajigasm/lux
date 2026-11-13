@@ -425,6 +425,15 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         out.push_str(&escape(&crate::sidebar::tree_label(sidebar)));
     }
     out.push('\n');
+    out.push_str("tab_paths=");
+    let tab_paths: Vec<String> = app
+        .documents
+        .entries
+        .iter()
+        .filter_map(|entry| entry.path.as_ref().map(|path| path.display().to_string()))
+        .collect();
+    out.push_str(&escape(&tab_paths.join("|")));
+    out.push('\n');
     out.push_str(&format!(
         "key_n={}\nkey_p99_us={}\nframe_n={}\nframe_max_us={}\n",
         slot.key_us.len(),

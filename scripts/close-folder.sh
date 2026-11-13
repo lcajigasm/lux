@@ -69,6 +69,32 @@ capture() {
   return 1
 }
 
+# Open beta's file first, from the left of a row, so the close strip
+# is not the thing we hit. A clean tab of that folder must leave with
+# the folder. A dirty tab would stay; this file has no edits.
+opened_file=0
+for dy in $(seq 80 8 220); do
+  for dx in 40 80 120; do
+    drive_click "$((x + dx))" "$((y + dy))"
+    sleep 0.2
+    drive_dump || true
+    case "$(drive_field active_path)" in
+      *beta-project/gone.txt*) opened_file=1; break 2 ;;
+    esac
+    roots="$(drive_field roots)"
+    if [[ "$roots" != "alpha-project|beta-project" ]]; then
+      capture || true
+      echo "opening gone.txt closed a folder: $roots" >&2
+      exit 1
+    fi
+  done
+done
+if [[ "$opened_file" != 1 ]]; then
+  capture || true
+  echo "gone.txt did not open: $(drive_field active_path)" >&2
+  exit 1
+fi
+
 # The window-list rect includes the title bar, so a point measured from
 # the content origin (tab 32 + header 28 + one row) misses the ×. Walk
 # the close strip from the lower rows upward and stop when beta leaves.
@@ -114,6 +140,14 @@ if [[ ! -f "$alpha/keep.txt" ]]; then
   echo "the folder that stayed lost its file" >&2
   exit 1
 fi
+drive_dump || true
+tab_paths="$(drive_field tab_paths)"
+active="$(drive_field active_path)"
+if [[ "$tab_paths" == *beta-project* || "$active" == *beta-project* || "$tab_paths" == *gone.txt* ]]; then
+  capture || true
+  echo "a beta tab stayed open: tab_paths=$tab_paths active=$active" >&2
+  exit 1
+fi
 
 capture
 
@@ -121,7 +155,10 @@ capture
   echo "close folder"
   echo "roots after close: $roots"
   echo "tree after close: $tree"
+  echo "tabs after close: $tab_paths"
+  echo "active after close: $active"
   echo "beta directory still exists"
+  echo "unsaved tabs stay open; this file was clean and its tab closed"
   ls -1 "$out"/*.png
 } | tee "$out/close-folder.txt"
 
