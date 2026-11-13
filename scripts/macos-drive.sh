@@ -124,19 +124,6 @@ case "chord":
         Thread.sleep(forTimeInterval: 0.08)
     }
     holdModifiers(fl, false)
-case "click":
-    let x = Double(args.count > 2 ? args[2] : "0") ?? 0
-    let y = Double(args.count > 3 ? args[3] : "0") ?? 0
-    let point = CGPoint(x: x, y: y)
-    let source = CGEventSource(stateID: .hidSystemState)
-    guard let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
-          let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
-        fputs("cannot build a click\n", stderr)
-        exit(1)
-    }
-    down.post(tap: .cghidEventTap)
-    Thread.sleep(forTimeInterval: 0.05)
-    up.post(tap: .cghidEventTap)
 case "scroll":
     let x = Double(args.count > 2 ? args[2] : "400") ?? 400
     let y = Double(args.count > 3 ? args[3] : "400") ?? 400
