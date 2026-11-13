@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Warm open of a 10 MB file. Main and this branch, one macos-15 run.
-# A missing clock, a missing ratio, or a missing frame fails the job.
+# Extra RSS while opening a 100 MB file. Main and this branch, one macos-15 run.
+# A missing clock, a missing RSS sample, or a missing frame fails the job.
 # A budget miss is written down and does not.
 set -euo pipefail
 
@@ -9,7 +9,7 @@ cd "$root"
 # shellcheck source=scripts/macos-drive.sh
 source "$root/scripts/macos-drive.sh"
 
-out="$root/docs/evidence/h3-open"
+out="$root/docs/evidence/h6-rss"
 rm -rf "$out"
 mkdir -p "$out"
 raw="$out/raw.txt"
@@ -17,7 +17,7 @@ raw="$out/raw.txt"
 log() { echo "$*" | tee -a "$raw"; }
 
 main_sha="2b61fc366a3a6a370bb034fe62a33d0856054334"
-bytes=$((10 * 1024 * 1024))
+bytes=$((100 * 1024 * 1024))
 
 bash "$root/scripts/stage-lux-app.sh" --release
 cp -R "$root/target/Lux.app" /tmp/Lux-after.app
@@ -220,17 +220,17 @@ printf '%s\n' "$subl_note" > "$out/sublime.txt"
 printf '%s\n' "$zed_note" > "$out/zed.txt"
 
 {
-  echo "# H3 open 10 MB"
+  echo "# H6 extra RSS, 100 MB"
   echo
   echo "Warm process, SIGUSR2 until the opened buffer's first presented frame."
   echo "Main \`$main_sha\` and this branch were measured in this run."
-  echo "The starting figure on run 43471189705 was 706.3 ms."
+  echo "The starting figure on run 43471189705 was 4.84× extra RSS, with the open at 9049.3 ms."
   echo
-  echo "Before (main): ${before_ms} ms. Extra RSS ${before_ratio}×."
+  echo "Before (main): extra RSS ${before_ratio}× (${before_ms} ms to open)."
   echo
-  echo "After: ${after_ms} ms. Extra RSS ${after_ratio}×."
+  echo "After: extra RSS ${after_ratio}× (${after_ms} ms to open)."
   echo
-  echo "Budget: < 150 ms. A miss is recorded and does not fail the job."
+  echo "Budget: extra RSS < 3× the file. A miss is recorded and does not fail the job."
   echo
   echo "Largest step on the after open: ${cause}."
   echo
@@ -241,9 +241,9 @@ printf '%s\n' "$zed_note" > "$out/zed.txt"
   echo "Sublime Text: ${subl_note}."
   echo
   echo "Zed: ${zed_note}."
-} > "$out/h3.md"
+} > "$out/h6.md"
 
-log "H3 before ${before_ms} ms after ${after_ms} ms cause ${cause}"
+log "H6 before ${before_ratio}x after ${after_ratio}x open ${before_ms} -> ${after_ms} ms"
 awk -v m="$after_ms" 'BEGIN {
   if (m + 0 >= 150) print "H3 budget miss: " m " ms"
   else print "H3 within budget: " m " ms"
