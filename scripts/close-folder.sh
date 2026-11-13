@@ -62,12 +62,30 @@ sleep 0.4
 drive_dump
 roots="$(drive_field roots)"
 tree="$(drive_field tree)"
+
+capture() {
+  rm -f "$out/closed.png"
+  kill -USR1 "$DRIVE_PID"
+  local attempt
+  for attempt in $(seq 1 40); do
+    if [[ -s "$out/closed.png" ]]; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "final snapshot missing" >&2
+  return 1
+}
+
 if [[ "$roots" != "alpha-project" ]]; then
+  capture || true
   echo "close left roots=$roots" >&2
   echo "tree=$tree" >&2
+  echo "click $click_x $click_y" >&2
   exit 1
 fi
 if [[ "$tree" != *keep.txt* || "$tree" == *gone.txt* || "$tree" == *beta-project* ]]; then
+  capture || true
   echo "sidebar still shows the closed folder: $tree" >&2
   exit 1
 fi
@@ -80,17 +98,7 @@ if [[ ! -f "$alpha/keep.txt" ]]; then
   exit 1
 fi
 
-kill -USR1 "$DRIVE_PID"
-for _ in $(seq 1 40); do
-  if [[ -s "$out/closed.png" ]]; then
-    break
-  fi
-  sleep 0.25
-done
-if [[ ! -s "$out/closed.png" ]]; then
-  echo "final snapshot missing" >&2
-  exit 1
-fi
+capture
 
 {
   echo "close folder"
