@@ -368,25 +368,28 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     let html_preview = app.documents.active_entry().is_some_and(|entry| {
         entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Html)
     });
-    out.push_str("preview=");
-    out.push(if html_preview { '1' } else { '0' });
-    out.push('\n');
-    out.push_str("preview_blocks=");
-    if html_preview {
-        out.push_str(&escape(&crate::markdown_preview::html_summary(
-            &app.buffer.text(),
-        )));
-    }
-    out.push('\n');
-    let preview_fences = if app
-        .documents
-        .active_entry()
-        .is_some_and(|entry| entry.markdown_preview)
-    {
+    let show_preview = app.documents.active_entry().is_some_and(|entry| {
+        entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Markdown)
+    });
+    let preview_on = html_preview || show_preview;
+    let preview_fences = if preview_on {
         crate::render::markdown::rendered_code_blocks(&app.buffer.text(), app.active_syntax_theme())
     } else {
         String::new()
     };
+    out.push_str("preview=");
+    out.push(if preview_on { '1' } else { '0' });
+    out.push('\n');
+    out.push_str("preview_blocks=");
+    if preview_on {
+        let blocks = if html_preview {
+            crate::markdown_preview::html_summary(&app.buffer.text())
+        } else {
+            crate::markdown_preview::summary(&app.buffer.text())
+        };
+        out.push_str(&escape(&blocks));
+    }
+    out.push('\n');
     out.push_str("preview_fences=");
     out.push_str(&escape(&preview_fences));
     out.push('\n');

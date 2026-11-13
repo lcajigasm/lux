@@ -84,6 +84,16 @@ fn shift_command_v_toggles_the_markdown_preview() {
     command(&mut note, "v", true);
     assert!(!note.documents.entries[0].markdown_preview);
 
+    let source = "# Title\n\n- item\n\n```\ncode\n```\n\n[a](https://example.com)\n";
+    let summary = crate::markdown_preview::summary(source);
+    assert!(summary.contains("heading:Title"), "{summary}");
+    assert!(summary.contains("list:item"), "{summary}");
+    assert!(summary.contains("code:code"), "{summary}");
+    assert!(summary.contains("link"), "{summary}");
+    let edited = source.replacen("# Title", "# Title LIVE", 1);
+    let again = crate::markdown_preview::summary(&edited);
+    assert!(again.contains("heading:Title LIVE"), "{again}");
+
     let mut rust = app("fn main() {}\n");
     rust.documents.entries[0].language = Some(LanguageId::Rust);
     command(&mut rust, "v", true);
