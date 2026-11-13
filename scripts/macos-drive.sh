@@ -202,6 +202,51 @@ case "click", "right", "double", "triple":
         Thread.sleep(forTimeInterval: 0.05)
         clickOnce(3)
     }
+case "drag":
+    // drag x1 y1 x2 y2 [alt]
+    guard args.count >= 6,
+          let x1 = Double(args[2]), let y1 = Double(args[3]),
+          let x2 = Double(args[4]), let y2 = Double(args[5]) else { exit(2) }
+    let copy = args.count >= 7 && args[6] == "alt"
+    let source = CGEventSource(stateID: .hidSystemState)
+    let start = CGPoint(x: x1, y: y1)
+    let end = CGPoint(x: x2, y: y2)
+    if copy {
+        holdModifiers(.maskAlternate, true)
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+    if let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: start, mouseButton: .left) {
+        move.post(tap: .cghidEventTap)
+    }
+    Thread.sleep(forTimeInterval: 0.04)
+    guard let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: start, mouseButton: .left) else {
+        fputs("cannot build a drag\n", stderr)
+        exit(1)
+    }
+    if copy { down.flags = .maskAlternate }
+    down.post(tap: .cghidEventTap)
+    let steps = 8
+    for step in 1...steps {
+        let x = x1 + (x2 - x1) * Double(step) / Double(steps)
+        let y = y1 + (y2 - y1) * Double(step) / Double(steps)
+        let point = CGPoint(x: x, y: y)
+        Thread.sleep(forTimeInterval: 0.02)
+        if let drag = CGEvent(mouseEventSource: source, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) {
+            if copy { drag.flags = .maskAlternate }
+            drag.post(tap: .cghidEventTap)
+        }
+    }
+    Thread.sleep(forTimeInterval: 0.04)
+    guard let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: end, mouseButton: .left) else {
+        fputs("cannot build a drag\n", stderr)
+        exit(1)
+    }
+    if copy { up.flags = .maskAlternate }
+    up.post(tap: .cghidEventTap)
+    if copy {
+        Thread.sleep(forTimeInterval: 0.05)
+        holdModifiers(.maskAlternate, false)
+    }
 default:
     fputs("unknown step\n", stderr)
     exit(2)

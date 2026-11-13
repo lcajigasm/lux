@@ -234,7 +234,7 @@ fn mouse_click_and_drag_create_a_directional_unicode_safe_selection() {
         10_000.0,
         app.tab_bar_height() as f64 + LINE_HEIGHT as f64 + 1.0,
     );
-    app.begin_mouse_selection();
+    app.begin_mouse_selection(1);
     assert_eq!(
         app.cursors.primary().head,
         Position::document_end(&app.buffer)
@@ -431,13 +431,13 @@ fn command_click_adds_a_cursor_and_option_drag_selects_a_column() {
         10_000.0,
         app.tab_bar_height() as f64 + LINE_HEIGHT as f64 + 1.0,
     );
-    app.begin_mouse_selection();
+    app.begin_mouse_selection(1);
     assert_eq!(app.cursors.count(), 2);
     app.modifiers = Modifiers::default();
 
     app.modifiers.alt = true;
     app.mouse.position = dpi::PhysicalPosition::new(10_000.0, app.tab_bar_height() as f64 + 1.0);
-    app.begin_mouse_selection();
+    app.begin_mouse_selection(1);
     assert_eq!(app.cursors.count(), 1);
     app.mouse.position = dpi::PhysicalPosition::new(
         10_000.0,
