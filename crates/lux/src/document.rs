@@ -575,6 +575,7 @@ impl App {
                 }
             }
         }
+        crate::menu::note(self.documents.path.as_deref());
         self.update_document_title();
         open_queue::pump(self, ctx);
         self.refresh_accessibility();

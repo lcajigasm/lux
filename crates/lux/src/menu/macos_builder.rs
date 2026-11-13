@@ -148,6 +148,14 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         key(MenuAction::NewFile),
         Some(MenuAction::NewFile),
     );
+    add_item_with_mask(
+        mtm,
+        &file_menu,
+        "New Window",
+        key(MenuAction::NewWindow),
+        1048576 | 131072,
+        Some(MenuAction::NewWindow),
+    );
     add_item(
         mtm,
         &file_menu,
@@ -163,6 +171,7 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         1048576 | 131072,
         Some(MenuAction::OpenFolder),
     );
+    super::macos::add_open_recent(mtm, &file_menu);
     add_separator(mtm, &file_menu);
     add_item(
         mtm,
@@ -178,6 +187,14 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         key(MenuAction::SaveAs),
         1048576 | 131072,
         Some(MenuAction::SaveAs),
+    );
+    add_item_with_mask(
+        mtm,
+        &file_menu,
+        "Save All",
+        key(MenuAction::SaveAll),
+        1048576 | 524288,
+        Some(MenuAction::SaveAll),
     );
     add_separator(mtm, &file_menu);
     add_item(
@@ -201,6 +218,14 @@ pub(crate) fn build_all_menus(mtm: MainThreadMarker, main_menu: &NSMenu) {
         "Close Tab",
         key(MenuAction::CloseTab),
         Some(MenuAction::CloseTab),
+    );
+    add_item_with_mask(
+        mtm,
+        &file_menu,
+        "Reopen Closed Tab",
+        key(MenuAction::ReopenClosedTab),
+        1048576 | 131072,
+        Some(MenuAction::ReopenClosedTab),
     );
     main_menu.addItem(&file_menu_item);
     main_menu.setSubmenu_forItem(Some(&file_menu), &file_menu_item);
