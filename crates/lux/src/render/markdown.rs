@@ -9,6 +9,138 @@ use crate::app::AtlasState;
 use crate::render::paint::{color, push_glyph};
 
 #[allow(clippy::too_many_arguments)]
+/// Highlight runs for one fenced block. `None` means the fence names no
+/// language this build can highlight, and the preview keeps one color.
+pub(super) fn fence_runs(
+    text: &str,
+    info: &str,
+    syntax: &lux_syntax::theme::SyntaxTheme,
+) -> Option<Vec<Vec<FenceRun>>> {
+    let language = fence_language(info)?;
+    let mut doc = lux_syntax::Document::new(language);
+    doc.set_text(text);
+    let tokens = doc.highlight(text);
+    let plain = syntax.color_for_scope("text");
+    let mut lines = Vec::new();
+    let mut offset = 0usize;
+    for piece in text.split_inclusive('\n') {
+        let body = piece.trim_end_matches(['\n', '\r']);
+        let start = offset;
+        let end = start + body.len();
+        offset += piece.len();
+        lines.push(line_runs(text, start, end, &tokens, syntax, plain));
+    }
+    Some(lines)
+}
+
+/// The fence text the preview paints, one block after another.
+///
+/// Highlight runs keep the bytes between tokens, including spaces and
+/// indent. Joining them is the string a reader should be able to copy.
+pub(crate) fn rendered_code_blocks(
+    source: &str,
+    syntax: &lux_syntax::theme::SyntaxTheme,
+) -> String {
+    let mut doc = lux_syntax::Document::new(lux_syntax::LanguageId::Markdown);
+    doc.set_text(source);
+    let mut out = String::new();
+    for block in lux_syntax::preview_document(&doc, source) {
+        let PreviewBlock::Code { info, text } = block else {
+            continue;
+        };
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        match fence_runs(&text, &info, syntax) {
+            Some(lines) => {
+                for (index, line) in lines.iter().enumerate() {
+                    if index > 0 {
+                        out.push('\n');
+                    }
+                    for run in line {
+                        out.push_str(&run.text);
+                    }
+                }
+            }
+            None => out.push_str(&text),
+        }
+    }
+    out
+}
+
+pub(super) struct FenceRun {
+    pub text: String,
+    pub rgb: (u8, u8, u8),
+}
+
+fn fence_language(info: &str) -> Option<lux_syntax::LanguageId> {
+    let word = info.split([' ', ',', '\t']).next()?.trim();
+    if word.is_empty() {
+        return None;
+    }
+    let word = word.strip_prefix('.').unwrap_or(word);
+    if let Some(language) = lux_syntax::LanguageId::from_extension(word) {
+        return Some(language);
+    }
+    let lower = word.to_ascii_lowercase();
+    let ext = match lower.as_str() {
+        "rust" => "rs",
+        "python" | "py" => "py",
+        "javascript" | "js" => "js",
+        "typescript" | "ts" => "ts",
+        "shell" | "bash" | "sh" => "sh",
+        "golang" | "go" => "go",
+        "c++" | "cpp" => "cpp",
+        "ruby" | "rb" => "rb",
+        other => other,
+    };
+    lux_syntax::LanguageId::from_extension(ext)
+}
+
+fn line_runs(
+    text: &str,
+    start: usize,
+    end: usize,
+    tokens: &[lux_syntax::Token],
+    syntax: &lux_syntax::theme::SyntaxTheme,
+    plain: lux_syntax::theme::Color,
+) -> Vec<FenceRun> {
+    let mut runs = Vec::new();
+    let mut at = start;
+    while at < end {
+        if let Some(token) = tokens
+            .iter()
+            .find(|token| token.start_byte <= at && token.end_byte > at)
+        {
+            let token_end = token.end_byte.min(end);
+            let color = syntax.color_for_token(token);
+            runs.push(FenceRun {
+                text: text[at..token_end].to_string(),
+                rgb: (color.r, color.g, color.b),
+            });
+            at = token_end;
+        } else {
+            let next = tokens
+                .iter()
+                .map(|token| token.start_byte)
+                .filter(|start_byte| *start_byte > at && *start_byte < end)
+                .min()
+                .unwrap_or(end);
+            if next > at {
+                // The gap is the source bytes the highlighter did not
+                // capture. Spaces and indent live here and have to be painted.
+                runs.push(FenceRun {
+                    text: text[at..next].to_string(),
+                    rgb: (plain.r, plain.g, plain.b),
+                });
+            }
+            at = next;
+        }
+    }
+    runs
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_preview(
     buffer: &lux_core::buffer::Buffer,
     editor_view: &mut lux_ui::editor_view::EditorView,
@@ -20,6 +152,7 @@ pub(super) fn render_preview(
     editor_top: f32,
     viewport_height: f32,
     theme: &lux_ui::Theme,
+    syntax: &lux_syntax::theme::SyntaxTheme,
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<lux_render::GlyphInstance>,
 ) {
@@ -71,25 +204,38 @@ pub(super) fn render_preview(
                 y += line_height * 1.4;
             }
             PreviewBlock::Code { info, text } => {
-                let label = if info.is_empty() {
-                    text
+                let size = font_size * 0.9;
+                if let Some(lines) = fence_runs(&text, &info, syntax) {
+                    for line in lines {
+                        draw_fence_line(
+                            editor_view,
+                            atlas_state,
+                            font,
+                            &family,
+                            &line,
+                            text_left + font_size,
+                            y,
+                            size,
+                            glyph_instances,
+                        );
+                        y += size * 1.3;
+                    }
                 } else {
-                    format!("{info}\n{text}")
-                };
-                for line in label.lines() {
-                    draw_line(
-                        editor_view,
-                        atlas_state,
-                        font,
-                        &family,
-                        line,
-                        text_left + font_size,
-                        y,
-                        font_size * 0.9,
-                        foreground,
-                        glyph_instances,
-                    );
-                    y += font_size * 1.3;
+                    for line in text.lines() {
+                        draw_line(
+                            editor_view,
+                            atlas_state,
+                            font,
+                            &family,
+                            line,
+                            text_left + font_size,
+                            y,
+                            size,
+                            foreground,
+                            glyph_instances,
+                        );
+                        y += size * 1.3;
+                    }
                 }
                 y += line_height * 0.3;
             }
@@ -211,5 +357,196 @@ fn draw_line(
             glyph_instances,
         );
     }
+    // Paragraph spans are not whitespace-only. A fence is: the space
+    // between `fn` and `main` is its own run, and laying that run out by
+    // itself makes the space trailing. `width()` then returns 0. Fences
+    // use `draw_fence_line`, which lays the whole line out once.
     line.width()
+}
+
+/// One layout for the whole fence line. Cluster `x` already includes
+/// the spaces the highlighter did not color, so indent and the gap
+/// between tokens stay where they are in the source.
+#[allow(clippy::too_many_arguments)]
+fn draw_fence_line(
+    editor_view: &mut lux_ui::editor_view::EditorView,
+    atlas_state: &mut AtlasState,
+    font: FontRef<'_>,
+    family: &str,
+    runs: &[FenceRun],
+    x: f32,
+    y: f32,
+    font_size: f32,
+    glyph_instances: &mut Vec<lux_render::GlyphInstance>,
+) {
+    let text = join_runs(runs);
+    if text.is_empty() {
+        return;
+    }
+    let style = lux_render::LineStyle {
+        family,
+        font_size,
+        ligatures: false,
+    };
+    let line = editor_view
+        .text_layout_mut()
+        .layout_line(&style, &text, &[]);
+    let baseline = y + line.baseline();
+    for cluster in line.clusters() {
+        let byte = cluster.byte_range.start;
+        push_glyph(
+            &mut atlas_state.atlas,
+            &mut atlas_state.dirty,
+            &mut atlas_state.scale_cx,
+            font,
+            font_size,
+            &cluster,
+            x,
+            baseline,
+            color_at(runs, byte),
+            glyph_instances,
+        );
+    }
+}
+
+fn join_runs(runs: &[FenceRun]) -> String {
+    let mut text = String::new();
+    for run in runs {
+        text.push_str(&run.text);
+    }
+    text
+}
+
+fn color_at(runs: &[FenceRun], byte: usize) -> [f32; 4] {
+    let mut at = 0usize;
+    let mut rgb = runs.first().map(|run| run.rgb).unwrap_or((0, 0, 0));
+    for run in runs {
+        let next = at + run.text.len();
+        if byte < next {
+            rgb = run.rgb;
+            break;
+        }
+        at = next;
+    }
+    [
+        rgb.0 as f32 / 255.0,
+        rgb.1 as f32 / 255.0,
+        rgb.2 as f32 / 255.0,
+        1.0,
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fence_runs;
+
+    #[test]
+    fn a_rust_fence_colors_fn_as_the_monokai_keyword() {
+        let syntax = lux_syntax::theme::by_name("Monokai").expect("monokai");
+        let lines = fence_runs("fn main() {}\n", "rust", syntax).expect("rust fence");
+        let keyword = lines
+            .iter()
+            .flatten()
+            .find(|run| run.text == "fn")
+            .expect("fn token");
+        assert_eq!(keyword.rgb, (0xF9, 0x26, 0x72));
+        assert!(fence_runs("fn main() {}\n", "", syntax).is_none());
+    }
+
+    #[test]
+    fn a_fence_keeps_spaces_and_indent_when_the_runs_are_painted() {
+        let syntax = lux_syntax::theme::by_name("Monokai").expect("monokai");
+        let source = include_str!("fixtures/fences.md");
+        let mut doc = lux_syntax::Document::new(lux_syntax::LanguageId::Markdown);
+        doc.set_text(source);
+        let codes: Vec<_> = lux_syntax::preview_document(&doc, source)
+            .into_iter()
+            .filter_map(|block| match block {
+                lux_syntax::PreviewBlock::Code { info, text } => Some((info, text)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(codes.len(), 3, "rust, javascript, and python fences");
+        for (info, text) in &codes {
+            let lines = text.lines().count();
+            assert!(lines >= 8, "{info} has {lines} lines:\n{text}");
+            assert!(text.contains("    "), "{info} dropped its indent:\n{text}");
+        }
+        let painted = super::rendered_code_blocks(source, syntax);
+        for needle in [
+            "fn main() {",
+            "function main() {",
+            "def main():",
+            "    let name",
+            "    const name",
+            "    name =",
+        ] {
+            assert!(
+                painted.contains(needle),
+                "painted fence lost {needle:?}:\n{painted}"
+            );
+        }
+        assert!(
+            !painted.contains("fnmain")
+                && !painted.contains("functionmain")
+                && !painted.contains("defmain"),
+            "highlight runs dropped the spaces: {painted:?}"
+        );
+
+        let mut cx = lux_render::TextLayoutContext::new();
+        let family = cx
+            .register_font(include_bytes!(
+                "../../../lux-render/tests/fixtures/ahem.ttf"
+            ))
+            .expect("ahem");
+        let style = lux_render::LineStyle {
+            family: &family,
+            font_size: 16.0,
+            ligatures: false,
+        };
+        let cell = cx.layout_line(&style, "n", &[]).clusters()[0].advance;
+        // Laying a space out on its own is the bug: it is trailing
+        // whitespace, and `width()` is 0. The painter lays the joined
+        // line out once, so these positions are the ones it paints.
+        let space = cx.layout_line(&style, " ", &[]);
+        assert!(
+            space.width() + cell * 0.5 < cell,
+            "a lone space is trailing and width() drops it"
+        );
+        for (info, line_needle, word, cells) in [
+            ("rust", "fn main() {", "main", 3.0_f32),
+            ("rust", "    let name", "let", 4.0),
+            ("javascript", "function main() {", "main", 9.0),
+            ("javascript", "    const name", "const", 4.0),
+            ("python", "def main():", "main", 4.0),
+            ("python", "    name =", "name", 4.0),
+        ] {
+            let text = codes
+                .iter()
+                .find(|(lang, _)| lang == info)
+                .map(|(_, body)| body.as_str())
+                .expect(info);
+            let lines = super::fence_runs(text, info, syntax).expect(info);
+            let line = lines
+                .iter()
+                .find(|line| super::join_runs(line).contains(line_needle))
+                .unwrap_or_else(|| panic!("{info} lost {line_needle}"));
+            let joined = super::join_runs(line);
+            let word_at = joined
+                .find(word)
+                .unwrap_or_else(|| panic!("{word} missing"));
+            let laid = cx.layout_line(&style, &joined, &[]);
+            let cluster = laid
+                .clusters()
+                .into_iter()
+                .find(|cluster| cluster.byte_range.start == word_at)
+                .unwrap_or_else(|| panic!("{word} has no cluster"));
+            let expect = cells * cell;
+            assert!(
+                (cluster.x - expect).abs() < 0.5,
+                "{info} {word:?} painted at {}, want {expect}",
+                cluster.x
+            );
+        }
+    }
 }

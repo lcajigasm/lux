@@ -223,7 +223,15 @@ lux_pid=$!
 echo "--> lux pid $lux_pid"
 # `open` returns once launchd has started the app. `subl` is only used
 # after a window exists, so it does not wait on the first-run socket.
-bound 30 open -a "Sublime Text" || true
+# A cask installed seconds ago is often missing from Launch Services.
+# `open -a "Sublime Text"` then exits with "Unable to find application
+# named 'Sublime Text'". Register the bundle and open it by path, the
+# same way Zed is opened below.
+lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+if [[ -x "$lsregister" ]]; then
+  "$lsregister" -f "/Applications/Sublime Text.app" || true
+fi
+bound 30 open "/Applications/Sublime Text.app" || true
 
 lux_bounds="$(wait_window lux "$lux_pid")" || {
   echo "Lux did not open a window" >&2

@@ -365,6 +365,18 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         .language()
         .map(|language| language.name())
         .unwrap_or("Plain Text");
+    let preview_fences = if app
+        .documents
+        .active_entry()
+        .is_some_and(|entry| entry.markdown_preview)
+    {
+        crate::render::markdown::rendered_code_blocks(&app.buffer.text(), app.active_syntax_theme())
+    } else {
+        String::new()
+    };
+    out.push_str("preview_fences=");
+    out.push_str(&escape(&preview_fences));
+    out.push('\n');
     out.push_str(&format!(
         "tabs={}\ndirty={}\nlanguage={language}\ntheme={}\nbranch={}\nbranch_picker={}\nactive_path=",
         app.documents.tabs.tabs().len(),

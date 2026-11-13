@@ -85,15 +85,30 @@ done
 [[ "$opened" == 1 ]] || fail "sample.rs never became active"
 [[ "$(drive_field theme)" == "Monokai" ]] || fail "opened on $(drive_field theme)"
 
+drive_dump
+before_sel="$(drive_field sel)"
+before_y="$(drive_field scroll_y)"
 drive_key tap 125 ""
 drive_key tap 125 ""
 drive_key tap 124 ""
+# Page Down. CGEvent returns before the editor applies it. A fixed
+# sleep has recorded the caret from the two Down arrows (52:52,
+# scroll 0) and then failed when Page Down landed during the theme
+# command (532:532, scroll 40). Poll until both have moved.
 drive_key tap 121 ""
-sleep 0.3
-drive_dump
+settled=0
+for _ in $(seq 1 40); do
+  sleep 0.25
+  drive_dump
+  sel="$(drive_field sel)"
+  scroll_y="$(drive_field scroll_y)"
+  if [[ "$sel" != "$before_sel" && "$scroll_y" != "$before_y" ]]; then
+    settled=1
+    break
+  fi
+done
+[[ "$settled" == 1 ]] || fail "Page Down did not apply (sel=$sel scroll_y=$scroll_y, before $before_sel/$before_y)"
 text="$(drive_field text)"
-sel="$(drive_field sel)"
-scroll_y="$(drive_field scroll_y)"
 scroll_x="$(drive_field scroll_x)"
 [[ "$text" == *theme_probe* ]] || fail "buffer text is missing the fixture"
 [[ -n "$sel" ]] || fail "no cursor"
