@@ -402,10 +402,15 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     out.push_str(&escape(&chord));
     out.push('\n');
     out.push_str(&format!(
-        "panes={}\ntabs={}\nsidebar={}\nscroll_y={}\nscroll_x={}\nword_wrap={}\n",
+        "panes={}\ntabs={}\nsidebar={}\nsidebar_scroll={}\nscroll_y={}\nscroll_x={}\nword_wrap={}\n",
         app.ui.split.preset.num_panes(),
         app.documents.entries.len(),
         u8::from(app.ui.sidebar.is_some()),
+        app.ui
+            .sidebar
+            .as_ref()
+            .map(|sidebar| sidebar.scroll_y.round() as i64)
+            .unwrap_or(0),
         app.viewport.scroll_y.round() as i64,
         app.viewport.scroll_x.round() as i64,
         u8::from(app.editor_view.metrics().word_wrap),

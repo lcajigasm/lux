@@ -9,7 +9,8 @@
 > status bar. The default theme is Monokai, parsed from
 > `themes/Monokai.sublime-color-scheme` (MIT, `themes/NOTICE.md`). The
 > sidebar, tabs, selectors, and status bar take their colors from that
-> theme. In `docs/compare/monokai-side-by-side.png` from that same run the
+> theme. Scrolling the file tree clips each row to the rectangle under
+> the project header and above the status bar. The header stays put. In `docs/compare/monokai-side-by-side.png` from that same run the
 > Lux editor well is `#272822`, the current line is `#2C2D27`, the tab bar
 > is `#1E1F1C`, and the status bar is `#414339`, beside Sublime Text on the
 > same file. A selection on each of the 14 bundled themes paints at least
