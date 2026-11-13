@@ -125,6 +125,7 @@ pub(crate) fn execute(
     let mut opened = if let Some(path) = &open_path {
         let buffer = Buffer::open_with_policy(path, HugeFilePolicy::default())
             .map_err(|e| format!("Cannot open {}: {e}", path.display()))?;
+        crate::probe::open_phase("read");
         Some((Some(path.clone()), buffer))
     } else if matches!(request, Request::New) {
         Some((

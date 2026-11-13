@@ -202,6 +202,28 @@ pub(crate) fn lsp_language_for_path(path: &Path) -> Option<&'static str> {
     }
 }
 
+/// Opens the document in a language server when the file has one.
+/// A huge file is not copied into a `String` first: that copy is a
+/// second resident image of the file and it sits on the open clock.
+pub(crate) fn sync_opened_document(app: &mut App, ctx: &dyn PlatformContext) {
+    let Some(path) = app.documents.path.clone() else {
+        return;
+    };
+    if app.buffer.is_huge_file_mode() {
+        app.ui.lsp.current_session = None;
+        app.ui.lsp.sync = None;
+        app.ui.lsp.current_url = None;
+        app.ui.lsp.diagnostics.clear();
+        return;
+    }
+    if app.ui.settings.is_settings_path(&path) || lsp_language_for_path(&path).is_some() {
+        let text = app.buffer.text();
+        sync_document_open(app, ctx, &path, &text);
+    } else {
+        sync_document_open(app, ctx, &path, "");
+    }
+}
+
 pub(crate) fn sync_document_open(
     app: &mut App,
     ctx: &dyn PlatformContext,
