@@ -11,12 +11,14 @@ use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator, Tree};
 
 pub mod brackets;
 pub mod folding;
+pub mod html_preview;
 pub mod indent_rules;
 pub mod language;
 pub mod markdown;
 pub mod symbols;
 pub mod theme;
 
+pub use html_preview::preview_html;
 pub use language::LanguageId;
 pub use markdown::{PreviewBlock, PreviewSpan, preview_document};
 pub use symbols::{

@@ -365,6 +365,19 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         .language()
         .map(|language| language.name())
         .unwrap_or("Plain Text");
+    let html_preview = app.documents.active_entry().is_some_and(|entry| {
+        entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Html)
+    });
+    out.push_str("preview=");
+    out.push(if html_preview { '1' } else { '0' });
+    out.push('\n');
+    out.push_str("preview_blocks=");
+    if html_preview {
+        out.push_str(&escape(&crate::markdown_preview::html_summary(
+            &app.buffer.text(),
+        )));
+    }
+    out.push('\n');
     let preview_fences = if app
         .documents
         .active_entry()
