@@ -69,11 +69,13 @@ for _ in $(seq 1 40); do
   sleep 0.05
 done
 sleep 0.4
-drive_snap "$out/scrolled.png"
+# Read the clock before the scale-2 snapshot. That capture is a full
+# offscreen frame and would otherwise become the recorded maximum.
 drive_dump
 after="$(drive_field scroll_y)"
 h5_us="$(drive_field frame_max_us)"
 h5_n="$(drive_field frame_n)"
+drive_snap "$out/scrolled.png"
 echo "H5 max ${h5_us} us over ${h5_n} frames, scroll_y ${before} -> ${after}"
 if [[ -z "$h5_n" || "$h5_n" -lt 5 || -z "$h5_us" || "$h5_us" -eq 0 ]]; then
   echo "H5 did not record a scroll frame (n=${h5_n:-0} us=${h5_us:-0})" >&2
