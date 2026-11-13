@@ -11,7 +11,6 @@ Test build. Not a closed release.
 - The File menu has Open Recent, New Window (Shift+Command+N), Save All, and Reopen Closed Tab (#86).
 - Dragging a selection moves it. Option-drag copies it (#88).
 - Dropping files on the window opens them (#89).
-- Dragging a sidebar row onto a folder moves that file or folder on disk (#90).
 
 ### Fixed
 
