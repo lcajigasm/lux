@@ -1,6 +1,8 @@
 # Status
 
-> Phase 0 (2026-11-01). 0.1 and 0.2 hold. Encoding round-trips UTF-8 (with
+> Phase 0 (2026-11-01). 0.1 and 0.2 hold. A huge file's minimap samples
+> one line per row instead of indexing every line, and a buffer with no
+> `<` does not walk every line for conflict markers. Encoding round-trips UTF-8 (with
 > and without BOM), Latin-1, Windows-1252, and UTF-16 LE/BE with and without
 > a BOM when the no-BOM guess is confident. The status bar names the
 > encoding. Save is byte-for-byte unless a conversion is requested.
