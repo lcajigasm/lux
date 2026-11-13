@@ -1,0 +1,33 @@
+name: Key frame
+
+# Release main and this branch. Each types into its own 20k-line file.
+# The job fails when a clock has fewer than 37 samples, the saved file
+# lost the keystrokes or line 19999, or the frame is missing. A budget
+# miss does not.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keys:
+    name: key frame (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Type into a 20k-line file, before and after
+        run: |
+          chmod +x scripts/key-frame.sh scripts/stage-lux-app.sh
+          ./scripts/key-frame.sh
+      - name: Upload the frame and the clocks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: key-frame
+          path: docs/evidence/key-frame/**
+          if-no-files-found: error
