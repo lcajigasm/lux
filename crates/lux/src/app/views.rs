@@ -116,6 +116,22 @@ impl App {
         self.scheduler.invalidate_all();
     }
 
+    /// Adds a folder beside the one already in the sidebar. Nothing is deleted.
+    pub(crate) fn add_sidebar_folder(&mut self, path: PathBuf) -> bool {
+        let added = self
+            .ui
+            .sidebar
+            .as_mut()
+            .is_some_and(|sidebar| sidebar.add_folder(path.clone()));
+        if added && let Some(workspace) = self.ui.project.workspace.as_mut() {
+            workspace.add_root(path, None);
+        }
+        if added {
+            self.scheduler.invalidate_all();
+        }
+        added
+    }
+
     pub(crate) fn open_folder_dialog(&mut self, ctx: &dyn lux_platform::PlatformContext) {
         let opts = lux_platform::FileDialogOptions {
             title: Some("Open Folder".into()),

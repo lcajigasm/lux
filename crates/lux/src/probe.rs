@@ -410,6 +410,11 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         app.viewport.scroll_x.round() as i64,
         u8::from(app.editor_view.metrics().word_wrap),
     ));
+    out.push_str("roots=");
+    if let Some(sidebar) = &app.ui.sidebar {
+        out.push_str(&escape(&sidebar.root_names().join("|")));
+    }
+    out.push('\n');
     out.push_str("tree=");
     if let Some(sidebar) = &app.ui.sidebar {
         out.push_str(&escape(&crate::sidebar::tree_label(sidebar)));

@@ -38,10 +38,9 @@ pub(crate) fn render_sidebar(
         .as_ref()
         .filter(|drag| drag.active)
         .and_then(|drag| drag.drop_target);
-    let Some(tree) = sidebar.tree.as_mut() else {
+    let Some(root_id) = sidebar.tree.as_ref().map(|tree| tree.root()) else {
         return;
     };
-    let root_id = tree.root();
 
     let foreground = color(theme.foreground);
     let muted = color(theme.muted);
@@ -123,13 +122,29 @@ pub(crate) fn render_sidebar(
             glyph_instances,
         );
     }
+    let close_line = editor_view.text_layout_mut().layout_line(&style, "×", &[]);
+    let close_x = sidebar_width - stroke - 18.0 * scale_factor;
+    for c in close_line.clusters() {
+        push_glyph(
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            font,
+            sidebar_font_size,
+            &c,
+            close_x,
+            header_y + close_line.baseline(),
+            muted,
+            glyph_instances,
+        );
+    }
 
     // 4. File Tree Rows
     let rows_top = tab_bar_height + header_h;
     let row_h = SIDEBAR_ROW_HEIGHT * scale_factor;
     let baseline = (row_h - sidebar_font_size) * 0.5;
 
-    let rows = crate::sidebar::listed_rows(tree);
+    let rows = crate::sidebar::folders::slots(sidebar);
     let selected_id = sidebar.selected_node;
 
     for (i, row) in rows.iter().enumerate() {
@@ -149,7 +164,7 @@ pub(crate) fn render_sidebar(
                 accent,
             ));
         }
-        if drop_target == Some(row.id) {
+        if drop_target == Some(row.id) && row.root == 0 {
             quad_instances.push(QuadInstance::solid(
                 [
                     0.0,
@@ -255,7 +270,26 @@ pub(crate) fn render_sidebar(
                     glyph_instances,
                 );
             }
-            if let Some(letter) = git_letter(sidebar, row.id) {
+            if row.title {
+                let mark = editor_view.text_layout_mut().layout_line(&style, "×", &[]);
+                let mark_x = sidebar_width - stroke - 18.0 * scale_factor;
+                for cluster in mark.clusters() {
+                    push_glyph(
+                        atlas,
+                        atlas_dirty,
+                        scale_cx,
+                        font,
+                        sidebar_font_size,
+                        &cluster,
+                        mark_x,
+                        row_y + baseline + mark.baseline(),
+                        muted,
+                        glyph_instances,
+                    );
+                }
+            } else if row.root == 0
+                && let Some(letter) = git_letter(sidebar, row.id)
+            {
                 let label = letter.to_string();
                 let mark = editor_view
                     .text_layout_mut()
