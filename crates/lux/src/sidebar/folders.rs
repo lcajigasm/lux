@@ -202,7 +202,39 @@ pub(crate) fn close(app: &mut crate::app::App, index: usize) {
     if empty {
         app.ui.sidebar = None;
     }
-    app.ui.announcement = Some(format!("Closed {}", folder_name(&path)));
+    // A clean tab whose file lives in the closed folder goes with it.
+    // A tab with unsaved edits stays open. There is no dialog: the
+    // announcement says so, and the file is still on disk.
+    let ids: Vec<_> = app
+        .documents
+        .entries
+        .iter()
+        .filter_map(|entry| {
+            let tab_path = entry.path.as_ref()?;
+            if tab_path.starts_with(&path) && !entry.is_dirty() {
+                Some(entry.tab_id)
+            } else {
+                None
+            }
+        })
+        .collect();
+    let dirty = app.documents.entries.iter().any(|entry| {
+        entry
+            .path
+            .as_ref()
+            .is_some_and(|tab_path| tab_path.starts_with(&path) && entry.is_dirty())
+    });
+    for id in ids {
+        app.close_clean_tab_now(id);
+    }
+    app.ui.announcement = Some(if dirty {
+        format!(
+            "Closed {}. Unsaved files from that folder stayed open.",
+            folder_name(&path)
+        )
+    } else {
+        format!("Closed {}", folder_name(&path))
+    });
     app.update_viewport_dimensions();
     app.scheduler.invalidate_all();
 }
@@ -247,5 +279,63 @@ mod tests {
         let label = super::super::tree_label(&sidebar);
         assert!(label.contains("stay.txt"), "{label}");
         assert!(!label.contains("keep.txt"), "{label}");
+    }
+
+    #[test]
+    fn closing_a_folder_drops_its_clean_tab_and_keeps_a_dirty_one() {
+        let alpha = tempfile::tempdir().unwrap();
+        let beta = tempfile::tempdir().unwrap();
+        std::fs::write(alpha.path().join("keep.txt"), "keep").unwrap();
+        std::fs::write(beta.path().join("gone.txt"), "gone").unwrap();
+        std::fs::write(beta.path().join("dirty.txt"), "dirty").unwrap();
+        let mut app = crate::app::App::new(
+            include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec(),
+        );
+        app.ui.sidebar = Some(SidebarState::open_folder(alpha.path().to_path_buf()).unwrap());
+        assert!(
+            app.ui
+                .sidebar
+                .as_mut()
+                .unwrap()
+                .add_folder(beta.path().to_path_buf())
+        );
+        let gone_id = app.documents.tabs.open("gone.txt");
+        app.documents
+            .entries
+            .push(crate::document::DocumentEntry::new(
+                gone_id,
+                Some(beta.path().join("gone.txt")),
+                lux_core::buffer::Buffer::from_bytes(b"gone").unwrap(),
+            ));
+        let dirty_id = app.documents.tabs.open("dirty.txt");
+        let mut dirty = crate::document::DocumentEntry::new(
+            dirty_id,
+            Some(beta.path().join("dirty.txt")),
+            lux_core::buffer::Buffer::from_bytes(b"dirty").unwrap(),
+        );
+        dirty.saved_version = 1;
+        app.documents.entries.push(dirty);
+        app.switch_to_tab(gone_id);
+
+        close(&mut app, 1);
+
+        let names: Vec<String> = app
+            .documents
+            .entries
+            .iter()
+            .filter_map(|entry| {
+                entry
+                    .path
+                    .as_ref()
+                    .and_then(|path| path.file_name())
+                    .map(|name| name.to_string_lossy().into_owned())
+            })
+            .collect();
+        assert!(!names.iter().any(|name| name == "gone.txt"), "{names:?}");
+        assert!(names.iter().any(|name| name == "dirty.txt"), "{names:?}");
+        assert!(beta.path().join("gone.txt").is_file());
+        assert!(beta.path().join("dirty.txt").is_file());
+        let announcement = app.ui.announcement.unwrap_or_default();
+        assert!(announcement.contains("Unsaved"), "{announcement}");
     }
 }
