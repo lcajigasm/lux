@@ -23,7 +23,8 @@ printf 'alpha beta gamma\n' > "$fixture"
 drive_init "$root/target/Lux.app"
 drive_launch "$fixture" \
   --snapshot-scale 2 \
-  --snapshot-on-usr1 "$out/moved.png"
+  --snapshot-on-usr1 "$out/moved.png" \
+  --snapshot-on-usr1 "$out/copied.png"
 
 opened=0
 for _ in $(seq 1 40); do
@@ -205,9 +206,6 @@ if text[old_start:old_end] != "beta":
 print(f"copied beta to {start}:{end} text={text!r}")
 PY
 
-cp "$out/moved.png" "$out/moved-keep.png"
-capture "$out/moved.png"
-mv "$out/moved.png" "$out/copied.png"
-mv "$out/moved-keep.png" "$out/moved.png"
+capture "$out/copied.png"
 drive_stop
 echo "selection drag capture written"
