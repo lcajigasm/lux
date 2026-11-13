@@ -12,7 +12,9 @@
 > theme. In `docs/compare/monokai-side-by-side.png` from that same run the
 > Lux editor well is `#272822`, the current line is `#2C2D27`, the tab bar
 > is `#1E1F1C`, and the status bar is `#414339`, beside Sublime Text on the
-> same file. The right-hand status labels are light on that bar. The window
+> same file. A selection on each of the 14 bundled themes paints at least
+> 1.30:1 over that editor (`SELECTION_CONTRAST_MIN`). Monokai's selection
+> is opaque `#49483E`. The right-hand status labels are light on that bar. The window
 > title is the file name and its parent folder. The column ruler is off
 > unless `editor.columnRulers` is set. Indent guides are drawn only where
 > a line has leading indentation. The minimap is a darker strip at the

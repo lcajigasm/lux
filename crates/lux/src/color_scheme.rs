@@ -454,4 +454,36 @@ mod tests {
         assert_eq!(scope("parameter"), (0xFD, 0x97, 0x1F));
         assert_eq!(scope("comment"), (0x75, 0x71, 0x5E));
     }
+
+    /// Selection is the color painted over the editor, after straight-alpha
+    /// compositing. The floor is [`lux_ui::SELECTION_CONTRAST_MIN`] (1.30).
+    /// Sublime Monokai `#49483E` on `#272822` is 1.61. `#49483E88` paints
+    /// 1.28 and fails. VS Code Monokai `#878b9180` paints about 2.13.
+    #[test]
+    fn bundled_selections_clear_the_editor() {
+        let schemes = bundled_schemes();
+        assert_eq!(
+            schemes.len(),
+            14,
+            "the contrast gate covers every bundled theme"
+        );
+        let floor = lux_ui::SELECTION_CONTRAST_MIN;
+        for scheme in schemes {
+            let painted = lux_ui::composite(scheme.theme.selection, scheme.theme.background);
+            let ratio = lux_ui::contrast_ratio(painted, scheme.theme.background);
+            assert!(
+                ratio >= floor,
+                "{} selection paints {ratio:.3}:1, below {floor}",
+                scheme.name
+            );
+        }
+        let monokai = scheme_named(schemes, "Monokai").unwrap().theme;
+        assert_eq!(monokai.selection, Color::from_hex("#49483E").unwrap());
+        let bg = Color::rgb(0x27, 0x28, 0x22);
+        let faded = lux_ui::composite(Color::rgba(0x49, 0x48, 0x3E, 0x88), bg);
+        assert!(
+            lux_ui::contrast_ratio(faded, bg) < floor,
+            "the old Monokai alpha must stay under the floor"
+        );
+    }
 }

@@ -183,7 +183,7 @@ impl Theme {
         background: Color::rgb(0x27, 0x28, 0x22),
         foreground: Color::rgb(0xF8, 0xF8, 0xF2),
         accent: Color::rgb(0xF9, 0x26, 0x72),
-        selection: Color::rgba(0x49, 0x48, 0x3E, 0x88),
+        selection: Color::rgb(0x49, 0x48, 0x3E),
         muted: Color::rgb(0x75, 0x71, 0x5E),
         chrome: MONOKAI_CHROME,
     };
@@ -276,6 +276,32 @@ pub const ALL_THEMES: &[Theme] = &[
     Theme::LUX_LIGHT,
     Theme::LUX_DARK_HIGH_CONTRAST,
 ];
+
+/// Straight-alpha composite of `over` onto `under`, in sRGB. An opaque
+/// source is returned with alpha 255. This is the color a selection quad
+/// paints on the editor background.
+pub fn composite(over: Color, under: Color) -> Color {
+    if over.a == 255 {
+        return Color::rgb(over.r, over.g, over.b);
+    }
+    let alpha = f64::from(over.a) / 255.0;
+    let mix = |src: u8, dst: u8| -> u8 {
+        let mixed = (f64::from(src) * alpha + f64::from(dst) * (1.0 - alpha)).round();
+        mixed.clamp(0.0, 255.0) as u8
+    };
+    Color::rgb(
+        mix(over.r, under.r),
+        mix(over.g, under.g),
+        mix(over.b, under.b),
+    )
+}
+
+/// Painted selection against the editor background. Sublime Monokai
+/// `#49483E` on `#272822` is 1.61. The same RGB at alpha `0x88` paints
+/// 1.28. VS Code Monokai `#878b9180` paints about 2.13. 1.30 is above
+/// that invisible band and below the other bundled themes that were
+/// already distinct.
+pub const SELECTION_CONTRAST_MIN: f64 = 1.30;
 
 /// Relative-luminance contrast ratio (WCAG 2).
 pub fn contrast_ratio(a: Color, b: Color) -> f64 {
