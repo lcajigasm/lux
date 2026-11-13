@@ -17,6 +17,15 @@ pub(crate) struct GpuWindow {
     pub(crate) text: TextPipeline,
 }
 
+/// A pointer press inside an existing selection. It stays armed until the
+/// pointer moves, and only then moves or copies the selection on release.
+pub(crate) struct SelectionDrag {
+    pub(crate) origin: dpi::PhysicalPosition<f64>,
+    pub(crate) copy: bool,
+    pub(crate) active: bool,
+    pub(crate) selection: Selection,
+}
+
 pub(crate) struct MouseState {
     pub(crate) position: dpi::PhysicalPosition<f64>,
     /// Set once a cursor event has landed inside the view. Until then the
@@ -24,6 +33,7 @@ pub(crate) struct MouseState {
     /// event must not be read as "the pointer is on the tabs".
     pub(crate) placed: bool,
     pub(crate) selection_anchor: Option<Position>,
+    pub(crate) selection_drag: Option<SelectionDrag>,
     /// Time, line, and how many clicks have landed on that line.
     pub(crate) last_click: Option<(std::time::Instant, usize, u8)>,
     /// The word a double click selected. A drag unions further words onto it.

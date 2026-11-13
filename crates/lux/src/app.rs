@@ -41,7 +41,7 @@ mod selection;
 mod syntax;
 mod types;
 mod views;
-pub(crate) use types::{AtlasState, GpuWindow, MouseState, SyntaxState};
+pub(crate) use types::{AtlasState, GpuWindow, MouseState, SelectionDrag, SyntaxState};
 
 pub(crate) struct App {
     pub(crate) scale_factor: f32,
@@ -135,6 +135,7 @@ impl App {
                 position: dpi::PhysicalPosition::new(0.0, 0.0),
                 placed: false,
                 selection_anchor: None,
+                selection_drag: None,
                 last_click: None,
                 word_anchor: None,
                 line_anchor: None,
@@ -493,6 +494,12 @@ impl PlatformEventHandler for App {
                 }
                 if self.ui.split.dragging_divider.is_some() {
                     self.handle_divider_drag(position.x as f32, position.y as f32);
+                } else if self.mouse.selection_drag.is_some() {
+                    self.update_selection_drag();
+                    self.refresh_accessibility();
+                    if let Some(gpu_window) = &self.gpu_window {
+                        gpu_window.window.request_redraw();
+                    }
                 } else if self.mouse.selection_anchor.is_some() {
                     self.update_mouse_selection();
                     self.refresh_accessibility();
@@ -509,6 +516,7 @@ impl PlatformEventHandler for App {
                         crate::edit_menu::press_editor(self, ctx, button);
                     }
                 } else if button == MouseButton::Left {
+                    self.finish_selection_drag();
                     self.mouse.selection_anchor = None;
                     self.mouse.word_anchor = None;
                     self.mouse.line_anchor = None;

@@ -238,7 +238,7 @@ pub(crate) fn press_editor(app: &mut App, ctx: &dyn PlatformContext, button: Mou
         crate::find_results::open_find_result_at_line(app, Some(ctx), pos.line);
         return;
     }
-    app.begin_mouse_selection();
+    app.begin_mouse_selection(clicks);
     if app.mouse.selection_anchor.is_none() {
         return;
     }
