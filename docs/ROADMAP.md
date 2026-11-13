@@ -230,7 +230,7 @@ does not fail the job. Run URLs land here after the jobs finish.
 | H2 | Key event to the next presented frame, p99, 20k-line file. | pending |
 | H3 | Warm process, SIGUSR2 opens a 10 MB file, time to that buffer's first presented frame. | pending |
 | H4 | Same open, 100 MB. | pending |
-| H5 | Slowest redraw while scrolling a 50k-line file. | pending |
+| H5 | Slowest redraw while scrolling a 50k-line file. `h5 scroll frame (macos-15)` fails when fewer than five frames are recorded, the viewport did not move, or the two captures match. | pending |
 | H6 | Extra RSS across the 100 MB open, against 3× the file. | pending |
 | H7 | Sublime and Zed are timed only until a window is listed. That is not H1's clock. H2 and H5 have no equivalent outside the process. | pending |
 | H8 | The table in `docs/PERFORMANCE.md` copied from the performance artifact. | pending |
