@@ -1,0 +1,38 @@
+name: Close folder
+
+# Real Lux.app on macos-15. Two folders open. Closing one from the sidebar
+# removes it from the tree and leaves the directory on disk.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  close-folder:
+    name: close folder (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Close one folder
+        run: |
+          chmod +x scripts/close-folder.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/close-folder.sh
+
+      - name: Upload the closed sidebar
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: close-folder
+          path: docs/evidence/close-folder/**
+          if-no-files-found: warn
