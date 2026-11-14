@@ -354,6 +354,25 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     out.push_str("edit_menu_geom=");
     out.push_str(&crate::edit_menu::geometry_probe(app));
     out.push('\n');
+    let menu = app.ui.settings.panel.as_ref().and_then(|panel| panel.menu);
+    let menu_count = app
+        .ui
+        .settings
+        .panel
+        .as_ref()
+        .and_then(|panel| {
+            let menu = panel.menu?;
+            match &panel.items.get(menu.item)?.kind {
+                crate::settings::SettingKind::Enum { options, .. } => Some(options.len()),
+                _ => None,
+            }
+        })
+        .unwrap_or(0);
+    out.push_str(&format!(
+        "settings_menu={}\nsettings_menu_first={}\nsettings_menu_count={menu_count}\n",
+        menu.map(|menu| menu.highlight).unwrap_or(0),
+        menu.map(|menu| menu.scroll).unwrap_or(0),
+    ));
     let path = app
         .documents
         .active_entry()

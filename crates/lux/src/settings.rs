@@ -5,9 +5,10 @@ mod catalog;
 mod importers;
 pub(crate) mod layout;
 mod panel;
+mod wheel;
 
-pub(crate) use panel::scroll_settings;
 pub(crate) use panel::{SettingKind, SettingsPanelState};
+pub(crate) use wheel::scroll_settings;
 
 use std::collections::HashMap;
 use std::fs;
