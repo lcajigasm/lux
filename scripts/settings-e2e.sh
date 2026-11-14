@@ -226,12 +226,20 @@ done
 drive_key chars "color"
 sleep 0.35
 drive_key tap 36 ""
-sleep 0.45
-drive_dump
-[[ "$(drive_field settings)" == "1" ]] || fail "color filter left Settings"
+# Return is queued behind the filter keys. A 0.45s sleep sampled the
+# panel before that key had opened the menu (run 43608119001, count 0).
+opened_menu=0
+for _ in $(seq 1 40); do
+  sleep 0.25
+  drive_dump || true
+  if [[ "$(drive_field settings)" == "1" && "$(drive_field settings_menu_count)" -gt 1 ]]; then
+    opened_menu=1
+    break
+  fi
+done
+[[ "$opened_menu" == 1 ]] || fail "color menu did not open"
 capture "$out/color-theme-chips.png"
 [[ -s "$out/color-theme-chips.png" ]] || fail "color-theme-chips.png was not written"
-[[ "$(drive_field settings_menu_count)" -gt 1 ]] || fail "color menu did not open"
 for _ in $(seq 1 40); do
   if [[ "$(drive_field settings_menu)" -eq $(($(drive_field settings_menu_count) - 1)) ]]; then
     break
