@@ -30,6 +30,18 @@ pub(crate) fn take_animating() -> bool {
     ANIMATING.with(|cell| cell.replace(false))
 }
 
+pub(crate) fn schedule_wakeup(
+    scheduler: &mut lux_render::RepaintScheduler,
+    ctx: &dyn lux_platform::PlatformContext,
+) {
+    if !take_animating() {
+        return;
+    }
+    let at = Instant::now() + Duration::from_millis(16);
+    scheduler.request_repaint_at(at);
+    ctx.request_wakeup(at);
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct OverlayMotion {
     opened_at: Instant,
