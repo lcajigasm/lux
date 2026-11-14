@@ -1,0 +1,32 @@
+name: H1 editor font
+
+# Free macos-15. One PNG of the compiled window plus the phase log.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shot:
+    name: h1 editor font (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Capture the editor after the first frame
+        run: |
+          chmod +x scripts/h1-shot.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/h1-shot.sh
+      - name: Upload h1-editor-font
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h1-editor-font
+          path: |
+            docs/evidence/h1-editor-font.png
+            docs/evidence/h1-phases.txt
+          if-no-files-found: error

@@ -19,7 +19,13 @@ impl GpuContext {
     /// and for any future compute-only use), matching `wgpu`'s own contract
     /// that the hint is optional off the web.
     pub async fn new(compatible_surface: Option<&wgpu::Surface<'_>>) -> Result<Self, RenderError> {
-        let instance = wgpu::Instance::default();
+        // `Instance::default` enables every backend. On macOS that probes
+        // Vulkan and GL before Metal, and that probe sits on the cold-start
+        // clock. One native backend, overridable with `WGPU_BACKEND`.
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: native_backends().with_env(),
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
@@ -41,6 +47,17 @@ impl GpuContext {
     }
 }
 
+/// Metal on Apple, DX12 on Windows, Vulkan everywhere else.
+fn native_backends() -> wgpu::Backends {
+    if cfg!(any(target_os = "macos", target_os = "ios")) {
+        wgpu::Backends::METAL
+    } else if cfg!(target_os = "windows") {
+        wgpu::Backends::DX12
+    } else {
+        wgpu::Backends::VULKAN
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -56,5 +73,17 @@ mod tests {
             Err(_) => return,
         };
         assert!(!context.adapter.get_info().name.is_empty());
+    }
+
+    #[test]
+    fn native_backend_is_the_platform_one() {
+        let backends = native_backends();
+        if cfg!(any(target_os = "macos", target_os = "ios")) {
+            assert_eq!(backends, wgpu::Backends::METAL);
+        } else if cfg!(target_os = "windows") {
+            assert_eq!(backends, wgpu::Backends::DX12);
+        } else {
+            assert_eq!(backends, wgpu::Backends::VULKAN);
+        }
     }
 }

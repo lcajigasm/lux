@@ -35,13 +35,24 @@ impl App {
         let size = window.inner_size();
         self.set_display_scale(window.scale_factor());
         eprintln!("Lux: display scale {}", self.scale_factor);
+        let phase = std::time::Instant::now();
         let gpu = pollster::block_on(GpuContext::new(None))
             .expect("a real GPU adapter must be available to run the Lux desktop app");
+        eprintln!(
+            "Lux: phase gpu {:.1} ms backend {:?}",
+            phase.elapsed().as_secs_f64() * 1000.0,
+            gpu.adapter.get_info().backend
+        );
+        let phase = std::time::Instant::now();
         let surface = Surface::new(&gpu.instance, &gpu.adapter, &gpu.device, window, size)
             .expect("failed to create the window's wgpu surface");
         let format = surface.config().format;
         let quads = QuadPipeline::new(&gpu.device, format);
         let text = TextPipeline::new(&gpu.device, format, ATLAS_SIDE);
+        eprintln!(
+            "Lux: phase pipelines {:.1} ms",
+            phase.elapsed().as_secs_f64() * 1000.0
+        );
         quads.set_viewport_size(&gpu.queue, size.width, size.height);
         if let Some(scheme) = window.color_scheme() {
             self.apply_system_scheme(scheme);

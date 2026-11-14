@@ -73,12 +73,22 @@ fn main() {
         println!("lux {}", env!("CARGO_PKG_VERSION"));
         return;
     }
+    let phase = std::time::Instant::now();
     let (path, font_bytes) = font::load_system_monospace_font().expect(
         "no known system monospace font was found — see \
          crates/lux/src/font.rs's candidate list",
     );
+    eprintln!(
+        "Lux: phase font {:.1} ms",
+        phase.elapsed().as_secs_f64() * 1000.0
+    );
     println!("Lux: using system font {path}");
+    let phase = std::time::Instant::now();
     let mut app = app::App::new(font_bytes);
+    eprintln!(
+        "Lux: phase app {:.1} ms",
+        phase.elapsed().as_secs_f64() * 1000.0
+    );
     let mut open_palette = false;
     let mut open_goto = false;
     let mut open_theme = false;
