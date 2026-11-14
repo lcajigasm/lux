@@ -27,6 +27,7 @@ pub(crate) fn handle_sidebar_action(
     ctx: &dyn PlatformContext,
     action: SidebarAction,
     node_id: NodeId,
+    root_index: usize,
 ) {
     match action {
         SidebarAction::NewFile => {
@@ -105,6 +106,9 @@ pub(crate) fn handle_sidebar_action(
         }
         SidebarAction::CopyAbsolutePath => {
             copy_sidebar_node_path(app, ctx, node_id, false);
+        }
+        SidebarAction::CloseFolder => {
+            super::folders::close(app, root_index);
         }
     }
 }

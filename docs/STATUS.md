@@ -13,7 +13,12 @@
 > the project header and above the status bar. The header stays put.
 > HTML preview (Shift+Command+V on an HTML file) keeps the source on the
 > left and paints the heading, paragraph, and link on the right. Editing
-> the source updates that pane. In `docs/compare/monokai-side-by-side.png` from that same run the
+> the source updates that pane.
+> A second folder opens beside the first. The header ×, the × on that
+> folder's row, and Close Folder in the context menu drop it from the
+> sidebar and leave the directory on disk. Clean tabs of that folder
+> close with it. A tab with unsaved edits stays open, and there is no
+> confirmation dialog. In `docs/compare/monokai-side-by-side.png` from that same run the
 > Lux editor well is `#272822`, the current line is `#2C2D27`, the tab bar
 > is `#1E1F1C`, and the status bar is `#414339`, beside Sublime Text on the
 > same file. A selection on each of the 14 bundled themes paints at least

@@ -9,7 +9,7 @@ use lux_ui::file_tree::{NodeId, NodeKind};
 use lux_ui::tabs::TabId;
 
 use crate::app::App;
-use crate::sidebar::{SIDEBAR_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT, listed_rows};
+use crate::sidebar::{SIDEBAR_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT};
 
 /// Pointer travel, in logical pixels, before a press becomes a move.
 const DRAG_THRESHOLD_PX: f32 = 6.0;
@@ -26,7 +26,16 @@ pub(crate) enum Hit {
     Outside,
     Header,
     Empty,
-    Row { id: NodeId, kind: NodeKind },
+    /// The close button on a folder header. Index 0 is the fixed header.
+    Close {
+        index: usize,
+    },
+    Row {
+        id: NodeId,
+        kind: NodeKind,
+        root: usize,
+        title: bool,
+    },
 }
 
 pub(crate) fn hit(app: &mut App, mouse_x: f32, mouse_y: f32) -> Hit {
@@ -42,17 +51,18 @@ pub(crate) fn hit(app: &mut App, mouse_x: f32, mouse_y: f32) -> Hit {
     if relative_y < 0.0 || row_h <= 0.0 {
         return Hit::Outside;
     }
-    if relative_y < header_h {
-        return Hit::Header;
-    }
     let Some(sidebar) = app.ui.sidebar.as_mut() else {
         return Hit::Outside;
     };
+    let close_w = 28.0 * scale;
+    if relative_y < header_h {
+        if mouse_x >= sidebar_w - close_w && sidebar.workspace_root.is_some() {
+            return Hit::Close { index: 0 };
+        }
+        return Hit::Header;
+    }
     let scroll_y = sidebar.scroll_y;
-    let Some(tree) = sidebar.tree.as_mut() else {
-        return Hit::Outside;
-    };
-    let rows = listed_rows(tree);
+    let rows = super::folders::slots(sidebar);
     let content_y = relative_y - header_h + scroll_y;
     if content_y < 0.0 {
         return Hit::Header;
@@ -60,9 +70,14 @@ pub(crate) fn hit(app: &mut App, mouse_x: f32, mouse_y: f32) -> Hit {
     let Some(row) = rows.get((content_y / row_h) as usize) else {
         return Hit::Empty;
     };
+    if row.title && mouse_x >= sidebar_w - close_w {
+        return Hit::Close { index: row.root };
+    }
     Hit::Row {
         id: row.id,
         kind: row.kind,
+        root: row.root,
+        title: row.title,
     }
 }
 
@@ -145,11 +160,16 @@ pub(crate) fn release(app: &mut App, ctx: &dyn PlatformContext) {
 fn drop_parent(app: &mut App, x: f32, y: f32, node: NodeId) -> Option<NodeId> {
     let candidate = match hit(app, x, y) {
         Hit::Header | Hit::Empty => app.ui.sidebar.as_ref()?.tree.as_ref()?.root(),
-        Hit::Row { id, kind } => match kind {
-            NodeKind::Directory => id,
-            NodeKind::File => app.ui.sidebar.as_ref()?.tree.as_ref()?.parent(id)?,
-        },
-        Hit::Outside => return None,
+        Hit::Row { id, kind, root, .. } => {
+            if root != 0 {
+                return None;
+            }
+            match kind {
+                NodeKind::Directory => id,
+                NodeKind::File => app.ui.sidebar.as_ref()?.tree.as_ref()?.parent(id)?,
+            }
+        }
+        Hit::Close { .. } | Hit::Outside => return None,
     };
     let tree = app.ui.sidebar.as_ref()?.tree.as_ref()?;
     if candidate == node || tree.node_kind(candidate) != Some(NodeKind::Directory) {
