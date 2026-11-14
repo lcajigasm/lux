@@ -172,6 +172,13 @@ pub(crate) fn refresh_git_state(app: &mut App) {
 }
 
 pub(crate) fn find_conflict_blocks(buffer: &Buffer) -> Vec<ConflictMarkerBlock> {
+    // A 100 MB file of short lines is tens of millions of lines. Walking
+    // each one allocates a string and holds the first frame. Conflict
+    // markers always contain `<`, so a chunk scan is enough to skip that
+    // walk. A file that does contain `<` still uses the line walk below.
+    if !buffer.rope().chunks().any(|chunk| chunk.contains('<')) {
+        return Vec::new();
+    }
     let mut blocks = Vec::new();
     let total_lines = buffer.len_lines();
 
@@ -433,6 +440,12 @@ mod tests {
         assert_eq!(blocks[0].end_line, 5);
         assert!(blocks[0].ours.contains("ours()"));
         assert!(blocks[0].theirs.contains("theirs()"));
+    }
+
+    #[test]
+    fn a_buffer_without_a_less_than_has_no_conflict_blocks() {
+        let buf = Buffer::from_bytes(b"line\nline\nline\n").unwrap();
+        assert!(find_conflict_blocks(&buf).is_empty());
     }
 
     #[test]

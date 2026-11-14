@@ -1,0 +1,32 @@
+name: H6 open RSS
+
+# Release main and this branch. Each opens a 100 MB file in a warm process.
+# The job fails when the clock, the RSS sample, or the frame is missing.
+# A budget miss does not.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rss:
+    name: h6 open rss (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Measure extra RSS, before and after
+        run: |
+          chmod +x scripts/h6-rss.sh scripts/stage-lux-app.sh
+          ./scripts/h6-rss.sh
+      - name: Upload the raw samples and the frame
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h6-rss
+          path: docs/evidence/h6-rss/**
+          if-no-files-found: error
