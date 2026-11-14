@@ -233,7 +233,7 @@ does not fail the job. Run URLs land here after the jobs finish.
 | H5 | Slowest redraw while scrolling a 50k-line file. | pending |
 | H6 | Extra RSS across the 100 MB open, against 3× the file. | pending |
 | H7 | Sublime and Zed are timed only until a window is listed. That is not H1's clock. H2 and H5 have no equivalent outside the process. | pending |
-| H8 | The table in `docs/PERFORMANCE.md` copied from the performance artifact. | pending |
+| H8 | The table in `docs/PERFORMANCE.md` copied from the performance artifact. | [43471189705](https://github.com/lcajigasm/lux/actions/runs/43471189705) |
 
 ## Block 1 — Interface — parcial
 

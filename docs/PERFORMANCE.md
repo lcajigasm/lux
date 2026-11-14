@@ -238,4 +238,16 @@ The 8 ms release ceiling holds. 242 ms to load 100 MB is this VM. There is still
 
 `p0-macos.yml` measures the rows below on the free runner. Lux H1 is process start until the first presented frame, median of 10. H3 and H4 are a warm process opening the file on SIGUSR2 until that buffer's first presented frame. H2 is the key event until the next presented frame, p99, on a 20k-line file. H5 is the slowest redraw while a 50k-line file is scrolling. H6 is extra RSS across the 100 MB open. Sublime and Zed, when the free cask installs, are timed only until a window is listed. That clock is not H1. H2 and H5 are not readable from those processes. A missed budget stays in the table and does not fail the job.
 
-The numbers are copied from the performance artifact after the run. This revision does not invent them.
+The numbers below are copied from artifact `perf-macos` of run [43471189705](https://github.com/lcajigasm/lux/actions/runs/43471189705), head `2bc4bc55a3fd8694de0263ff88475e7919e4b5ec`. That head does not change the release binary from main `2b61fc3`. A missed budget stays in the table.
+
+| Id | Measurement | Budget | Lux | Sublime | Zed |
+|---|---|---|---|---|---|
+| H1 | Cold start, median of 10 | < 150 ms | 706.6 ms | window did not appear | open -a Zed failed |
+| H2 | Key to next presented frame, p99, 20k lines | < 8 ms | 28.80 ms (n=38) | not measurable the same way | not measurable the same way |
+| H3 | Open 10 MB, warm process | < 150 ms | 706.3 ms | not measurable the same way | not measurable the same way |
+| H4 | Open 100 MB, warm process | < 1 s | 9049.3 ms | not measurable the same way | not measurable the same way |
+| H5 | Scroll 50k lines, slowest recorded frame | no frame > 16 ms | 51.57 ms (n=151) | not measurable the same way | not measurable the same way |
+| H6 | Extra RSS while opening 100 MB | < 3× file | 4.84× | not measurable the same way | not measurable the same way |
+| H7 | Same method on all three | — | H1's Lux cell is first presented frame. Sublime and Zed are window-listed. H2 and H5 have no external equivalent. | window-listed only | window-listed only |
+
+Budgets are not a job failure. The numbers above are that run.
