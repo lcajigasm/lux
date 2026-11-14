@@ -90,6 +90,18 @@ fn shift_command_v_toggles_the_markdown_preview() {
     assert!(!rust.documents.entries[0].markdown_preview);
     assert_eq!(
         rust.documents.message.as_deref(),
-        Some("Markdown preview needs a Markdown file")
+        Some("Preview needs a Markdown or HTML file")
     );
+
+    let source = "<h1>Hello</h1>\n<p>A <a href=\"https://example.com\">link</a>.</p>\n";
+    let mut page = app(source);
+    page.documents.entries[0].language = Some(LanguageId::Html);
+    command(&mut page, "v", true);
+    assert!(page.documents.entries[0].markdown_preview);
+    let summary = crate::markdown_preview::html_summary(source);
+    assert!(summary.contains("heading:Hello"), "{summary}");
+    assert!(summary.contains("link"), "{summary}");
+    let edited = source.replacen("<h1>Hello", "<h1>Hello LIVE", 1);
+    let again = crate::markdown_preview::html_summary(&edited);
+    assert!(again.contains("heading:Hello LIVE"), "{again}");
 }

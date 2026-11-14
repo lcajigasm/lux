@@ -1,7 +1,3 @@
-//! Frame drawing: window/GPU setup and the actual per-frame draw calls.
-//! Kept apart from `crate::app`'s event handling only to stay under the
-//! 600-line file limit — this is still `impl App`, just in its own file.
-
 mod about;
 mod branch_picker;
 mod build;
@@ -10,6 +6,7 @@ mod conflict;
 mod edit_menu;
 mod git;
 mod goto;
+mod html_view;
 mod icons;
 mod ime;
 mod language_picker;
@@ -178,9 +175,23 @@ impl App {
                 color(chrome.theme.background),
             ));
 
+            let html_preview = documents.active_entry().is_some_and(|entry| {
+                entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Html)
+            });
             let show_preview = documents.active_entry().is_some_and(|entry| {
                 entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Markdown)
             });
+            let content_width = (viewport.width - sidebar_width).max(1.0);
+            let pane_cap = (content_width * 0.62).max(1.0);
+            let preview_width = if html_preview {
+                (content_width * 0.46).clamp(180.0_f32.min(pane_cap), pane_cap)
+            } else {
+                0.0
+            };
+            let mut editor_viewport = *viewport;
+            if html_preview {
+                editor_viewport.width = (content_width - preview_width).max(1.0);
+            }
             if !show_preview {
                 for cursor in &frame.cursors {
                     if cursor.primary {
@@ -190,7 +201,7 @@ impl App {
                             let h_w = if is_df {
                                 window_width
                             } else {
-                                (sidebar_width + viewport.width - text_left).max(0.0)
+                                (sidebar_width + editor_viewport.width - text_left).max(0.0)
                             };
                             quad_instances.push(QuadInstance::solid(
                                 [h_x, cur_y, h_w, line_height],
@@ -203,7 +214,7 @@ impl App {
                     &frame,
                     buffer,
                     syntax.as_ref(),
-                    viewport,
+                    &editor_viewport,
                     editor_top,
                     line_height,
                     sidebar_width,
@@ -221,7 +232,7 @@ impl App {
                         search_state,
                         buffer,
                         editor_view,
-                        viewport,
+                        &editor_viewport,
                         editor_top,
                         line_height,
                         TEXT_LEFT_PADDING * *scale_factor,
@@ -232,7 +243,7 @@ impl App {
                 let caret_h = font_size + 2.0 * stroke;
                 cursor_screen = text::render_carets(
                     &frame,
-                    viewport,
+                    &editor_viewport,
                     editor_top,
                     text_left,
                     sidebar_width,
@@ -246,7 +257,7 @@ impl App {
                     text::render_gutter(
                         &frame,
                         Some(bookmarks),
-                        viewport,
+                        &editor_viewport,
                         editor_top,
                         line_height,
                         sidebar_width,
@@ -273,6 +284,25 @@ impl App {
                     viewport.height,
                     &chrome.theme,
                     crate::color_scheme::syntax_theme(&ui.settings.schemes, chrome.theme.name),
+                    &mut quad_instances,
+                    &mut glyph_instances,
+                );
+            }
+            if html_preview {
+                html_view::paint(
+                    buffer,
+                    editor_view,
+                    atlas_state,
+                    font,
+                    font_size,
+                    line_height,
+                    sidebar_width + editor_viewport.width,
+                    preview_width,
+                    editor_top,
+                    viewport.height,
+                    16.0 * *scale_factor,
+                    stroke,
+                    &chrome.theme,
                     &mut quad_instances,
                     &mut glyph_instances,
                 );
