@@ -151,11 +151,14 @@ pub(super) fn render_preview(
     text_left: f32,
     editor_top: f32,
     viewport_height: f32,
+    pane_width: f32,
     theme: &lux_ui::Theme,
     syntax: &lux_syntax::theme::SyntaxTheme,
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<lux_render::GlyphInstance>,
 ) {
+    let quad_start = quad_instances.len();
+    let glyph_start = glyph_instances.len();
     let source = buffer.text();
     let mut doc = lux_syntax::Document::new(lux_syntax::LanguageId::Markdown);
     doc.set_text(&source);
@@ -240,12 +243,13 @@ pub(super) fn render_preview(
                 y += line_height * 0.3;
             }
             PreviewBlock::ListItem { text } => {
+                let body = crate::markdown_preview::list_body(&text);
                 draw_line(
                     editor_view,
                     atlas_state,
                     font,
                     &family,
-                    &format!("• {text}"),
+                    &format!("• {body}"),
                     text_left,
                     y,
                     font_size,
@@ -282,6 +286,9 @@ pub(super) fn render_preview(
             }
         }
     }
+    let bounds = [text_left, editor_top, pane_width.max(1.0), viewport_height];
+    super::clip::clip_quads(quad_instances, quad_start, bounds);
+    super::clip::clip_glyphs(glyph_instances, glyph_start, bounds);
 }
 
 #[allow(clippy::too_many_arguments)]
