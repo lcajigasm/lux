@@ -223,6 +223,24 @@ pub(crate) fn find_conflict_blocks(buffer: &Buffer) -> Vec<ConflictMarkerBlock> 
     blocks
 }
 
+/// Resolves the conflict block that contains 0-based `line`.
+/// Returns false when the caret is not inside a marker block.
+pub(crate) fn resolve_conflict_at_line(app: &mut App, line: usize, resolution: Resolution) -> bool {
+    app.ui.git.conflict_blocks = find_conflict_blocks(&app.buffer);
+    let Some(index) = app
+        .ui
+        .git
+        .conflict_blocks
+        .iter()
+        .position(|block| line >= block.start_line && line <= block.end_line)
+    else {
+        app.ui.announcement = Some("No conflict on this line".into());
+        return false;
+    };
+    resolve_conflict(app, index, resolution);
+    true
+}
+
 pub(crate) fn resolve_conflict(app: &mut App, block_index: usize, resolution: Resolution) {
     let Some(block) = app.ui.git.conflict_blocks.get(block_index).cloned() else {
         return;
@@ -254,6 +272,7 @@ pub(crate) fn resolve_conflict(app: &mut App, block_index: usize, resolution: Re
     if let Ok(new_buf) = Buffer::from_bytes(new_text.as_bytes()) {
         app.buffer = new_buf;
     }
+    app.sync_active_document_to_entry();
     app.update_syntax_on_open();
     refresh_git_state(app);
     app.scheduler.invalidate_all();
@@ -447,6 +466,19 @@ mod tests {
         assert!(app.buffer.text().contains("ours()"));
         assert!(!app.buffer.text().contains("theirs()"));
         assert!(!app.buffer.text().contains("<<<<<<<"));
+    }
+
+    #[test]
+    fn accept_incoming_uses_the_caret_line() {
+        let content = "fn main() {\n<<<<<<<\n    ours();\n=======\n    theirs();\n>>>>>>>\n}\n";
+        let mut app =
+            App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+        app.buffer = Buffer::from_bytes(content.as_bytes()).unwrap();
+        assert!(resolve_conflict_at_line(&mut app, 4, Resolution::Theirs));
+        assert!(app.buffer.text().contains("theirs()"));
+        assert!(!app.buffer.text().contains("ours()"));
+        assert!(!app.buffer.text().contains("<<<<<<<"));
+        assert!(!resolve_conflict_at_line(&mut app, 0, Resolution::Ours));
     }
 
     struct DummyContext;
