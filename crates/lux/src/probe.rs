@@ -168,6 +168,22 @@ pub(crate) fn note_scroll() {
     }
 }
 
+pub(crate) fn open_phase(name: &str) {
+    let Ok(guard) = SLOT.lock() else {
+        return;
+    };
+    let Some(slot) = guard.as_ref() else {
+        return;
+    };
+    let Some(started) = slot.bench_started else {
+        return;
+    };
+    eprintln!(
+        "Lux: open phase {name} {:.1} ms",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
+}
+
 pub(crate) fn note_open_loaded() {
     let Ok(mut guard) = SLOT.lock() else {
         return;
