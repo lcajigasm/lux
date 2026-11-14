@@ -1,0 +1,32 @@
+name: H5 scroll frame
+
+# Release Lux.app scrolls a 50k-line file. The job fails when fewer than
+# five frames were timed, the viewport did not move, or the two captures
+# match. A budget miss does not fail the job.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scroll:
+    name: h5 scroll frame (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Scroll a 50k-line file
+        run: |
+          chmod +x scripts/h5-scroll-frame.sh scripts/stage-lux-app.sh
+          ./scripts/h5-scroll-frame.sh
+      - name: Upload the frames and the clock
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h5-scroll-frame
+          path: docs/evidence/h5/**
+          if-no-files-found: error
