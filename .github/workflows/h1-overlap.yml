@@ -1,7 +1,8 @@
-name: Cold start
+name: H1 adapter overlap
 
-# Release main and this branch. Ten launches each. The job fails when a
-# sample or the first frame is missing. A budget miss does not.
+# Release the previous cold-start head and this branch. Ten launches each.
+# The job fails when a sample or the first frame is missing. A budget miss
+# does not.
 on:
   pull_request:
   workflow_dispatch:
@@ -11,7 +12,7 @@ permissions:
 
 jobs:
   cold:
-    name: cold start (macos-15)
+    name: h1 adapter overlap (macos-15)
     runs-on: macos-15
     timeout-minutes: 45
     steps:
@@ -20,12 +21,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Median of ten launches, before and after
         run: |
-          chmod +x scripts/cold-start.sh scripts/stage-lux-app.sh
-          ./scripts/cold-start.sh
+          chmod +x scripts/h1-overlap.sh scripts/stage-lux-app.sh
+          ./scripts/h1-overlap.sh
       - name: Upload the samples and the first frame
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cold-start
-          path: docs/evidence/cold-start/**
+          name: h1-overlap
+          path: docs/evidence/h1-overlap/**
           if-no-files-found: error
