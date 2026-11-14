@@ -1,6 +1,7 @@
 # Status
 
-> Phase 0 (2026-11-01). 0.1 and 0.2 hold. An unsaved edit hands its
+> Phase 0 (2026-11-01). 0.1 and 0.2 hold. The window presents without
+> waiting for the next refresh when the surface allows it. An unsaved edit hands its
 > recovery snapshot to a worker. The next frame does not wait for that
 > file. Encoding round-trips UTF-8 (with
 > and without BOM), Latin-1, Windows-1252, and UTF-16 LE/BE with and without

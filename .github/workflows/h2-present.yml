@@ -1,0 +1,32 @@
+name: H2 present mode
+
+# Release the previous key-frame head and this branch. Each types into a
+# 20k-line file. The job fails when a clock is short, the file lost the
+# text, or the frame is missing. A budget miss does not.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keys:
+    name: h2 present mode (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Key to frame, before and after
+        run: |
+          chmod +x scripts/h2-present.sh scripts/stage-lux-app.sh
+          ./scripts/h2-present.sh
+      - name: Upload the samples and the frame
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h2-present
+          path: docs/evidence/h2-present/**
+          if-no-files-found: error
