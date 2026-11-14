@@ -322,7 +322,7 @@ fn draw_spans(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn draw_line(
+pub(super) fn draw_line(
     editor_view: &mut lux_ui::editor_view::EditorView,
     atlas_state: &mut AtlasState,
     font: FontRef<'_>,
