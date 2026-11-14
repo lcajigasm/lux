@@ -325,6 +325,58 @@ impl App {
             .set_title(&format!("{name}{dirty}{readonly} — Lux{status}"));
     }
 
+    /// Closes a clean tab immediately. A dirty tab stays. The last tab
+    /// becomes a new untitled document so the window still has one.
+    pub(crate) fn close_clean_tab_now(&mut self, target_id: TabId) -> bool {
+        let Some(pos) = self
+            .documents
+            .entries
+            .iter()
+            .position(|entry| entry.tab_id == target_id)
+        else {
+            return false;
+        };
+        if self.documents.entries[pos].is_dirty() {
+            return false;
+        }
+        if self.documents.entries.len() == 1 {
+            let buffer = lux_core::buffer::Buffer::from_bytes(b"").expect("empty document decodes");
+            let tab_id = self.documents.tabs.open("Untitled");
+            self.documents
+                .entries
+                .push(super::DocumentEntry::new(tab_id, None, buffer));
+            self.switch_to_tab(tab_id);
+        } else if self.documents.active_tab == Some(target_id)
+            && let Some(other) = self
+                .documents
+                .entries
+                .iter()
+                .find(|entry| entry.tab_id != target_id)
+                .map(|entry| entry.tab_id)
+        {
+            self.switch_to_tab(other);
+        }
+        if self.documents.active_tab == Some(target_id) {
+            return false;
+        }
+        crate::cli::release_tab(target_id);
+        self.documents.tabs.close(target_id);
+        if let Some(pos) = self
+            .documents
+            .entries
+            .iter()
+            .position(|entry| entry.tab_id == target_id)
+        {
+            let removed = self.documents.entries.remove(pos);
+            self.documents.closed_entries.push(removed);
+        }
+        self.scheduler.invalidate_all();
+        if let Some(gpu) = &self.gpu_window {
+            gpu.window.request_redraw();
+        }
+        true
+    }
+
     pub(crate) fn close_tab(&mut self, ctx: &dyn PlatformContext, target_id: TabId) {
         if self.documents.active_tab == Some(target_id) {
             self.request_document(ctx, crate::document::Request::Close);

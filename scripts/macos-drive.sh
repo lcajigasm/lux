@@ -361,6 +361,12 @@ drive_norm() {
   printf '%s' "${text%$'\n'}"
 }
 
+drive_click() {
+  local cx="$1"
+  local cy="$2"
+  drive_key click "$cx" "$cy"
+}
+
 drive_scroll() {
   local lines="${1:--8}"
   local line x y w h
