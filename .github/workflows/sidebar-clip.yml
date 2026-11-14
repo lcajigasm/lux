@@ -1,0 +1,39 @@
+name: Sidebar clip
+
+# Real Lux.app on macos-15. Scroll a tree of more than 80 rows to the
+# middle and to the end. Pixel checks fail when a row covers the project
+# header or paints into the status bar.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sidebar-clip:
+    name: sidebar clip (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Scroll the tree and check the header
+        run: |
+          chmod +x scripts/sidebar-clip.sh scripts/sidebar_clip_pixels.py scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/sidebar-clip.sh
+
+      - name: Upload sidebar clip captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidebar-clip
+          path: docs/evidence/sidebar-clip/**
+          if-no-files-found: warn

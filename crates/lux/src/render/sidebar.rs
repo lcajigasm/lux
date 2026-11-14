@@ -124,8 +124,18 @@ pub(crate) fn render_sidebar(
         );
     }
 
-    // 4. File Tree Rows
+    // 4. File Tree Rows. The header above stays put. Rows are scissored to
+    // the list, so a scrolled name cannot cover the title or the status bar.
     let rows_top = tab_bar_height + header_h;
+    let list_bottom = tab_bar_height + content_height;
+    let tree_bounds = [
+        0.0,
+        rows_top,
+        (sidebar_width - stroke).max(0.0),
+        (list_bottom - rows_top).max(0.0),
+    ];
+    let row_quads = quad_instances.len();
+    let row_glyphs = glyph_instances.len();
     let row_h = SIDEBAR_ROW_HEIGHT * scale_factor;
     let baseline = (row_h - sidebar_font_size) * 0.5;
 
@@ -278,6 +288,8 @@ pub(crate) fn render_sidebar(
             }
         }
     }
+    super::clip::clip_quads(quad_instances, row_quads, tree_bounds);
+    super::clip::clip_glyphs(glyph_instances, row_glyphs, tree_bounds);
 
     if let Some(menu) = &sidebar.context_menu {
         let [mx, my, mw, mh] = menu.rect;
