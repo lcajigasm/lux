@@ -1,0 +1,31 @@
+name: Cold start
+
+# Release main and this branch. Ten launches each. The job fails when a
+# sample or the first frame is missing. A budget miss does not.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cold:
+    name: cold start (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Median of ten launches, before and after
+        run: |
+          chmod +x scripts/cold-start.sh scripts/stage-lux-app.sh
+          ./scripts/cold-start.sh
+      - name: Upload the samples and the first frame
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cold-start
+          path: docs/evidence/cold-start/**
+          if-no-files-found: error

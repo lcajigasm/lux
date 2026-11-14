@@ -96,6 +96,16 @@ pub(crate) fn mark_process_start() {
     let _ = PROCESS_START.set(Instant::now());
 }
 
+/// Milliseconds since process start. The cold-start job subtracts
+/// successive lines to name the step that dominates a budget miss.
+pub(crate) fn phase(name: &str) {
+    let start = PROCESS_START.get().copied().unwrap_or_else(Instant::now);
+    eprintln!(
+        "Lux: phase {name} {:.1} ms",
+        start.elapsed().as_secs_f64() * 1000.0
+    );
+}
+
 pub(crate) fn configure(probe: Option<PathBuf>, bench_open: Option<PathBuf>) {
     if probe.is_none() && bench_open.is_none() {
         return;

@@ -78,7 +78,9 @@ fn main() {
          crates/lux/src/font.rs's candidate list",
     );
     println!("Lux: using system font {path}");
+    probe::phase("font");
     let mut app = app::App::new(font_bytes);
+    probe::phase("app");
     let mut open_palette = false;
     let mut open_goto = false;
     let mut open_theme = false;
@@ -231,6 +233,7 @@ fn main() {
     }
     probe::configure(probe, bench_open);
     probe::listen();
+    probe::phase("cli");
     lux_platform::desktop::run(app).expect("desktop event loop failed");
 }
 

@@ -38,6 +38,7 @@ pub(crate) const TAB_CLOSE_BTN_WIDTH: f32 = 24.0;
 mod bookmarks;
 mod folding;
 mod selection;
+mod startup;
 mod syntax;
 mod types;
 mod views;
@@ -99,24 +100,13 @@ impl App {
             column_rulers: Vec::new(),
             blink_interval: BLINK_INTERVAL,
         };
-        let mut editor_view = EditorView::new(text_layout, font_bytes, metrics)
+        let editor_view = EditorView::new(text_layout, font_bytes, metrics)
             .expect("system font bytes read from disk must parse as a real font");
-        crate::font::install_coverage_fallbacks(editor_view.text_layout_mut());
-        crate::font::install_ui_font(editor_view.text_layout_mut());
 
         let buffer = Buffer::from_bytes(b"").expect("empty document decodes");
         let cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
 
-        let mut documents = crate::document::Documents::default();
-        if let Some(first) = Self::recoverable_documents().first() {
-            documents.message = Some(format!(
-                "Unsaved recovery session available: {}",
-                first
-                    .file_name()
-                    .unwrap_or(first.as_os_str())
-                    .to_string_lossy()
-            ));
-        }
+        let documents = crate::document::Documents::default();
 
         Self {
             scale_factor: 1.0,
@@ -447,6 +437,7 @@ impl PlatformEventHandler for App {
                 self.redraw(ctx);
                 crate::snapshot::capture_settled(self, ctx);
                 crate::probe::on_frame(self, frame_began.elapsed());
+                self.after_first_frame();
             }
             PlatformEvent::Keyboard(key_event) => {
                 if key_event.state == ElementState::Pressed
