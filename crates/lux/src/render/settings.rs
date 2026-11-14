@@ -9,9 +9,7 @@ use swash::scale::ScaleContext;
 
 use crate::render::paint::{color, overlay_text, push_glyph};
 use crate::render::panel::settings_selection;
-use crate::settings::layout::{
-    ControlGeom, SettingsBounds, format_number, layout_settings,
-};
+use crate::settings::layout::{ControlGeom, SettingsBounds, format_number, layout_settings};
 use crate::settings::{SettingKind, SettingsPanelState};
 
 #[allow(clippy::too_many_arguments)]

@@ -73,7 +73,8 @@ drive_launch "$fixture" \
   --snapshot-on-usr1 "$out/palette-monokai.png" \
   --snapshot-on-usr1 "$out/settings-solarized-light.png" \
   --snapshot-on-usr1 "$out/palette-solarized-light.png" \
-  --snapshot-on-usr1 "$out/color-theme-chips.png"
+  --snapshot-on-usr1 "$out/color-theme-chips.png" \
+  --snapshot-on-usr1 "$out/color-theme-chips-scrolled.png"
 
 opened=0
 for _ in $(seq 1 40); do
