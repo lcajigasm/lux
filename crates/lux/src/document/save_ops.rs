@@ -1,7 +1,10 @@
 //! On-save transformations and manual whitespace operations (Sublime Parity ST17).
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 
+use lux_core::buffer::Buffer;
 use lux_core::multicursor::MultiCursor;
 use lux_core::selection::Selection;
 
@@ -152,13 +155,25 @@ impl App {
     }
 
     pub(crate) fn save_recovery_snapshot(&self) {
-        if self.document_dirty()
-            && let Some(path) = &self.documents.path
-            && !self.buffer.is_huge_file_mode()
-            && let Some(store) = recovery_store()
-        {
-            let _ = store.save(path, &self.buffer.text());
+        if !self.document_dirty() {
+            return;
         }
+        let Some(path) = self.documents.path.clone() else {
+            return;
+        };
+        if self.buffer.is_huge_file_mode() || recovery_store().is_none() {
+            return;
+        }
+        // The rope clone is shared structure. The worker turns it into
+        // text and fsyncs the snapshot, so the next frame does not wait.
+        let job = RecoveryJob {
+            path,
+            buffer: self.buffer.clone(),
+        };
+        if let Ok(mut slot) = recovery_slot().lock() {
+            *slot = Some(job);
+        }
+        kick_recovery();
     }
 
     pub(crate) fn save_all(&mut self, ctx: &dyn PlatformContext) {
@@ -262,6 +277,50 @@ impl App {
             recoverable.into_iter().map(|s| s.path).collect()
         } else {
             Vec::new()
+        }
+    }
+}
+
+struct RecoveryJob {
+    path: PathBuf,
+    buffer: Buffer,
+}
+
+fn recovery_slot() -> &'static Mutex<Option<RecoveryJob>> {
+    static SLOT: OnceLock<Mutex<Option<RecoveryJob>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
+
+static RECOVERY_RUNNING: AtomicBool = AtomicBool::new(false);
+
+fn kick_recovery() {
+    if RECOVERY_RUNNING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let spawned = std::thread::Builder::new()
+        .name("lux-recovery".into())
+        .spawn(recovery_worker);
+    if spawned.is_err() {
+        RECOVERY_RUNNING.store(false, Ordering::Release);
+    }
+}
+
+fn recovery_worker() {
+    loop {
+        let job = recovery_slot().lock().ok().and_then(|mut slot| slot.take());
+        let Some(job) = job else {
+            RECOVERY_RUNNING.store(false, Ordering::Release);
+            let queued = recovery_slot()
+                .lock()
+                .ok()
+                .is_some_and(|slot| slot.is_some());
+            if queued && !RECOVERY_RUNNING.swap(true, Ordering::AcqRel) {
+                continue;
+            }
+            return;
+        };
+        if let Some(store) = recovery_store() {
+            let _ = store.save(&job.path, &job.buffer.text());
         }
     }
 }
