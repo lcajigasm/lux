@@ -536,10 +536,7 @@ impl App {
                             self.switch_to_tab(tab_id);
                         }
                     }
-                    if let Some(doc_path) = self.documents.path.clone() {
-                        let text = self.buffer.text();
-                        crate::lsp::sync_document_open(self, ctx, &doc_path, &text);
-                    }
+                    crate::lsp::sync_opened_document(self, ctx);
                     open_queue::note_opened(self);
                 }
                 if close {

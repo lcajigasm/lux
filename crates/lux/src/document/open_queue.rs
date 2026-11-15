@@ -12,6 +12,7 @@ pub(crate) fn note_opened(app: &mut App) {
     };
     eprintln!("Lux: opened {}", path.display());
     crate::cli::apply_opened(app);
+    crate::probe::open_phase("apply");
     crate::probe::note_open_loaded();
     crate::sidebar::reveal_open_document(app);
 }
