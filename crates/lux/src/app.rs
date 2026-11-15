@@ -40,6 +40,7 @@ mod folding;
 mod selection;
 mod syntax;
 mod types;
+pub(crate) mod view_bind;
 mod views;
 pub(crate) use types::{AtlasState, GpuWindow, MouseState, SelectionDrag, SyntaxState};
 

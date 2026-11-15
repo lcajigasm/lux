@@ -92,6 +92,8 @@ pub(crate) struct LspState {
     pub(crate) current_session: Option<Arc<ServerSession>>,
     pub(crate) current_url: Option<Url>,
     pub(crate) diagnostics: Vec<DiagnosticItem>,
+    /// Buffer the painted `diagnostics` belong to. `None` is not a buffer.
+    pub(crate) diagnostics_for: Option<u64>,
     pub(crate) all_diagnostics: Vec<(Url, Vec<DiagnosticItem>)>,
     pub(crate) completion_popup: Option<CompletionPopupState>,
     pub(crate) hover_popup: Option<HoverPopupState>,
@@ -116,6 +118,7 @@ impl LspState {
             current_session: None,
             current_url: None,
             diagnostics: Vec::new(),
+            diagnostics_for: None,
             all_diagnostics: Vec::new(),
             completion_popup: None,
             hover_popup: None,
@@ -378,20 +381,40 @@ pub(crate) fn poll_lsp_events(app: &mut App, _ctx: &dyn PlatformContext) {
     while let Ok(event) = app.ui.lsp.receiver.try_recv() {
         match event {
             LspEvent::DiagnosticsUpdated { url, diagnostics } => {
-                if app.ui.lsp.current_url.as_ref() == Some(&url) {
-                    app.ui.lsp.diagnostics = diagnostics.clone();
-                    needs_redraw = true;
-                }
-                if let Some(entry) = app
-                    .ui
-                    .lsp
-                    .all_diagnostics
-                    .iter_mut()
-                    .find(|(u, _)| u == &url)
-                {
-                    entry.1 = diagnostics;
+                let owner = app.documents.entries.iter().find_map(|entry| {
+                    let entry_url = entry
+                        .path
+                        .as_ref()
+                        .and_then(|path| Url::from_file_path(path).ok())?;
+                    (entry_url == url).then_some((entry.buffer_id, entry.tab_id))
+                });
+                if let Some((buffer_id, tab_id)) = owner {
+                    if Some(tab_id) == app.documents.active_tab {
+                        crate::app::view_bind::set_buffer_diagnostics(app, diagnostics.clone());
+                        needs_redraw = true;
+                    } else {
+                        crate::app::view_bind::remember_diagnostics(
+                            app,
+                            buffer_id,
+                            diagnostics.clone(),
+                        );
+                    }
+                    if let Some(slot) = app
+                        .ui
+                        .lsp
+                        .all_diagnostics
+                        .iter_mut()
+                        .find(|(candidate, _)| candidate == &url)
+                    {
+                        slot.1 = diagnostics;
+                    } else {
+                        app.ui.lsp.all_diagnostics.push((url, diagnostics));
+                    }
                 } else {
-                    app.ui.lsp.all_diagnostics.push((url, diagnostics));
+                    app.ui
+                        .lsp
+                        .all_diagnostics
+                        .retain(|(candidate, _)| candidate != &url);
                 }
             }
             LspEvent::CompletionsReady { items } => {

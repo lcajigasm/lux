@@ -220,7 +220,7 @@ impl SettingsState {
                 app.ui.lsp.all_diagnostics.push((url, items.clone()));
             }
         }
-        app.ui.lsp.diagnostics = items;
+        crate::app::view_bind::set_buffer_diagnostics(app, items);
         app.scheduler.invalidate_all();
     }
 
