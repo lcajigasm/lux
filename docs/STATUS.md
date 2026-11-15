@@ -13,7 +13,9 @@
 > the project header and above the status bar. The header stays put.
 > HTML preview (Shift+Command+V on an HTML file) keeps the source on the
 > left and paints the heading, paragraph, and link on the right. Editing
-> the source updates that pane.
+> the source updates that pane. Markdown preview (Shift+Command+V) keeps
+> the source on the left and paints the heading, list, code, and link on
+> the right. Editing the source updates that pane.
 > A second folder opens beside the first. The header ×, the × on that
 > folder's row, and Close Folder in the context menu drop it from the
 > sidebar and leave the directory on disk. Clean tabs of that folder
