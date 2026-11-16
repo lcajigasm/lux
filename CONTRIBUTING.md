@@ -28,8 +28,22 @@ OK <sha>
 `<sha>` is lowercase hex, 7 to 40 characters, and a prefix of the current
 head. `OK` is case-sensitive. Another author, `ok`, extra words, or an OK
 for an older push does not pass. After a new push, comment again with the
-new head. Editing or deleting the comment re-evaluates it. That comment
-hook runs from the workflow on `main`.
+new head.
+
+`lcajigasm` can post that comment. The repository Actions variable
+`OK_GATE_TRUSTED` adds more logins, separated by commas. A GitHub App
+login such as `nombre[bot]` is a normal entry. The workflow reads
+`vars.OK_GATE_TRUSTED` and passes that string to the script. It does not
+read a file, a secret, or any value the pull request controls. An empty
+or missing variable leaves `lcajigasm` as the only account. `lcajigasm`
+still counts when the variable names other accounts. Luis creates the
+variable and any App; this repository does not.
+
+The author is the comment's `user.login`. Text in the body does not
+grant the OK. A comment edited after the head commit's committer time
+does not count; comment again instead of editing. Deleting the comment
+re-evaluates the status. That comment hook runs from the workflow on
+`main`.
 
 When the status turns success, the workflow queues a squash auto-merge
 for that head. If the repository has not enabled auto-merge, the status

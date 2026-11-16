@@ -52,14 +52,20 @@ jobs:
           fi
           echo "number=${number}" >> "$GITHUB_OUTPUT"
           echo "head=${head}" >> "$GITHUB_OUTPUT"
+          # Committer time of this SHA. An OK edited after it does not count.
+          head_at="$(gh api "repos/${{ github.repository }}/commits/${head}" --jq .commit.committer.date)"
+          echo "head_at=${head_at}" >> "$GITHUB_OUTPUT"
       - name: Decide
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
+          # Repository variable only. A pull request cannot set vars.OK_GATE_TRUSTED.
+          OK_GATE_TRUSTED: ${{ vars.OK_GATE_TRUSTED }}
         run: |
           set -euo pipefail
           python3 scripts/ok-gate.py \
             --head "${{ steps.pr.outputs.head }}" \
+            --head-at "${{ steps.pr.outputs.head_at }}" \
             --pr "${{ steps.pr.outputs.number }}" \
             --repo "${{ github.repository }}" \
             --github-output "$GITHUB_OUTPUT"
