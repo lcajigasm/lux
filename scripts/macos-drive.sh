@@ -170,6 +170,16 @@ case "scrollx", "scrollshift":
         Thread.sleep(forTimeInterval: 0.05)
         post(56, false, [])
     }
+case "move":
+    guard args.count >= 4, let x = Double(args[2]), let y = Double(args[3]) else { exit(2) }
+    let point = CGPoint(x: x, y: y)
+    let source = CGEventSource(stateID: .hidSystemState)
+    for _ in 0..<2 {
+        if let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
+            move.post(tap: .cghidEventTap)
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    }
 case "click", "right", "double", "triple":
     guard args.count >= 4, let x = Double(args[2]), let y = Double(args[3]) else { exit(2) }
     let point = CGPoint(x: x, y: y)

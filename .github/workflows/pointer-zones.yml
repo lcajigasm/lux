@@ -1,0 +1,39 @@
+name: Pointer zones
+
+# Real Lux.app on the free macos-15 runner. The pointer is moved across
+# each zone and the system cursor is read back. On main, before the hit
+# test, every zone stays the arrow and this job fails.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pointer-zones:
+    name: pointer zones (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Move through each zone
+        run: |
+          chmod +x scripts/pointer-zones.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/pointer-zones.sh
+
+      - name: Upload pointer zones
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pointer-zones
+          path: docs/evidence/pointer-zones/**
+          if-no-files-found: warn
