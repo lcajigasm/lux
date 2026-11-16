@@ -100,6 +100,11 @@ pub const PROPERTIES: &[PropertySchema] = &[
         kind: PropertyKind::Integer,
         description: "Column width in characters for distraction free mode.",
     },
+    PropertySchema {
+        key: "workbench.icon",
+        kind: PropertyKind::Enum(&["corner", "classic"]),
+        description: "Dock icon. corner is the default. classic is the previous icon.",
+    },
 ];
 
 pub fn find(key: &str) -> Option<&'static PropertySchema> {
