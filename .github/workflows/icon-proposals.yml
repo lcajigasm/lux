@@ -1,0 +1,35 @@
+name: Icon proposals
+
+# Renders the SVG proposals with librsvg on the free macos-15 runner.
+# The app icon is unchanged.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  icons:
+    name: icon proposals (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: librsvg
+        run: brew install librsvg
+
+      - name: Render the proposals
+        run: |
+          chmod +x scripts/render-icons.sh
+          ./scripts/render-icons.sh
+
+      - name: Upload icon proposals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: icon-proposals
+          path: docs/evidence/icon-proposals/**
+          if-no-files-found: warn
