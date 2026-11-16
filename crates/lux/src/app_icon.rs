@@ -69,7 +69,7 @@ fn set_dock(name: &str) -> bool {
 #[cfg(target_os = "macos")]
 mod macos {
     use super::file_name;
-    use objc2::MainThreadMarker;
+    use objc2::{AnyThread, MainThreadMarker};
     use objc2_app_kit::{NSApplication, NSImage};
     use objc2_foundation::{NSBundle, NSString};
     use std::path::PathBuf;
