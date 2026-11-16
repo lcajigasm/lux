@@ -368,6 +368,7 @@ impl App {
             .position(|entry| entry.tab_id == target_id)
         {
             let removed = self.documents.entries.remove(pos);
+            crate::app::view_bind::forget(self, removed.buffer_id, removed.path.as_deref());
             self.documents.closed_entries.push(removed);
         }
         self.scheduler.invalidate_all();
@@ -401,6 +402,7 @@ impl App {
                 .position(|e| e.tab_id == target_id)
             {
                 let removed = self.documents.entries.remove(pos);
+                crate::app::view_bind::forget(self, removed.buffer_id, removed.path.as_deref());
                 self.documents.closed_entries.push(removed);
             }
             if self.ui.split.is_active() {

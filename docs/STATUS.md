@@ -36,6 +36,9 @@
 > menu, the command palette, Settings, and Option+Z toggle it, and the
 > choice is written back to that setting. An untitled buffer stays Plain
 > Text until a language is chosen or the file is saved with an extension.
+> Closing a tab, or switching to another one, keeps syntax tokens,
+> diagnostics, and gutter marks with that buffer. A Plain Text buffer
+> does not keep the settings JSON view.
 > Sublime's own minimap, breadcrumb, and lighter status chrome are
 > not copied. Text is a grayscale mask at every display scale, including
 > scale 1. The 1× capture used to paint LCD fringes beside `#F8F8F2`.
