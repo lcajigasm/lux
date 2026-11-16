@@ -35,6 +35,7 @@ mod palette;
 mod pane_view;
 mod place;
 mod plugin;
+mod pointer;
 mod presentation;
 mod probe;
 mod project;

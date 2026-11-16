@@ -480,6 +480,28 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     out.push_str("input=");
     out.push_str(&escape(&input));
     out.push('\n');
+    out.push_str("pointer=");
+    out.push_str(crate::pointer::shape_name(app.mouse.shape));
+    out.push('\n');
+    let language = app.ui.status_bar.layout.language_rect;
+    out.push_str(&format!(
+        "language_rect={:.1},{:.1},{:.1},{:.1}\nscale={}\nsidebar={}\nminimap={}\nviewport={:.1},{:.1}\n",
+        language.x,
+        language.y,
+        language.width,
+        language.height,
+        app.scale_factor,
+        app.sidebar_width(),
+        app.minimap_width(),
+        app.viewport.width,
+        app.viewport.height,
+    ));
+    if let Some(gpu) = &app.gpu_window {
+        let size = gpu.window.inner_size();
+        if let Some((x, y)) = gpu.window.inner_position() {
+            out.push_str(&format!("content={x},{y},{},{}\n", size.width, size.height));
+        }
+    }
     out
 }
 

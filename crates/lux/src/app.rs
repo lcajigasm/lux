@@ -132,16 +132,7 @@ impl App {
             goal_columns: vec![0],
             history: History::new(),
             modifiers: Modifiers::default(),
-            mouse: MouseState {
-                position: dpi::PhysicalPosition::new(0.0, 0.0),
-                placed: false,
-                selection_anchor: None,
-                selection_drag: None,
-                last_click: None,
-                word_anchor: None,
-                line_anchor: None,
-                context_menu: None,
-            },
+            mouse: MouseState::default(),
             accessibility_active: false,
             viewport: Viewport {
                 width: 1000.0,
@@ -514,15 +505,18 @@ impl PlatformEventHandler for App {
                         gpu_window.window.request_redraw();
                     }
                 }
+                crate::pointer::sync(self);
             }
             PlatformEvent::MouseButton { button, state } => {
                 if state == ElementState::Pressed {
-                    if !crate::edit_menu::take_menu_click(self, ctx, button)
+                    if !crate::pointer::press(self, button)
+                        && !crate::edit_menu::take_menu_click(self, ctx, button)
                         && !self.handle_mouse_click_on_chrome(ctx, button)
                     {
                         crate::edit_menu::press_editor(self, ctx, button);
                     }
                 } else if button == MouseButton::Left {
+                    crate::pointer::release(self);
                     crate::sidebar::drag::release(self, ctx);
                     self.finish_selection_drag();
                     self.mouse.selection_anchor = None;
@@ -561,6 +555,7 @@ impl PlatformEventHandler for App {
             PlatformEvent::DroppedFile(path) => {
                 crate::document::open_queue::enqueue(self, ctx, path);
             }
+            PlatformEvent::MouseLeft => crate::pointer::leave(self),
             _ => {}
         }
     }
