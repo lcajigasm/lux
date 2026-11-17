@@ -8,6 +8,7 @@
   { "command": "command_palette", "key": "ctrl+shift+p", "mac": "cmd+shift+p" },
   { "command": "quick_open", "key": "ctrl+p", "mac": "cmd+p" },
   { "command": "file.new", "key": "ctrl+n", "mac": "cmd+n" },
+  { "command": "new_window", "key": "ctrl+shift+n", "mac": "cmd+shift+n" },
   { "command": "find", "key": "ctrl+f", "mac": "cmd+f" },
   { "command": "find_in_files", "key": "ctrl+shift+f", "mac": "cmd+shift+f" },
   { "command": "toggle_comment", "key": "ctrl+/", "mac": "cmd+/" },

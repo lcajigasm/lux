@@ -12,12 +12,23 @@ pub(crate) fn note_opened(app: &mut App) {
     };
     eprintln!("Lux: opened {}", path.display());
     crate::cli::apply_opened(app);
+    crate::probe::open_phase("apply");
     crate::probe::note_open_loaded();
     crate::sidebar::reveal_open_document(app);
 }
 
 pub(crate) fn busy(app: &App) -> bool {
     app.documents.pending.is_some()
+}
+
+/// A path dropped on the window. The worker opens it; a second drop waits
+/// in the queue until that worker finishes.
+pub(crate) fn enqueue(app: &mut App, ctx: &dyn PlatformContext, path: std::path::PathBuf) {
+    if path.as_os_str().is_empty() {
+        return;
+    }
+    app.documents.open_queue.push(path);
+    pump(app, ctx);
 }
 
 pub(crate) fn pump(app: &mut App, ctx: &dyn PlatformContext) {

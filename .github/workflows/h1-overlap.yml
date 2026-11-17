@@ -1,0 +1,32 @@
+name: H1 adapter overlap
+
+# Release the previous cold-start head and this branch. Ten launches each.
+# The job fails when a sample or the first frame is missing. A budget miss
+# does not.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cold:
+    name: h1 adapter overlap (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Median of ten launches, before and after
+        run: |
+          chmod +x scripts/h1-overlap.sh scripts/stage-lux-app.sh
+          ./scripts/h1-overlap.sh
+      - name: Upload the samples and the first frame
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h1-overlap
+          path: docs/evidence/h1-overlap/**
+          if-no-files-found: error

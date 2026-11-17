@@ -33,7 +33,12 @@ pub(crate) fn render_sidebar(
 
     let root_title = sidebar.root_name().to_uppercase();
 
-    let Some(tree) = sidebar.tree.as_mut() else {
+    let drop_target = sidebar
+        .drag
+        .as_ref()
+        .filter(|drag| drag.active)
+        .and_then(|drag| drag.drop_target);
+    let Some(root_id) = sidebar.tree.as_ref().map(|tree| tree.root()) else {
         return;
     };
 
@@ -86,6 +91,17 @@ pub(crate) fn render_sidebar(
         ],
         color(theme.chrome.border),
     ));
+    if drop_target == Some(root_id) {
+        quad_instances.push(QuadInstance::solid(
+            [
+                0.0,
+                tab_bar_height + header_h - 2.0 * stroke,
+                sidebar_width,
+                2.0 * stroke,
+            ],
+            accent,
+        ));
+    }
 
     let header_line = editor_view
         .text_layout_mut()
@@ -106,13 +122,39 @@ pub(crate) fn render_sidebar(
             glyph_instances,
         );
     }
+    let close_line = editor_view.text_layout_mut().layout_line(&style, "×", &[]);
+    let close_x = sidebar_width - stroke - 18.0 * scale_factor;
+    for c in close_line.clusters() {
+        push_glyph(
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            font,
+            sidebar_font_size,
+            &c,
+            close_x,
+            header_y + close_line.baseline(),
+            muted,
+            glyph_instances,
+        );
+    }
 
-    // 4. File Tree Rows
+    // 4. File Tree Rows. The header above stays put. Rows are scissored to
+    // the list, so a scrolled name cannot cover the title or the status bar.
     let rows_top = tab_bar_height + header_h;
+    let list_bottom = tab_bar_height + content_height;
+    let tree_bounds = [
+        0.0,
+        rows_top,
+        (sidebar_width - stroke).max(0.0),
+        (list_bottom - rows_top).max(0.0),
+    ];
+    let row_quads = quad_instances.len();
+    let row_glyphs = glyph_instances.len();
     let row_h = SIDEBAR_ROW_HEIGHT * scale_factor;
     let baseline = (row_h - sidebar_font_size) * 0.5;
 
-    let rows = crate::sidebar::listed_rows(tree);
+    let rows = crate::sidebar::folders::slots(sidebar);
     let selected_id = sidebar.selected_node;
 
     for (i, row) in rows.iter().enumerate() {
@@ -129,6 +171,17 @@ pub(crate) fn render_sidebar(
             ));
             quad_instances.push(QuadInstance::solid(
                 [0.0, row_y, 2.0 * stroke, row_h],
+                accent,
+            ));
+        }
+        if drop_target == Some(row.id) && row.root == 0 {
+            quad_instances.push(QuadInstance::solid(
+                [
+                    0.0,
+                    row_y + row_h - 2.0 * stroke,
+                    sidebar_width - stroke,
+                    2.0 * stroke,
+                ],
                 accent,
             ));
         }
@@ -227,8 +280,50 @@ pub(crate) fn render_sidebar(
                     glyph_instances,
                 );
             }
+            if row.title {
+                let mark = editor_view.text_layout_mut().layout_line(&style, "×", &[]);
+                let mark_x = sidebar_width - stroke - 18.0 * scale_factor;
+                for cluster in mark.clusters() {
+                    push_glyph(
+                        atlas,
+                        atlas_dirty,
+                        scale_cx,
+                        font,
+                        sidebar_font_size,
+                        &cluster,
+                        mark_x,
+                        row_y + baseline + mark.baseline(),
+                        muted,
+                        glyph_instances,
+                    );
+                }
+            } else if row.root == 0
+                && let Some(letter) = git_letter(sidebar, row.id)
+            {
+                let label = letter.to_string();
+                let mark = editor_view
+                    .text_layout_mut()
+                    .layout_line(&style, &label, &[]);
+                let mark_x = sidebar_width - stroke - 16.0 * scale_factor;
+                for cluster in mark.clusters() {
+                    push_glyph(
+                        atlas,
+                        atlas_dirty,
+                        scale_cx,
+                        font,
+                        sidebar_font_size,
+                        &cluster,
+                        mark_x,
+                        row_y + baseline + mark.baseline(),
+                        accent,
+                        glyph_instances,
+                    );
+                }
+            }
         }
     }
+    super::clip::clip_quads(quad_instances, row_quads, tree_bounds);
+    super::clip::clip_glyphs(glyph_instances, row_glyphs, tree_bounds);
 
     if let Some(menu) = &sidebar.context_menu {
         let [mx, my, mw, mh] = menu.rect;
@@ -269,4 +364,9 @@ pub(crate) fn render_sidebar(
             }
         }
     }
+}
+
+fn git_letter(sidebar: &SidebarState, id: lux_ui::file_tree::NodeId) -> Option<char> {
+    let path = sidebar.tree.as_ref()?.node_path(id)?;
+    sidebar.git_marks.get(path).copied()
 }

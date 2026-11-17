@@ -1,0 +1,37 @@
+name: File drop
+
+# Real Lux.app on macos-15. A file dragged from Finder onto the window opens.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drop:
+    name: file drop (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Drop a file on the window
+        run: |
+          chmod +x scripts/file-drop.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/file-drop.sh
+
+      - name: Upload the drop capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: file-drop
+          path: docs/evidence/file-drop/**
+          if-no-files-found: error

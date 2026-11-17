@@ -132,7 +132,7 @@ fn collect(node: Node, source: &str, blocks: &mut Vec<PreviewBlock>) {
         }),
         "fenced_code_block" | "indented_code_block" => blocks.push(PreviewBlock::Code {
             info: child_text(node, source, "info_string"),
-            text: child_text(node, source, "code_fence_content").if_empty(|| slice(source, node)),
+            text: fence_body(node, source),
         }),
         "thematic_break" => blocks.push(PreviewBlock::Rule),
         "list_item" => blocks.push(PreviewBlock::ListItem {
@@ -274,6 +274,27 @@ fn plain_text(node: Node, source: &str) -> String {
         .join(" ")
 }
 
+/// Fence text with the grammar's wrapping newline removed. `trim` would
+/// also eat the first line's indent, and the preview would show it flush.
+fn fence_body(node: Node, source: &str) -> String {
+    let raw = find_kind(node, "code_fence_content")
+        .map(|child| slice(source, child))
+        .filter(|text| !text.is_empty())
+        .unwrap_or_else(|| slice(source, node));
+    let mut text = raw.as_str();
+    if let Some(rest) = text.strip_prefix("\r\n") {
+        text = rest;
+    } else if let Some(rest) = text.strip_prefix('\n') {
+        text = rest;
+    }
+    if let Some(rest) = text.strip_suffix("\r\n") {
+        text = rest;
+    } else if let Some(rest) = text.strip_suffix('\n') {
+        text = rest;
+    }
+    text.to_string()
+}
+
 fn child_text(node: Node, source: &str, kind: &str) -> String {
     find_kind(node, kind)
         .map(|child| slice(source, child).trim().to_string())
@@ -296,16 +317,6 @@ fn slice(source: &str, node: Node) -> String {
     source[start..end].to_string()
 }
 
-trait IfEmpty {
-    fn if_empty(self, fallback: impl FnOnce() -> String) -> String;
-}
-
-impl IfEmpty for String {
-    fn if_empty(self, fallback: impl FnOnce() -> String) -> String {
-        if self.is_empty() { fallback() } else { self }
-    }
-}
-
 fn inline_language() -> tree_sitter::Language {
     unsafe extern "C" {
         fn tree_sitter_markdown_inline() -> *const ();
@@ -313,4 +324,26 @@ fn inline_language() -> tree_sitter::Language {
     tree_sitter::Language::new(unsafe {
         tree_sitter_language::LanguageFn::from_raw(tree_sitter_markdown_inline)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fenced_block_keeps_indent_on_every_line() {
+        let source = "```rust\n    fn main() {\n        let value = 1;\n    }\n```\n";
+        let mut doc = Document::new(LanguageId::Markdown);
+        doc.set_text(source);
+        let blocks = preview_document(&doc, source);
+        let text = blocks.iter().find_map(|block| match block {
+            PreviewBlock::Code { text, .. } => Some(text.as_str()),
+            _ => None,
+        });
+        assert_eq!(
+            text,
+            Some("    fn main() {\n        let value = 1;\n    }"),
+            "fence body dropped indent: {text:?}"
+        );
+    }
 }

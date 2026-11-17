@@ -113,6 +113,7 @@ fn clicking_a_file_row_opens_it_and_focuses_the_tree() {
         notes_y,
         MouseButton::Left
     ));
+    drag::release(&mut app, &ctx);
     assert!(app.chrome.focus.current() == lux_ui::focus::FocusTarget::FileTree);
     let names: Vec<_> = listed_rows(app.ui.sidebar.as_mut().unwrap().tree.as_mut().unwrap())
         .iter()
@@ -128,6 +129,7 @@ fn clicking_a_file_row_opens_it_and_focuses_the_tree() {
         file_y,
         MouseButton::Left
     ));
+    drag::release(&mut app, &ctx);
     ctx.complete(&mut app);
     assert_eq!(app.buffer.text(), "nested\n");
     assert_eq!(
@@ -272,5 +274,152 @@ fn the_keyboard_creates_renames_and_trashes_and_reveal_selects_the_open_file() {
             .message
             .as_deref()
             .is_some_and(|message| message.contains("Moved to trash"))
+    );
+}
+
+fn row_center(app: &crate::app::App, index: usize) -> f32 {
+    let scale = app.scale_factor;
+    app.tab_bar_height()
+        + SIDEBAR_HEADER_HEIGHT * scale
+        + (index as f32 + 0.5) * SIDEBAR_ROW_HEIGHT * scale
+}
+
+fn row_names(app: &mut crate::app::App) -> Vec<String> {
+    listed_rows(app.ui.sidebar.as_mut().unwrap().tree.as_mut().unwrap())
+        .into_iter()
+        .map(|row| format!("{}:{}", row.depth, row.name))
+        .collect()
+}
+
+#[test]
+fn dragging_a_file_onto_a_folder_moves_it_and_retargets_the_open_tab() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("notes")).unwrap();
+    let source = dir.path().join("move-me.txt");
+    std::fs::write(&source, "payload\n").unwrap();
+    let mut app = app();
+    app.ui.sidebar = SidebarState::open_folder(dir.path().to_path_buf());
+    let ctx = Context::new();
+
+    let file_y = row_center(&app, 1);
+    assert!(handle_sidebar_click(
+        &mut app,
+        &ctx,
+        40.0,
+        file_y,
+        MouseButton::Left
+    ));
+    drag::release(&mut app, &ctx);
+    ctx.complete(&mut app);
+    assert_eq!(app.buffer.text(), "payload\n");
+    assert_eq!(app.documents.path.as_deref(), Some(source.as_path()));
+
+    assert!(handle_sidebar_click(
+        &mut app,
+        &ctx,
+        40.0,
+        file_y,
+        MouseButton::Left
+    ));
+    let notes_y = row_center(&app, 0);
+    assert!(drag::update(&mut app, 40.0, notes_y));
+    drag::release(&mut app, &ctx);
+
+    let moved = dir.path().join("notes").join("move-me.txt");
+    assert!(moved.is_file(), "file was not moved on disk");
+    assert!(!source.exists());
+    assert_eq!(std::fs::read_to_string(&moved).unwrap(), "payload\n");
+    assert_eq!(app.buffer.text(), "payload\n");
+    assert_eq!(app.documents.path.as_deref(), Some(moved.as_path()));
+    assert_eq!(
+        app.documents.tabs.active().map(|tab| tab.title.as_str()),
+        Some("move-me.txt")
+    );
+    assert_eq!(
+        row_names(&mut app),
+        vec!["0:notes".to_string(), "1:move-me.txt".to_string()]
+    );
+    assert_eq!(app.documents.message.as_deref(), Some("Moved move-me.txt"));
+}
+
+#[test]
+fn dropping_onto_an_existing_name_leaves_both_files() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("notes")).unwrap();
+    std::fs::write(dir.path().join("notes").join("move-me.txt"), "there\n").unwrap();
+    std::fs::write(dir.path().join("move-me.txt"), "here\n").unwrap();
+    let mut app = app();
+    app.ui.sidebar = SidebarState::open_folder(dir.path().to_path_buf());
+    let ctx = Context::new();
+
+    // notes, then move-me.txt. The folder already holds that name.
+    let file_y = row_center(&app, 1);
+    let notes_y = row_center(&app, 0);
+    assert!(handle_sidebar_click(
+        &mut app,
+        &ctx,
+        40.0,
+        file_y,
+        MouseButton::Left
+    ));
+    assert!(drag::update(&mut app, 40.0, notes_y));
+    drag::release(&mut app, &ctx);
+    assert!(
+        app.documents
+            .message
+            .as_deref()
+            .is_some_and(|message| message.contains("already exists"))
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("move-me.txt")).unwrap(),
+        "here\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("notes").join("move-me.txt")).unwrap(),
+        "there\n"
+    );
+}
+
+#[test]
+fn dragging_a_folder_onto_its_child_does_not_move_it() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("parent").join("child")).unwrap();
+    let mut app = app();
+    app.ui.sidebar = SidebarState::open_folder(dir.path().to_path_buf());
+    let ctx = Context::new();
+    let parent_y = row_center(&app, 0);
+    assert!(handle_sidebar_click(
+        &mut app,
+        &ctx,
+        20.0,
+        parent_y,
+        MouseButton::Left
+    ));
+    drag::release(&mut app, &ctx);
+    assert_eq!(
+        row_names(&mut app),
+        vec!["0:parent".to_string(), "1:child".to_string()]
+    );
+    let child_y = row_center(&app, 1);
+    assert!(handle_sidebar_click(
+        &mut app,
+        &ctx,
+        30.0,
+        parent_y,
+        MouseButton::Left
+    ));
+    assert!(drag::update(&mut app, 30.0, child_y));
+    drag::release(&mut app, &ctx);
+    assert!(dir.path().join("parent").join("child").is_dir());
+    assert!(
+        !dir.path()
+            .join("parent")
+            .join("child")
+            .join("parent")
+            .exists()
+    );
+    assert_eq!(
+        row_names(&mut app),
+        vec!["0:parent".to_string(), "1:child".to_string()]
     );
 }

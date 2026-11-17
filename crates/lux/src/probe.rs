@@ -96,6 +96,16 @@ pub(crate) fn mark_process_start() {
     let _ = PROCESS_START.set(Instant::now());
 }
 
+/// Milliseconds since process start. The cold-start job subtracts
+/// successive lines to name the step that dominates a budget miss.
+pub(crate) fn phase(name: &str) {
+    let start = PROCESS_START.get().copied().unwrap_or_else(Instant::now);
+    eprintln!(
+        "Lux: phase {name} {:.1} ms",
+        start.elapsed().as_secs_f64() * 1000.0
+    );
+}
+
 pub(crate) fn configure(probe: Option<PathBuf>, bench_open: Option<PathBuf>) {
     if probe.is_none() && bench_open.is_none() {
         return;
@@ -166,6 +176,22 @@ pub(crate) fn note_scroll() {
     if let Some(slot) = guard.as_mut() {
         slot.scrolling = true;
     }
+}
+
+pub(crate) fn open_phase(name: &str) {
+    let Ok(guard) = SLOT.lock() else {
+        return;
+    };
+    let Some(slot) = guard.as_ref() else {
+        return;
+    };
+    let Some(started) = slot.bench_started else {
+        return;
+    };
+    eprintln!(
+        "Lux: open phase {name} {:.1} ms",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
 }
 
 pub(crate) fn note_open_loaded() {
@@ -300,10 +326,22 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     out.push_str("goto_query=");
     out.push_str(&escape(goto_query));
     out.push('\n');
+    let palette_query = app
+        .ui
+        .command_palette
+        .as_ref()
+        .map(|palette| palette.query.text())
+        .unwrap_or("");
     out.push_str(&format!(
         "palette={}\n",
         u8::from(app.ui.command_palette.is_some())
     ));
+    out.push_str("palette_query=");
+    out.push_str(&escape(palette_query));
+    out.push('\n');
+    out.push_str("announcement=");
+    out.push_str(&escape(app.ui.announcement.as_deref().unwrap_or("")));
+    out.push('\n');
     let (find, replace) = match &app.ui.search_bar {
         Some(search) => (1, u8::from(search.replace_mode)),
         None => (0, 0),
@@ -319,6 +357,29 @@ fn render_dump(app: &App, slot: &Slot) -> String {
             .map(|panel| panel.scroll.round() as i64)
             .unwrap_or(0),
     ));
+    out.push_str("edit_menu=");
+    match &app.mouse.context_menu {
+        Some(menu) => {
+            out.push('1');
+            for row in &menu.rows {
+                out.push('\t');
+                match row {
+                    crate::edit_menu::EditMenuRow::Separator => out.push('-'),
+                    crate::edit_menu::EditMenuRow::Action { action, enabled } => {
+                        if !enabled {
+                            out.push('!');
+                        }
+                        out.push_str(action.label());
+                    }
+                }
+            }
+        }
+        None => out.push('0'),
+    }
+    out.push('\n');
+    out.push_str("edit_menu_geom=");
+    out.push_str(&crate::edit_menu::geometry_probe(app));
+    out.push('\n');
     let path = app
         .documents
         .active_entry()
@@ -330,6 +391,34 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         .language()
         .map(|language| language.name())
         .unwrap_or("Plain Text");
+    let html_preview = app.documents.active_entry().is_some_and(|entry| {
+        entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Html)
+    });
+    let show_preview = app.documents.active_entry().is_some_and(|entry| {
+        entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Markdown)
+    });
+    let preview_on = html_preview || show_preview;
+    let preview_fences = if preview_on {
+        crate::render::markdown::rendered_code_blocks(&app.buffer.text(), app.active_syntax_theme())
+    } else {
+        String::new()
+    };
+    out.push_str("preview=");
+    out.push(if preview_on { '1' } else { '0' });
+    out.push('\n');
+    out.push_str("preview_blocks=");
+    if preview_on {
+        let blocks = if html_preview {
+            crate::markdown_preview::html_summary(&app.buffer.text())
+        } else {
+            crate::markdown_preview::summary(&app.buffer.text())
+        };
+        out.push_str(&escape(&blocks));
+    }
+    out.push('\n');
+    out.push_str("preview_fences=");
+    out.push_str(&escape(&preview_fences));
+    out.push('\n');
     out.push_str(&format!(
         "tabs={}\ndirty={}\nlanguage={language}\ntheme={}\nbranch={}\nbranch_picker={}\nactive_path=",
         app.documents.tabs.tabs().len(),
@@ -339,6 +428,34 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         u8::from(app.ui.git.branch_picker.is_some()),
     ));
     out.push_str(&escape(&path));
+    out.push('\n');
+    let syntax_tokens = app
+        .syntax
+        .as_ref()
+        .map(|syntax| syntax.tokens.len())
+        .unwrap_or(0);
+    let highlight = app
+        .syntax
+        .as_ref()
+        .map(|syntax| syntax.language.name())
+        .unwrap_or("none");
+    let diagnostic_lines = app
+        .ui
+        .lsp
+        .diagnostics
+        .iter()
+        .map(|item| item.range.start.line.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    out.push_str(&format!(
+        "highlight={highlight}\nsyntax_tokens={syntax_tokens}\ndiagnostics={}\ndiagnostic_lines={diagnostic_lines}\ngutter_marks={}\n",
+        app.ui.lsp.diagnostics.len(),
+        app.ui.git.markers.len(),
+    ));
+    out.push_str("git_marks=");
+    out.push_str(&escape(&crate::git::git_marks_label(
+        &app.ui.git.changed_files,
+    )));
     out.push('\n');
     let chord = app
         .ui
@@ -350,14 +467,38 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     out.push_str(&escape(&chord));
     out.push('\n');
     out.push_str(&format!(
-        "panes={}\ntabs={}\nsidebar={}\nscroll_y={}\nscroll_x={}\nword_wrap={}\n",
+        "panes={}\ntabs={}\nsidebar={}\nsidebar_scroll={}\nscroll_y={}\nscroll_x={}\nword_wrap={}\n",
         app.ui.split.preset.num_panes(),
         app.documents.entries.len(),
         u8::from(app.ui.sidebar.is_some()),
+        app.ui
+            .sidebar
+            .as_ref()
+            .map(|sidebar| sidebar.scroll_y.round() as i64)
+            .unwrap_or(0),
         app.viewport.scroll_y.round() as i64,
         app.viewport.scroll_x.round() as i64,
         u8::from(app.editor_view.metrics().word_wrap),
     ));
+    out.push_str("roots=");
+    if let Some(sidebar) = &app.ui.sidebar {
+        out.push_str(&escape(&sidebar.root_names().join("|")));
+    }
+    out.push('\n');
+    out.push_str("tree=");
+    if let Some(sidebar) = &app.ui.sidebar {
+        out.push_str(&escape(&crate::sidebar::tree_label(sidebar)));
+    }
+    out.push('\n');
+    out.push_str("tab_paths=");
+    let tab_paths: Vec<String> = app
+        .documents
+        .entries
+        .iter()
+        .filter_map(|entry| entry.path.as_ref().map(|path| path.display().to_string()))
+        .collect();
+    out.push_str(&escape(&tab_paths.join("|")));
+    out.push('\n');
     out.push_str(&format!(
         "key_n={}\nkey_p99_us={}\nframe_n={}\nframe_max_us={}\n",
         slot.key_us.len(),
@@ -371,6 +512,9 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         .unwrap_or_default();
     out.push_str("input=");
     out.push_str(&escape(&input));
+    out.push('\n');
+    out.push_str("icon=");
+    out.push_str(crate::app_icon::probe_token());
     out.push('\n');
     out
 }

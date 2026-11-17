@@ -280,3 +280,79 @@ fn shift_command_brackets_cycle_tabs_without_inserting_a_glyph() {
     assert_eq!(app.documents.active_tab, Some(second_tab));
     assert_eq!(app.buffer.text(), "two");
 }
+
+#[test]
+fn file_menu_save_all_writes_every_dirty_named_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("one.txt");
+    let second = dir.path().join("two.txt");
+    std::fs::write(&first, "one").unwrap();
+    std::fs::write(&second, "two").unwrap();
+    let ctx = Context::new();
+    let mut app = app();
+    app.request_document(&ctx, Request::Open(Some(first.clone())));
+    ctx.complete(&mut app);
+    let first_tab = app.documents.active_tab.unwrap();
+    app.request_document(&ctx, Request::Open(Some(second.clone())));
+    ctx.complete(&mut app);
+    press(
+        &mut app,
+        &ctx,
+        Key::Named(lux_platform::NamedKey::End),
+        None,
+        None,
+    );
+    type_char(&mut app, "!");
+    app.switch_to_tab(first_tab);
+    press(
+        &mut app,
+        &ctx,
+        Key::Named(lux_platform::NamedKey::End),
+        None,
+        None,
+    );
+    type_char(&mut app, "?");
+    crate::menu::clear_claim();
+    crate::menu::handle_menu_action(&mut app, &ctx, crate::menu::MenuAction::SaveAll);
+    ctx.complete(&mut app);
+    assert_eq!(std::fs::read_to_string(&first).unwrap(), "one?");
+    assert_eq!(std::fs::read_to_string(&second).unwrap(), "two!");
+}
+
+#[test]
+fn file_menu_reopen_closed_tab_restores_the_buffer() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("one.txt");
+    let second = dir.path().join("two.txt");
+    std::fs::write(&first, "one").unwrap();
+    std::fs::write(&second, "two").unwrap();
+    let ctx = Context::new();
+    let mut app = app();
+    app.request_document(&ctx, Request::Open(Some(first)));
+    ctx.complete(&mut app);
+    app.request_document(&ctx, Request::Open(Some(second)));
+    ctx.complete(&mut app);
+    app.request_document(&ctx, Request::Close);
+    ctx.complete(&mut app);
+    assert_eq!(app.buffer.text(), "one");
+    crate::menu::clear_claim();
+    crate::menu::handle_menu_action(&mut app, &ctx, crate::menu::MenuAction::ReopenClosedTab);
+    assert_eq!(app.documents.tabs.tabs().len(), 2);
+    assert_eq!(app.buffer.text(), "two");
+}
+
+#[test]
+fn file_menu_open_recent_opens_the_stored_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("recent-target.txt");
+    std::fs::write(&file, "recent-body").unwrap();
+    let _guard = crate::menu::recent::begin_test(&dir.path().join("recent.json"));
+    crate::menu::recent::note(Some(&file));
+    crate::menu::recent::sync();
+    let ctx = Context::new();
+    let mut app = app();
+    crate::menu::file::open_recent(&mut app, &ctx, 0);
+    ctx.complete(&mut app);
+    assert_eq!(app.buffer.text(), "recent-body");
+    assert_eq!(app.documents.path.as_deref(), Some(file.as_path()));
+}

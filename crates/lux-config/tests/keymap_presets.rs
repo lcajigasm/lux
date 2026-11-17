@@ -229,6 +229,8 @@ mod keymap {
             "ctrl+shift+t",
         );
         assert_binding(&preset, Platform::Mac, "reopen_closed_tab", "cmd+shift+t");
+        assert_binding(&preset, Platform::Windows, "new_window", "ctrl+shift+n");
+        assert_binding(&preset, Platform::Mac, "new_window", "cmd+shift+n");
         assert_binding(&preset, Platform::Windows, "prev_tab", "ctrl+pageup");
         assert_binding(&preset, Platform::Mac, "prev_tab", "cmd+shift+[");
         assert_binding(&preset, Platform::Windows, "next_tab", "ctrl+pagedown");
@@ -272,6 +274,8 @@ mod keymap {
             "ctrl+d",
         );
         assert_binding(&preset, Platform::Mac, "select_next_occurrence", "cmd+d");
+        assert_binding(&preset, Platform::Windows, "new_window", "ctrl+shift+n");
+        assert_binding(&preset, Platform::Mac, "new_window", "cmd+shift+n");
     }
 
     #[test]
@@ -306,6 +310,16 @@ mod keymap {
         // Ctrl-for-Cmd swap.
         assert_binding(&preset, Platform::Windows, "quick_open", "ctrl+shift+n");
         assert_binding(&preset, Platform::Mac, "quick_open", "cmd+shift+o");
+        // Shift-Command-N is New Window in Sublime and VS Code. JetBrains
+        // already uses Ctrl-Shift-N for quick open, so this preset has no
+        // New Window binding. On macOS the menu key equivalent still is
+        // Shift-Command-N, which is not quick open (Command-Shift-O).
+        assert!(preset.binding_for("new_window", Platform::Mac).is_none());
+        assert!(
+            preset
+                .binding_for("new_window", Platform::Windows)
+                .is_none()
+        );
         assert_binding(&preset, Platform::Windows, "goto_line", "ctrl+g");
         assert_binding(&preset, Platform::Mac, "goto_line", "cmd+l");
         assert_binding(&preset, Platform::Windows, "duplicate_line", "ctrl+d");

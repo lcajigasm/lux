@@ -209,7 +209,7 @@ fn test_inline_pill_unfold_click() {
     app.mouse.position.y = (app.tab_bar_height() + line_h * 0.5) as f64;
 
     // Trigger editor mouse press via begin_mouse_selection
-    app.begin_mouse_selection();
+    app.begin_mouse_selection(1);
 
     // Pill click should have unfolded line 0
     assert!(!app.fold_state.is_line_folded(0));

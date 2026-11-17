@@ -16,6 +16,8 @@ pub(crate) enum SidebarAction {
     OpenInTerminal,
     CopyRelativePath,
     CopyAbsolutePath,
+    /// Drop the folder from the sidebar. The directory stays on disk.
+    CloseFolder,
 }
 
 impl SidebarAction {
@@ -30,6 +32,7 @@ impl SidebarAction {
             Self::OpenInTerminal => "Open in Terminal",
             Self::CopyRelativePath => "Copy Relative Path",
             Self::CopyAbsolutePath => "Copy Absolute Path",
+            Self::CloseFolder => "Close Folder",
         }
     }
 }
@@ -39,6 +42,8 @@ pub(crate) struct SidebarContextMenu {
     pub(crate) node_id: NodeId,
     #[allow(dead_code)]
     pub(crate) is_dir: bool,
+    /// Which open folder this menu closes. Zero is the header folder.
+    pub(crate) root_index: usize,
     pub(crate) rect: [f32; 4],
     pub(crate) items: Vec<SidebarAction>,
 }
@@ -72,6 +77,27 @@ impl SidebarContextMenu {
         Self {
             node_id,
             is_dir,
+            root_index: 0,
+            rect: [x, y, width, height],
+            items,
+        }
+    }
+
+    /// A menu whose only command removes that folder from the sidebar.
+    pub(crate) fn close_folder(
+        node_id: NodeId,
+        root_index: usize,
+        x: f32,
+        y: f32,
+        scale: f32,
+    ) -> Self {
+        let items = vec![SidebarAction::CloseFolder];
+        let width = SIDEBAR_MENU_WIDTH * scale;
+        let height = (items.len() as f32 * SIDEBAR_MENU_ITEM_HEIGHT + 8.0) * scale;
+        Self {
+            node_id,
+            is_dir: true,
+            root_index,
             rect: [x, y, width, height],
             items,
         }

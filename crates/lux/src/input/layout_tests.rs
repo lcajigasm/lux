@@ -292,7 +292,7 @@ fn test_split_click_focus_and_interactive_editing() {
         "active pane must transfer to pane 1"
     );
 
-    app.begin_mouse_selection();
+    app.begin_mouse_selection(1);
 
     // 2. Edit right pane (type text)
     app.insert_at_cursor("RIGHT_EDITED ");
@@ -318,7 +318,7 @@ fn test_split_click_focus_and_interactive_editing() {
         app.ui.split.active_pane, 0,
         "active pane must transfer back to pane 0"
     );
-    app.begin_mouse_selection();
+    app.begin_mouse_selection(1);
 
     // 5. Edit left pane
     app.insert_at_cursor("LEFT_EDITED ");

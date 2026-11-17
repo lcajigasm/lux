@@ -1,6 +1,7 @@
 //! Supporting state structs for the Lux desktop application.
 
 use lux_core::position::Position;
+use lux_core::selection::Selection;
 use lux_platform::{PlatformWindow, WindowId};
 use lux_render::{GlyphAtlas, GpuContext, QuadPipeline, Surface, TextPipeline};
 use swash::scale::ScaleContext;
@@ -16,6 +17,15 @@ pub(crate) struct GpuWindow {
     pub(crate) text: TextPipeline,
 }
 
+/// A pointer press inside an existing selection. It stays armed until the
+/// pointer moves, and only then moves or copies the selection on release.
+pub(crate) struct SelectionDrag {
+    pub(crate) origin: dpi::PhysicalPosition<f64>,
+    pub(crate) copy: bool,
+    pub(crate) active: bool,
+    pub(crate) selection: Selection,
+}
+
 pub(crate) struct MouseState {
     pub(crate) position: dpi::PhysicalPosition<f64>,
     /// Set once a cursor event has landed inside the view. Until then the
@@ -23,10 +33,18 @@ pub(crate) struct MouseState {
     /// event must not be read as "the pointer is on the tabs".
     pub(crate) placed: bool,
     pub(crate) selection_anchor: Option<Position>,
-    pub(crate) last_click: Option<(std::time::Instant, usize)>,
+    pub(crate) selection_drag: Option<SelectionDrag>,
+    /// Time, line, and how many clicks have landed on that line.
+    pub(crate) last_click: Option<(std::time::Instant, usize, u8)>,
+    /// The word a double click selected. A drag unions further words onto it.
+    pub(crate) word_anchor: Option<Selection>,
+    /// The line a triple click selected. A drag unions further lines onto it.
+    pub(crate) line_anchor: Option<Selection>,
+    pub(crate) context_menu: Option<crate::edit_menu::BufferContextMenu>,
 }
 
 pub(crate) struct SyntaxState {
+    pub(crate) buffer_id: u64,
     pub(crate) highlighter: lux_syntax::BackgroundHighlighter,
     pub(crate) language: lux_syntax::LanguageId,
     pub(crate) theme: &'static lux_syntax::theme::SyntaxTheme,

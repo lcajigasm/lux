@@ -1,0 +1,32 @@
+name: H2 key frame
+
+# Release Lux.app types into a 20k-line file. The job fails when the
+# key-to-frame clock has fewer than 10 samples, the file did not take the
+# keystrokes, or the frame is missing. A budget miss does not fail the job.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keys:
+    name: h2 key frame (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Type into a 20k-line file
+        run: |
+          chmod +x scripts/h2-key-frame.sh scripts/stage-lux-app.sh
+          ./scripts/h2-key-frame.sh
+      - name: Upload the frame and the clock
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h2-key-frame
+          path: docs/evidence/h2/**
+          if-no-files-found: error

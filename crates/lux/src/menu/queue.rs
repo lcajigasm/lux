@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use super::MenuAction;
 
 static MENU_QUEUE: Mutex<Vec<MenuAction>> = Mutex::new(Vec::new());
+static RECENT_QUEUE: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static WAKER: Mutex<Option<Arc<dyn Fn() + Send + Sync>>> = Mutex::new(None);
 
 /// Registers the platform event loop waker (e.g. `PlatformContext::background_waker`).
@@ -31,6 +32,23 @@ pub(crate) fn post_action(action: MenuAction) {
         queue.push(action);
     }
     wake();
+}
+
+/// Posts an Open Recent row. The tag is the slot, not a `MenuAction`.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn post_recent(index: usize) {
+    if let Ok(mut queue) = RECENT_QUEUE.lock() {
+        queue.push(index);
+    }
+    wake();
+}
+
+pub(crate) fn poll_recent() -> Vec<usize> {
+    if let Ok(mut queue) = RECENT_QUEUE.lock() {
+        std::mem::take(&mut *queue)
+    } else {
+        Vec::new()
+    }
 }
 
 /// Takes all pending menu actions from the queue.

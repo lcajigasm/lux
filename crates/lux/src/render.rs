@@ -1,17 +1,17 @@
-//! Frame drawing: window/GPU setup and the per-frame draw calls.
-//! Split from `crate::app` so this `impl App` stays under the 600-line limit.
-
 mod about;
 mod branch_picker;
 mod build;
 mod clip;
 mod conflict;
+mod edit_menu;
 mod git;
 mod goto;
+mod html_view;
 mod icons;
+mod ime;
 mod language_picker;
 mod lsp;
-mod markdown;
+pub(crate) mod markdown;
 mod minimap;
 mod modals;
 pub(crate) mod paint;
@@ -37,7 +37,7 @@ use std::time::Instant;
 use crate::presentation::Outcome;
 use lux_platform::PlatformContext;
 use lux_render::QuadInstance;
-use paint::{DrawList, color, push_glyph, set_active_theme, set_hidpi_grayscale};
+use paint::{DrawList, color, set_active_theme, set_hidpi_grayscale};
 
 use crate::app::{App, BLINK_INTERVAL, TEXT_LEFT_PADDING};
 
@@ -176,10 +176,24 @@ impl App {
                 color(chrome.theme.background),
             ));
 
+            let html_preview = documents.active_entry().is_some_and(|entry| {
+                entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Html)
+            });
             let show_preview = documents.active_entry().is_some_and(|entry| {
                 entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Markdown)
             });
-            if !show_preview {
+            let content_width = (viewport.width - sidebar_width).max(1.0);
+            let pane_cap = (content_width * 0.62).max(1.0);
+            let preview_width = if html_preview || show_preview {
+                (content_width * 0.46).clamp(180.0_f32.min(pane_cap), pane_cap)
+            } else {
+                0.0
+            };
+            let mut editor_viewport = *viewport;
+            if html_preview || show_preview {
+                editor_viewport.width = (content_width - preview_width).max(1.0);
+            }
+            {
                 for cursor in &frame.cursors {
                     if cursor.primary {
                         let cur_y = editor_top + cursor.y - viewport.scroll_y;
@@ -188,7 +202,7 @@ impl App {
                             let h_w = if is_df {
                                 window_width
                             } else {
-                                (sidebar_width + viewport.width - text_left).max(0.0)
+                                (sidebar_width + editor_viewport.width - text_left).max(0.0)
                             };
                             quad_instances.push(QuadInstance::solid(
                                 [h_x, cur_y, h_w, line_height],
@@ -201,7 +215,7 @@ impl App {
                     &frame,
                     buffer,
                     syntax.as_ref(),
-                    viewport,
+                    &editor_viewport,
                     editor_top,
                     line_height,
                     sidebar_width,
@@ -219,7 +233,7 @@ impl App {
                         search_state,
                         buffer,
                         editor_view,
-                        viewport,
+                        &editor_viewport,
                         editor_top,
                         line_height,
                         TEXT_LEFT_PADDING * *scale_factor,
@@ -230,7 +244,7 @@ impl App {
                 let caret_h = font_size + 2.0 * stroke;
                 cursor_screen = text::render_carets(
                     &frame,
-                    viewport,
+                    &editor_viewport,
                     editor_top,
                     text_left,
                     sidebar_width,
@@ -244,7 +258,7 @@ impl App {
                     text::render_gutter(
                         &frame,
                         Some(bookmarks),
-                        viewport,
+                        &editor_viewport,
                         editor_top,
                         line_height,
                         sidebar_width,
@@ -258,22 +272,27 @@ impl App {
                         &mut gutter_glyphs,
                     );
                 }
-            } else {
-                markdown::render_preview(
-                    buffer,
-                    editor_view,
-                    atlas_state,
-                    font,
-                    font_size,
-                    line_height,
-                    text_left,
-                    editor_top,
-                    viewport.height,
-                    &chrome.theme,
-                    &mut quad_instances,
-                    &mut glyph_instances,
-                );
             }
+            html_view::paint_open(
+                show_preview,
+                html_preview,
+                buffer,
+                editor_view,
+                atlas_state,
+                font,
+                font_size,
+                line_height,
+                sidebar_width + editor_viewport.width,
+                preview_width,
+                editor_top,
+                viewport.height,
+                16.0 * *scale_factor,
+                stroke,
+                &chrome.theme,
+                crate::color_scheme::syntax_theme(&ui.settings.schemes, chrome.theme.name),
+                &mut quad_instances,
+                &mut glyph_instances,
+            );
         }
 
         if tab_bar_height > 0.0 {
@@ -298,54 +317,21 @@ impl App {
             );
         }
 
-        if ime.is_composing()
-            && let Some((x, y)) = cursor_screen
-        {
-            let family = editor_view.family().to_string();
-            let style = lux_render::LineStyle {
-                family: &family,
-                font_size,
-                ligatures: false,
-            };
-            let preedit_text = ime.preedit_text().to_string();
-            let layout = editor_view
-                .text_layout_mut()
-                .layout_line(&style, &preedit_text, &[]);
-            for cluster in layout.clusters() {
-                push_glyph(
-                    &mut atlas_state.atlas,
-                    &mut atlas_state.dirty,
-                    &mut atlas_state.scale_cx,
-                    font,
-                    font_size,
-                    &cluster,
-                    x,
-                    y + layout.baseline(),
-                    foreground,
-                    &mut glyph_instances,
-                );
-            }
-            // A thin underline marks in-progress composition, the same
-            // convention a desktop IME uses for uncommitted text.
-            quad_instances.push(QuadInstance::solid(
-                [
-                    x,
-                    y + line_height - 2.0 * stroke,
-                    layout.width().max(stroke),
-                    2.0 * stroke,
-                ],
-                color(chrome.theme.accent),
-            ));
-            gpu_window.window.set_ime_cursor_area(
-                dpi::PhysicalPosition::new(x as i32, y as i32),
-                dpi::PhysicalSize::new(layout.width().max(stroke) as u32, line_height as u32),
-            );
-        } else if let Some((x, y)) = cursor_screen {
-            gpu_window.window.set_ime_cursor_area(
-                dpi::PhysicalPosition::new(x as i32, y as i32),
-                dpi::PhysicalSize::new((2.0 * stroke) as u32, line_height as u32),
-            );
-        }
+        ime::paint_composition(
+            ime,
+            cursor_screen,
+            gpu_window.window,
+            editor_view,
+            atlas_state,
+            font,
+            font_size,
+            line_height,
+            stroke,
+            foreground,
+            color(chrome.theme.accent),
+            &mut quad_instances,
+            &mut glyph_instances,
+        );
         let language_id = documents.language();
         if let Some(search_state) = &mut ui.search_bar {
             let search_bar_top = editor_top + viewport.height;
@@ -458,6 +444,7 @@ impl App {
             &mut atlas_state.scale_cx,
             &mut overlay_quads,
             &mut overlay_glyphs,
+            self.mouse.context_menu.as_ref(),
         );
 
         git::render_git(

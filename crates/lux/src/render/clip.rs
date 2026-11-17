@@ -46,6 +46,24 @@ pub(crate) fn clip_glyph(glyph: &mut GlyphInstance, bounds: [f32; 4]) -> bool {
     true
 }
 
+pub(crate) fn clip_quads(
+    quads: &mut Vec<lux_render::QuadInstance>,
+    start: usize,
+    bounds: [f32; 4],
+) {
+    let mut index = start;
+    while index < quads.len() {
+        let Some(rect) = clip_rect(quads[index].rect, bounds) else {
+            quads.swap_remove(index);
+            continue;
+        };
+        let [_, _, w, h] = rect;
+        quads[index].radius = quads[index].radius.min(w * 0.5).min(h * 0.5);
+        quads[index].rect = rect;
+        index += 1;
+    }
+}
+
 pub(crate) fn clip_glyphs(glyphs: &mut Vec<GlyphInstance>, start: usize, bounds: [f32; 4]) {
     let mut index = start;
     while index < glyphs.len() {
@@ -87,5 +105,21 @@ mod tests {
         )];
         clip_glyphs(&mut glyphs, 0, [0.0, 0.0, 100.0, 50.0]);
         assert!(glyphs.is_empty());
+    }
+
+    #[test]
+    fn a_row_that_crosses_the_header_or_the_status_bar_is_cut_to_the_list() {
+        let mut quads = vec![
+            lux_render::QuadInstance::solid([0.0, 10.0, 40.0, 20.0], [1.0, 0.0, 0.0, 1.0]),
+            lux_render::QuadInstance::solid([0.0, 90.0, 40.0, 30.0], [0.0, 1.0, 0.0, 1.0]),
+            lux_render::QuadInstance::solid([0.0, 120.0, 40.0, 10.0], [1.0, 1.0, 0.0, 1.0]),
+            lux_render::QuadInstance::rounded([4.0, 40.0, 16.0, 16.0], [0.0, 0.0, 1.0, 1.0], 4.0),
+        ];
+        clip_quads(&mut quads, 0, [0.0, 20.0, 200.0, 80.0]);
+        assert_eq!(quads.len(), 3);
+        assert_eq!(quads[0].rect, [0.0, 20.0, 40.0, 10.0]);
+        assert_eq!(quads[1].rect, [0.0, 90.0, 40.0, 10.0]);
+        assert_eq!(quads[2].rect, [4.0, 40.0, 16.0, 16.0]);
+        assert!((quads[2].radius - 4.0).abs() < f32::EPSILON);
     }
 }

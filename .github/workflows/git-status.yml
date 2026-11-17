@@ -1,0 +1,38 @@
+name: Git status
+
+# Real Lux.app on macos-15. Refresh Status must mark the dirty file,
+# and the capture is that compiled window.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    name: git status (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Mark the dirty file in the tree
+        run: |
+          chmod +x scripts/git-status-e2e.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/git-status-e2e.sh
+
+      - name: Upload status captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: git-status
+          path: docs/evidence/git-status/**
+          if-no-files-found: warn

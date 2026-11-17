@@ -99,6 +99,10 @@ pub(crate) enum MenuAction {
     InstallCommand = 163,
     UninstallCommand = 164,
     SelectColorTheme = 3,
+    SaveAll = 210,
+    ReopenClosedTab = 211,
+    NewWindow = 212,
+    ClearRecent = 213,
 }
 
 impl MenuAction {
@@ -109,105 +113,17 @@ impl MenuAction {
 
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub(crate) fn from_tag(tag: isize) -> Option<Self> {
-        match tag {
-            1 => Some(Self::About),
-            2 => Some(Self::Preferences),
-            3 => Some(Self::SelectColorTheme),
-            10 => Some(Self::NewFile),
-            11 => Some(Self::OpenFile),
-            12 => Some(Self::OpenFolder),
-            13 => Some(Self::Save),
-            14 => Some(Self::SaveAs),
-            15 => Some(Self::CloseTab),
-            16 => Some(Self::CloneViewToGroup),
-            17 => Some(Self::NewViewIntoFile),
-            20 => Some(Self::Undo),
-            21 => Some(Self::Redo),
-            22 => Some(Self::Cut),
-            23 => Some(Self::Copy),
-            24 => Some(Self::Paste),
-            25 => Some(Self::SelectAll),
-            26 => Some(Self::ToggleComment),
-            27 => Some(Self::DuplicateLine),
-            28 => Some(Self::DeleteLine),
-            29 => Some(Self::JoinLines),
-            30 => Some(Self::AddNextOccurrence),
-            31 => Some(Self::SelectAllOccurrences),
-            32 => Some(Self::SkipOccurrence),
-            33 => Some(Self::SplitIntoLines),
-            34 => Some(Self::AddCursorAbove),
-            35 => Some(Self::AddCursorBelow),
-            36 => Some(Self::ExpandToLine),
-            37 => Some(Self::ExpandToScope),
-            38 => Some(Self::ExpandToTag),
-            40 => Some(Self::Find),
-            41 => Some(Self::Replace),
-            42 => Some(Self::FindInFiles),
-            43 => Some(Self::ReplaceInFiles),
-            44 => Some(Self::SwapLineUp),
-            45 => Some(Self::SwapLineDown),
-            46 => Some(Self::FindNext),
-            47 => Some(Self::FindPrev),
-            48 => Some(Self::FindNextResult),
-            49 => Some(Self::FindPrevResult),
-            50 => Some(Self::ToggleSidebar),
-            51 => Some(Self::ToggleMinimap),
-            52 => Some(Self::ToggleTerminal),
-            53 => Some(Self::ChangeLanguageMode),
-            54 => Some(Self::NextTab),
-            55 => Some(Self::PrevTab),
-            56 => Some(Self::ToggleWordWrap),
-            57 => Some(Self::SplitRight),
-            58 => Some(Self::SplitDown),
-            59 => Some(Self::CloseSplit),
-            60 => Some(Self::GotoAnything),
-            61 => Some(Self::GotoSymbolInProject),
-            62 => Some(Self::ToggleDistractionFree),
-            70 => Some(Self::CommandPalette),
-            80 => Some(Self::Fold),
-            81 => Some(Self::Unfold),
-            82 => Some(Self::FoldAll),
-            83 => Some(Self::UnfoldAll),
-            84 => Some(Self::JumpToMatchingBracket),
-            90 => Some(Self::ToggleBookmark),
-            91 => Some(Self::NextBookmark),
-            92 => Some(Self::PrevBookmark),
-            93 => Some(Self::ClearBookmarks),
-            94 => Some(Self::SelectAllBookmarks),
-            110 => Some(Self::LayoutSingle),
-            111 => Some(Self::LayoutColumns2),
-            112 => Some(Self::LayoutColumns3),
-            113 => Some(Self::LayoutColumns4),
-            114 => Some(Self::LayoutRows2),
-            115 => Some(Self::LayoutRows3),
-            116 => Some(Self::LayoutGrid2x2),
-            120 => Some(Self::FocusGroup1),
-            121 => Some(Self::FocusGroup2),
-            122 => Some(Self::FocusGroup3),
-            123 => Some(Self::FocusGroup4),
-            130 => Some(Self::MoveToGroup1),
-            131 => Some(Self::MoveToGroup2),
-            132 => Some(Self::MoveToGroup3),
-            133 => Some(Self::MoveToGroup4),
-            140 => Some(Self::Build),
-            141 => Some(Self::BuildWith),
-            142 => Some(Self::CancelBuild),
-            150 => Some(Self::OpenProject),
-            151 => Some(Self::SaveProjectAs),
-            152 => Some(Self::QuickSwitchProject),
-            153 => Some(Self::CloseProject),
-            160 => Some(Self::ToggleRecordMacro),
-            161 => Some(Self::PlaybackMacro),
-            162 => Some(Self::SaveMacro),
-            163 => Some(Self::InstallCommand),
-            164 => Some(Self::UninstallCommand),
-            _ => None,
-        }
+        tags::from_tag(tag)
     }
 }
 
 mod chords;
+pub(crate) mod file;
 mod queue;
+pub(crate) mod recent;
+mod tags;
+
+pub(crate) use recent::note;
 
 #[cfg(test)]
 pub(crate) use chords::clear_claim;
@@ -260,6 +176,18 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
         }
         MenuAction::CloseTab => {
             app.request_document(ctx, crate::document::Request::Close);
+        }
+        MenuAction::SaveAll => {
+            app.save_all(ctx);
+        }
+        MenuAction::ReopenClosedTab => {
+            app.reopen_last_closed_tab();
+        }
+        MenuAction::NewWindow => {
+            file::open_new_window(app);
+        }
+        MenuAction::ClearRecent => {
+            recent::clear();
         }
         MenuAction::CloneViewToGroup => {
             app.clone_view_to_group(None);
@@ -568,8 +496,10 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
 }
 
 pub(crate) fn poll_and_dispatch(app: &mut App, ctx: &dyn PlatformContext) {
-    let actions = poll_actions();
-    for action in actions {
+    for index in queue::poll_recent() {
+        file::open_recent(app, ctx, index);
+    }
+    for action in poll_actions() {
         handle_menu_action(app, ctx, action);
     }
 }

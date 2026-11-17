@@ -55,6 +55,10 @@ fn test_menu_action_tag_roundtrip() {
         MenuAction::FoldAll,
         MenuAction::UnfoldAll,
         MenuAction::JumpToMatchingBracket,
+        MenuAction::SaveAll,
+        MenuAction::ReopenClosedTab,
+        MenuAction::NewWindow,
+        MenuAction::ClearRecent,
     ];
 
     for action in all_actions {
@@ -71,6 +75,8 @@ fn test_menu_action_tag_roundtrip() {
 fn test_invalid_tag_returns_none() {
     assert_eq!(MenuAction::from_tag(0), None);
     assert_eq!(MenuAction::from_tag(-1), None);
+    assert_eq!(MenuAction::from_tag(200), None);
+    assert_eq!(MenuAction::from_tag(209), None);
     assert_eq!(MenuAction::from_tag(9999), None);
 }
 
@@ -91,6 +97,10 @@ fn test_menu_queue_fifo() {
 
     // Subsequent poll is empty
     assert!(poll_actions().is_empty());
+
+    super::queue::post_recent(2);
+    assert_eq!(super::queue::poll_recent(), vec![2]);
+    assert!(super::queue::poll_recent().is_empty());
 }
 
 use crate::app::App;

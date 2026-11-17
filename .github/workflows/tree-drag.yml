@@ -1,0 +1,37 @@
+name: Tree drag
+
+# Real Lux.app on macos-15. Dragging a sidebar row moves the file into the folder.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drag:
+    name: tree drag (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Drag a tree row
+        run: |
+          chmod +x scripts/tree-drag.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/tree-drag.sh
+
+      - name: Upload the tree drag capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tree-drag
+          path: docs/evidence/tree-drag/**
+          if-no-files-found: error

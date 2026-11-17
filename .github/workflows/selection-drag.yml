@@ -1,0 +1,37 @@
+name: Selection drag
+
+# Real Lux.app on macos-15. Dragging a selection moves it; Option-drag copies it.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drag:
+    name: selection drag (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Drag a selection
+        run: |
+          chmod +x scripts/selection-drag.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/selection-drag.sh
+
+      - name: Upload the drag capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selection-drag
+          path: docs/evidence/selection-drag/**
+          if-no-files-found: error

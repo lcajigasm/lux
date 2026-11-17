@@ -34,9 +34,11 @@ if [[ ! -x "$bin" ]]; then
 fi
 
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/SharedSupport/bin"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/SharedSupport/bin"
 cp "$bin" "$app/Contents/MacOS/lux"
 cp "$bin" "$app/Contents/SharedSupport/bin/lux"
 cp "$root/packaging/macos/Info.plist" "$app/Contents/Info.plist"
+cp "$root/packaging/macos/lux.icns" "$app/Contents/Resources/lux.icns"
+cp "$root/packaging/macos/lux-classic.icns" "$app/Contents/Resources/lux-classic.icns"
 chmod +x "$app/Contents/MacOS/lux" "$app/Contents/SharedSupport/bin/lux"
 echo "$app"

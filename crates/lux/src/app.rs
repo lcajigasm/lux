@@ -38,10 +38,12 @@ pub(crate) const TAB_CLOSE_BTN_WIDTH: f32 = 24.0;
 mod bookmarks;
 mod folding;
 mod selection;
+mod startup;
 mod syntax;
 mod types;
+pub(crate) mod view_bind;
 mod views;
-pub(crate) use types::{AtlasState, GpuWindow, MouseState, SyntaxState};
+pub(crate) use types::{AtlasState, GpuWindow, MouseState, SelectionDrag, SyntaxState};
 
 pub(crate) struct App {
     pub(crate) scale_factor: f32,
@@ -99,24 +101,13 @@ impl App {
             column_rulers: Vec::new(),
             blink_interval: BLINK_INTERVAL,
         };
-        let mut editor_view = EditorView::new(text_layout, font_bytes, metrics)
+        let editor_view = EditorView::new(text_layout, font_bytes, metrics)
             .expect("system font bytes read from disk must parse as a real font");
-        crate::font::install_coverage_fallbacks(editor_view.text_layout_mut());
-        crate::font::install_ui_font(editor_view.text_layout_mut());
 
         let buffer = Buffer::from_bytes(b"").expect("empty document decodes");
         let cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
 
-        let mut documents = crate::document::Documents::default();
-        if let Some(first) = Self::recoverable_documents().first() {
-            documents.message = Some(format!(
-                "Unsaved recovery session available: {}",
-                first
-                    .file_name()
-                    .unwrap_or(first.as_os_str())
-                    .to_string_lossy()
-            ));
-        }
+        let documents = crate::document::Documents::default();
 
         Self {
             scale_factor: 1.0,
@@ -135,7 +126,11 @@ impl App {
                 position: dpi::PhysicalPosition::new(0.0, 0.0),
                 placed: false,
                 selection_anchor: None,
+                selection_drag: None,
                 last_click: None,
+                word_anchor: None,
+                line_anchor: None,
+                context_menu: None,
             },
             accessibility_active: false,
             viewport: Viewport {
@@ -443,6 +438,7 @@ impl PlatformEventHandler for App {
                 self.redraw(ctx);
                 crate::snapshot::capture_settled(self, ctx);
                 crate::probe::on_frame(self, frame_began.elapsed());
+                self.after_first_frame();
             }
             PlatformEvent::Keyboard(key_event) => {
                 if key_event.state == ElementState::Pressed
@@ -460,6 +456,10 @@ impl PlatformEventHandler for App {
             PlatformEvent::Focused(false) => {
                 self.modifiers = Modifiers::default();
                 self.mouse.selection_anchor = None;
+                self.mouse.word_anchor = None;
+                self.mouse.line_anchor = None;
+                self.mouse.context_menu = None;
+                crate::sidebar::drag::cancel(self);
             }
             PlatformEvent::Ime(ime_event) => {
                 crate::ime_hold::observe(self, ime_event);
@@ -485,8 +485,19 @@ impl PlatformEventHandler for App {
                 {
                     gpu_window.window.request_redraw();
                 }
+                if crate::sidebar::drag::update(self, position.x as f32, position.y as f32)
+                    && let Some(gpu_window) = &self.gpu_window
+                {
+                    gpu_window.window.request_redraw();
+                }
                 if self.ui.split.dragging_divider.is_some() {
                     self.handle_divider_drag(position.x as f32, position.y as f32);
+                } else if self.mouse.selection_drag.is_some() {
+                    self.update_selection_drag();
+                    self.refresh_accessibility();
+                    if let Some(gpu_window) = &self.gpu_window {
+                        gpu_window.window.request_redraw();
+                    }
                 } else if self.mouse.selection_anchor.is_some() {
                     self.update_mouse_selection();
                     self.refresh_accessibility();
@@ -497,43 +508,17 @@ impl PlatformEventHandler for App {
             }
             PlatformEvent::MouseButton { button, state } => {
                 if state == ElementState::Pressed {
-                    if !self.handle_mouse_click_on_chrome(ctx, button)
-                        && button == MouseButton::Left
+                    if !crate::edit_menu::take_menu_click(self, ctx, button)
+                        && !self.handle_mouse_click_on_chrome(ctx, button)
                     {
-                        self.ui.project_search = None;
-                        self.ui.command_palette = None;
-                        self.ui.goto_anything = None;
-                        self.ui.language_picker = None;
-                        self.ui.build.picker = None;
-                        self.ui.project.picker = None;
-                        self.ui.theme_picker = None;
-                        self.ui.snippets.picker = None;
-                        self.ui.git.branch_picker = None;
-                        crate::focus::focus_editor(self);
-
-                        let pos = self.position_at_mouse();
-                        let now = std::time::Instant::now();
-                        let is_double_click = if let Some((last_time, last_line)) =
-                            self.mouse.last_click
-                        {
-                            now.duration_since(last_time).as_millis() < 400 && last_line == pos.line
-                        } else {
-                            false
-                        };
-                        self.mouse.last_click = Some((now, pos.line));
-
-                        if is_double_click && self.is_find_results_active() {
-                            crate::find_results::open_find_result_at_line(
-                                self,
-                                Some(ctx),
-                                pos.line,
-                            );
-                        } else {
-                            self.begin_mouse_selection();
-                        }
+                        crate::edit_menu::press_editor(self, ctx, button);
                     }
                 } else if button == MouseButton::Left {
+                    crate::sidebar::drag::release(self, ctx);
+                    self.finish_selection_drag();
                     self.mouse.selection_anchor = None;
+                    self.mouse.word_anchor = None;
+                    self.mouse.line_anchor = None;
                     self.documents.tab_drag = None;
                     self.end_divider_drag();
                 }
@@ -564,6 +549,9 @@ impl PlatformEventHandler for App {
                 }
             }
             PlatformEvent::AccessibilityDeactivated => self.accessibility_active = false,
+            PlatformEvent::DroppedFile(path) => {
+                crate::document::open_queue::enqueue(self, ctx, path);
+            }
             _ => {}
         }
     }

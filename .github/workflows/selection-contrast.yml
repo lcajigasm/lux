@@ -1,0 +1,38 @@
+name: Selection contrast
+
+# Real Lux.app on macos-15. Triple-click and word selection on Monokai
+# must paint above SELECTION_CONTRAST_MIN. The unit test covers all 14 themes.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  selection:
+    name: selection contrast (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Capture Monokai selections
+        run: |
+          chmod +x scripts/selection-contrast.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/selection-contrast.sh
+
+      - name: Upload the selection captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selection-contrast
+          path: docs/evidence/selection-contrast/**
+          if-no-files-found: error

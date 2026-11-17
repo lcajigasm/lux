@@ -28,6 +28,7 @@ pub(crate) fn render_all_modals(
     scale_cx: &mut ScaleContext,
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
+    buffer_menu: Option<&crate::edit_menu::BufferContextMenu>,
 ) {
     if let Some(pal) = &mut ui.command_palette {
         super::palette::render_command_palette(
@@ -234,6 +235,22 @@ pub(crate) fn render_all_modals(
             atlas_dirty,
             scale_cx,
             theme,
+            quad_instances,
+            glyph_instances,
+        );
+    }
+
+    if let Some(menu) = buffer_menu {
+        super::edit_menu::render_buffer_menu(
+            menu,
+            scale_factor,
+            stroke,
+            font,
+            theme,
+            editor_view,
+            atlas,
+            atlas_dirty,
+            scale_cx,
             quad_instances,
             glyph_instances,
         );

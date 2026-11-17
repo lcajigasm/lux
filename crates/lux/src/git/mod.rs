@@ -3,6 +3,7 @@
 //! Provides gutter change indicators against HEAD, hunk staging/reverting popup,
 //! Source Control sidebar panel, diff views, and inline merge conflict resolution.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use lux_core::buffer::Buffer;
@@ -22,6 +23,7 @@ pub(crate) use branch_picker::handle_branch_picker_key;
 pub(crate) use job::{
     poll, register_waker, request_blame, request_branch_list, request_commit, request_diff,
     request_history, request_stage_cursor_hunk, request_stage_file, request_status,
+    request_unstage_cursor_hunk,
 };
 
 #[derive(Debug, Clone)]
@@ -68,6 +70,57 @@ pub(crate) struct GitState {
 impl GitState {
     pub(crate) fn new() -> Self {
         Self::default()
+    }
+}
+
+/// `M`, `A`, or `D` for each changed path, plus the same letter on every
+/// parent directory under `root`. The repository root itself is unmarked.
+pub(crate) fn git_mark_map(root: &Path, files: &[ChangedFile]) -> HashMap<PathBuf, char> {
+    let mut marks = HashMap::new();
+    for file in files {
+        let letter = match file.status {
+            lux_git::diff_panel::ChangeStatus::Added => 'A',
+            lux_git::diff_panel::ChangeStatus::Modified => 'M',
+            lux_git::diff_panel::ChangeStatus::Deleted => 'D',
+        };
+        let absolute = root.join(&file.path);
+        marks.insert(absolute.clone(), letter);
+        let mut parent = absolute.parent();
+        while let Some(dir) = parent {
+            if dir == root {
+                break;
+            }
+            marks.entry(dir.to_path_buf()).or_insert(letter);
+            parent = dir.parent();
+        }
+    }
+    marks
+}
+
+/// Probe and test label: relative paths, sorted, `path:M`.
+pub(crate) fn git_marks_label(files: &[ChangedFile]) -> String {
+    let mut parts = files
+        .iter()
+        .map(|file| {
+            let letter = match file.status {
+                lux_git::diff_panel::ChangeStatus::Added => 'A',
+                lux_git::diff_panel::ChangeStatus::Modified => 'M',
+                lux_git::diff_panel::ChangeStatus::Deleted => 'D',
+            };
+            format!("{}:{letter}", file.path.display())
+        })
+        .collect::<Vec<_>>();
+    parts.sort();
+    parts.join(",")
+}
+
+pub(crate) fn publish_git_marks(app: &mut App) {
+    let Some(root) = app.ui.git.repo_root.clone() else {
+        return;
+    };
+    let marks = git_mark_map(&root, &app.ui.git.changed_files);
+    if let Some(sidebar) = app.ui.sidebar.as_mut() {
+        sidebar.git_marks = marks;
     }
 }
 
@@ -119,6 +172,13 @@ pub(crate) fn refresh_git_state(app: &mut App) {
 }
 
 pub(crate) fn find_conflict_blocks(buffer: &Buffer) -> Vec<ConflictMarkerBlock> {
+    // A 100 MB file of short lines is tens of millions of lines. Walking
+    // each one allocates a string and holds the first frame. Conflict
+    // markers always contain `<`, so a chunk scan is enough to skip that
+    // walk. A file that does contain `<` still uses the line walk below.
+    if !buffer.rope().chunks().any(|chunk| chunk.contains('<')) {
+        return Vec::new();
+    }
     let mut blocks = Vec::new();
     let total_lines = buffer.len_lines();
 
@@ -380,6 +440,12 @@ mod tests {
         assert_eq!(blocks[0].end_line, 5);
         assert!(blocks[0].ours.contains("ours()"));
         assert!(blocks[0].theirs.contains("theirs()"));
+    }
+
+    #[test]
+    fn a_buffer_without_a_less_than_has_no_conflict_blocks() {
+        let buf = Buffer::from_bytes(b"line\nline\nline\n").unwrap();
+        assert!(find_conflict_blocks(&buf).is_empty());
     }
 
     #[test]

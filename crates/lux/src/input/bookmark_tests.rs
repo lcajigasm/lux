@@ -241,11 +241,11 @@ fn test_mouse_gutter_click_toggles_bookmark() {
     // Click near left gutter margin at line 1
     let tab_bar_h = app.tab_bar_height();
     app.mouse.position = dpi::PhysicalPosition::new(5.0, (tab_bar_h + LINE_HEIGHT + 2.0) as f64);
-    app.begin_mouse_selection();
+    app.begin_mouse_selection(1);
 
     assert!(app.bookmarks.contains(1));
 
     // Click again to toggle off
-    app.begin_mouse_selection();
+    app.begin_mouse_selection(1);
     assert!(!app.bookmarks.contains(1));
 }

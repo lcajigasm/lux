@@ -1,0 +1,38 @@
+name: Buffer menu
+
+# Real Lux.app on macos-15. Double-click selects a word. Right-click opens
+# the buffer menu over that selection.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  menu:
+    name: buffer menu (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Open the menu and select a word
+        run: |
+          chmod +x scripts/buffer-menu.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/buffer-menu.sh
+
+      - name: Upload buffer menu captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buffer-menu
+          path: docs/evidence/buffer-menu/**
+          if-no-files-found: error

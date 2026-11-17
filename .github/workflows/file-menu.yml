@@ -1,0 +1,31 @@
+name: File menu
+
+# Real File menu on the free macos-15 runner. The job fails when the
+# capture is missing or System Events cannot see the new items.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  file-menu:
+    name: file menu open (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Open the File menu
+        run: |
+          chmod +x scripts/file-menu.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/file-menu.sh
+      - name: Upload the open File menu
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: file-menu
+          path: docs/evidence/file-menu/**
+          if-no-files-found: error

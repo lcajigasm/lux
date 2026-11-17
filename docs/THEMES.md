@@ -35,5 +35,18 @@ Catppuccin Latte is the light palette of the same MIT project as the
 Catppuccin (Mocha) file. Rose Pine is included because it is a widely used
 editor theme and its repository is MIT.
 
+## Selection
+
+`bundled_selections_clear_the_editor` composites `globals.selection` over
+`globals.background` and requires WCAG contrast of at least 1.30:1
+(`lux_ui::SELECTION_CONTRAST_MIN`). Sublime Monokai `#49483E` on `#272822`
+is 1.61. The same RGB with alpha `88` paints 1.28 and fails the gate.
+VS Code Monokai `editor.selectionBackground` `#878b9180` paints about 2.13.
+Monokai ships the opaque Sublime color. Gruvbox uses palette `bg2`
+`#504945` instead of `bg1`, which sat on the editor the same way.
+Solarized Dark `#1C4650` and Solarized Light `#D4CEBE` step off the
+current-line well (`#073642` / `#eee8d5`) so the selection is a different
+band from the line highlight.
+
 Monokai Pro is proprietary and is not included. The 2006 `Monokai.tmTheme`
 has no license that allows redistribution, so it is not vendored.

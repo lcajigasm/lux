@@ -1,0 +1,30 @@
+name: Unstage hunk
+
+# Free macos-15. One PNG of the compiled window after unstaging a hunk.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shot:
+    name: unstage hunk (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Unstage one hunk and capture the window
+        run: |
+          chmod +x scripts/unstage-shot.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/unstage-shot.sh
+      - name: Upload unstage-hunk.png
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unstage-hunk
+          path: docs/evidence/unstage-hunk.png
+          if-no-files-found: error

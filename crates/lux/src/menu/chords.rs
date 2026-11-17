@@ -27,6 +27,10 @@ const ROWS: &[Row] = &[
         key: "n",
     },
     Row {
+        action: MenuAction::NewWindow,
+        key: "N",
+    },
+    Row {
         action: MenuAction::OpenFile,
         key: "o",
     },
@@ -39,8 +43,16 @@ const ROWS: &[Row] = &[
         key: "S",
     },
     Row {
+        action: MenuAction::SaveAll,
+        key: "s",
+    },
+    Row {
         action: MenuAction::CloseTab,
         key: "w",
+    },
+    Row {
+        action: MenuAction::ReopenClosedTab,
+        key: "t",
     },
     Row {
         action: MenuAction::Undo,
@@ -129,6 +141,9 @@ pub(crate) fn action_for_command(cmd: &str) -> Option<MenuAction> {
         "find" => MenuAction::Find,
         "quick_open" => MenuAction::GotoAnything,
         "file.new" => MenuAction::NewFile,
+        "new_window" | "file.new_window" => MenuAction::NewWindow,
+        "save_all" | "file.save_all" => MenuAction::SaveAll,
+        "reopen_closed_tab" | "file.reopen_closed_tab" => MenuAction::ReopenClosedTab,
         "command_palette" => MenuAction::CommandPalette,
         "open_settings" | "preferences.open_settings_ui" => MenuAction::Preferences,
         _ => return None,
@@ -233,6 +248,9 @@ mod tests {
             (MenuAction::GotoAnything, "quick_open"),
             (MenuAction::CommandPalette, "command_palette"),
             (MenuAction::Preferences, "open_settings"),
+            (MenuAction::NewWindow, "new_window"),
+            (MenuAction::SaveAll, "save_all"),
+            (MenuAction::ReopenClosedTab, "reopen_closed_tab"),
         ];
         for (action, command) in pairs {
             let chord = map

@@ -223,8 +223,12 @@ mod tests {
 
         atomic_replace(&path, r#"{ "value": "after" }"#);
 
+        // macOS FSEvents can deliver the rename before the new bytes are
+        // what `reload_layer` reads, so the first `Reloaded` still carries
+        // "before". Same wait as the create test: the event and the value.
         wait_for(&watcher, |event| {
             matches!(event, ReloadEvent::Reloaded(Layer::User))
+                && config.lock().unwrap().resolved()["value"] == "after"
         });
         assert_eq!(config.lock().unwrap().resolved()["value"], "after");
 
@@ -312,6 +316,7 @@ mod tests {
         atomic_replace(&project_path, r#"{ "b": "project-updated" }"#);
         wait_for(&watcher, |event| {
             matches!(event, ReloadEvent::Reloaded(Layer::Project))
+                && config.lock().unwrap().resolved()["b"] == "project-updated"
         });
         assert_eq!(config.lock().unwrap().resolved()["a"], "user");
         assert_eq!(config.lock().unwrap().resolved()["b"], "project-updated");

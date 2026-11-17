@@ -8,6 +8,8 @@
 //! [`PhysicalKey`] is the key position, so a shortcut such as Command+/
 //! matches the same physical key on a Spanish keyboard as on a US one.
 
+use std::path::PathBuf;
+
 use dpi::{PhysicalPosition, PhysicalSize};
 
 /// A key press or release, in logical (layout-aware) form.
@@ -228,4 +230,7 @@ pub enum PlatformEvent {
     /// The OS accessibility adapter is no longer active for this window
     /// (e.g. the screen reader was turned off).
     AccessibilityDeactivated,
+    /// One path the user released on this window. Reading the file is the
+    /// document worker's job; this event only carries the path.
+    DroppedFile(PathBuf),
 }

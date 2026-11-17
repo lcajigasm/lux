@@ -1,6 +1,12 @@
 # Status
 
-> Phase 0 (2026-11-01). 0.1 and 0.2 hold. Encoding round-trips UTF-8 (with
+> Phase 0 (2026-11-01). 0.1 and 0.2 hold. A huge file's minimap samples
+> one line per row instead of indexing every line, and a buffer with no
+> `<` does not walk every line for conflict markers. The GPU adapter is requested
+> while the window is created. Coverage fonts, the UI face,
+> and the recovery-session scan load after the first presented frame.
+> An unsaved edit hands its recovery snapshot to a worker. The next frame does
+> not wait for that file. Encoding round-trips UTF-8 (with
 > and without BOM), Latin-1, Windows-1252, and UTF-16 LE/BE with and without
 > a BOM when the no-BOM guess is confident. The status bar names the
 > encoding. Save is byte-for-byte unless a conversion is requested.
@@ -9,10 +15,23 @@
 > status bar. The default theme is Monokai, parsed from
 > `themes/Monokai.sublime-color-scheme` (MIT, `themes/NOTICE.md`). The
 > sidebar, tabs, selectors, and status bar take their colors from that
-> theme. In `docs/compare/monokai-side-by-side.png` from that same run the
+> theme. Scrolling the file tree clips each row to the rectangle under
+> the project header and above the status bar. The header stays put.
+> HTML preview (Shift+Command+V on an HTML file) keeps the source on the
+> left and paints the heading, paragraph, and link on the right. Editing
+> the source updates that pane. Markdown preview (Shift+Command+V) keeps
+> the source on the left and paints the heading, list, code, and link on
+> the right. Editing the source updates that pane.
+> A second folder opens beside the first. The header ×, the × on that
+> folder's row, and Close Folder in the context menu drop it from the
+> sidebar and leave the directory on disk. Clean tabs of that folder
+> close with it. A tab with unsaved edits stays open, and there is no
+> confirmation dialog. In `docs/compare/monokai-side-by-side.png` from that same run the
 > Lux editor well is `#272822`, the current line is `#2C2D27`, the tab bar
 > is `#1E1F1C`, and the status bar is `#414339`, beside Sublime Text on the
-> same file. The right-hand status labels are light on that bar. The window
+> same file. A selection on each of the 14 bundled themes paints at least
+> 1.30:1 over that editor (`SELECTION_CONTRAST_MIN`). Monokai's selection
+> is opaque `#49483E`. The right-hand status labels are light on that bar. The window
 > title is the file name and its parent folder. The column ruler is off
 > unless `editor.columnRulers` is set. Indent guides are drawn only where
 > a line has leading indentation. The minimap is a darker strip at the
@@ -21,8 +40,12 @@
 > menu, the command palette, Settings, and Option+Z toggle it, and the
 > choice is written back to that setting. An untitled buffer stays Plain
 > Text until a language is chosen or the file is saved with an extension.
+> Closing a tab, or switching to another one, keeps syntax tokens,
+> diagnostics, and gutter marks with that buffer. A Plain Text buffer
+> does not keep the settings JSON view.
 > Sublime's own minimap, breadcrumb, and lighter status chrome are
-> not copied. HiDPI text uses grayscale antialiasing when `scale_factor > 1`.
+> not copied. Text is a grayscale mask at every display scale, including
+> scale 1. The 1× capture used to paint LCD fringes beside `#F8F8F2`.
 > The job logged `display scale 1`, so the PNG does not prove Retina.
 > Confirming a theme reloads settings. `editor.lineHeight` below 8 is a
 > multiplier of the font size (the default 1.4 is not 1.4 pixels). The
@@ -43,9 +66,23 @@
 > clear 4.5:1, and a selected stepper's value and its −/+ chips to
 > clear 4.5:1 and 3:1 against that selection, on those same ten themes. `scripts/settings-e2e.sh` opens Settings, scrolls to the end,
 > cycles those ten themes with the buffer and cursor in place, and
-> checks the theme after a restart. The free
-> macos-15 runner stays 1× unless a job records a scaled mode, so a
-> Retina capture of an external monitor is still solo-Mac.
+> checks the theme after a restart. A right click or Control-click in
+> the buffer opens a context menu: Cut, Copy, Paste, Select All, Toggle
+> Comment, Go to Definition when that command is registered, Stage Hunk
+> and Unstage Hunk when those commands are registered, then Command
+> Palette. Cut and Copy are disabled with no selection. The git rows are
+> disabled when the caret is not on a diff hunk. There is no Revert Hunk
+> command, so the menu does not add one. A right click outside the
+> selection moves the caret there; a right click inside it keeps the
+> selection. The menu's top-left corner is the pointer, and it flips
+> inside the window only when it would not fit. The panel and every row
+> share one logical layout scaled into physical pixels, and the panel is
+> as wide as the longest label plus its padding. A double click selects
+> the word under the pointer, and dragging from that click extends the
+> selection by whole words. A third click on the same line selects that
+> whole line, and dragging from it extends the selection by lines.
+> The free macos-15 runner stays 1× unless a job records a scaled mode,
+> so a Retina capture of an external monitor is still solo-Mac.
 > `scripts/theme-break.sh` opens a Rust file on every bundled theme,
 > checks the editor, minimap, tabs, status bar, palette, and settings
 > by pixel, and writes `docs/evidence/themes/`.
@@ -159,12 +196,16 @@
 
 Opening a file asks `lux-git` on a background thread for the branch and
 the gutter hunks of that buffer. `Git: Refresh Status`, `View File Diff`,
-`Stage Current File`, `Stage Hunk`, `Commit Staged Changes`, `Blame`, and
-`File History` run there too. The status-bar branch, `Git: Switch Branch`,
+`Stage Current File`, `Stage Hunk`, `Unstage Hunk`, `Commit Staged Changes`,
+`Blame`, and `File History` run there too. `Unstage Hunk` puts that
+staged hunk's `HEAD` lines back into the index and leaves the file on
+disk. The status-bar branch, `Git: Switch Branch`,
 and `Git: Create Branch` open the branch list. A checkout runs only when
 the worktree is clean. Creating a branch points `HEAD` at the current
-commit and leaves the files alone. Conflict markers in the buffer still
-resolve in the editor. See `docs/GIT.md`.
+commit and leaves the files alone. `Git: Refresh Status` draws `M`, `A`,
+or `D` on the changed row in the file tree, and the same letter on each
+parent directory. Conflict markers in the buffer still resolve in the
+editor. See `docs/GIT.md`.
 
 Quitting writes the window's position, size, fullscreen or maximized state,
 and monitor into the session (`lux_workspace::WindowFrame`). The next launch
@@ -231,6 +272,8 @@ and Sublime Clean Whitespace on Save suite (`crates/lux-core/src/edit_ops/whites
 and Sublime Extensible Snippet Engine suite (`crates/lux/src/snippets/`, `crates/lux-core/src/snippets/`, `crates/lux/src/render/snippet_picker.rs`, `crates/lux/src/input/snippet_tests.rs`): Sublime XML (`.sublime-snippet` with CDATA, `<tabTrigger>`, `<scope>`, `<description>`) and JSON formats, recursive custom snippet loading from `~/.config/lux/snippets/`, `~/.lux/snippets/`, and workspace folders, built-in library for Rust, Python, JavaScript/TypeScript, HTML, Go, C/C++, Markdown, CSS, and Lorem Ipsum, contextual scope matching with alias normalization, trigger word auto-expansion on `Tab` with no active selection, interactive multi-tabstop forward/backward traversal (`Tab` / `Shift+Tab`), multi-occurrence mirror synchronization during live typing and backspace, Escape session cancellation, and modal snippet picker (`Snippets: Insert Snippet...` / `Cmd+Alt+J` / `Ctrl+Alt+J`),
 and Sublime Keyboard Macro suite (`crates/lux/src/macros/`, `crates/lux/src/render/status_bar.rs`, `crates/lux/src/input/macro_tests.rs`): Sublime Text `.sublime-macro` JSON array format, macro recording toggle (`Ctrl+Q`), live coral `● Recording Macro` status bar indicator, non-recursive real-time event recording for typing, newlines, backspace, delete, word deletions, and cursor motions, instant playback (`Cmd+Shift+Q` / `Ctrl+Shift+Q`) replicated across all active multi-cursors, and persistence to `~/.lux/macros/` and workspace directories,
 and Sublime Cloned Views across Split Panes suite (`crates/lux/src/split/clone_view.rs`, `crates/lux/src/split/clone_view_tests.rs`, `crates/lux/src/split.rs`, `crates/lux/src/document.rs`, `crates/lux/src/render/split.rs`, `crates/lux/src/render/window.rs`, `crates/lux/src/palette/registry.rs`, `crates/lux/src/menu/macos_builder.rs`): multiple panels opening the same underlying `Buffer` with live instantaneous synchronization of buffer edits and atomic undo/redo history, independent viewports, scroll positions (`scroll_x`, `scroll_y`), multi-cursors, and selections per cloned pane, automatic cursor shifting and clamping on buffer modifications and undo/redo, mouse-wheel hit testing for independent inactive pane scrolling without moving active focus, `File: Clone View to Group` command opening 2 columns if in single layout and focusing the cloned pane, `File: New View into File` creating a separate tab sharing the unique `buffer_id`, and full Command Palette, keyboard dispatch, and native macOS File menu integration.
+The File menu opens a persisted recent-file list (`Open Recent`, ten paths in `recent_files.json` under the Lux config directory, rewritten off the UI thread, with `Clear Recent`), a second process via `New Window` (Shift-Command-N, `--new-window` with a fresh socket), `Save All` (Option-Command-S), and `Reopen Closed Tab` (Shift-Command-T).
+
 Frame construction accesses only visible buffer lines with syntax token ranges clipped to the viewport.
 All 212 integration tests pass in `crates/lux` (221 total tests), and `cargo run -p xtask` passes all CI
 checks (fmt, clippy with `-D warnings`, workspace tests, cargo deny, file/struct limits,
@@ -859,9 +902,10 @@ Gate: `cargo test -p lux sidebar::` and `cargo test -p lux-ui file_tree::`. Veri
 deliverable, tracked in
 `docs/receipts/phase-04-watchers-nativos-notify-debouncer.md`)**: the
 "Native FS watchers" row above stays `not-started` — `FileWatcher` is
-verified directly against the real OS backend (not mocked), but nothing
-consumes its output yet: no file tree auto-refresh, no editor reload
-prompt, nothing wired into the `lux` binary. What exists and is verified:
+verified directly against the real OS backend (not mocked). The editor
+consumes those events: a clean open file reloads and a dirty one asks
+(ST-FIX-13), and a loaded sidebar row appears or disappears when a file
+is created or removed (ST-FIX-14). What exists and is verified:
 `notify` 8.2.0 + `notify-debouncer-full` 0.7.0 (the version that actually
 pairs with `notify` 8.2.0, not the crate registry's default "latest," which
 tracks `notify` 9's still-unstable RC — see `docs/DEPENDENCIES.md`), fully
@@ -2391,7 +2435,11 @@ verifies Ed25519 update payloads (`crates/lux-pack/src/update.rs`). `lux` instal
 `bin/lux`, `share/doc/README.md`, `share/doc/LICENSE*`). Windows Package Manager manifest prepared in
 `packaging/winget/Lux.Lux.yaml`. The tag workflow on GitHub builds the unsigned Linux
 `.deb`. Publishing that release starts `release-macos.yml` for the universal
-ad-hoc `.dmg`. `scripts/package-msi.ps1` still builds an unsigned `.msi` outside
+ad-hoc `.dmg`. The bundle icon is the corner mark from
+`packaging/macos/lux-corner.svg`. `lux-classic.icns` is the previous icon
+and stays in the bundle. Settings → App Icon (`workbench.icon`) chooses
+`corner` or `classic` and applies it with `NSApplication.setApplicationIconImage`
+without a restart. `scripts/package-msi.ps1` still builds an unsigned `.msi` outside
 CI (see the note at the top). Signed and
 notarized installers stay `not-started`: no certificate is stored in the repo.
 
@@ -2482,15 +2530,20 @@ _Nothing is behind an `experimental.*` flag yet._
   - **Focus restoration:** dismissing or executing the Command Palette returns focus to the editor unless the selected command opens another focused surface.
   - **Automated tests:** the four `desktop_pass` tests pass, including press/release deduplication, modal isolation, language-list scrolling, `Cmd/Ctrl+Shift+P`, and literal `Cmd/Ctrl+N` tab creation through the real keyboard pipeline. Sidebar delete (`sidebar::tests::sidebar_duplicate_and_delete_operations`) moves the file with `NSFileManager.trashItemAtURL` on macOS. The earlier failure was `trash`'s default Finder AppleScript, which returns an error when the process has no Automation permission; the file still goes to the real Trash. `cargo clippy -p lux -- -D warnings`, `cargo fmt --check`, and `scripts/check-limits.sh` pass.
 
+### ST-FIX-14: File tree refresh from the watcher
+
+- **Status:** A file or folder created under a directory the sidebar has already read appears in that directory, including when the directory is collapsed. Removing it drops the row and any loaded children. A create inside a folder that has never been expanded waits for the next expand, which reads that directory. `.git` and the other hidden version-control directories stay out. The root row is not removed. The macOS capture writes `arrived.txt` beside an open folder and the sidebar lists it before the file is deleted again.
+- **Verification:** `file_tree::tests::a_created_file_joins_a_loaded_directory_and_a_removed_file_leaves`, `a_created_file_in_a_collapsed_loaded_folder_shows_on_expand`, `a_file_inside_an_unloaded_folder_waits_for_expand`, `removing_a_directory_drops_its_loaded_children`, and `a_canonical_create_lands_in_a_tree_opened_through_a_symlink`. `sidebar::watch::tests::a_created_file_appears_and_a_removed_file_disappears` uses the real watcher. `scripts/tree-watch.sh` is the macos-15 capture.
+
 ### ST-FIX-13: Reload, hot exit, comments, scroll, and menu chords
 
-- **Status:** An external edit of a clean open file reloads that buffer. The same edit of a dirty file opens the conflict dialog and leaves the buffer alone. The watcher wakes the editor loop from the debouncer thread. Closing with a dirty named file and another tab restores both, and the named tab comes back as the draft rather than the bytes on disk. `lux .` and a directory argument open that folder. The macOS bundle lists `public.folder`, so Finder can pass the same path. A drop onto the window is not a platform event yet. Command+/ comments every built-in language that has a comment, including an OCaml block comment. Diff and Regex have none. The native menu key letters for save, undo, redo, comment, duplicate, delete line, join, add next, find, and preferences are the Sublime keymap chords. The menu action and the keymap command share one claim, so the pair runs once. Trackpad pixel deltas, including a short momentum tail, move both axes by those pixels. A wheel over the sidebar scrolls the tree. Full-window cold start, key-to-pixel, and a 10 MB open are still not measured on a release binary, so no figure is recorded here. The side-by-side compare frames are typed; the scale-2 palette frame is still a renderer snapshot because the macOS runner framebuffer is 1×.
-- **Verification:** `lux_workspace::watcher::tests::an_external_edit_invokes_the_registered_waker` and `session::tests::an_external_edit_reloads_a_clean_file_and_asks_when_dirty`. `session::tests::hot_exit_restores_a_dirty_named_file_beside_a_clean_tab`. `main::tests::dot_opens_a_workspace_and_flags_stay_flags` and `two_files_queue_a_second_tab_and_a_folder_opens_the_tree`. `input::p0_tests::command_slash_comments_every_language_that_has_one`. `menu::chords::tests::menu_letters_match_the_sublime_keymap`, `menu::chords::tests::the_other_source_is_swallowed_and_a_repeat_is_not`, and `menu::tests::a_menu_comment_and_the_keymap_comment_run_once`. `render::window::tests::a_momentum_tail_keeps_each_pixel_delta`. This is not a Mac keystroke pass and not a 120 Hz measurement.
+- **Status:** An external edit of a clean open file reloads that buffer. The same edit of a dirty file opens the conflict dialog and leaves the buffer alone. The watcher wakes the editor loop from the debouncer thread. Closing with a dirty named file and another tab restores both, and the named tab comes back as the draft rather than the bytes on disk. `lux .` and a directory argument open that folder. The macOS bundle lists `public.folder`, so Finder can pass the same path. A file dropped on the window is a platform event and opens through the document worker. A second dropped file waits in that queue until the first worker finishes. A dropped directory is reported as an open error and leaves the current buffer alone. Command+/ comments every built-in language that has a comment, including an OCaml block comment. Diff and Regex have none. The native menu key letters for save, undo, redo, comment, duplicate, delete line, join, add next, find, and preferences are the Sublime keymap chords. The menu action and the keymap command share one claim, so the pair runs once. Trackpad pixel deltas, including a short momentum tail, move both axes by those pixels. A wheel over the sidebar scrolls the tree. Cold start of the release binary is process start until the first presented frame, median of ten launches, in `scripts/h1-cold-start.sh`. The median is the macOS artifact. A missing sample or a missing frame fails the job. A budget miss does not. Key-to-frame on a 20,000-line file is the p99 from the key event to the next presented frame, in `scripts/h2-key-frame.sh`. The number is the macOS artifact. Fewer than ten key samples, a clock of zero, or a file that did not take the keystrokes fails the job. A budget miss does not. The slowest redraw while scrolling a 50,000-line file is `scripts/h5-scroll-frame.sh`. The number is the macOS artifact. Fewer than five scroll frames, a viewport that did not move, or two identical captures fails the job. A budget miss does not. The macos-15 release timings are copied into `docs/PERFORMANCE.md` from run 43471189705. A missed budget is recorded there. A 10 MB open is still not copied into this file. The side-by-side compare frames are typed; the scale-2 palette frame is still a renderer snapshot because the macOS runner framebuffer is 1×.
+- **Verification:** `lux_workspace::watcher::tests::an_external_edit_invokes_the_registered_waker` and `session::tests::an_external_edit_reloads_a_clean_file_and_asks_when_dirty`. `session::tests::hot_exit_restores_a_dirty_named_file_beside_a_clean_tab`. `main::tests::dot_opens_a_workspace_and_flags_stay_flags` and `two_files_queue_a_second_tab_and_a_folder_opens_the_tree`. `document::drop_tests::two_dropped_files_open_as_tabs` and `a_dropped_directory_is_reported_and_the_buffer_stays`. `scripts/file-drop.sh` drags a file from Finder onto the window. `input::p0_tests::command_slash_comments_every_language_that_has_one`. `menu::chords::tests::menu_letters_match_the_sublime_keymap`, `menu::chords::tests::the_other_source_is_swallowed_and_a_repeat_is_not`, and `menu::tests::a_menu_comment_and_the_keymap_comment_run_once`. `render::window::tests::a_momentum_tail_keeps_each_pixel_delta`. This is not a Mac keystroke pass and not a 120 Hz measurement.
 
 ### ST-FIX-12: Panels, sidebar, tabs, and the status bar
 
-- **Status:** Escape and a click outside the command palette, language picker, and settings panel return focus to the editor and clear the sidebar highlight. The same focus return is on the other floating panels. In the sidebar, Arrow keys move the selection, Enter opens the row, N starts a new file, F2 renames it, and Delete moves it to the Trash. View: Reveal Active File expands to the open file and focuses the tree. A dirty tab draws a dot. Middle-click closes the tab under the pointer. Dragging a tab reorders the strip. A wheel over the strip scrolls tabs that do not fit. The status bar shows one-based Ln/Col, the selection size, language, encoding, EOL, indent, and the git branch already known to the app. Ln/Col opens Goto Line. Language opens the language picker. EOL, indent, and encoding still toggle. The branch click opens the branch list. A checkout runs only when the worktree is clean, and creating a branch leaves the files alone. Opening a file reads `HEAD` for that name and does not walk the worktree. The language picker uses the shared selector card. Monokai gutter matches the editor background (`#272822`) and the split border is `#3E3D32`.
-- **Verification:** `input::chrome_tests::escape_and_a_click_outside_return_focus_to_the_editor` goes through `handle_keyboard_event` and `handle_mouse_click_on_chrome`. `sidebar::behavior_tests::the_keyboard_creates_renames_and_trashes_and_reveal_selects_the_open_file` creates, renames, and trashes a real file. `document::tab_strip_tests` covers middle-click, overflow hit-testing, and drag reorder. `status_bar::tests::app_status_bar_clicks_dispatch_toggles` covers the clicks. `language_picker::tests::language_picker_click_selects_language_and_dismisses` uses the shared card geometry. `lux-ui` `monokai_chrome_uses_the_classic_wells` locks the gutter and border. This is not a Mac keystroke pass. Minimap and splits are unchanged.
+- **Status:** Escape and a click outside the command palette, language picker, and settings panel return focus to the editor and clear the sidebar highlight. The same focus return is on the other floating panels. In the sidebar, Arrow keys move the selection, Enter opens the row, N starts a new file, F2 renames it, and Delete moves it to the Trash. Dragging a row onto a folder moves that file or folder on disk. A press that does not travel still opens the file or expands the folder. A drop onto the dragged folder itself, or onto a name that already exists, leaves the files where they were. View: Reveal Active File expands to the open file and focuses the tree. A dirty tab draws a dot. Middle-click closes the tab under the pointer. Dragging a tab reorders the strip. A wheel over the strip scrolls tabs that do not fit. The status bar shows one-based Ln/Col, the selection size, language, encoding, EOL, indent, and the git branch already known to the app. Ln/Col opens Goto Line. Language opens the language picker. EOL, indent, and encoding still toggle. The branch click opens the branch list. A checkout runs only when the worktree is clean, and creating a branch leaves the files alone. Opening a file reads `HEAD` for that name and does not walk the worktree. The language picker uses the shared selector card. Monokai gutter matches the editor background (`#272822`) and the split border is `#3E3D32`.
+- **Verification:** `input::chrome_tests::escape_and_a_click_outside_return_focus_to_the_editor` goes through `handle_keyboard_event` and `handle_mouse_click_on_chrome`. `sidebar::behavior_tests::the_keyboard_creates_renames_and_trashes_and_reveal_selects_the_open_file` creates, renames, and trashes a real file. `sidebar::behavior_tests::dragging_a_file_onto_a_folder_moves_it_and_retargets_the_open_tab` moves a real file and retargets the open tab. `scripts/tree-drag.sh` drags that row in Lux.app on macOS. `document::tab_strip_tests` covers middle-click, overflow hit-testing, and drag reorder. `status_bar::tests::app_status_bar_clicks_dispatch_toggles` covers the clicks. `language_picker::tests::language_picker_click_selects_language_and_dismisses` uses the shared card geometry. `lux-ui` `monokai_chrome_uses_the_classic_wells` locks the gutter and border. This is not a Mac keystroke pass. Minimap and splits are unchanged.
 
 ### ST-FIX-11: Find, save all, tabs, zoom, and palette order
 
@@ -2499,8 +2552,8 @@ _Nothing is behind an `experimental.*` flag yet._
 
 ### ST-FIX-10: Palette, goto suffixes, and the remaining P0 chords
 
-- **Status:** Command+Shift+P opens the palette, filters it, and runs Undo. Command+R lists symbols and jumps. Control+G and a typed `:line`, `@symbol`, or `#word` preview the target and Escape restores the caret. Command+click adds a cursor. Option+drag selects a column. Command+Enter and Shift+Command+Enter insert a line. Command+Y redoes. Command+E fills Find from the word under the caret. One undo removes one typed word, and one undo restores a word deleted with Backspace. Command+D, Control+Command+G, Command+Shift+L, Command+L, and Command+Shift+D were already covered by `input::occurrence_tests`.
-- **Verification:** `input::nav_tests` and `input::tests::command_click_adds_a_cursor_and_option_drag_selects_a_column` go through `handle_key` or `handle_keyboard_event`. `scripts/macos-keystrokes.sh` also presses Command+Shift+P, Command+R, Control+G, Command+D, Command+E, and Command+Y; the document line stays `alpha`. Autopair and word-undo tests are CI only. They are not a Mac keystroke pass.
+- **Status:** Command+Shift+P opens the palette, filters it, and runs Undo. Command+R lists symbols and jumps. Control+G and a typed `:line`, `@symbol`, or `#word` preview the target and Escape restores the caret. Command+click adds a cursor. Option+drag selects a column. Dragging an existing selection moves that text; Option+drag on the selection copies it, and a click that does not move places the caret. Command+Enter and Shift+Command+Enter insert a line. Command+Y redoes. Command+E fills Find from the word under the caret. One undo removes one typed word, and one undo restores a word deleted with Backspace. Command+D, Control+Command+G, Command+Shift+L, Command+L, and Command+Shift+D were already covered by `input::occurrence_tests`.
+- **Verification:** `input::nav_tests` and `input::tests::command_click_adds_a_cursor_and_option_drag_selects_a_column` go through `handle_key` or `handle_keyboard_event`. `input::mouse::tests::dragging_a_selection_moves_it_and_undo_puts_it_back` moves a selection and undoes it; `option_drag_on_a_selection_copies_it` copies. `scripts/selection-drag.sh` drags the word `beta` on macOS and Option-drags a copy. `scripts/macos-keystrokes.sh` also presses Command+Shift+P, Command+R, Control+G, Command+D, Command+E, and Command+Y; the document line stays `alpha`. Autopair and word-undo tests are CI only. They are not a Mac keystroke pass.
 
 ### ST-FIX-09: Sublime chords, comments, and Enter indent
 
@@ -2509,7 +2562,7 @@ _Nothing is behind an `experimental.*` flag yet._
 
 ### ST-FIX-08: Grammar coverage and Markdown preview
 
-- **Status:** The languages in `crates/lux-syntax/vendor/SOURCES.md` highlight from vendored Tree-sitter grammars. Markdown paragraphs highlight emphasis, strong text, code spans, and links, and Command+Shift+V (Control+Shift+V) toggles a preview built from that parse tree.
+- **Status:** The languages in `crates/lux-syntax/vendor/SOURCES.md` highlight from vendored Tree-sitter grammars. Markdown paragraphs highlight emphasis, strong text, code spans, and links, and Command+Shift+V (Control+Shift+V) toggles a preview built from that parse tree. A fenced block names a language (`rust`, `python`, `ts`, and the other extensions this build highlights) and that fence is painted with the active syntax theme. The whole line is shaped once, so the spaces between tokens and the indent keep their width. A fence with no language stays one foreground color.
 - **Verification:** `lux-syntax` tests `coverage`, `golden_tokens`, and `input::syntax_tests` (Makefile, Dockerfile, PHP, a Ruby shebang, Command+/ on PHP, Command+Shift+V on a Markdown buffer).
 
 ### ST-FIX-07: Tab stops and the painted caret
@@ -2574,6 +2627,6 @@ _Nothing is behind an `experimental.*` flag yet._
 
 ### E13 / UI-SETTINGS: Settings page
 
-- **Status:** Command+, and Preferences: Open Settings UI open an opaque settings page between the tab bar and the status bar. The editor text is under that page. The page edge is the neutral chrome border, not the theme accent. The sidebar is All, Editor, Appearance, Keys, Files, Git, and CLI. Search filters every category. A selected row is inset inside the page. Labels are at least 13pt. A boolean is a toggle, a number is a stepper, and a theme or keymap is a menu. Git and CLI rows describe the real palette commands and do not write a setting. The wheel, Page Down, Page Up, End, and Home scroll the page and leave the editor scroll where it was. Escape closes an open menu first, then the page. The command palette draws match highlights, shows each command's shortcut, and closes on Escape. Its selection is the panel-row fill. Confirming a theme keeps the buffer, cursor, and scroll, and the next launch reads that theme back.
+- **Status:** Command+, and Preferences: Open Settings UI open an opaque settings page between the tab bar and the status bar. The editor text is under that page. The page edge is the neutral chrome border, not the theme accent. The sidebar is All, Editor, Appearance, Keys, Files, Git, and CLI. Search filters every category. A selected row is inset inside the page. Labels are at least 13pt. A boolean is a toggle, a number is a stepper, and a theme or keymap is a menu. Git and CLI rows describe the real palette commands and do not write a setting. The wheel, Page Down, Page Up, End, and Home scroll the page and leave the editor scroll where it was. Escape closes an open menu first, then the page. The command palette draws match highlights, shows each command's shortcut, and closes on Escape. Its selection is the panel-row fill. Confirming a theme keeps the buffer, cursor, and scroll, and the next launch reads that theme back. Appearance also has App Icon: `corner` (default) or `classic`. The choice is `workbench.icon` in the user settings file. On macOS it calls `NSApplication.setApplicationIconImage` immediately.
 - **Verification:** `settings::visual_tests::settings_panel_has_no_debug_magenta_border`, `settings::visual_tests::settings_selection_stays_inside_the_card`, and `settings::visual_tests::settings_row_lays_out_label_description_and_value`. `settings::visual_tests::settings_toggle_stepper_and_menu_change_the_stored_value` changes ligatures, font size, and the color theme. `settings::visual_tests::settings_wheel_scrolls_the_page_and_not_the_editor`, `settings::visual_tests::end_and_home_scroll_the_settings_page`, and `settings::visual_tests::escape_closes_the_menu_before_the_page`. `settings::tests::theme_reload_keeps_the_buffer_and_scales_line_height` cycles every theme setting and reloads Solarized Light. `render::panel::contrast_tests::ten_bundled_themes_paint_ui_text_at_wcag_aa` and `ten_bundled_themes_paint_controls_at_wcag_aa` compute WCAG AA for text, the toggle, the selected category, and the stepper value and chips on that selection. `scripts/settings-e2e.sh` is the macos-15 job. `docs/compare/settings.png` is `lux --settings` rendered at scale factor 2.
 

@@ -195,7 +195,7 @@ pub(crate) fn handle_mouse_click_on_chrome(
             mouse_y,
         ) {
             let now = std::time::Instant::now();
-            let is_double_click = if let Some((last_time, last_id)) = app.mouse.last_click {
+            let is_double_click = if let Some((last_time, last_id, _)) = app.mouse.last_click {
                 last_id == usize::MAX && now.duration_since(last_time).as_millis() < 400
             } else {
                 false
@@ -203,7 +203,7 @@ pub(crate) fn handle_mouse_click_on_chrome(
             app.mouse.last_click = if is_double_click {
                 None
             } else {
-                Some((now, usize::MAX))
+                Some((now, usize::MAX, 1))
             };
             if is_double_click {
                 match div {

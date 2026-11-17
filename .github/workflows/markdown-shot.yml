@@ -1,0 +1,30 @@
+name: Markdown fence
+
+# Free macos-15. Lux's preview of three fences beside Visual Studio Code.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shot:
+    name: markdown fence (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Open the preview and capture the window
+        run: |
+          chmod +x scripts/markdown-shot.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/markdown-shot.sh
+      - name: Upload markdown-fence.png
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: markdown-fence
+          path: docs/evidence/markdown-fence*.png
+          if-no-files-found: error

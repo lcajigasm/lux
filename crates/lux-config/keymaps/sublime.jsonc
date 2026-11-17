@@ -10,6 +10,7 @@
   { "command": "command_palette", "key": "ctrl+shift+p", "mac": "cmd+shift+p" },
   { "command": "quick_open", "key": "ctrl+p", "mac": "cmd+p" },
   { "command": "file.new", "key": "ctrl+n", "mac": "cmd+n" },
+  { "command": "new_window", "key": "ctrl+shift+n", "mac": "cmd+shift+n" },
   { "command": "quick_open", "key": "cmd+t", "mac": "cmd+t" },
   { "command": "find", "key": "ctrl+f", "mac": "cmd+f" },
   { "command": "replace", "key": "ctrl+h", "mac": "cmd+alt+f" },

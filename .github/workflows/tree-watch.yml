@@ -1,0 +1,31 @@
+name: Tree watch
+
+# Real Lux.app on macos-15. Creating a file refreshes the sidebar, and
+# removing it drops the row.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    name: tree watch (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Create and remove a file beside the open folder
+        run: |
+          chmod +x scripts/tree-watch.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/tree-watch.sh
+      - name: Upload the sidebar capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tree-watch
+          path: docs/evidence/tree-watch/**
+          if-no-files-found: error
