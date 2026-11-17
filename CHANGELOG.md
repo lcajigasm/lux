@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 1.5.11 — 2026-11-17
+
+Test build. Not a closed release.
+
+### Added
+
+- Dragging a sidebar row onto a folder moves it (#90).
+- The file tree refreshes when a file is created or removed (#93).
+- The Markdown and HTML previews open beside the source (#96, #97).
+- The app icon is the corner mark (#119).
+
+### Fixed
+
+- Sidebar rows are clipped under the project header (#94).
+- Closing a folder closes its clean tabs (#104).
+- A 10 MB file opens without indexing every line (#105).
+- Syntax, diagnostics, and paint stay with their own buffer (#112).
+- Coverage fonts load after the first frame (#102).
+- Recovery snapshots are written off the key path (#103).
+- The GPU adapter is requested while the window is created (#108).
+
 ## 1.5.10 — 2026-11-13
 
 Test build. Not a closed release.
