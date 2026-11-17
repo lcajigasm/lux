@@ -510,12 +510,11 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         .lock()
         .map(|slot| slot.clone())
         .unwrap_or_default();
-    out.push_str("input=");
-    out.push_str(&escape(&input));
-    out.push('\n');
-    out.push_str("pointer=");
-    out.push_str(crate::pointer::shape_name(app.mouse.shape));
-    out.push('\n');
+    out.push_str(&format!("input={}\n", escape(&input)));
+    out.push_str(&format!(
+        "pointer={}\n",
+        crate::pointer::shape_name(app.mouse.shape)
+    ));
     let language = app.ui.status_bar.layout.language_rect;
     out.push_str(&format!(
         "language_rect={:.1},{:.1},{:.1},{:.1}\nscale={}\nsidebar={}\nminimap={}\nviewport={:.1},{:.1}\n",
@@ -535,9 +534,7 @@ fn render_dump(app: &App, slot: &Slot) -> String {
             out.push_str(&format!("content={x},{y},{},{}\n", size.width, size.height));
         }
     }
-    out.push_str("icon=");
-    out.push_str(crate::app_icon::probe_token());
-    out.push('\n');
+    out.push_str(&format!("icon={}\n", crate::app_icon::probe_token()));
     out
 }
 
