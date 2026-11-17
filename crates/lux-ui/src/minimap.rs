@@ -83,6 +83,14 @@ pub fn build_frame(
     if !minimap.enabled {
         return None;
     }
+    if buffer.is_huge_file_mode() {
+        return Some(sampled_frame(
+            buffer,
+            visible_line_range,
+            available_rows,
+            folds,
+        ));
+    }
     let text = buffer.text();
     let index = LineIndex::build(&text);
     let total_lines = index.len();
@@ -190,6 +198,71 @@ pub fn row_for_buffer_line(
         None => buffer_line,
     };
     Some(row_for_line(total_visual, available_rows, visual_line))
+}
+
+/// One line per minimap row, read from the rope. A huge file is millions
+/// of lines; building a byte range for every line is a second copy of the
+/// file and the slow part of the first frame.
+fn sampled_frame(
+    buffer: &Buffer,
+    visible_line_range: Range<usize>,
+    available_rows: usize,
+    folds: Option<&lux_core::folding::FoldState>,
+) -> MinimapFrame {
+    let total_lines = buffer.len_lines();
+    let total_visual = folds.map_or(total_lines, |f| f.total_visual_lines(total_lines));
+    let per_row = lines_per_row(total_visual, available_rows);
+    let rows = (0..row_count(total_visual, available_rows))
+        .map(|row| {
+            let start_v = (row * per_row).min(total_visual.saturating_sub(1));
+            let line = folds.map_or(start_v, |fold| {
+                fold.visual_to_buffer_line(start_v, total_lines)
+            });
+            let line = line.min(total_lines.saturating_sub(1));
+            let (indent_columns, content_columns) = line_columns(buffer, line);
+            MinimapRow {
+                line,
+                indent_columns,
+                content_columns,
+            }
+        })
+        .collect();
+    let viewport_rows = if visible_line_range.is_empty() {
+        0..0
+    } else {
+        let first_row = row_for_line(total_visual, available_rows, visible_line_range.start);
+        let last_line =
+            (visible_line_range.end.saturating_sub(1)).min(total_visual.saturating_sub(1));
+        let last_row = row_for_line(total_visual, available_rows, last_line);
+        first_row..last_row + 1
+    };
+    MinimapFrame {
+        rows,
+        viewport: ViewportIndicator {
+            rows: viewport_rows,
+        },
+    }
+}
+
+fn line_columns(buffer: &Buffer, line: usize) -> (usize, usize) {
+    if line >= buffer.len_lines() {
+        return (0, 0);
+    }
+    let mut indent = 0usize;
+    let mut content = 0usize;
+    let mut body = false;
+    for ch in buffer.rope().line(line).chars() {
+        if ch == '\n' || ch == '\r' {
+            break;
+        }
+        if !body && (ch == ' ' || ch == '\t') {
+            indent += 1;
+        } else {
+            body = true;
+            content += 1;
+        }
+    }
+    (indent, content)
 }
 
 fn densest_row(
@@ -376,5 +449,23 @@ mod tests {
         assert_eq!(frame.rows.len(), 3);
         assert_eq!(frame.rows[0].line, 0);
         assert_eq!(frame.rows[1].line, 3);
+    }
+
+    #[test]
+    fn a_huge_file_samples_the_first_line_of_the_row() {
+        let path =
+            std::env::temp_dir().join(format!("lux-minimap-huge-{}.txt", std::process::id()));
+        std::fs::write(&path, "a\nshort\nthis line is the long one\n").unwrap();
+        let buffer = lux_core::buffer::Buffer::open_with_policy(
+            &path,
+            lux_core::huge_file::HugeFilePolicy::new(1),
+        )
+        .unwrap();
+        assert!(buffer.is_huge_file_mode());
+        let frame = build_frame(&Minimap::new(), &buffer, 0..1, 1, None).unwrap();
+        assert_eq!(frame.rows.len(), 1);
+        assert_eq!(frame.rows[0].line, 0);
+        assert_eq!(frame.rows[0].content_columns, 1);
+        let _ = std::fs::remove_file(&path);
     }
 }

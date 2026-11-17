@@ -44,6 +44,7 @@ pub(crate) struct MouseState {
 }
 
 pub(crate) struct SyntaxState {
+    pub(crate) buffer_id: u64,
     pub(crate) highlighter: lux_syntax::BackgroundHighlighter,
     pub(crate) language: lux_syntax::LanguageId,
     pub(crate) theme: &'static lux_syntax::theme::SyntaxTheme,

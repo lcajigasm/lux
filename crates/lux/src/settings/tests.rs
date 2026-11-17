@@ -40,7 +40,7 @@ fn settings_importers_and_panel_options() {
 
     {
         let panel = state.panel.as_ref().unwrap();
-        assert_eq!(panel.items.len(), 14);
+        assert_eq!(panel.items.len(), 15);
         assert_eq!(panel.items[0].key, "editor.fontSize");
         assert_eq!(panel.items[1].key, "editor.lineHeight");
         assert_eq!(

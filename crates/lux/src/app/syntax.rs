@@ -115,6 +115,18 @@ pub(crate) fn shift_tokens(tokens: &mut Vec<lux_syntax::Token>, edit: &InputEdit
 }
 
 impl App {
+    fn clear_syntax(&mut self) {
+        if let Some(id) = self.documents.active_buffer_id() {
+            self.documents.view_cache.drop_syntax(id);
+        }
+        self.syntax = None;
+    }
+
+    fn store_syntax(&mut self, syntax: SyntaxState) {
+        self.documents.view_cache.drop_syntax(syntax.buffer_id);
+        self.syntax = Some(syntax);
+    }
+
     /// Initializes syntax state and starts the background highlighter when a document is opened.
     pub(crate) fn update_syntax_on_open(&mut self) {
         if self.documents.path.is_none()
@@ -132,11 +144,11 @@ impl App {
                 entry.saved_version = self.documents.saved_version;
                 entry.language = None;
             }
-            self.syntax = None;
+            self.clear_syntax();
             return;
         }
         if self.buffer.is_huge_file_mode() {
-            self.syntax = None;
+            self.clear_syntax();
             return;
         }
         let language = self.documents.language().or_else(|| {
@@ -163,7 +175,8 @@ impl App {
                 }
                 None => (Vec::new(), Vec::new()),
             };
-            self.syntax = Some(SyntaxState {
+            self.store_syntax(SyntaxState {
+                buffer_id: self.documents.active_buffer_id().unwrap_or(0),
                 highlighter,
                 language: lang,
                 theme: self.active_syntax_theme(),
@@ -173,7 +186,7 @@ impl App {
             });
             self.fold_state.set_foldable_ranges(fold_ranges);
         } else {
-            self.syntax = None;
+            self.clear_syntax();
         }
         self.refresh_foldable_ranges();
     }
@@ -182,7 +195,7 @@ impl App {
     pub(crate) fn set_language_mode(&mut self, language: Option<lux_syntax::LanguageId>) {
         self.documents.set_language(language);
         if self.buffer.is_huge_file_mode() {
-            self.syntax = None;
+            self.clear_syntax();
             return;
         }
         if let Some(lang) = language {
@@ -202,7 +215,8 @@ impl App {
                 }
                 None => (Vec::new(), Vec::new()),
             };
-            self.syntax = Some(SyntaxState {
+            self.store_syntax(SyntaxState {
+                buffer_id: self.documents.active_buffer_id().unwrap_or(0),
                 highlighter,
                 language: lang,
                 theme: self.active_syntax_theme(),
@@ -214,7 +228,7 @@ impl App {
             let name = crate::status_bar::language_name(Some(lang));
             crate::accessibility::announce(self, format!("Language mode set to {name}"));
         } else {
-            self.syntax = None;
+            self.clear_syntax();
             crate::accessibility::announce(self, "Language mode set to Plain Text");
         }
         self.refresh_foldable_ranges();
@@ -228,7 +242,7 @@ impl App {
     /// to the worker thread without materializing the full text.
     pub(crate) fn sync_syntax_incremental(&mut self, edits: &[Edit]) {
         if self.buffer.is_huge_file_mode() {
-            self.syntax = None;
+            self.clear_syntax();
             return;
         }
         let Some(syntax) = &mut self.syntax else {
@@ -264,7 +278,7 @@ impl App {
     /// Full rope synchronization without string allocation (e.g. on undo/redo).
     pub(crate) fn sync_syntax_full(&mut self) {
         if self.buffer.is_huge_file_mode() {
-            self.syntax = None;
+            self.clear_syntax();
             return;
         }
         let Some(syntax) = &mut self.syntax else {
