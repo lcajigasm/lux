@@ -35,8 +35,10 @@ impl App {
         let size = window.inner_size();
         self.set_display_scale(window.scale_factor());
         eprintln!("Lux: display scale {}", self.scale_factor);
+        crate::probe::phase("window");
         let gpu = pollster::block_on(GpuContext::new(None))
             .expect("a real GPU adapter must be available to run the Lux desktop app");
+        crate::probe::phase("adapter");
         let surface = Surface::new(&gpu.instance, &gpu.adapter, &gpu.device, window, size)
             .expect("failed to create the window's wgpu surface");
         let format = surface.config().format;
@@ -71,6 +73,7 @@ impl App {
         });
         self.apply_user_settings();
         self.scheduler.invalidate_all();
+        crate::probe::phase("gpu");
         window.request_redraw();
     }
 
