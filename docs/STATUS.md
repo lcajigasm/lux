@@ -2,7 +2,8 @@
 
 > Phase 0 (2026-11-01). 0.1 and 0.2 hold. A huge file's minimap samples
 > one line per row instead of indexing every line, and a buffer with no
-> `<` does not walk every line for conflict markers. Coverage fonts, the UI face,
+> `<` does not walk every line for conflict markers. The GPU adapter is requested
+> while the window is created. Coverage fonts, the UI face,
 > and the recovery-session scan load after the first presented frame.
 > An unsaved edit hands its recovery snapshot to a worker. The next frame does
 > not wait for that file. Encoding round-trips UTF-8 (with
