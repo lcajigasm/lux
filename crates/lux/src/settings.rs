@@ -39,7 +39,8 @@ pub(crate) const DEFAULT_SETTINGS_JSON: &str = r#"{
   "editor.wordWrap": false,
   "editor.distractionFreeColumnWidth": 80,
   "workbench.colorTheme": "monokai",
-  "workbench.keymap": "sublime"
+  "workbench.keymap": "sublime",
+  "workbench.icon": "corner"
 }"#;
 
 pub(crate) fn default_settings_dir() -> PathBuf {
@@ -164,6 +165,8 @@ impl SettingsState {
                 _ => app.keymap = lux_config::keymap::presets::sublime(),
             }
         }
+
+        crate::app_icon::apply(resolved["workbench.icon"].as_str());
 
         app.scheduler.invalidate_all();
         if let Some(gpu) = &app.gpu_window {

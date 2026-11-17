@@ -5,6 +5,7 @@
 mod about;
 mod accessibility;
 mod app;
+mod app_icon;
 mod build;
 mod chrome;
 mod cli;
