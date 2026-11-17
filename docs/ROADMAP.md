@@ -227,13 +227,13 @@ does not fail the job. Run URLs land here after the jobs finish.
 | E1 | solo-Mac. `displayplacer list` on macos-15 showed one 1024×768 screen, `scaling:off`, and modes from 640×480 to 1920×1080. None had `scaling:on`, so a screencapture of the window cannot be scale 2. | [42593509340](https://github.com/lcajigasm/lux/actions/runs/42593509340) |
 | I3 | `docs/receipts/p0-macos-ci.md` is written by the checklist job from that run. | pending |
 | H1 | Cold start to the first presented frame, median of 10, release binary. `h1 cold start (macos-15)` fails when a sample or `cold.png` is missing. | pending |
-| H2 | Key event to the next presented frame, p99, 20k-line file. | pending |
+| H2 | Key event to the next presented frame, p99, 20k-line file. `h2 key frame (macos-15)` fails when fewer than ten samples are recorded or the file did not take the keystrokes. | pending |
 | H3 | Warm process, SIGUSR2 opens a 10 MB file, time to that buffer's first presented frame. | pending |
 | H4 | Same open, 100 MB. | pending |
-| H5 | Slowest redraw while scrolling a 50k-line file. | pending |
+| H5 | Slowest redraw while scrolling a 50k-line file. `h5 scroll frame (macos-15)` fails when fewer than five frames are recorded, the viewport did not move, or the two captures match. | pending |
 | H6 | Extra RSS across the 100 MB open, against 3× the file. | pending |
 | H7 | Sublime and Zed are timed only until a window is listed. That is not H1's clock. H2 and H5 have no equivalent outside the process. | pending |
-| H8 | The table in `docs/PERFORMANCE.md` copied from the performance artifact. | pending |
+| H8 | The table in `docs/PERFORMANCE.md` copied from the performance artifact. | [43471189705](https://github.com/lcajigasm/lux/actions/runs/43471189705) |
 
 ## Block 1 — Interface — parcial
 

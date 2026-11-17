@@ -64,11 +64,12 @@ fi
 echo "--> Target binary architecture:"
 file "$bin"
 
-# 2. Ensure icon exists
+# 2. The bundle icon is the corner mark. The previous icon stays beside it.
 icns_file="packaging/macos/lux.icns"
-if [[ ! -f "$icns_file" ]]; then
-  echo "--> Generating high-resolution lux.icns..."
-  python3 packaging/macos/build_icon.py
+classic_file="packaging/macos/lux-classic.icns"
+if [[ ! -f "$icns_file" || ! -f "$classic_file" ]]; then
+  echo "--> Generating lux.icns from the corner mark..."
+  ./scripts/build-app-icon.sh
 fi
 
 # 3. Assemble Lux.app
@@ -105,6 +106,7 @@ fi
 sed "s/<string>1.0.0<\\/string>/<string>${version}<\\/string>/g" \
   packaging/macos/Info.plist > "$app_path/Contents/Info.plist"
 cp "$icns_file" "$app_path/Contents/Resources/lux.icns"
+cp "$classic_file" "$app_path/Contents/Resources/lux-classic.icns"
 echo -n "APPLlux " > "$app_path/Contents/PkgInfo"
 
 # Ad-hoc signature only. There is no Apple Developer ID certificate in CI,

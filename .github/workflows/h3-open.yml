@@ -1,0 +1,32 @@
+name: H3 open 10 MB
+
+# Release main and this branch. Each opens a 10 MB file in a warm process.
+# The job fails when the clock, the RSS sample, or the frame is missing.
+# A budget miss does not.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  open:
+    name: h3 open 10mb (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Open a 10 MB file, before and after
+        run: |
+          chmod +x scripts/h3-open.sh scripts/stage-lux-app.sh
+          ./scripts/h3-open.sh
+      - name: Upload the raw timings and the frame
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h3-open
+          path: docs/evidence/h3-open/**
+          if-no-files-found: error

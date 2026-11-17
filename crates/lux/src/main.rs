@@ -5,6 +5,7 @@
 mod about;
 mod accessibility;
 mod app;
+mod app_icon;
 mod build;
 mod chrome;
 mod cli;
@@ -78,7 +79,9 @@ fn main() {
          crates/lux/src/font.rs's candidate list",
     );
     println!("Lux: using system font {path}");
+    probe::phase("font");
     let mut app = app::App::new(font_bytes);
+    probe::phase("app");
     let mut open_palette = false;
     let mut open_goto = false;
     let mut open_theme = false;
@@ -231,6 +234,7 @@ fn main() {
     }
     probe::configure(probe, bench_open);
     probe::listen();
+    probe::phase("cli");
     lux_platform::desktop::run(app).expect("desktop event loop failed");
 }
 
@@ -252,9 +256,9 @@ enum LaunchKind {
     Document,
 }
 
-/// The first directory opens the workspace. Later paths are files, each
-/// opened as its own tab. A project file is only recognized when it is
-/// the sole argument.
+/// The first directory opens the workspace. Another directory is a second
+/// sidebar folder. Later file paths open as their own tabs. A project
+/// file is only recognized when it is the sole argument.
 fn apply_positionals(app: &mut app::App, paths: &[std::path::PathBuf]) -> Result<(), String> {
     if paths.is_empty() {
         return Ok(());
@@ -281,10 +285,20 @@ fn apply_positionals(app: &mut app::App, paths: &[std::path::PathBuf]) -> Result
     let mut files = Vec::new();
     for (index, path) in paths.iter().enumerate() {
         if path.is_dir() {
-            if index != 0 {
-                return Err("only the first path may be a directory".into());
+            if app
+                .ui
+                .sidebar
+                .as_ref()
+                .is_some_and(|sidebar| sidebar.tree.is_some())
+            {
+                if !app.add_sidebar_folder(path.clone()) {
+                    return Err(format!("could not open folder {}", path.display()));
+                }
+            } else if index != 0 {
+                return Err("a folder has to come before the files".into());
+            } else {
+                app.open_workspace(path.clone());
             }
-            app.open_workspace(path.clone());
         } else {
             files.push(path.clone());
         }

@@ -128,7 +128,7 @@ def create_icon_1024(out_png_path: str):
 
 def main():
     root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
-    iconset_dir = os.path.join(root, "packaging", "macos", "Lux.iconset")
+    iconset_dir = os.path.join(root, "packaging", "macos", "Lux-classic.iconset")
     os.makedirs(iconset_dir, exist_ok=True)
     master_png = os.path.join(iconset_dir, "icon_512x512@2x.png")
 
@@ -152,7 +152,7 @@ def main():
         dest = os.path.join(iconset_dir, fname)
         subprocess.check_call(["sips", "-z", str(size), str(size), master_png, "--out", dest], stdout=subprocess.DEVNULL)
 
-    icns_path = os.path.join(root, "packaging", "macos", "lux.icns")
+    icns_path = os.path.join(root, "packaging", "macos", "lux-classic.icns")
     subprocess.check_call(["iconutil", "-c", "icns", iconset_dir, "-o", icns_path])
     print(f"Generated {icns_path} successfully.")
 

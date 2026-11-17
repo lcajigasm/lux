@@ -40,7 +40,8 @@ pub(crate) const DEFAULT_SETTINGS_JSON: &str = r#"{
   "editor.wordWrap": false,
   "editor.distractionFreeColumnWidth": 80,
   "workbench.colorTheme": "monokai",
-  "workbench.keymap": "sublime"
+  "workbench.keymap": "sublime",
+  "workbench.icon": "corner"
 }"#;
 
 pub(crate) fn default_settings_dir() -> PathBuf {
@@ -166,6 +167,8 @@ impl SettingsState {
             }
         }
 
+        crate::app_icon::apply(resolved["workbench.icon"].as_str());
+
         app.scheduler.invalidate_all();
         if let Some(gpu) = &app.gpu_window {
             gpu.window.request_redraw();
@@ -221,7 +224,7 @@ impl SettingsState {
                 app.ui.lsp.all_diagnostics.push((url, items.clone()));
             }
         }
-        app.ui.lsp.diagnostics = items;
+        crate::app::view_bind::set_buffer_diagnostics(app, items);
         app.scheduler.invalidate_all();
     }
 

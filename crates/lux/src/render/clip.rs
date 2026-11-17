@@ -74,17 +74,6 @@ pub(crate) fn remove_glyphs_under(
     }
 }
 
-pub(crate) fn clip_glyphs(glyphs: &mut Vec<GlyphInstance>, start: usize, bounds: [f32; 4]) {
-    let mut index = start;
-    while index < glyphs.len() {
-        if clip_glyph(&mut glyphs[index], bounds) {
-            index += 1;
-        } else {
-            glyphs.swap_remove(index);
-        }
-    }
-}
-
 /// Cuts quads from `start` to `bounds`. A rounded corner is kept only when
 /// it still fits the remaining rectangle.
 pub(crate) fn clip_quads(
@@ -102,6 +91,17 @@ pub(crate) fn clip_quads(
         quads[index].radius = quads[index].radius.min(w * 0.5).min(h * 0.5);
         quads[index].rect = rect;
         index += 1;
+    }
+}
+
+pub(crate) fn clip_glyphs(glyphs: &mut Vec<GlyphInstance>, start: usize, bounds: [f32; 4]) {
+    let mut index = start;
+    while index < glyphs.len() {
+        if clip_glyph(&mut glyphs[index], bounds) {
+            index += 1;
+        } else {
+            glyphs.swap_remove(index);
+        }
     }
 }
 

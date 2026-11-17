@@ -34,6 +34,7 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
         .as_str()
         .unwrap_or("sublime")
         .to_string();
+    let icon = crate::app_icon::canonical(resolved["workbench.icon"].as_str()).to_string();
 
     vec![
         number(
@@ -97,6 +98,14 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
             "Visual color palette. \"system\" follows the OS appearance",
             theme,
             crate::color_scheme::theme_setting_options(),
+        ),
+        enumeration(
+            "Appearance",
+            "workbench.icon",
+            "App Icon",
+            "Dock icon. corner is the mark. classic is the previous icon",
+            icon,
+            &["corner", "classic"],
         ),
         enumeration(
             "Keys",
