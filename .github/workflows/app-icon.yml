@@ -1,0 +1,31 @@
+name: app icon
+
+# Free macos-15. Builds lux.icns with iconutil, launches Lux.app, and
+# captures the Dock on corner and on classic.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dock:
+    name: app icon (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Raster tools
+        run: brew install librsvg
+      - name: Toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Dock captures
+        run: chmod +x scripts/build-app-icon.sh scripts/app-icon-shot.sh && ./scripts/app-icon-shot.sh
+      - name: Upload Dock captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-icon
+          path: docs/evidence/app-icon/**
+          if-no-files-found: error

@@ -184,16 +184,16 @@ impl App {
             });
             let content_width = (viewport.width - sidebar_width).max(1.0);
             let pane_cap = (content_width * 0.62).max(1.0);
-            let preview_width = if html_preview {
+            let preview_width = if html_preview || show_preview {
                 (content_width * 0.46).clamp(180.0_f32.min(pane_cap), pane_cap)
             } else {
                 0.0
             };
             let mut editor_viewport = *viewport;
-            if html_preview {
+            if html_preview || show_preview {
                 editor_viewport.width = (content_width - preview_width).max(1.0);
             }
-            if !show_preview {
+            {
                 for cursor in &frame.cursors {
                     if cursor.primary {
                         let cur_y = editor_top + cursor.y - viewport.scroll_y;
@@ -272,42 +272,27 @@ impl App {
                         &mut gutter_glyphs,
                     );
                 }
-            } else {
-                markdown::render_preview(
-                    buffer,
-                    editor_view,
-                    atlas_state,
-                    font,
-                    font_size,
-                    line_height,
-                    text_left,
-                    editor_top,
-                    viewport.height,
-                    &chrome.theme,
-                    crate::color_scheme::syntax_theme(&ui.settings.schemes, chrome.theme.name),
-                    &mut quad_instances,
-                    &mut glyph_instances,
-                );
             }
-            if html_preview {
-                html_view::paint(
-                    buffer,
-                    editor_view,
-                    atlas_state,
-                    font,
-                    font_size,
-                    line_height,
-                    sidebar_width + editor_viewport.width,
-                    preview_width,
-                    editor_top,
-                    viewport.height,
-                    16.0 * *scale_factor,
-                    stroke,
-                    &chrome.theme,
-                    &mut quad_instances,
-                    &mut glyph_instances,
-                );
-            }
+            html_view::paint_open(
+                show_preview,
+                html_preview,
+                buffer,
+                editor_view,
+                atlas_state,
+                font,
+                font_size,
+                line_height,
+                sidebar_width + editor_viewport.width,
+                preview_width,
+                editor_top,
+                viewport.height,
+                16.0 * *scale_factor,
+                stroke,
+                &chrome.theme,
+                crate::color_scheme::syntax_theme(&ui.settings.schemes, chrome.theme.name),
+                &mut quad_instances,
+                &mut glyph_instances,
+            );
         }
 
         if tab_bar_height > 0.0 {

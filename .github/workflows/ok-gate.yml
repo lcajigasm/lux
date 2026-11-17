@@ -1,0 +1,89 @@
+name: ok-gate
+
+# The commit status context is "ok-gate" on the pull request head.
+# issue_comment runs on the default branch, so this file has to be on
+# main before a comment, edit, or deletion re-evaluates the status.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created, edited, deleted]
+
+# Statuses are written with contents: read and pull-requests: read.
+# The gate job also requests pull-requests: write so `gh pr merge` can
+# queue auto-merge. A read token cannot call that API.
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  unit:
+    name: ok-gate unit
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Unit test
+        run: python3 scripts/ok-gate.py --self-test
+
+  gate:
+    name: publish ok-gate
+    if: github.event_name == 'pull_request' || github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve the pull request head
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            number="${{ github.event.issue.number }}"
+            head="$(gh api "repos/${{ github.repository }}/pulls/${number}" --jq .head.sha)"
+          else
+            number="${{ github.event.pull_request.number }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          fi
+          echo "number=${number}" >> "$GITHUB_OUTPUT"
+          echo "head=${head}" >> "$GITHUB_OUTPUT"
+      - name: Decide
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ok-gate.py \
+            --head "${{ steps.pr.outputs.head }}" \
+            --pr "${{ steps.pr.outputs.number }}" \
+            --repo "${{ github.repository }}" \
+            --github-output "$GITHUB_OUTPUT"
+      - name: Publish ok-gate status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --method POST \
+            "repos/${{ github.repository }}/statuses/${{ steps.pr.outputs.head }}" \
+            -f state="${{ steps.gate.outputs.state }}" \
+            -f context="ok-gate" \
+            -f description="${{ steps.gate.outputs.description }}" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Queue squash auto-merge
+        if: steps.gate.outputs.state == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          out="$(gh pr merge "${{ steps.pr.outputs.number }}" --squash --auto --match-head-commit "${{ steps.pr.outputs.head }}" 2>&1)"
+          code=$?
+          set -e
+          printf '%s\n' "$out"
+          if [ "$code" -ne 0 ]; then
+            echo "::warning::Squash auto-merge was not queued (exit ${code}). If auto-merge is off in the repository settings, enable it. The ok-gate status stays success."
+          fi

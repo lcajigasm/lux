@@ -125,6 +125,7 @@ pub(crate) struct Documents {
     pub(crate) tab_context_menu: Option<tab_ops::TabContextMenu>,
     /// Tab being dragged, and the pointer x where the drag started.
     pub(crate) tab_drag: Option<(TabId, f32)>,
+    pub(crate) view_cache: crate::app::view_bind::ViewCache,
 }
 
 impl Default for Documents {
@@ -151,6 +152,7 @@ impl Default for Documents {
             open_queue: Vec::new(),
             tab_context_menu: None,
             tab_drag: None,
+            view_cache: crate::app::view_bind::ViewCache::default(),
         }
     }
 }
@@ -358,7 +360,7 @@ impl App {
         self.mouse.selection_anchor = None;
         self.ime = ImeComposition::new();
         self.reset_goal_columns();
-        self.update_syntax_on_open();
+        crate::app::view_bind::bind(self);
         self.update_document_title();
         let tab_title = self
             .documents
@@ -536,10 +538,7 @@ impl App {
                             self.switch_to_tab(tab_id);
                         }
                     }
-                    if let Some(doc_path) = self.documents.path.clone() {
-                        let text = self.buffer.text();
-                        crate::lsp::sync_document_open(self, ctx, &doc_path, &text);
-                    }
+                    crate::lsp::sync_opened_document(self, ctx);
                     open_queue::note_opened(self);
                 }
                 if close {
@@ -594,6 +593,6 @@ mod shortcut_tests;
 #[cfg(test)]
 mod tab_strip_tests;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 #[cfg(test)]
 mod whitespace_tests;

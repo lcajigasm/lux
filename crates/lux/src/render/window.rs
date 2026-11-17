@@ -26,6 +26,12 @@ impl App {
                 attrs.inner_size = None;
             }
         }
+        // The adapter request does not need the window. It runs while
+        // AppKit creates the window, instead of after it.
+        let gpu_thread = std::thread::Builder::new()
+            .name("lux-gpu".into())
+            .spawn(|| pollster::block_on(GpuContext::new(None)))
+            .expect("failed to start the GPU adapter thread");
         let window = ctx
             .create_window(attrs)
             .expect("failed to create the main window");
@@ -35,8 +41,12 @@ impl App {
         let size = window.inner_size();
         self.set_display_scale(window.scale_factor());
         eprintln!("Lux: display scale {}", self.scale_factor);
-        let gpu = pollster::block_on(GpuContext::new(None))
+        crate::probe::phase("window");
+        let gpu = gpu_thread
+            .join()
+            .expect("GPU adapter thread panicked")
             .expect("a real GPU adapter must be available to run the Lux desktop app");
+        crate::probe::phase("adapter");
         let surface = Surface::new(&gpu.instance, &gpu.adapter, &gpu.device, window, size)
             .expect("failed to create the window's wgpu surface");
         let format = surface.config().format;
@@ -71,6 +81,7 @@ impl App {
         });
         self.apply_user_settings();
         self.scheduler.invalidate_all();
+        crate::probe::phase("gpu");
         window.request_redraw();
     }
 

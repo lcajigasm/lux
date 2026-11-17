@@ -134,3 +134,72 @@ pub(super) fn paint(
         [text_left, editor_top, inner, viewport_height],
     );
 }
+
+/// The open preview pane. Markdown and HTML each keep the source on the left.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn paint_open(
+    show_preview: bool,
+    html_preview: bool,
+    buffer: &lux_core::buffer::Buffer,
+    editor_view: &mut lux_ui::editor_view::EditorView,
+    atlas_state: &mut AtlasState,
+    font: FontRef<'_>,
+    font_size: f32,
+    line_height: f32,
+    pane_x: f32,
+    pane_width: f32,
+    editor_top: f32,
+    viewport_height: f32,
+    pad: f32,
+    stroke: f32,
+    theme: &lux_ui::Theme,
+    syntax: &lux_syntax::theme::SyntaxTheme,
+    quad_instances: &mut Vec<QuadInstance>,
+    glyph_instances: &mut Vec<lux_render::GlyphInstance>,
+) {
+    if show_preview {
+        quad_instances.push(QuadInstance::solid(
+            [pane_x, editor_top, pane_width, viewport_height],
+            color(theme.chrome.panel),
+        ));
+        quad_instances.push(QuadInstance::solid(
+            [pane_x, editor_top, stroke, viewport_height],
+            color(theme.chrome.border),
+        ));
+        super::markdown::render_preview(
+            buffer,
+            editor_view,
+            atlas_state,
+            font,
+            font_size,
+            line_height,
+            pane_x + pad,
+            editor_top,
+            viewport_height,
+            pane_width - pad,
+            theme,
+            syntax,
+            quad_instances,
+            glyph_instances,
+        );
+    }
+    if html_preview {
+        paint(
+            buffer,
+            editor_view,
+            atlas_state,
+            font,
+            font_size,
+            line_height,
+            pane_x,
+            pane_width,
+            editor_top,
+            viewport_height,
+            pad,
+            stroke,
+            theme,
+            quad_instances,
+            glyph_instances,
+        );
+    }
+}
