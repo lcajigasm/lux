@@ -41,6 +41,7 @@ mod plugin;
 mod pointer;
 mod presentation;
 mod probe;
+mod probe_picker;
 mod project;
 mod project_search;
 mod render;
