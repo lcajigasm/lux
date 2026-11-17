@@ -10,26 +10,16 @@ no-default-features = false
 feature-depth = 1
 
 [advisories]
+# Every entry needs a reason. Delete an entry as soon as cargo-deny reports
+# "advisory was not encountered": a stale ignore would hide the advisory if
+# it ever matched again.
 ignore = [
-    "RUSTSEC-2026-0315",
-    "RUSTSEC-2026-0316",
-    "RUSTSEC-2026-0325",
-    "RUSTSEC-2026-0326",
-    "RUSTSEC-2026-0327",
-    "RUSTSEC-2026-0353",
-    "RUSTSEC-2026-0354",
-    "RUSTSEC-2026-0355",
-    "RUSTSEC-2026-0356",
-    "RUSTSEC-2026-0357",
-    "RUSTSEC-2026-0358",
-    "RUSTSEC-2026-0359",
-    "RUSTSEC-2026-0361",
-    "RUSTSEC-2026-0362",
-    "RUSTSEC-2026-0363",
-    "RUSTSEC-2026-0364",
-    "RUSTSEC-2026-0378",
-    "RUSTSEC-2026-0379",
     "RUSTSEC-2026-0386",
+    # chrono is unmaintained and there is no safe upgrade. It reaches Lux only
+    # through `trash` (lux-ui); trash 5.3.0 still depends on it. An
+    # unmaintained notice is not a vulnerability. Revisit when `trash` drops
+    # chrono.
+    "RUSTSEC-2026-0543",
 ]
 yanked = "warn"
 
