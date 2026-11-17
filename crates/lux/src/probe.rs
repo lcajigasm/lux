@@ -96,6 +96,16 @@ pub(crate) fn mark_process_start() {
     let _ = PROCESS_START.set(Instant::now());
 }
 
+/// Milliseconds since process start. The cold-start job subtracts
+/// successive lines to name the step that dominates a budget miss.
+pub(crate) fn phase(name: &str) {
+    let start = PROCESS_START.get().copied().unwrap_or_else(Instant::now);
+    eprintln!(
+        "Lux: phase {name} {:.1} ms",
+        start.elapsed().as_secs_f64() * 1000.0
+    );
+}
+
 pub(crate) fn configure(probe: Option<PathBuf>, bench_open: Option<PathBuf>) {
     if probe.is_none() && bench_open.is_none() {
         return;
@@ -419,6 +429,29 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     ));
     out.push_str(&escape(&path));
     out.push('\n');
+    let syntax_tokens = app
+        .syntax
+        .as_ref()
+        .map(|syntax| syntax.tokens.len())
+        .unwrap_or(0);
+    let highlight = app
+        .syntax
+        .as_ref()
+        .map(|syntax| syntax.language.name())
+        .unwrap_or("none");
+    let diagnostic_lines = app
+        .ui
+        .lsp
+        .diagnostics
+        .iter()
+        .map(|item| item.range.start.line.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    out.push_str(&format!(
+        "highlight={highlight}\nsyntax_tokens={syntax_tokens}\ndiagnostics={}\ndiagnostic_lines={diagnostic_lines}\ngutter_marks={}\n",
+        app.ui.lsp.diagnostics.len(),
+        app.ui.git.markers.len(),
+    ));
     out.push_str("git_marks=");
     out.push_str(&escape(&crate::git::git_marks_label(
         &app.ui.git.changed_files,
@@ -502,6 +535,9 @@ fn render_dump(app: &App, slot: &Slot) -> String {
             out.push_str(&format!("content={x},{y},{},{}\n", size.width, size.height));
         }
     }
+    out.push_str("icon=");
+    out.push_str(crate::app_icon::probe_token());
+    out.push('\n');
     out
 }
 
