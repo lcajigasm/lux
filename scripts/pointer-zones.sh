@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Moves the pointer across a real Lux.app window and reads
-# NSCursor.currentSystemCursor for each zone.
+# NSCursor.currentSystem for each zone.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -66,6 +66,12 @@ func tiff(_ cursor: NSCursor) -> Data {
     cursor.image.tiffRepresentation ?? Data()
 }
 
+func shape(_ cursor: NSCursor) -> String {
+    let spot = cursor.hotSpot
+    let size = cursor.image.size
+    return "\(spot.x),\(spot.y) \(size.width)x\(size.height)"
+}
+
 guard let current = NSCursor.currentSystem else {
     print("nil")
     exit(0)
@@ -77,14 +83,23 @@ let known: [(NSCursor, String)] = [
     (.resizeLeftRight, "ew"),
     (.resizeUpDown, "ns"),
 ]
+var hits: [String] = []
 for (cursor, name) in known {
-    if current == cursor || tiff(current) == tiff(cursor) {
-        print(name)
-        exit(0)
+    if current == cursor || tiff(current) == tiff(cursor) || shape(current) == shape(cursor) {
+        hits.append(name)
     }
 }
+if hits.count == 1 {
+    print(hits[0])
+    exit(0)
+}
 let spot = current.hotSpot
-print("other \(spot.x),\(spot.y) \(current.image.size.width)x\(current.image.size.height)")
+let size = current.image.size
+if hits.isEmpty {
+    print("other \(spot.x),\(spot.y) \(size.width)x\(size.height)")
+} else {
+    print("other \(spot.x),\(spot.y) \(size.width)x\(size.height) \(hits.joined(separator: ","))")
+}
 SWIFT
 
 cat > /tmp/lux-screen-scale.swift << 'SWIFT'
