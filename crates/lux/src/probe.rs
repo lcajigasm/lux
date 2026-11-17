@@ -419,6 +419,29 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     ));
     out.push_str(&escape(&path));
     out.push('\n');
+    let syntax_tokens = app
+        .syntax
+        .as_ref()
+        .map(|syntax| syntax.tokens.len())
+        .unwrap_or(0);
+    let highlight = app
+        .syntax
+        .as_ref()
+        .map(|syntax| syntax.language.name())
+        .unwrap_or("none");
+    let diagnostic_lines = app
+        .ui
+        .lsp
+        .diagnostics
+        .iter()
+        .map(|item| item.range.start.line.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    out.push_str(&format!(
+        "highlight={highlight}\nsyntax_tokens={syntax_tokens}\ndiagnostics={}\ndiagnostic_lines={diagnostic_lines}\ngutter_marks={}\n",
+        app.ui.lsp.diagnostics.len(),
+        app.ui.git.markers.len(),
+    ));
     out.push_str("git_marks=");
     out.push_str(&escape(&crate::git::git_marks_label(
         &app.ui.git.changed_files,
