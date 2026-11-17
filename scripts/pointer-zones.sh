@@ -66,11 +66,10 @@ func tiff(_ cursor: NSCursor) -> Data {
     cursor.image.tiffRepresentation ?? Data()
 }
 
-guard #available(macOS 15, *) else {
-    fputs("NSCursor.currentSystemCursor needs macOS 15\n", stderr)
-    exit(2)
+guard let current = NSCursor.currentSystem else {
+    print("nil")
+    exit(0)
 }
-let current = NSCursor.currentSystemCursor
 let known: [(NSCursor, String)] = [
     (.arrow, "arrow"),
     (.iBeam, "ibeam"),
@@ -119,8 +118,14 @@ num() {
   python3 -c "print(float('$1'))"
 }
 
+if ! swiftc -o /tmp/lux-cursor-name /tmp/lux-cursor-name.swift >"$out/cursor-build.txt" 2>&1; then
+  log "cursor reader did not compile"
+  cat "$out/cursor-build.txt" | tee -a "$report"
+  exit 1
+fi
+
 read_cursor() {
-  swift /tmp/lux-cursor-name.swift
+  /tmp/lux-cursor-name
 }
 
 sample() {
