@@ -66,10 +66,26 @@ func tiff(_ cursor: NSCursor) -> Data {
     cursor.image.tiffRepresentation ?? Data()
 }
 
-func shape(_ cursor: NSCursor) -> String {
+func near(_ a: CGFloat, _ b: CGFloat) -> Bool {
+    abs(a - b) < 0.51
+}
+
+func sameShape(_ a: NSCursor, _ b: NSCursor) -> Bool {
+    near(a.hotSpot.x, b.hotSpot.x) && near(a.hotSpot.y, b.hotSpot.y)
+        && near(a.image.size.width, b.image.size.width)
+        && near(a.image.size.height, b.image.size.height)
+}
+
+func sameHotSpot(_ a: NSCursor, _ b: NSCursor) -> Bool {
+    near(a.hotSpot.x, b.hotSpot.x) && near(a.hotSpot.y, b.hotSpot.y)
+}
+
+func describe(_ cursor: NSCursor, _ name: String) -> String {
     let spot = cursor.hotSpot
     let size = cursor.image.size
-    return "\(spot.x),\(spot.y) \(size.width)x\(size.height)"
+    let rep = cursor.image.representations.first
+    let px = rep.map { "\($0.pixelsWide)x\($0.pixelsHigh)" } ?? "none"
+    return "\(name) \(spot.x),\(spot.y) \(size.width)x\(size.height) px=\(px) tiff=\(tiff(cursor).count)"
 }
 
 guard let current = NSCursor.currentSystem else {
@@ -84,22 +100,27 @@ let known: [(NSCursor, String)] = [
     (.resizeUpDown, "ns"),
 ]
 var hits: [String] = []
+var hotHits: [String] = []
 for (cursor, name) in known {
-    if current == cursor || tiff(current) == tiff(cursor) || shape(current) == shape(cursor) {
+    if current == cursor || tiff(current) == tiff(cursor) || sameShape(current, cursor) {
         hits.append(name)
+    }
+    if sameHotSpot(current, cursor) {
+        hotHits.append(name)
     }
 }
 if hits.count == 1 {
     print(hits[0])
     exit(0)
 }
+if hits.isEmpty && hotHits.count == 1 {
+    print(hotHits[0])
+    exit(0)
+}
+let catalog = known.map { describe($0.0, $0.1) }.joined(separator: " | ")
 let spot = current.hotSpot
 let size = current.image.size
-if hits.isEmpty {
-    print("other \(spot.x),\(spot.y) \(size.width)x\(size.height)")
-} else {
-    print("other \(spot.x),\(spot.y) \(size.width)x\(size.height) \(hits.joined(separator: ","))")
-}
+print("other \(spot.x),\(spot.y) \(size.width)x\(size.height) \(catalog)")
 SWIFT
 
 cat > /tmp/lux-screen-scale.swift << 'SWIFT'
