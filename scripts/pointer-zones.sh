@@ -132,6 +132,7 @@ sample() {
   drive_dump || true
   pointer="$(drive_field pointer || true)"
   log "zone=$zone expect=$expect nscursor=${cursor:-missing} pointer=${pointer:-absent} at=$x,$y"
+  shot "$zone"
   if [[ "$cursor" != "$expect" ]]; then
     fail=1
   fi
@@ -146,19 +147,24 @@ shot() {
   fi
 }
 
+# The open queue leaves the last file active. note.txt is still a tab.
 ready=0
-for _ in $(seq 1 40); do
-  if drive_dump && [[ "$(drive_field active_path)" == *note.txt ]]; then
-    ready=1
-    break
+for _ in $(seq 1 50); do
+  if drive_dump; then
+    tabs="$(drive_field tab_paths || true)"
+    if [[ "$tabs" == *note.txt* && "$tabs" == *page.md* && "$tabs" == *page.html* ]]; then
+      ready=1
+      break
+    fi
   fi
   sleep 0.3
 done
 if [[ "$ready" != 1 ]]; then
-  log "note.txt did not open: $(drive_field active_path || true)"
+  log "the three files did not open: tabs=$(drive_field tab_paths || true) active=$(drive_field active_path || true)"
   cat "$DRIVE_LOG" >> "$report" || true
   exit 1
 fi
+log "open queue settled on $(drive_field active_path || true)"
 
 frame_line="$(frame)" || {
   log "Lux window was not found"
@@ -209,14 +215,24 @@ py() {
 tab_w="$(python3 -c "print(min(200, max(120, $view_w / 3)))")"
 log "origin=$origin_x,$origin_y content=${content_w}x${content_h} sidebar=$sidebar view=${view_w}x${view_h} tab_w=$tab_w"
 
+tab_x="$(python3 -c "print($sidebar + 40)")"
+drive_key click "$(pt "$tab_x")" "$(py 16)"
+sleep 0.5
+drive_dump || true
+active="$(drive_field active_path || true)"
+log "selected note tab active=$active"
+if [[ "$active" != *note.txt ]]; then
+  log "note.txt tab did not become active: ${active:-absent}"
+  shot note-tab-miss
+  exit 1
+fi
+
 text_x="$(python3 -c "print($sidebar + 140)")"
 gutter_x="$(python3 -c "print($sidebar + 12)")"
 sample editor-text ibeam "$(pt "$text_x")" "$(py 72)"
-shot editor-text
 
 sample gutter arrow "$(pt "$gutter_x")" "$(py 72)"
 
-tab_x="$(python3 -c "print($sidebar + 40)")"
 close_x="$(python3 -c "print($sidebar + $tab_w - 12)")"
 sample tab hand "$(pt "$tab_x")" "$(py 16)"
 shot tab
