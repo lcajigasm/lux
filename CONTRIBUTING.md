@@ -3,13 +3,13 @@
 See `CLAUDE.md` for the ten rules. Conventional Commits, English, one
 coherent change per PR. `main` always builds.
 
+Before every push, run:
+
 ```
-cargo build --workspace
-cargo test --workspace
-cargo clippy --workspace -- -D warnings
-cargo fmt --check
-./scripts/check-limits.sh
+./scripts/pre-push.sh
 ```
+
+That is `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace`. Do not push when it is red. CI also runs `./scripts/check-limits.sh`.
 
 Do not implement items in `docs/NON-GOALS.md`.
 

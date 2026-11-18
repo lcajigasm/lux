@@ -177,11 +177,10 @@ release is tagged for that regression.
 
 ### How the compare job works
 
-The compare job in `.github/workflows/macos-ui.yml` runs on `pull_request`
-(a docs-only diff skips it) and `workflow_dispatch` (this token cannot
-start `workflow_dispatch`). One standard `macos-15` job, timeout 45
-minutes. `scripts/compare-captures.sh` uses the debug `lux` that workflow
-built once, and a local run compiles it. The job installs the Sublime Text cask, opens
+`scripts/compare-captures.sh` runs inside the single macOS UI job in
+`.github/workflows/macos-ui.yml` (`pull_request`, skipped for a docs-only
+or version-only diff, and `workflow_dispatch`). That job builds debug
+`lux` once. A local run compiles it. The scenario installs the Sublime Text cask, opens
 `docs/compare/fixtures/monokai.rs` in both apps with Monokai, and
 `docs/compare/fixtures/characters.txt` in Lux. `screencapture -l` captures
 the real windows. ImageMagick appends the pair. The same job then

@@ -4,14 +4,20 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
-# Linux packages for a version tag. This file has no macOS runner and does
-# not call release-macos.yml. Publishing the release is the one event that
-# starts that workflow (`release: types: [published]`). A tag push alone
-# does not. Windows .msi stays scripts/package-msi.ps1. No signing secrets.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+# Linux packages for a version tag. release-pr.yml creates that tag with
+# GITHUB_TOKEN, which does not start this push trigger, and then dispatches
+# this workflow on the tag. A tag pushed by a person still starts it.
+# The universal disk image is release-pr.yml. Windows .msi stays
+# scripts/package-msi.ps1. No signing secrets.
 
 jobs:
   build:
@@ -56,8 +62,13 @@ jobs:
           path: dist
 
       - name: Checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p assets
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release download "$GITHUB_REF_NAME" --dir assets --clobber
+          fi
           find dist -type f \( -name 'lux-linux-*' -o -name '*.deb' \) -exec cp {} assets/ \;
           cd assets
           find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
