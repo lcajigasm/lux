@@ -16,7 +16,7 @@ thread wakes it.
 | Commit | Commits the index as `Lux User <lux@example.com>` | `commit_writes_the_message` |
 | Blame | A tab of `short-id start+len` hunks for the file at `HEAD` | `blame_attributes_the_line` |
 | History | A tab of the commits that changed the file, newest first | `history_lists_the_commit` |
-| Conflicts | `<<<<<<<` blocks in the buffer, resolved to ours, theirs, or both | `resolve_conflict_replaces_text` |
+| Conflicts | `<<<<<<<` blocks in the buffer. The buttons and `Git: Accept Current Change`, `Git: Accept Incoming Change`, and `Git: Accept Both Changes` resolve the block under the caret and keep that text on the tab | `resolve_conflict_replaces_text`, `accept_incoming_uses_the_caret_line` |
 
 `the_worker_applies_gutter_markers` opens a file and waits until the
 background snapshot lands on the gutter.
