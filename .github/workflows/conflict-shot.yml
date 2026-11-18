@@ -1,0 +1,32 @@
+name: Conflict caret
+
+# Free macos-15. Markers, then the same window after Accept Current.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shot:
+    name: conflict caret (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Accept the conflict under the caret and capture both windows
+        run: |
+          chmod +x scripts/conflict-shot.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/conflict-shot.sh
+      - name: Upload conflict-caret
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conflict-caret
+          path: |
+            docs/evidence/conflict-markers.png
+            docs/evidence/conflict-accepted.png
+          if-no-files-found: error
