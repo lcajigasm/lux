@@ -116,10 +116,22 @@ scroll_x="$(drive_field scroll_x)"
 [[ -n "$sel" ]] || fail "no cursor"
 echo "cursor=$sel scroll_y=$scroll_y scroll_x=$scroll_x" | tee -a "$report"
 
+# Key code 43 is the ANSI comma position. The keymap matches that
+# physical key, so the chord is cmd+, on a Spanish layout too. The
+# event has to reach Lux first: one tap, then wait until Settings is
+# open. CGEvent returns before the editor applies it.
 drive_key tap 43 cmd
-sleep 0.4
-drive_dump
-[[ "$(drive_field settings)" == "1" ]] || fail "Cmd+, did not open Settings"
+opened_settings=0
+for _ in $(seq 1 20); do
+  sleep 0.25
+  drive_dump
+  if [[ "$(drive_field settings)" == "1" ]]; then
+    opened_settings=1
+    break
+  fi
+done
+echo "after Cmd+, settings=$(drive_field settings) input=$(drive_field input) front=$(drive_front_pid) lux=$DRIVE_PID" | tee -a "$report"
+[[ "$opened_settings" == "1" ]] || fail "Cmd+, did not open Settings"
 pass "Cmd+, opens Settings"
 capture "$out/settings-monokai.png"
 drive_scroll -6
