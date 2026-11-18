@@ -36,7 +36,11 @@ for f in "$fixture" "$characters"; do
 done
 
 echo "--> Building lux (debug, locked)"
-cargo build -p lux --locked
+if [[ -z "${LUX_PREBUILT:-}" || ! -x "$root/target/debug/lux" ]]; then
+  cargo build -p lux --locked
+else
+  echo "--> prebuilt binary, compile skipped"
+fi
 lux_app="$(bash "$root/scripts/stage-lux-app.sh" --no-build)"
 echo "--> bundled app $lux_app"
 

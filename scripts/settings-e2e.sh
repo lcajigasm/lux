@@ -69,7 +69,11 @@ fixture="$out/sample.rs"
 } > "$fixture"
 
 echo "--> Building lux"
-HOME="$real_home" cargo build -p lux --locked
+if [[ -z "${LUX_PREBUILT:-}" || ! -x "$root/target/debug/lux" ]]; then
+  HOME="$real_home" cargo build -p lux --locked
+else
+  echo "--> prebuilt binary, compile skipped"
+fi
 app="$(HOME="$real_home" bash "$root/scripts/stage-lux-app.sh" --no-build)"
 echo "--> bundled app $app" | tee -a "$report"
 

@@ -1,0 +1,1323 @@
+name: macOS UI
+
+# One standard macos-15 workflow for the pull-request UI jobs.
+# debug-app and release-app compile lux once. The other jobs download
+# that binary. A docs-only diff skips those jobs. Required checks stay
+# in ci.yml and ok-gate.yml and always report their existing names.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-ui-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: macOS UI paths
+    runs-on: ubuntu-latest
+    outputs:
+      ui: ${{ steps.paths.outputs.ui }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Decide whether UI jobs run
+        id: paths
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          chmod +x scripts/ci-ui-paths.sh
+          ./scripts/ci-ui-paths.sh --self-test
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            echo "ui=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "$BASE_SHA"
+          fi
+          files="$(git diff --name-only "$BASE_SHA" HEAD)"
+          printf '%s\n' "$files"
+          ui="$(printf '%s\n' "$files" | ./scripts/ci-ui-paths.sh)"
+          echo "ui=$ui" >> "$GITHUB_OUTPUT"
+          echo "ui=$ui"
+
+  debug-app:
+    name: lux debug binary (macos-15)
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Build debug lux
+        run: cargo build -p lux --locked
+      - name: Upload debug lux
+        uses: actions/upload-artifact@v4
+        with:
+          name: lux-debug-bin
+          path: target/debug/lux
+          if-no-files-found: error
+
+  release-app:
+    name: lux release binary (macos-15)
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release lux
+        run: cargo build -p lux --release --locked
+      - name: Upload release lux
+        uses: actions/upload-artifact@v4
+        with:
+          name: lux-release-bin
+          path: target/release/lux
+          if-no-files-found: error
+
+  app-icon-dock:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: app icon (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Raster tools
+        run: brew install librsvg
+      - name: Toolchain
+        run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Dock captures
+        run: chmod +x scripts/build-app-icon.sh scripts/app-icon-shot.sh && ./scripts/app-icon-shot.sh
+      - name: Upload Dock captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-icon
+          path: docs/evidence/app-icon/**
+          if-no-files-found: error
+
+  buffer-menu-menu:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: buffer menu (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Open the menu and select a word
+        run: |
+          chmod +x scripts/buffer-menu.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/buffer-menu.sh
+
+      - name: Upload buffer menu captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buffer-menu
+          path: docs/evidence/buffer-menu/**
+          if-no-files-found: error
+
+  close-folder-close-folder:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: close folder (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Close one folder
+        run: |
+          chmod +x scripts/close-folder.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/close-folder.sh
+
+      - name: Upload the closed sidebar
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: close-tabs
+          path: docs/evidence/close-folder/**
+          if-no-files-found: error
+
+  compare-capture:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: lux and sublime (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Capture Lux and Sublime Text
+        run: |
+          chmod +x scripts/compare-captures.sh scripts/stage-lux-app.sh
+          ./scripts/compare-captures.sh
+
+      - name: Upload captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compare-captures
+          path: docs/compare/*.png
+          if-no-files-found: warn
+
+      - name: Upload selectors.png
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selectors.png
+          path: docs/compare/selectors.png
+          if-no-files-found: error
+
+  conflict-shot-shot:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: conflict caret (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Accept the conflict under the caret and capture both windows
+        run: |
+          chmod +x scripts/conflict-shot.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/conflict-shot.sh
+      - name: Upload conflict-caret
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conflict-caret
+          path: |
+            docs/evidence/conflict-markers.png
+            docs/evidence/conflict-accepted.png
+          if-no-files-found: error
+
+  evidence-smoke:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: lux app smoke (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Smoke Lux.app
+        run: |
+          chmod +x scripts/evidence-macos.sh scripts/stage-lux-app.sh
+          ./scripts/evidence-macos.sh
+
+      - name: Upload scale-2 frames
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-frames
+          path: |
+            docs/evidence/editor.png
+            docs/evidence/palette.png
+            docs/evidence/settings.png
+            docs/evidence/smoke.log
+          if-no-files-found: warn
+
+  file-drop-drop:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: file drop (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Drop a file on the window
+        run: |
+          chmod +x scripts/file-drop.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/file-drop.sh
+
+      - name: Upload the drop capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: file-drop
+          path: docs/evidence/file-drop/**
+          if-no-files-found: error
+
+  file-menu-file-menu:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: file menu open (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Open the File menu
+        run: |
+          chmod +x scripts/file-menu.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/file-menu.sh
+      - name: Upload the open File menu
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: file-menu
+          path: docs/evidence/file-menu/**
+          if-no-files-found: error
+
+  git-branch-branch:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: git branch (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Create a branch from the palette
+        run: |
+          chmod +x scripts/git-branch-e2e.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/git-branch-e2e.sh
+
+      - name: Upload branch captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: git-branch
+          path: docs/evidence/git-branch/**
+          if-no-files-found: warn
+
+  git-status-status:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: git status (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Mark the dirty file in the tree
+        run: |
+          chmod +x scripts/git-status-e2e.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/git-status-e2e.sh
+
+      - name: Upload status captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: git-status
+          path: docs/evidence/git-status/**
+          if-no-files-found: warn
+
+  gutter-clip-gutter:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: gutter clip (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Scroll and check the margin
+        run: |
+          chmod +x scripts/gutter-clip.sh scripts/gutter_pixels.py scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/gutter-clip.sh
+
+      - name: Upload gutter captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gutter-clip
+          path: docs/evidence/gutter/**
+          if-no-files-found: warn
+
+  h1-cold-start-cold:
+    needs: [changes, release-app]
+    if: needs.changes.outputs.ui == 'true' && needs.release-app.result == 'success'
+    name: h1 cold start (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: release
+      - name: Median of ten release launches
+        run: |
+          chmod +x scripts/h1-cold-start.sh scripts/stage-lux-app.sh
+          ./scripts/h1-cold-start.sh
+      - name: Upload the frame and the samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h1-cold-start
+          path: docs/evidence/h1/**
+          if-no-files-found: error
+
+  h1-overlap-cold:
+    needs: [changes, release-app]
+    if: needs.changes.outputs.ui == 'true' && needs.release-app.result == 'success'
+    name: h1 adapter overlap (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: release
+      - name: Median of ten launches, before and after
+        run: |
+          chmod +x scripts/h1-overlap.sh scripts/stage-lux-app.sh
+          ./scripts/h1-overlap.sh
+      - name: Upload the samples and the first frame
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h1-overlap
+          path: docs/evidence/h1-overlap/**
+          if-no-files-found: error
+
+  h2-key-frame-keys:
+    needs: [changes, release-app]
+    if: needs.changes.outputs.ui == 'true' && needs.release-app.result == 'success'
+    name: h2 key frame (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: release
+      - name: Type into a 20k-line file
+        run: |
+          chmod +x scripts/h2-key-frame.sh scripts/stage-lux-app.sh
+          ./scripts/h2-key-frame.sh
+      - name: Upload the frame and the clock
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h2-key-frame
+          path: docs/evidence/h2/**
+          if-no-files-found: error
+
+  h3-open-open:
+    needs: [changes, release-app]
+    if: needs.changes.outputs.ui == 'true' && needs.release-app.result == 'success'
+    name: h3 open 10mb (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: release
+      - name: Open a 10 MB file, before and after
+        run: |
+          chmod +x scripts/h3-open.sh scripts/stage-lux-app.sh
+          ./scripts/h3-open.sh
+      - name: Upload the raw timings and the frame
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h3-open
+          path: docs/evidence/h3-open/**
+          if-no-files-found: error
+
+  h4-open-open:
+    needs: [changes, release-app]
+    if: needs.changes.outputs.ui == 'true' && needs.release-app.result == 'success'
+    name: h4 open 100mb (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: release
+      - name: Open a 100 MB file, before and after
+        run: |
+          chmod +x scripts/h4-open.sh scripts/stage-lux-app.sh
+          ./scripts/h4-open.sh
+      - name: Upload the raw timings and the frame
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-open
+          path: docs/evidence/h4-open/**
+          if-no-files-found: error
+
+  h5-scroll-frame-scroll:
+    needs: [changes, release-app]
+    if: needs.changes.outputs.ui == 'true' && needs.release-app.result == 'success'
+    name: h5 scroll frame (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: release
+      - name: Scroll a 50k-line file
+        run: |
+          chmod +x scripts/h5-scroll-frame.sh scripts/stage-lux-app.sh
+          ./scripts/h5-scroll-frame.sh
+      - name: Upload the frames and the clock
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h5-scroll-frame
+          path: docs/evidence/h5/**
+          if-no-files-found: error
+
+  h6-rss-rss:
+    needs: [changes, release-app]
+    if: needs.changes.outputs.ui == 'true' && needs.release-app.result == 'success'
+    name: h6 open rss (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: release
+      - name: Measure extra RSS, before and after
+        run: |
+          chmod +x scripts/h6-rss.sh scripts/stage-lux-app.sh
+          ./scripts/h6-rss.sh
+      - name: Upload the raw samples and the frame
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h6-rss
+          path: docs/evidence/h6-rss/**
+          if-no-files-found: error
+
+  html-preview-html-preview:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: html preview (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Render and edit the preview
+        run: |
+          chmod +x scripts/html-preview.sh scripts/html_preview_pixels.py scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/html-preview.sh
+
+      - name: Upload HTML preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-preview
+          path: docs/evidence/html-preview/**
+          if-no-files-found: warn
+
+  icon-proposals-icons:
+    needs: [changes]
+    if: needs.changes.outputs.ui == 'true'
+    name: icon proposals (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: librsvg
+        run: brew install librsvg
+
+      - name: Render the proposals
+        run: |
+          chmod +x scripts/render-icons.sh
+          ./scripts/render-icons.sh
+
+      - name: Upload icon proposals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: icon-proposals
+          path: docs/evidence/icon-proposals/**
+          if-no-files-found: warn
+
+  key-frame-keys:
+    needs: [changes, release-app]
+    if: needs.changes.outputs.ui == 'true' && needs.release-app.result == 'success'
+    name: key frame (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: release
+      - name: Type into a 20k-line file, before and after
+        run: |
+          chmod +x scripts/key-frame.sh scripts/stage-lux-app.sh
+          ./scripts/key-frame.sh
+      - name: Upload the frame and the clocks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: key-frame
+          path: docs/evidence/key-frame/**
+          if-no-files-found: error
+
+  keystrokes-spanish:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: spanish keystrokes (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Press keys into Lux
+        run: |
+          chmod +x scripts/macos-keystrokes.sh
+          ./scripts/macos-keystrokes.sh
+
+      - name: Upload keystroke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: keystroke-evidence
+          path: |
+            docs/compare/keystroke-result.txt
+            docs/compare/keystrokes-search.png
+            docs/compare/keystrokes-chords.png
+            docs/compare/input-sources.txt
+            docs/compare/ax-error.txt
+          if-no-files-found: warn
+
+  markdown-preview-markdown-preview:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: markdown preview (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Render and edit the preview
+        run: |
+          chmod +x scripts/markdown-preview.sh scripts/markdown_preview_pixels.py scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/markdown-preview.sh
+
+      - name: Upload markdown preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: markdown-preview
+          path: docs/evidence/markdown-preview/**
+          if-no-files-found: warn
+
+  markdown-shot-shot:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: markdown fence (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Open the preview and capture the window
+        run: |
+          chmod +x scripts/markdown-shot.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/markdown-shot.sh
+      - name: Upload markdown-fence.png
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: markdown-fence
+          path: docs/evidence/markdown-fence*.png
+          if-no-files-found: error
+
+  monokai-text-monokai:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: monokai text (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Capture text and check pixels
+        run: |
+          chmod +x scripts/monokai-text.sh scripts/monokai_text_pixels.py scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/monokai-text.sh
+
+      - name: Upload text captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monokai-text
+          path: docs/evidence/monokai-text/**
+          if-no-files-found: warn
+
+  p0-macos-shortcuts:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: shortcut matrix (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Press the Block 3 chords
+        run: |
+          chmod +x scripts/p0-shortcuts.sh scripts/stage-lux-app.sh
+          ./scripts/p0-shortcuts.sh
+      - name: Upload shortcut report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shortcut-matrix
+          path: docs/evidence/shortcuts.txt
+          if-no-files-found: warn
+
+  p0-macos-editing:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: autopair and undo (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Type pairs and undo
+        run: |
+          chmod +x scripts/p0-editing.sh scripts/stage-lux-app.sh
+          ./scripts/p0-editing.sh
+      - name: Upload editing report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editing-report
+          path: docs/evidence/editing.txt
+          if-no-files-found: warn
+
+  p0-macos-hidpi:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: retina window (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Try a scale-2 framebuffer
+        run: |
+          chmod +x scripts/p0-hidpi.sh scripts/stage-lux-app.sh
+          ./scripts/p0-hidpi.sh
+      - name: Upload HiDPI note
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e1-hidpi
+          path: |
+            docs/evidence/e1-hidpi.txt
+            docs/evidence/e1-window.png
+          if-no-files-found: warn
+
+  p0-macos-checklist:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: parity checklist (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Run the checklist
+        run: |
+          chmod +x scripts/p0-checklist.sh scripts/stage-lux-app.sh
+          ./scripts/p0-checklist.sh
+      - name: Upload receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-receipt
+          path: docs/receipts/p0-macos-ci.md
+          if-no-files-found: error
+
+  p0-macos-same_window:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: same-window palette (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Command-P, Escape, Command-Shift-P
+        run: |
+          chmod +x scripts/p0-same-window.sh scripts/stage-lux-app.sh
+          ./scripts/p0-same-window.sh
+      - name: Upload same-window report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: same-window-palette
+          path: docs/evidence/same-window.txt
+          if-no-files-found: warn
+
+  p0-macos-lsp:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: lsp runtime (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Open a Rust file
+        run: |
+          chmod +x scripts/p0-lsp.sh scripts/stage-lux-app.sh
+          ./scripts/p0-lsp.sh
+      - name: Upload lsp report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lsp-runtime
+          path: docs/evidence/lsp.txt
+          if-no-files-found: warn
+
+  p0-macos-perf:
+    needs: [changes, release-app]
+    if: needs.changes.outputs.ui == 'true' && needs.release-app.result == 'success'
+    name: release timings (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: release
+      - name: Measure the release binary
+        run: |
+          chmod +x scripts/p0-perf.sh scripts/stage-lux-app.sh
+          ./scripts/p0-perf.sh
+      - name: Upload timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-macos
+          path: |
+            docs/evidence/perf.md
+            docs/evidence/perf-raw.txt
+          if-no-files-found: warn
+
+  selection-contrast-selection:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: selection contrast (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Capture Monokai selections
+        run: |
+          chmod +x scripts/selection-contrast.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/selection-contrast.sh
+
+      - name: Upload the selection captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selection-contrast
+          path: docs/evidence/selection-contrast/**
+          if-no-files-found: error
+
+  selection-drag-drag:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: selection drag (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Drag a selection
+        run: |
+          chmod +x scripts/selection-drag.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/selection-drag.sh
+
+      - name: Upload the drag capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selection-drag
+          path: docs/evidence/selection-drag/**
+          if-no-files-found: error
+
+  settings-palette-settings:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: settings palette (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Settings, themes, and palette
+        run: |
+          chmod +x scripts/settings-e2e.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/settings-e2e.sh
+
+      - name: Upload settings and palette captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: settings-palette
+          path: docs/evidence/settings/**
+          if-no-files-found: warn
+
+      - name: Upload color-theme-chips.png
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: color-theme-chips
+          path: |
+            docs/evidence/settings/color-theme-chips.png
+            docs/evidence/settings/color-theme-chips-scrolled.png
+          if-no-files-found: error
+
+  sidebar-clip-sidebar-clip:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: sidebar clip (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Scroll the tree and check the header
+        run: |
+          chmod +x scripts/sidebar-clip.sh scripts/sidebar_clip_pixels.py scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/sidebar-clip.sh
+
+      - name: Upload sidebar clip captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidebar-clip
+          path: docs/evidence/sidebar-clip/**
+          if-no-files-found: warn
+
+  tab-view-audit-tab-view-audit:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: tab view audit (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Open, close, and switch buffers
+        run: |
+          chmod +x scripts/tab-view-audit.sh scripts/tab_view_pixels.py scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/tab-view-audit.sh
+
+      - name: Upload tab view audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tab-view-audit
+          path: docs/evidence/tab-view-audit/**
+          if-no-files-found: warn
+
+  theme-break-themes:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: themes settings palette (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Capture every theme
+        run: |
+          chmod +x scripts/theme-break.sh scripts/theme_pixels.py scripts/stage-lux-app.sh
+          ./scripts/theme-break.sh
+
+      - name: Upload theme captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: theme-break
+          path: |
+            docs/evidence/themes/**
+          if-no-files-found: warn
+
+  tree-drag-drag:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: tree drag (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Drag a tree row
+        run: |
+          chmod +x scripts/tree-drag.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/tree-drag.sh
+
+      - name: Upload the tree drag capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tree-drag
+          path: docs/evidence/tree-drag/**
+          if-no-files-found: error
+
+  tree-watch-watch:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: tree watch (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Create and remove a file beside the open folder
+        run: |
+          chmod +x scripts/tree-watch.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/tree-watch.sh
+      - name: Upload the sidebar capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tree-watch
+          path: docs/evidence/tree-watch/**
+          if-no-files-found: error
+
+  triple-click-line:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: triple click (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+
+      - name: Select a line with a triple click
+        run: |
+          chmod +x scripts/triple-click.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/triple-click.sh
+
+      - name: Upload the line capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: triple-click
+          path: docs/evidence/triple-click/**
+          if-no-files-found: error
+
+  unstage-shot-shot:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: unstage hunk (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Unstage one hunk and capture the window
+        run: |
+          chmod +x scripts/unstage-shot.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/unstage-shot.sh
+      - name: Upload unstage-hunk.png
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unstage-hunk
+          path: docs/evidence/unstage-hunk.png
+          if-no-files-found: error
+
+  window-restore-frame:
+    needs: [changes, debug-app]
+    if: needs.changes.outputs.ui == 'true' && needs.debug-app.result == 'success'
+    name: window frame and hot exit (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - name: Prebuilt Lux binary
+        uses: ./.github/actions/prebuilt-lux
+        with:
+          profile: debug
+      - name: Restore the window and the session
+        run: |
+          chmod +x scripts/window-restore.sh scripts/stage-lux-app.sh scripts/macos-drive.sh
+          ./scripts/window-restore.sh
+      - name: Upload the frame report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-restore
+          path: docs/evidence/window-restore.txt
+          if-no-files-found: warn

@@ -8,9 +8,17 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# A new push to the same branch or pull request cancels this workflow
+# only. It does not cancel macos-ui.yml or ok-gate.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 # Linux jobs stay on ubuntu-latest. Pull requests and main also run one
 # standard macos-15 job (tests, plus a universal .app/.dmg artifact that
-# is not published). Windows stays out of CI. No larger runners.
+# is not published). That job's name is a required check. Screenshot and
+# timing jobs live in macos-ui.yml and are not required checks. Windows
+# stays out of CI. No larger runners.
 # release-macos.yml still publishes the disk image only when a GitHub
 # Release is published, or on workflow_dispatch. The repository is public,
 # so these standard runners are inside the included quota.
