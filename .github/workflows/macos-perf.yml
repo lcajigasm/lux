@@ -10,7 +10,17 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - ".github/workflows/macos-perf.yml"
+      - "crates/lux-render/**"
+      - "crates/lux/src/app/startup.rs"
+      - "crates/lux/src/cli/**"
+      - "crates/lux/src/main.rs"
+      - "crates/lux/src/font.rs"
+      - "scripts/h1-*.sh"
+      - "scripts/h2-*.sh"
+      - "scripts/h3-*.sh"
+      - "scripts/h4-*.sh"
+      - "scripts/h5-*.sh"
+      - "scripts/h6-*.sh"
 
 permissions:
   contents: read
@@ -22,7 +32,6 @@ concurrency:
 jobs:
   perf:
     name: h1-h6 performance (macos-15)
-    if: github.event_name != 'pull_request'
     runs-on: macos-15
     timeout-minutes: 180
     steps:
