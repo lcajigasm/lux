@@ -304,6 +304,30 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         "git.unstage_file" => crate::git::request_stage_file(app, false),
         "git.stage_hunk" => crate::git::request_stage_cursor_hunk(app),
         "git.unstage_hunk" => crate::git::request_unstage_cursor_hunk(app),
+        "git.accept_current" => {
+            let line = app.cursors.primary().head.line;
+            crate::git::resolve_conflict_at_line(
+                app,
+                line,
+                lux_git::merge_conflicts::Resolution::Ours,
+            );
+        }
+        "git.accept_incoming" => {
+            let line = app.cursors.primary().head.line;
+            crate::git::resolve_conflict_at_line(
+                app,
+                line,
+                lux_git::merge_conflicts::Resolution::Theirs,
+            );
+        }
+        "git.accept_both" => {
+            let line = app.cursors.primary().head.line;
+            crate::git::resolve_conflict_at_line(
+                app,
+                line,
+                lux_git::merge_conflicts::Resolution::Both,
+            );
+        }
         "git.commit_staged" => crate::git::request_commit(app, "Commit from Lux".into()),
         "git.status" => crate::git::request_status(app),
         "git.blame" => crate::git::request_blame(app),
