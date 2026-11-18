@@ -19,6 +19,31 @@ mkdir -p "$out"
 report="$out/report.txt"
 : > "$report"
 pass() { echo "PASS $1" | tee -a "$report"; }
+# Poll a probe field until it equals want. Attempt 2 of run 44360392298
+# posted Esc and read the probe while the last key was still `h`: the
+# signal handler wrote the file before the queued key ran. Each probe
+# is a new signal, so the gap below is only there to let that key reach
+# the handler before the next read. The pass/fail decision is the field
+# (and, once Esc is in `input`, that same field).
+wait_until() {
+  local field="$1" want="$2" label="$3"
+  local _ input now
+  for _ in $(seq 1 40); do
+    drive_dump
+    now="$(drive_field "$field")"
+    if [[ "$now" == "$want" ]]; then
+      return 0
+    fi
+    input="$(drive_field input || true)"
+    if [[ "$input" == Escape/* ]]; then
+      echo "after Esc $field=$now input=$input front=$(drive_front_pid) lux=$DRIVE_PID" | tee -a "$report"
+      fail "$label"
+    fi
+    sleep 0.1
+  done
+  echo "gave up $field=$(drive_field "$field") input=$(drive_field input || true) front=$(drive_front_pid) lux=$DRIVE_PID" | tee -a "$report"
+  fail "$label"
+}
 fail() {
   echo "FAIL $1" | tee -a "$report" >&2
   if [[ -n "${DRIVE_PROBE:-}" && -s "$DRIVE_PROBE" ]]; then
@@ -144,9 +169,7 @@ echo "settings_scroll=$scrolled" | tee -a "$report"
 [[ "$scrolled" != "0" ]] || fail "Settings did not scroll"
 pass "Settings scrolls to the end"
 drive_key tap 53 ""
-sleep 0.3
-drive_dump
-[[ "$(drive_field settings)" == "0" ]] || fail "Esc left Settings open"
+wait_until settings 0 "Esc left Settings open"
 
 drive_key tap 35 "cmd,shift"
 sleep 0.3
@@ -156,10 +179,13 @@ drive_dump
 [[ "$(drive_field palette)" == "1" ]] || fail "Cmd+Shift+P did not open the palette"
 pass "palette is open"
 capture "$out/palette-monokai.png"
+# The snapshot returns when the PNG exists. Esc posted in that gap is
+# still queued when a 0.3s probe runs, so the dump still shows the
+# previous key (attempt 2 of 44360392298: input=h/a, palette=1).
+# Wait until the probe shows the palette closed, or until it shows Esc
+# was applied and the palette is still open.
 drive_key tap 53 ""
-sleep 0.3
-drive_dump
-[[ "$(drive_field palette)" == "0" ]] || fail "Esc left the palette open"
+wait_until palette 0 "Esc left the palette open"
 pass "Esc closes the palette"
 
 apply_theme() {
