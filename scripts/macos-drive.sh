@@ -33,23 +33,6 @@ for w in info {
 }
 exit(1)
 SWIFT
-  cat > /tmp/lux-front.swift << 'SWIFT'
-import AppKit
-
-@main
-enum Frontmost {
-    static func main() {
-        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1
-        print(front)
-    }
-}
-SWIFT
-  rm -f /tmp/lux-frontmost
-  if ! swiftc -parse-as-library -O -o /tmp/lux-frontmost /tmp/lux-front.swift >"$DRIVE_WORK/front-build.txt" 2>&1; then
-    echo "could not compile the frontmost helper:" >&2
-    cat "$DRIVE_WORK/front-build.txt" >&2
-    return 1
-  fi
   cat > /tmp/lux-drive.swift << 'SWIFT'
 import CoreGraphics
 import Foundation
@@ -280,7 +263,10 @@ drive_stop() {
 }
 
 drive_front_pid() {
-  /tmp/lux-frontmost 2>/dev/null || echo -1
+  # System Events is already the focus path. A separate Swift helper
+  # failed to compile and failed every macOS job that sources this file
+  # (push 13bdec3, 21 red workflows).
+  osascript -e 'tell application "System Events" to unix id of first application process whose frontmost is true' 2>/dev/null || echo -1
 }
 
 drive_focus() {
