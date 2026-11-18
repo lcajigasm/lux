@@ -15,7 +15,7 @@ use crate::app::App;
 pub(crate) fn probe_lines(app: &App) -> String {
     let language = app.ui.status_bar.layout.language_rect;
     let mut out = format!(
-        "pointer={}\nlanguage_rect={:.1},{:.1},{:.1},{:.1}\nscale={}\nsidebar={}\nminimap={}\nviewport={:.1},{:.1}\n",
+        "pointer={}\nlanguage_rect={:.1},{:.1},{:.1},{:.1}\nscale={}\nsidebar_w={}\nminimap={}\nviewport={:.1},{:.1}\n",
         shape_name(app.mouse.shape),
         language.x,
         language.y,

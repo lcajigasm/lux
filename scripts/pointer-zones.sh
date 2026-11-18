@@ -217,6 +217,24 @@ if [[ "$ready" != 1 ]]; then
 fi
 log "open queue settled on $(drive_field active_path || true)"
 
+# `sidebar` is 1 when the sidebar exists. Run 44401149823 read that flag
+# as the width, clicked the header, and left page.html active. `sidebar_w`
+# is the laid-out width in physical pixels. Wait until the tree has one.
+sidebar_px="$(drive_field sidebar_w || true)"
+wide() {
+  python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) >= 120 else 1)' "${1:-0}"
+}
+if ! wide "${sidebar_px:-0}"; then
+  for _ in $(seq 1 40); do
+    sleep 0.1
+    drive_dump || true
+    sidebar_px="$(drive_field sidebar_w || true)"
+    if wide "${sidebar_px:-0}"; then
+      break
+    fi
+  done
+fi
+
 frame_line="$(frame)" || {
   log "Lux window was not found"
   exit 1
@@ -224,13 +242,13 @@ frame_line="$(frame)" || {
 read -r frame_x frame_y frame_w frame_h <<< "$frame_line"
 scale="$(swift /tmp/lux-screen-scale.swift)"
 content="$(drive_field content || true)"
-sidebar_px="$(drive_field sidebar || true)"
+sidebar_px="$(drive_field sidebar_w || true)"
 minimap_px="$(drive_field minimap || true)"
 viewport="$(drive_field viewport || true)"
 language="$(drive_field language_rect || true)"
 
 log "frame=$frame_x,$frame_y ${frame_w}x${frame_h} screen_scale=$scale"
-log "content=${content:-absent} sidebar=${sidebar_px:-absent} minimap=${minimap_px:-absent} viewport=${viewport:-absent}"
+log "content=${content:-absent} sidebar_w=${sidebar_px:-absent} minimap=${minimap_px:-absent} viewport=${viewport:-absent}"
 log "language_rect=${language:-absent}"
 
 if [[ -n "$content" && -n "${sidebar_px:-}" ]]; then
@@ -241,9 +259,11 @@ if [[ -n "$content" && -n "${sidebar_px:-}" ]]; then
   content_w="$(python3 -c "print($cw / $app_scale)")"
   content_h="$(python3 -c "print($ch / $app_scale)")"
   sidebar="$(python3 -c "print($sidebar_px / $app_scale)")"
-  minimap="$(python3 -c "print($minimap_px / $app_scale)")"
-  IFS=',' read -r vw vh <<< "$viewport"
-  view_w="$(python3 -c "print($vw / $app_scale)")"
+  minimap="$(python3 -c "print(${minimap_px:-0} / $app_scale)")"
+  IFS=',' read -r _vw vh <<< "$viewport"
+  # viewport width on 44401149823 was still the full window (1000) while
+  # the minimap was already 90. The editor width is content minus chrome.
+  view_w="$(python3 -c "print(max(1, $content_w - $sidebar - $minimap))")"
   view_h="$(python3 -c "print($vh / $app_scale)")"
 else
   origin_x="$frame_x"
