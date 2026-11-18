@@ -1,7 +1,8 @@
 name: macOS performance
 
 # H1-H6, the key-frame comparison, and the release timings.
-# Nightly, manual, or a pull request that touches the renderer or startup.
+# Nightly, manual, or a pull request that touches the renderer, startup,
+# or an H1-H6 script. Changing this file alone does not start it.
 # Not a required check. One macos-15 runner compiles the release binary once.
 on:
   schedule:
@@ -20,10 +21,6 @@ on:
       - "scripts/h4-*.sh"
       - "scripts/h5-*.sh"
       - "scripts/h6-*.sh"
-      - "scripts/key-frame.sh"
-      - "scripts/p0-perf.sh"
-      - "scripts/macos-perf-suite.sh"
-      - ".github/workflows/macos-perf.yml"
 
 permissions:
   contents: read
