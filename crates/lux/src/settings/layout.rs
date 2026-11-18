@@ -113,7 +113,21 @@ pub(crate) struct RowGeom {
 pub(crate) struct MenuGeom {
     pub item: usize,
     pub panel: Rect,
+    /// Index of `options[0]` in the enum. The rest of the list is scrolled.
+    pub first: usize,
     pub options: Vec<Rect>,
+}
+
+/// Keeps `highlight` inside the visible window.
+pub(crate) fn reveal_menu(highlight: usize, scroll: usize, visible: usize) -> usize {
+    let visible = visible.max(1);
+    if highlight < scroll {
+        highlight
+    } else if highlight >= scroll.saturating_add(visible) {
+        highlight + 1 - visible
+    } else {
+        scroll
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -274,7 +288,7 @@ pub(crate) fn layout_settings(
         let SettingKind::Enum { options, .. } = &panel.items.get(menu.item)?.kind else {
             return None;
         };
-        Some(menu_geom(row, options.len(), page, scale))
+        Some(menu_geom(row, options.len(), menu.scroll, page, scale))
     });
     SettingsLayout {
         page,
@@ -374,35 +388,52 @@ fn control_geom(kind: &SettingKind, row: Rect, body: Rect, scale: f32) -> (Rect,
     (control, geom)
 }
 
-fn menu_geom(row: &RowGeom, option_count: usize, page: Rect, scale: f32) -> MenuGeom {
+fn menu_geom(
+    row: &RowGeom,
+    option_count: usize,
+    scroll: usize,
+    page: Rect,
+    scale: f32,
+) -> MenuGeom {
     let s = |logical: f32| logical * scale;
     let option_h = s(30.0);
-    let menu_h = option_count as f32 * option_h + s(8.0);
+    let pad = s(4.0);
+    let limit = (page.h - s(16.0)).max(option_h);
+    let capacity = ((limit - pad * 2.0) / option_h).floor().max(1.0) as usize;
+    let visible = capacity.min(option_count.max(1));
+    let first = scroll.min(option_count.saturating_sub(visible));
+    let panel_h = visible as f32 * option_h + pad * 2.0;
     let button = row.control;
     let mut menu_y = button.bottom() + s(4.0);
-    if menu_y + menu_h > page.bottom() - s(8.0) {
-        menu_y = button.y - s(4.0) - menu_h;
+    if menu_y + panel_h > page.bottom() - s(8.0) {
+        let above = button.y - s(4.0) - panel_h;
+        menu_y = if above >= page.y + s(8.0) {
+            above
+        } else {
+            page.y + s(8.0)
+        };
     }
-    if menu_y < page.y + s(8.0) {
-        menu_y = page.y + s(8.0);
+    if menu_y + panel_h > page.bottom() - s(8.0) {
+        menu_y = (page.bottom() - s(8.0) - panel_h).max(page.y + s(8.0));
     }
     let panel = Rect {
         x: button.x,
         y: menu_y,
         w: button.w,
-        h: menu_h,
+        h: panel_h,
     };
-    let options = (0..option_count)
-        .map(|index| Rect {
-            x: panel.x + s(4.0),
-            y: panel.y + s(4.0) + index as f32 * option_h,
-            w: (panel.w - s(8.0)).max(1.0),
+    let options = (0..visible)
+        .map(|offset| Rect {
+            x: panel.x + pad,
+            y: panel.y + pad + offset as f32 * option_h,
+            w: (panel.w - pad * 2.0).max(1.0),
             h: option_h,
         })
         .collect();
     MenuGeom {
         item: row.index,
         panel,
+        first,
         options,
     }
 }
@@ -422,11 +453,11 @@ impl SettingsLayout {
 
     pub(crate) fn hit(&self, x: f32, y: f32) -> SettingsHit {
         if let Some(menu) = &self.menu {
-            for (option, rect) in menu.options.iter().enumerate() {
+            for (offset, rect) in menu.options.iter().enumerate() {
                 if rect.contains(x, y) {
                     return SettingsHit::MenuOption {
                         item: menu.item,
-                        option,
+                        option: menu.first + offset,
                     };
                 }
             }

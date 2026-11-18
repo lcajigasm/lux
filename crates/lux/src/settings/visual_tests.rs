@@ -47,6 +47,7 @@ fn paint(
         24.0 * scale,
         scale,
         &lux_ui::Theme::MONOKAI,
+        lux_ui::SystemScheme::Dark,
     );
     (quads, glyphs)
 }
@@ -329,6 +330,85 @@ fn click(app: &mut App, x: f32, y: f32) {
     let mut settings = std::mem::take(&mut app.ui.settings);
     settings.handle_click(app, x, y);
     app.ui.settings = settings;
+}
+
+#[test]
+fn color_theme_menu_scrolls_inside_the_page_and_covers_its_control() {
+    let mut app = app();
+    app.viewport.width = 1000.0;
+    app.viewport.height = 280.0;
+    app.ui.settings.open_settings_ui();
+    let theme = item_index(&app, "workbench.colorTheme");
+    reveal(&mut app, theme);
+    let frame = bounds(&app);
+    let button = {
+        let layout = layout_settings(app.ui.settings.panel.as_ref().unwrap(), frame);
+        match layout
+            .rows
+            .iter()
+            .find(|row| row.index == theme)
+            .unwrap()
+            .kind
+        {
+            layout::ControlGeom::Menu { button } => button,
+            _ => panic!("theme is a menu"),
+        }
+    };
+    click(&mut app, button.x + 8.0, button.center_y());
+    let total = crate::color_scheme::theme_setting_options().len();
+    let layout = layout_settings(app.ui.settings.panel.as_ref().unwrap(), frame);
+    let menu = layout.menu.expect("menu");
+    assert!(
+        menu.options.len() < total,
+        "visible {} of {total}",
+        menu.options.len()
+    );
+    assert!(menu.panel.bottom() <= layout.page.bottom() + 0.6);
+    assert!(menu.panel.y >= layout.page.y - 0.6);
+    for option in &menu.options {
+        assert!(menu.panel.contains_rect(*option));
+    }
+    for _ in 0..total {
+        app.handle_keyboard_event(&Ctx, &named(NamedKey::ArrowDown));
+    }
+    let layout = layout_settings(app.ui.settings.panel.as_ref().unwrap(), bounds(&app));
+    let menu = layout.menu.expect("menu stayed open");
+    assert!(menu.first > 0, "the list did not scroll");
+    assert_eq!(menu.first + menu.options.len(), total);
+
+    let (_, glyphs) = paint(&mut app, 1000.0, 420.0, 1.0);
+    let painted = layout_settings(
+        app.ui.settings.panel.as_ref().unwrap(),
+        SettingsBounds {
+            window_width: 1000.0,
+            window_height: 420.0,
+            tab_bar: 32.0,
+            status_bar: 24.0,
+            scale: 1.0,
+        },
+    );
+    let menu = painted.menu.expect("painted menu");
+    let button = match painted
+        .rows
+        .iter()
+        .find(|row| row.index == theme)
+        .unwrap()
+        .kind
+    {
+        layout::ControlGeom::Menu { button } => button,
+        _ => panic!("theme is a menu"),
+    };
+    assert!(
+        menu.panel.intersection(button).is_some(),
+        "the open menu does not cover the closed control"
+    );
+    let right = menu.panel.right();
+    let leaked = glyphs.iter().any(|glyph| {
+        let cx = glyph.rect[0] + glyph.rect[2] * 0.5;
+        let cy = glyph.rect[1] + glyph.rect[3] * 0.5;
+        cx > right - 22.0 && menu.panel.contains(cx, cy)
+    });
+    assert!(!leaked, "the closed value paints over the open menu");
 }
 
 #[test]

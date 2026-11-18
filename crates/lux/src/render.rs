@@ -30,6 +30,7 @@ mod tab_bar;
 mod term;
 pub(crate) mod text;
 mod theme_picker;
+mod theme_sample;
 mod window;
 
 use std::time::Instant;
@@ -534,6 +535,7 @@ impl App {
                 status_bar_height,
                 *scale_factor,
                 &chrome.theme,
+                chrome.system_scheme,
             );
         }
 

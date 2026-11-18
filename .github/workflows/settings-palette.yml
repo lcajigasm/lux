@@ -36,3 +36,13 @@ jobs:
           name: settings-palette
           path: docs/evidence/settings/**
           if-no-files-found: warn
+
+      - name: Upload color-theme-chips.png
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: color-theme-chips
+          path: |
+            docs/evidence/settings/color-theme-chips.png
+            docs/evidence/settings/color-theme-chips-scrolled.png
+          if-no-files-found: error

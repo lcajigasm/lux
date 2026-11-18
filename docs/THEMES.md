@@ -14,6 +14,8 @@ Arrow keys preview the highlighted theme on the open editor. Escape
 restores the theme that was active when the picker opened and does not
 write `settings.json`. Enter confirms it and writes
 `workbench.colorTheme`. The Settings color-theme menu is the same list.
+Each bundled name in that menu draws four chips: background, foreground,
+accent, and the keyword color.
 
 ## Sources
 
