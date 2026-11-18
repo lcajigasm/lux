@@ -45,7 +45,7 @@ enum Frontmost {
 }
 SWIFT
   rm -f /tmp/lux-frontmost
-  if ! swiftc -O -o /tmp/lux-frontmost /tmp/lux-front.swift >"$DRIVE_WORK/front-build.txt" 2>&1; then
+  if ! swiftc -parse-as-library -O -o /tmp/lux-frontmost /tmp/lux-front.swift >"$DRIVE_WORK/front-build.txt" 2>&1; then
     echo "could not compile the frontmost helper:" >&2
     cat "$DRIVE_WORK/front-build.txt" >&2
     return 1
