@@ -27,7 +27,7 @@ pub use event::{
     PlatformEvent, ScrollDelta, Touch, TouchPhase,
 };
 pub use ime::{ImeComposition, ImeUpdate};
-pub use window::{PlatformWindow, SafeAreaInsets, Screen, WindowAttributes, WindowId};
+pub use window::{CursorShape, PlatformWindow, SafeAreaInsets, Screen, WindowAttributes, WindowId};
 
 /// The callbacks a platform backend drives. Implemented by whatever owns the
 /// application's state (today, that will be `lux-ui`'s driver); the backend

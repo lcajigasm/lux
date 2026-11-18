@@ -21,7 +21,11 @@
 > left and paints the heading, paragraph, and link on the right. Editing
 > the source updates that pane. Markdown preview (Shift+Command+V) keeps
 > the source on the left and paints the heading, list, code, and link on
-> the right. Editing the source updates that pane.
+> the right. Editing the source updates that pane. The pointer is an
+> I-beam on editor text and on selectable preview text, a hand on links,
+> tabs, and buttons, a resize arrow on split dividers and the sidebar
+> edge, and an arrow on the gutter, the file tree, and menus. It returns
+> to the arrow when the pointer leaves the window.
 > A second folder opens beside the first. The header ×, the × on that
 > folder's row, and Close Folder in the context menu drop it from the
 > sidebar and leave the directory on disk. Clean tabs of that folder
