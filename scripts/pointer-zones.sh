@@ -76,10 +76,6 @@ func sameShape(_ a: NSCursor, _ b: NSCursor) -> Bool {
         && near(a.image.size.height, b.image.size.height)
 }
 
-func sameHotSpot(_ a: NSCursor, _ b: NSCursor) -> Bool {
-    near(a.hotSpot.x, b.hotSpot.x) && near(a.hotSpot.y, b.hotSpot.y)
-}
-
 func describe(_ cursor: NSCursor, _ name: String) -> String {
     let spot = cursor.hotSpot
     let size = cursor.image.size
@@ -99,32 +95,45 @@ let known: [(NSCursor, String)] = [
     (.resizeLeftRight, "ew"),
     (.resizeUpDown, "ns"),
 ]
-var hits: [String] = []
-var hotHits: [String] = []
+// `current == cursor` is true for every factory cursor on macos-15, so it
+// cannot name anything. Run 44410111912: the live I-beam is 4,9 9x18 while
+// NSCursor.iBeam.image is empty; the live hand is the factory hand
+// (13,8 32x32) but the broken equality put every name in the hit list.
+// East-west and north-south share 12,12 24x24, so size is not enough.
+var tiffHits: [String] = []
+var shapeHits: [String] = []
 for (cursor, name) in known {
-    if current == cursor || tiff(current) == tiff(cursor) || sameShape(current, cursor) {
-        hits.append(name)
+    let data = tiff(cursor)
+    if !data.isEmpty && tiff(current) == data {
+        tiffHits.append(name)
     }
-    if sameHotSpot(current, cursor) {
-        hotHits.append(name)
+    if !data.isEmpty && sameShape(current, cursor) {
+        shapeHits.append(name)
     }
 }
-if hits.count == 1 {
-    print(hits[0])
+if tiffHits.count == 1 {
+    print(tiffHits[0])
     exit(0)
 }
-if hits.isEmpty && hotHits.count == 1 {
-    print(hotHits[0])
+if shapeHits.count == 1 {
+    print(shapeHits[0])
     exit(0)
 }
-// macos-15: NSCursor.arrow.image is empty (hotspot 0,0 and 0x0) while
-// currentSystem for the arrow is hotspot 4,4 and 17x23. Run 44093132195
-// printed "other" for that shape in every zone.
+// macos-15 factory images for arrow and I-beam are empty (hotspot 0,0
+// and 0x0). The live arrow is 4,4 17x23 (run 44093132195). The live
+// I-beam is 4,9 9x18 (run 44410111912).
 let arrowImage = tiff(NSCursor.arrow)
-if hits.isEmpty && arrowImage.isEmpty
+if arrowImage.isEmpty
     && near(current.hotSpot.x, 4) && near(current.hotSpot.y, 4)
     && near(current.image.size.width, 17) && near(current.image.size.height, 23) {
     print("arrow")
+    exit(0)
+}
+let beamImage = tiff(NSCursor.iBeam)
+if beamImage.isEmpty
+    && near(current.hotSpot.x, 4) && near(current.hotSpot.y, 9)
+    && near(current.image.size.width, 9) && near(current.image.size.height, 18) {
+    print("ibeam")
     exit(0)
 }
 let catalog = known.map { describe($0.0, $0.1) }.joined(separator: " | ")
@@ -359,17 +368,29 @@ sleep 0.3
 preview_at() {
   local kind="$1"
   local content_width pane_cap preview_w editor_w pane_x text_x heading_y paragraph_y pad_x
-  content_width="$(python3 -c "print($view_w - $sidebar)")"
-  pane_cap="$(python3 -c "print(max(1, $content_width * 0.62))")"
-  preview_w="$(python3 -c "print(min(max($content_width * 0.46, min(180, $pane_cap)), $pane_cap))")"
-  editor_w="$(python3 -c "print(max(1, $content_width - $preview_w))")"
-  pane_x="$(python3 -c "print($sidebar + $editor_w)")"
+  local app_scale pane link_raw
+  drive_dump || true
+  app_scale="$(drive_field scale || echo 1)"
+  pane="$(drive_field preview_pane || true)"
+  link_raw="$(drive_field link_y || true)"
+  if [[ "$pane" == *,* ]]; then
+    pane_x="$(PANE="$pane" SCALE="$app_scale" python3 -c 'import os; p=os.environ["PANE"].split(","); print(float(p[0]) / float(os.environ["SCALE"]))')"
+    preview_w="$(PANE="$pane" SCALE="$app_scale" python3 -c 'import os; p=os.environ["PANE"].split(","); print(float(p[1]) / float(os.environ["SCALE"]))')"
+  else
+    content_width="$(python3 -c "print($view_w - $sidebar)")"
+    pane_cap="$(python3 -c "print(max(1, $content_width * 0.62))")"
+    preview_w="$(python3 -c "print(min(max($content_width * 0.46, min(180, $pane_cap)), $pane_cap))")"
+    editor_w="$(python3 -c "print(max(1, $content_width - $preview_w))")"
+    pane_x="$(python3 -c "print($sidebar + $editor_w)")"
+  fi
   text_x="$(python3 -c "print($pane_x + 24)")"
   heading_y="$(python3 -c "print(32 + 22.4 * 0.25 + 6)")"
-  if [[ "$kind" == html ]]; then
-    paragraph_y="$(python3 -c "print(32 + 22.4 * 0.25 + 16 * 1.45 * 1.6 + 6)")"
+  if [[ -n "$link_raw" ]]; then
+    paragraph_y="$(LINK="$link_raw" SCALE="$app_scale" python3 -c 'import os; print(float(os.environ["LINK"]) / float(os.environ["SCALE"]))')"
+  elif [[ "$kind" == html ]]; then
+    paragraph_y="$(python3 -c "print(32 + 22.4 * 0.25 + 16 * 1.45 * 1.6 + 8)")"
   else
-    paragraph_y="$(python3 -c "print(32 + 22.4 * 0.25 + 16 * 1.55 * 1.4 + 22.4 * 0.35 + 6)")"
+    paragraph_y="$(python3 -c "print(32 + 22.4 * 0.25 + 16 * 1.55 * 1.4 + 22.4 * 0.35 + 8)")"
   fi
   pad_x="$(python3 -c "print($pane_x + 4)")"
   log "$kind pane_x=$pane_x preview_w=$preview_w heading_y=$heading_y paragraph_y=$paragraph_y"
@@ -378,6 +399,10 @@ preview_at() {
   local found="" sx last=""
   local scan_y
   scan_y="$(py "$paragraph_y")"
+  drive_key move "$(pt "$text_x")" "$scan_y"
+  sleep 0.3
+  drive_dump || true
+  log "$kind-line pointer=$(drive_field pointer || true) at=$text_x,$paragraph_y"
   for step in $(seq 0 8 220); do
     sx="$(python3 -c "print($text_x + $step)")"
     drive_key move "$(pt "$sx")" "$scan_y"

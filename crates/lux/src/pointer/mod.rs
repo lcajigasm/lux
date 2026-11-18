@@ -27,6 +27,12 @@ pub(crate) fn probe_lines(app: &App) -> String {
         app.viewport.width,
         app.viewport.height,
     );
+    if let Some((x, width)) = preview_pane(app) {
+        out.push_str(&format!("preview_pane={x:.1},{width:.1}\n"));
+    }
+    if let Some(y) = preview::first_link_y(app) {
+        out.push_str(&format!("link_y={y:.1}\n"));
+    }
     if let Some(gpu) = &app.gpu_window {
         let size = gpu.window.inner_size();
         if let Some((x, y)) = gpu.window.inner_position() {
@@ -474,6 +480,8 @@ mod tests {
         );
         let size = app.editor_view.metrics().font_size * 1.55;
         let paragraph_y = heading_y + size * 1.4 + line * 0.35;
+        let link_y = preview::first_link_y(&app).expect("markdown link");
+        assert!((link_y - (paragraph_y + app.editor_view.metrics().font_size * 0.5)).abs() < 0.1);
         assert_eq!(
             at(&mut app, text_left + 2.0, paragraph_y + 4.0),
             CursorShape::Text
@@ -500,6 +508,10 @@ mod tests {
         app.documents.entries[0].language = Some(LanguageId::Html);
         let html_size = app.editor_view.metrics().font_size * 1.45;
         let html_paragraph = heading_y + html_size * 1.6;
+        let html_link = preview::first_link_y(&app).expect("html link");
+        assert!(
+            (html_link - (html_paragraph + app.editor_view.metrics().font_size * 0.5)).abs() < 0.1
+        );
         assert_eq!(
             at(&mut app, text_left + 4.0, heading_y + 4.0),
             CursorShape::Text

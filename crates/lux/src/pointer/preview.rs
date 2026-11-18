@@ -18,6 +18,116 @@ struct Walk<'a> {
     line_height: f32,
 }
 
+/// Vertical center of the first preview link, in the same space `hit` uses.
+///
+/// The pointer-zone job samples this instead of a hardcoded line. Run
+/// 44410111912 walked a fixed paragraph and the system cursor stayed
+/// the arrow for the whole scan.
+pub(super) fn first_link_y(app: &App) -> Option<f32> {
+    let html = app.documents.active_entry().is_some_and(|entry| {
+        entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Html)
+    });
+    let markdown = app.documents.active_entry().is_some_and(|entry| {
+        entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Markdown)
+    });
+    if !html && !markdown {
+        return None;
+    }
+    let font_size = app.editor_view.metrics().font_size;
+    let line_height = app.editor_view.metrics().line_height;
+    let editor_top = app.tab_bar_height();
+    let bottom = editor_top + app.viewport.height;
+    let source = app.buffer.text().to_string();
+    if html {
+        let mut doc = lux_syntax::Document::new(lux_syntax::LanguageId::Html);
+        doc.set_text(&source);
+        let blocks = lux_syntax::preview_html(&doc, &source);
+        html_link_y(&blocks, editor_top, bottom, font_size, line_height)
+    } else {
+        let mut doc = lux_syntax::Document::new(lux_syntax::LanguageId::Markdown);
+        doc.set_text(&source);
+        let blocks = lux_syntax::preview_document(&doc, &source);
+        markdown_link_y(&blocks, editor_top, bottom, font_size, line_height)
+    }
+}
+
+fn has_link(spans: &[PreviewSpan]) -> bool {
+    spans
+        .iter()
+        .any(|span| matches!(span, PreviewSpan::Link { .. }))
+}
+
+/// Y increments match `Walk::markdown`.
+fn markdown_link_y(
+    blocks: &[PreviewBlock],
+    editor_top: f32,
+    bottom: f32,
+    font_size: f32,
+    line_height: f32,
+) -> Option<f32> {
+    let mut cursor_y = editor_top + line_height * 0.25;
+    for block in blocks {
+        if cursor_y > bottom {
+            break;
+        }
+        match block {
+            PreviewBlock::Heading { level, .. } => {
+                let size = font_size * (1.55 - f32::from(level.saturating_sub(1)) * 0.08);
+                cursor_y += size * 1.4 + line_height * 0.35;
+            }
+            PreviewBlock::Paragraph { spans } => {
+                if has_link(spans) {
+                    return Some(cursor_y + font_size * 0.5);
+                }
+                cursor_y += line_height * 1.4;
+            }
+            PreviewBlock::Code { text, .. } => {
+                let size = font_size * 0.9;
+                cursor_y += size * 1.3 * text.lines().count() as f32 + line_height * 0.3;
+            }
+            PreviewBlock::ListItem { .. } | PreviewBlock::Quote { .. } | PreviewBlock::Rule => {
+                cursor_y += line_height;
+            }
+        }
+    }
+    None
+}
+
+/// Y increments match `Walk::html`.
+fn html_link_y(
+    blocks: &[PreviewBlock],
+    editor_top: f32,
+    bottom: f32,
+    font_size: f32,
+    line_height: f32,
+) -> Option<f32> {
+    let mut cursor_y = editor_top + line_height * 0.25;
+    for block in blocks {
+        if cursor_y > bottom {
+            break;
+        }
+        match block {
+            PreviewBlock::Heading { level, .. } => {
+                let size = font_size * (1.45 - f32::from(level.saturating_sub(1)) * 0.06);
+                cursor_y += size * 1.6;
+            }
+            PreviewBlock::Paragraph { spans } => {
+                if has_link(spans) {
+                    return Some(cursor_y + font_size * 0.5);
+                }
+                cursor_y += line_height * 1.4;
+            }
+            PreviewBlock::Code { text, .. } => {
+                cursor_y += line_height * text.lines().take(8).count() as f32;
+            }
+            PreviewBlock::ListItem { .. } | PreviewBlock::Quote { .. } | PreviewBlock::Rule => {
+                cursor_y += line_height;
+            }
+        }
+    }
+    None
+}
+
 pub(super) fn hit(app: &mut App, x: f32, y: f32, pane_x: f32) -> Option<CursorShape> {
     let html = app.documents.active_entry().is_some_and(|entry| {
         entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Html)
