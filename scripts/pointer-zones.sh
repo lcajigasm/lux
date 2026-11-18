@@ -117,6 +117,16 @@ if hits.isEmpty && hotHits.count == 1 {
     print(hotHits[0])
     exit(0)
 }
+// macos-15: NSCursor.arrow.image is empty (hotspot 0,0 and 0x0) while
+// currentSystem for the arrow is hotspot 4,4 and 17x23. Run 44093132195
+// printed "other" for that shape in every zone.
+let arrowImage = tiff(NSCursor.arrow)
+if hits.isEmpty && arrowImage.isEmpty
+    && near(current.hotSpot.x, 4) && near(current.hotSpot.y, 4)
+    && near(current.image.size.width, 17) && near(current.image.size.height, 23) {
+    print("arrow")
+    exit(0)
+}
 let catalog = known.map { describe($0.0, $0.1) }.joined(separator: " | ")
 let spot = current.hotSpot
 let size = current.image.size
@@ -345,7 +355,7 @@ preview_at() {
   log "$kind pane_x=$pane_x preview_w=$preview_w heading_y=$heading_y paragraph_y=$paragraph_y"
   sample "$kind-text" ibeam "$(pt "$text_x")" "$(py "$heading_y")"
   sample "$kind-padding" arrow "$(pt "$pad_x")" "$(py "$heading_y")"
-  local found="" sx
+  local found="" sx last=""
   local scan_y
   scan_y="$(py "$paragraph_y")"
   for step in $(seq 0 8 220); do
@@ -354,7 +364,8 @@ preview_at() {
     sleep 0.25
     local cursor
     cursor="$(read_cursor || true)"
-    log "$kind-scan x=$sx nscursor=${cursor:-missing}"
+    last="${cursor:-missing}"
+    log "$kind-scan x=$sx nscursor=$last"
     if [[ "$cursor" == hand ]]; then
       found="$sx"
       break
@@ -364,7 +375,7 @@ preview_at() {
     sample "$kind-link" hand "$(pt "$found")" "$scan_y"
     shot "$kind-link"
   else
-    log "zone=$kind-link expect=hand nscursor=missing pointer=absent at=scan"
+    log "zone=$kind-link expect=hand nscursor=${last:-missing} pointer=absent at=scan"
     fail=1
   fi
 }
