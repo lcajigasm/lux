@@ -338,4 +338,80 @@ mod tests {
         let announcement = app.ui.announcement.unwrap_or_default();
         assert!(announcement.contains("Unsaved"), "{announcement}");
     }
+
+    /// Luis: the only project header is closed while a nested file
+    /// (`workflows/ci.yml`) and an Untitled tab are open, on branch main.
+    /// The click focuses the file tree, then the tree goes away. AccessKit
+    /// panics if that focus id is no longer a node.
+    #[test]
+    fn closing_the_only_project_drops_its_tree_without_a_dangling_focus() {
+        let root = tempfile::tempdir().unwrap();
+        let workflows = root.path().join(".github/workflows");
+        std::fs::create_dir_all(&workflows).unwrap();
+        std::fs::create_dir_all(root.path().join(".claude")).unwrap();
+        std::fs::create_dir_all(root.path().join("scripts")).unwrap();
+        std::fs::create_dir_all(root.path().join("tests")).unwrap();
+        let ci = workflows.join("ci.yml");
+        std::fs::write(&ci, "name: ci\n").unwrap();
+        std::fs::write(root.path().join(".claude/notes.md"), "notes\n").unwrap();
+        std::fs::write(root.path().join("scripts/run.sh"), "echo ok\n").unwrap();
+        std::fs::write(root.path().join("tests/app.rs"), "fn main() {}\n").unwrap();
+
+        let mut app = crate::app::App::new(
+            include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec(),
+        );
+        app.ui.sidebar = Some(SidebarState::open_folder(root.path().to_path_buf()).unwrap());
+        app.ui.session.init_watcher(root.path());
+        app.ui.git.repo_root = Some(root.path().to_path_buf());
+        app.ui.git.branch_name = Some("main".into());
+        {
+            let sidebar = app.ui.sidebar.as_mut().unwrap();
+            let id = sidebar.tree.as_mut().unwrap().reveal(&ci).unwrap().unwrap();
+            sidebar.selected_node = Some(id);
+        }
+        let untitled = app.documents.tabs.open("Untitled");
+        app.documents
+            .entries
+            .push(crate::document::DocumentEntry::new(
+                untitled,
+                None,
+                lux_core::buffer::Buffer::from_bytes(b"").unwrap(),
+            ));
+        let ci_id = app.documents.tabs.open("ci.yml");
+        app.documents
+            .entries
+            .push(crate::document::DocumentEntry::new(
+                ci_id,
+                Some(ci.clone()),
+                lux_core::buffer::Buffer::from_bytes(b"name: ci\n").unwrap(),
+            ));
+        app.switch_to_tab(ci_id);
+        app.chrome
+            .focus
+            .set_focus(lux_ui::focus::FocusTarget::FileTree);
+
+        close(&mut app, 0);
+
+        let update = app.build_accessibility_tree();
+        let _tree = accesskit_consumer::Tree::new(update, true);
+        assert!(app.ui.sidebar.is_none());
+        assert!(app.ui.session.watcher.is_none());
+        assert!(app.ui.git.repo_root.is_none());
+        assert!(app.ui.git.branch_name.is_none());
+        assert_eq!(
+            app.chrome.focus.current(),
+            lux_ui::focus::FocusTarget::Editor
+        );
+        assert!(ci.is_file());
+        assert!(app.documents.path.is_none());
+        let titles: Vec<_> = app
+            .documents
+            .tabs
+            .tabs()
+            .iter()
+            .map(|tab| tab.title.as_str())
+            .collect();
+        assert!(titles.contains(&"Untitled"), "{titles:?}");
+        assert!(!titles.contains(&"ci.yml"), "{titles:?}");
+    }
 }

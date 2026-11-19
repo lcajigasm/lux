@@ -3210,6 +3210,7 @@ name = "lux"
 version = "1.5.11"
 dependencies = [
  "accesskit",
+ "accesskit_consumer",
  "dpi",
  "lux-config",
  "lux-core",
