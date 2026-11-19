@@ -13,7 +13,10 @@ enum Event {
         generation: u64,
         shot: FileShot,
     },
-    Status(snapshot::StatusShot),
+    Status {
+        epoch: u64,
+        shot: snapshot::StatusShot,
+    },
     Text {
         title: String,
         body: String,
@@ -93,8 +96,9 @@ pub(crate) fn request_status(app: &mut App) {
         app.ui.announcement = Some("Open a repository file first".into());
         return;
     };
+    let epoch = app.ui.git.folder_epoch;
     spawn(move || match snapshot::status_of(&start) {
-        Ok(shot) => Event::Status(shot),
+        Ok(shot) => Event::Status { epoch, shot },
         Err(error) => Event::Failed(error),
     });
 }
@@ -267,13 +271,16 @@ pub(crate) fn poll(app: &mut App) {
                 app.ui.git.markers = shot.markers;
                 app.scheduler.invalidate_all();
             }
-            Event::Status(shot) => {
+            Event::Status { epoch, shot }
+                if epoch == app.ui.git.folder_epoch && status_root_open(app, &shot.root) =>
+            {
                 app.ui.git.repo_root = Some(shot.root);
                 app.ui.git.branch_name = shot.branch;
                 app.ui.git.changed_files = shot.files;
                 super::publish_git_marks(app);
                 app.scheduler.invalidate_all();
             }
+            Event::Status { .. } => {}
             Event::Text { title, body } => {
                 super::open_text_tab(app, &title, &body);
                 app.scheduler.invalidate_all();
@@ -300,6 +307,26 @@ pub(crate) fn poll(app: &mut App) {
 
 fn read_open(path: Option<PathBuf>) -> Option<Vec<u8>> {
     std::fs::read(path?).ok()
+}
+
+/// A status shot for a closed project must not put the branch back.
+/// A file opened on its own, with no sidebar, still accepts its repo.
+fn status_root_open(app: &App, root: &Path) -> bool {
+    if let Some(sidebar) = &app.ui.sidebar {
+        let inside = |path: &Path| path == root || path.starts_with(root);
+        if sidebar.workspace_root.as_deref().is_some_and(inside) {
+            return true;
+        }
+        if sidebar.extra.iter().any(|folder| inside(&folder.path)) {
+            return true;
+        }
+    }
+    app.ui.sidebar.is_none()
+        && app
+            .documents
+            .path
+            .as_deref()
+            .is_some_and(|path| path.starts_with(root))
 }
 
 fn start_path(app: &App) -> Option<PathBuf> {

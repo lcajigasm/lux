@@ -30,9 +30,10 @@
 > to the arrow when the pointer leaves the window.
 > A second folder opens beside the first. The header ×, the × on that
 > folder's row, and Close Folder in the context menu drop it from the
-> sidebar and leave the directory on disk. Clean tabs of that folder
-> close with it. A tab with unsaved edits stays open, and there is no
-> confirmation dialog. The Settings color-theme menu draws four chips for
+> sidebar and leave the directory on disk. Closing the only project
+> leaves the window open, drops that folder's file watcher, and clears
+> its git branch. Clean tabs of that folder close with it. A tab with
+> unsaved edits stays open, and there is no confirmation dialog. The Settings color-theme menu draws four chips for
 > each bundled name: background, foreground, accent, and keyword.
 > In `docs/compare/monokai-side-by-side.png` from that same run the
 > Lux editor well is `#272822`, the current line is `#2C2D27`, the tab bar

@@ -64,6 +64,8 @@ pub(crate) struct GitState {
     pub(crate) branch_picker: Option<branch_picker::BranchPicker>,
     /// Ignores a snapshot from an older refresh.
     pub(crate) generation: u64,
+    /// Ignores a status shot that started before the folder was closed.
+    pub(crate) folder_epoch: u64,
 }
 
 #[allow(dead_code)]

@@ -17,6 +17,7 @@ scenarios=(
   app-icon-shot.sh
   buffer-menu.sh
   close-folder.sh
+  close-root.sh
   compare-captures.sh
   conflict-shot.sh
   evidence-macos.sh

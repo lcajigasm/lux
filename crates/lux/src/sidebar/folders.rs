@@ -201,7 +201,24 @@ pub(crate) fn close(app: &mut crate::app::App, index: usize) {
         .is_some_and(|sidebar| sidebar.tree.is_none());
     if empty {
         app.ui.sidebar = None;
+        app.ui.session.watcher = None;
+        app.ui.session.symbol_index = lux_workspace::SymbolIndex::default();
+        if app.chrome.focus.current() == lux_ui::focus::FocusTarget::FileTree {
+            app.chrome
+                .focus
+                .set_focus(lux_ui::focus::FocusTarget::Editor);
+        }
+    } else if index == 0
+        && let Some(root) = app
+            .ui
+            .sidebar
+            .as_ref()
+            .and_then(|sidebar| sidebar.workspace_root.clone())
+    {
+        app.ui.session.symbol_index = lux_workspace::SymbolIndex::default();
+        app.ui.session.init_watcher(&root);
     }
+    detach_closed_repo(app, &path);
     // A clean tab whose file lives in the closed folder goes with it.
     // A tab with unsaved edits stays open. There is no dialog: the
     // announcement says so, and the file is still on disk.
@@ -237,6 +254,32 @@ pub(crate) fn close(app: &mut crate::app::App, index: usize) {
     });
     app.update_viewport_dimensions();
     app.scheduler.invalidate_all();
+}
+
+/// Drops git state when the closed folder is that repository, and always
+/// when the last folder is gone. A status shot already in flight carries
+/// the old `folder_epoch` and is ignored.
+fn detach_closed_repo(app: &mut crate::app::App, closed: &std::path::Path) {
+    let repo = app.ui.git.repo_root.clone();
+    let drop_repo = match &repo {
+        Some(repo) => repo == closed || repo.starts_with(closed),
+        None => app.ui.sidebar.is_none(),
+    };
+    if !drop_repo {
+        return;
+    }
+    app.ui.git.repo_root = None;
+    app.ui.git.branch_name = None;
+    app.ui.git.hunks.clear();
+    app.ui.git.markers.clear();
+    app.ui.git.changed_files.clear();
+    app.ui.git.selected_file_index = 0;
+    app.ui.git.active_popup = None;
+    app.ui.git.conflict_blocks.clear();
+    app.ui.git.branch_picker = None;
+    app.ui.git.commit_message.clear();
+    app.ui.git.generation = app.ui.git.generation.wrapping_add(1);
+    app.ui.git.folder_epoch = app.ui.git.folder_epoch.wrapping_add(1);
 }
 
 #[cfg(test)]
@@ -337,5 +380,82 @@ mod tests {
         assert!(beta.path().join("dirty.txt").is_file());
         let announcement = app.ui.announcement.unwrap_or_default();
         assert!(announcement.contains("Unsaved"), "{announcement}");
+    }
+
+    /// Luis: the only project header is closed while a nested file
+    /// (`workflows/ci.yml`) and an Untitled tab are open, on branch main.
+    /// The click focuses the file tree, then the tree goes away. AccessKit
+    /// panics if that focus id is no longer a node.
+    #[test]
+    fn closing_the_only_project_drops_its_tree_without_a_dangling_focus() {
+        let root = tempfile::tempdir().unwrap();
+        let workflows = root.path().join(".github/workflows");
+        std::fs::create_dir_all(&workflows).unwrap();
+        std::fs::create_dir_all(root.path().join(".claude")).unwrap();
+        std::fs::create_dir_all(root.path().join("scripts")).unwrap();
+        std::fs::create_dir_all(root.path().join("tests")).unwrap();
+        let ci = workflows.join("ci.yml");
+        std::fs::write(&ci, "name: ci\n").unwrap();
+        std::fs::write(root.path().join(".claude/notes.md"), "notes\n").unwrap();
+        std::fs::write(root.path().join("scripts/run.sh"), "echo ok\n").unwrap();
+        std::fs::write(root.path().join("tests/app.rs"), "fn main() {}\n").unwrap();
+
+        let mut app = crate::app::App::new(
+            include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec(),
+        );
+        app.ui.sidebar = Some(SidebarState::open_folder(root.path().to_path_buf()).unwrap());
+        app.ui.session.init_watcher(root.path());
+        app.ui.git.repo_root = Some(root.path().to_path_buf());
+        app.ui.git.branch_name = Some("main".into());
+        {
+            let sidebar = app.ui.sidebar.as_mut().unwrap();
+            let id = sidebar.tree.as_mut().unwrap().reveal(&ci).unwrap().unwrap();
+            sidebar.selected_node = Some(id);
+        }
+        let untitled = app.documents.tabs.open("Untitled");
+        app.documents
+            .entries
+            .push(crate::document::DocumentEntry::new(
+                untitled,
+                None,
+                lux_core::buffer::Buffer::from_bytes(b"").unwrap(),
+            ));
+        let ci_id = app.documents.tabs.open("ci.yml");
+        app.documents
+            .entries
+            .push(crate::document::DocumentEntry::new(
+                ci_id,
+                Some(ci.clone()),
+                lux_core::buffer::Buffer::from_bytes(b"name: ci\n").unwrap(),
+            ));
+        app.switch_to_tab(ci_id);
+        app.chrome
+            .focus
+            .set_focus(lux_ui::focus::FocusTarget::FileTree);
+
+        close(&mut app, 0);
+
+        let update = app.build_accessibility_tree();
+        let _tree = accesskit_consumer::Tree::new(update, true);
+        assert!(app.ui.sidebar.is_none());
+        assert!(app.ui.session.watcher.is_none());
+        assert!(app.ui.git.repo_root.is_none());
+        assert!(app.ui.git.branch_name.is_none());
+        assert_eq!(app.ui.git.folder_epoch, 1);
+        assert_eq!(
+            app.chrome.focus.current(),
+            lux_ui::focus::FocusTarget::Editor
+        );
+        assert!(ci.is_file());
+        assert!(app.documents.path.is_none());
+        let titles: Vec<_> = app
+            .documents
+            .tabs
+            .tabs()
+            .iter()
+            .map(|tab| tab.title.as_str())
+            .collect();
+        assert!(titles.contains(&"Untitled"), "{titles:?}");
+        assert!(!titles.contains(&"ci.yml"), "{titles:?}");
     }
 }
