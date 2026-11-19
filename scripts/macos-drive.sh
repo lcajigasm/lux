@@ -262,13 +262,39 @@ drive_stop() {
   DRIVE_PID=""
 }
 
+drive_front_pid() {
+  # System Events is already the focus path. A separate Swift helper
+  # failed to compile and failed every macOS job that sources this file
+  # (push 13bdec3, 21 red workflows).
+  osascript -e 'tell application "System Events" to unix id of first application process whose frontmost is true' 2>/dev/null || echo -1
+}
+
 drive_focus() {
   local err="$DRIVE_WORK/focus.err"
+  # System Events returns before the window server finishes activation.
+  # A Command chord posted in that window is discarded. Plain keys still
+  # arrive, so Page Down can pass while Cmd+, never shows up in the probe
+  # (runs 43914387401, 44021461937, 44111152559: input=PageDown, settings=0).
+  # Activating an already-frontmost Lux starts that race again.
+  if [[ "$(drive_front_pid)" == "$DRIVE_PID" ]]; then
+    return 0
+  fi
   if ! osascript -e "tell application \"System Events\" to set frontmost of process \"$DRIVE_OWNER\" to true" >"$err" 2>&1; then
     echo "System Events refused to focus Lux.app (process $DRIVE_OWNER):" >&2
     cat "$err" >&2
     return 1
   fi
+  local _
+  for _ in $(seq 1 40); do
+    if [[ "$(drive_front_pid)" == "$DRIVE_PID" ]]; then
+      sleep 0.2
+      return 0
+    fi
+    sleep 0.05
+  done
+  echo "Lux pid $DRIVE_PID never became frontmost (front=$(drive_front_pid))" >&2
+  cat "$err" >&2
+  return 1
 }
 
 drive_wait_window() {
@@ -312,7 +338,10 @@ drive_launch() {
 }
 
 drive_key() {
-  drive_focus
+  if ! drive_focus; then
+    echo "CGEvent not sent; Lux is not frontmost: $*" >&2
+    return 1
+  fi
   if ! swift /tmp/lux-drive.swift "$@"; then
     echo "CGEvent failed: $*" >&2
     return 1
