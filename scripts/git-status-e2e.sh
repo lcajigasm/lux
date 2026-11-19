@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # macOS: a real Lux.app draws the git status letter in the file tree.
-# Git: Refresh Status must report note.txt:M, and the window is captured.
+# Git: Refresh Status must report note.txt:M, a.rs:D, and
+# a.rs/inside.txt:A, and the window is captured.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -67,9 +68,13 @@ git init -b main "$repo"
 git -C "$repo" config user.email "lux@example.com"
 git -C "$repo" config user.name "Lux User"
 printf 'alpha\n' > "$repo/note.txt"
-git -C "$repo" add note.txt
+printf 'one\n' > "$repo/a.rs"
+git -C "$repo" add note.txt a.rs
 git -C "$repo" commit -m "add note"
 printf 'alpha\nbeta\n' > "$repo/note.txt"
+rm "$repo/a.rs"
+mkdir "$repo/a.rs"
+printf 'two\n' > "$repo/a.rs/inside.txt"
 
 drive_launch "$repo"
 sleep 0.5
@@ -83,12 +88,12 @@ marks=""
 for _ in $(seq 1 40); do
   drive_dump
   marks="$(drive_field git_marks)"
-  if [[ "$marks" == *note.txt:M* ]]; then
+  if [[ "$marks" == *note.txt:M* && "$marks" == *a.rs:D* && "$marks" == *a.rs/inside.txt:A* ]]; then
     break
   fi
   sleep 0.3
 done
-if [[ "$marks" != *note.txt:M* ]]; then
+if [[ "$marks" != *note.txt:M* || "$marks" != *a.rs:D* || "$marks" != *a.rs/inside.txt:A* ]]; then
   fail "refresh left git_marks=${marks:-missing}"
 fi
 sleep 0.4

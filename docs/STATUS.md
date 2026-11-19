@@ -212,7 +212,9 @@ and `Git: Create Branch` open the branch list. A checkout runs only when
 the worktree is clean. Creating a branch points `HEAD` at the current
 commit and leaves the files alone. `Git: Refresh Status` draws `M`, `A`,
 or `D` on the changed row in the file tree, and the same letter on each
-parent directory. Conflict markers in the buffer still resolve in the
+parent directory. A tracked file that has become a directory is `D`, and
+each file inside it is `A`. That replacement used to abort the whole
+status read. Conflict markers in the buffer still resolve in the
 editor. `Git: Accept Current Change`, `Git: Accept Incoming Change`, and
 `Git: Accept Both Changes` resolve the block under the caret and keep that
 text on the tab. See `docs/GIT.md`.
