@@ -444,12 +444,50 @@ def composite(dest, left, middle, right):
     print(f"PASS composite {dest} {width}x{target_h}")
 
 
+def check_ink(path, background, ink):
+    """The editor fill is `background` and a syntax color `ink` is painted.
+
+    Used for a user scheme whose keyword color is not a bundled theme color.
+    """
+    image = Image(path)
+    bg = parse_hex(background)
+    ink_c = parse_hex(ink)
+    width, height = image.width, image.height
+    if width < 400 or height < 300:
+        fail(f"{path} is {width}x{height}")
+    body = mode(
+        image,
+        int(width * 0.2),
+        int(width * 0.75),
+        int(height * 0.15),
+        int(height * 0.85),
+    )
+    if not near(body, bg, 24):
+        fail(f"{path} editor {hex_of(body)} wanted {background}")
+    hits = 0
+    x0, x1 = int(width * 0.08), int(width * 0.7)
+    y0, y1 = int(height * 0.08), int(height * 0.55)
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            if dist(image.at(x, y), ink_c) <= 36:
+                hits += 1
+        if hits >= 8:
+            break
+    if hits < 8:
+        fail(f"{path} has {hits} pixels near {ink}; the scope list did not paint")
+    print(f"PASS ink {path} bg={hex_of(body)} {ink} pixels={hits}")
+
+
 def main(argv):
     if len(argv) < 2:
-        raise SystemExit("usage: theme_pixels.py list|editor|palette|settings|composite ...")
+        raise SystemExit(
+            "usage: theme_pixels.py list|editor|palette|settings|composite|ink ..."
+        )
     cmd = argv[1]
     if cmd == "list":
         list_themes(argv[2])
+    elif cmd == "ink":
+        check_ink(argv[2], argv[3], argv[4])
     elif cmd == "editor":
         if argv[3] == "any":
             check_editor_loose(argv[2])

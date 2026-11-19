@@ -149,7 +149,8 @@ pub(crate) fn normalize_name(name: &str) -> String {
 }
 
 pub(crate) fn parse_scheme(text: &str) -> Result<LoadedScheme, String> {
-    let value: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    let value: Value =
+        lux_config::layering::jsonc::parse(text).map_err(|error| error.to_string())?;
     let name = value
         .get("name")
         .and_then(Value::as_str)
@@ -192,9 +193,10 @@ pub(crate) fn parse_scheme(text: &str) -> Result<LoadedScheme, String> {
     let mut scopes: Vec<(&'static str, lux_syntax::theme::Color)> = Vec::new();
     if let Some(rules) = value.get("rules").and_then(Value::as_array) {
         for rule in rules {
-            let Some(raw_scope) = rule.get("scope").and_then(Value::as_str) else {
+            let listed = scope_list(rule.get("scope"));
+            if listed.is_empty() {
                 continue;
-            };
+            }
             let Some(hex) = rule.get("foreground").and_then(Value::as_str).or_else(|| {
                 rule.get("settings")
                     .and_then(|s| s.get("foreground"))
@@ -205,8 +207,8 @@ pub(crate) fn parse_scheme(text: &str) -> Result<LoadedScheme, String> {
             let Some(color) = syntax_color(hex) else {
                 continue;
             };
-            for piece in raw_scope.split(',') {
-                if let Some(scope) = lux_scope(piece.trim()) {
+            for piece in listed {
+                if let Some(scope) = lux_scope(&piece) {
                     if let Some(existing) = scopes.iter_mut().find(|(name, _)| *name == scope) {
                         existing.1 = color;
                     } else {
@@ -244,6 +246,31 @@ pub(crate) fn parse_scheme(text: &str) -> Result<LoadedScheme, String> {
         theme,
         syntax,
     })
+}
+
+fn scope_list(value: Option<&Value>) -> Vec<String> {
+    let mut out = Vec::new();
+    match value {
+        Some(Value::String(text)) => push_scopes(&mut out, text),
+        Some(Value::Array(items)) => {
+            for item in items {
+                if let Some(text) = item.as_str() {
+                    push_scopes(&mut out, text);
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+fn push_scopes(out: &mut Vec<String>, text: &str) {
+    for piece in text.split(',') {
+        let piece = piece.trim();
+        if !piece.is_empty() {
+            out.push(piece.to_string());
+        }
+    }
 }
 
 fn required_color(globals: &Value, key: &str) -> Result<Color, String> {
@@ -485,5 +512,27 @@ mod tests {
             lux_ui::contrast_ratio(faded, bg) < floor,
             "the old Monokai alpha must stay under the floor"
         );
+    }
+
+    #[test]
+    fn a_commented_scheme_keeps_an_array_of_scopes() {
+        let text = r##"{
+            // Sublime schemes are JSONC and list scopes as an array.
+            "name": "Commented",
+            "globals": {
+                "background": "#111111",
+                "foreground": "#eeeeee",
+            },
+            "rules": [
+                { "scope": ["keyword", "storage.type"], "foreground": "#ff0000", }
+            ]
+        }"##;
+        let scheme = parse_scheme(text).expect("scheme");
+        let rgb = |name: &str| {
+            let color = scheme.syntax.color_for_scope(name);
+            (color.r, color.g, color.b)
+        };
+        assert_eq!(rgb("keyword"), (0xFF, 0x00, 0x00));
+        assert_eq!(rgb("type"), (0xFF, 0x00, 0x00));
     }
 }
