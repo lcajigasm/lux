@@ -1,0 +1,147 @@
+name: Release pull request
+
+# After a merged pull request titled "chore: release X", and only when
+# ok-gate is success on that pull request head: tag vX, publish the
+# universal disk image, and open a cask pull request. HOMEBREW_TAP_TOKEN
+# is an Actions secret Luis creates. This file does not invent one.
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: release-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: tag, universal dmg, and cask
+    if: "${{ github.event.pull_request.merged == true && startsWith(github.event.pull_request.title, 'chore: release ') }}"
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Require ok-gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          state="$(gh api "repos/${{ github.repository }}/commits/${HEAD}/status" --jq '[.statuses[] | select(.context=="ok-gate") | .state][0] // "missing"')"
+          echo "ok-gate on ${HEAD} is ${state}"
+          if [[ "$state" != "success" ]]; then
+            echo "Refusing to tag. The only gate is ok-gate on the release pull request, and it is '${state}'."
+            echo "Comment on that pull request, exactly: OK ${HEAD:0:7}"
+            exit 1
+          fi
+
+      - name: Checkout the merge
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Read the version
+        id: version
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PR_TITLE" =~ ^chore:\ release\ v?([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]\(#[0-9]+\))?$ ]]; then
+            echo "Pull request title must be 'chore: release X' with X like 1.5.11. Got: $PR_TITLE"
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          cargo_version="$(awk -F'"' '/^version = / { print $2; exit }' Cargo.toml)"
+          if [[ "$cargo_version" != "$version" ]]; then
+            echo "Cargo.toml version is '${cargo_version}', title says '${version}'."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Toolchain
+        run: rustup show
+
+      - name: Apple targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Universal disk image
+        run: |
+          chmod +x scripts/package-macos.sh
+          ./scripts/package-macos.sh dist lux-macos-universal.dmg
+
+      - name: Tag and GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          MERGE: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$MERGE" ]]; then
+            echo "GitHub did not record a merge commit for this pull request."
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists. Refusing to publish it again."
+            exit 1
+          fi
+          gh release create "$TAG" dist/lux-macos-universal.dmg \
+            --target "$MERGE" \
+            --title "$TAG" \
+            --generate-notes
+
+      - name: Refresh SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          rm -rf dist/release-assets
+          mkdir -p dist/release-assets
+          gh release download "$TAG" --dir dist/release-assets
+          (
+            cd dist/release-assets
+            find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
+          )
+          gh release upload "$TAG" dist/release-assets/SHA256SUMS --clobber
+
+      - name: Queue Linux packages and screenshots
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # A tag created with GITHUB_TOKEN does not start push or release
+          # workflows. These two already have workflow_dispatch.
+          gh workflow run release.yml --ref "$TAG"
+          gh workflow run screenshots.yml --ref "$TAG"
+
+      - name: Open the Homebrew cask pull request
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${HOMEBREW_TAP_TOKEN}" ]]; then
+            echo "::error::HOMEBREW_TAP_TOKEN is not set. Add it as an Actions secret with contents write on lcajigasm/homebrew-tap. This step does not invent a token."
+            exit 1
+          fi
+          sha="$(shasum -a 256 dist/lux-macos-universal.dmg | awk '{print $1}')"
+          rm -rf dist/homebrew-tap
+          git clone --depth 1 https://github.com/lcajigasm/homebrew-tap.git dist/homebrew-tap
+          python3 scripts/update-lux-cask.py dist/homebrew-tap/Casks/lux.rb "$VERSION" "$sha"
+          git -C dist/homebrew-tap config user.email "lux-release@users.noreply.github.com"
+          git -C dist/homebrew-tap config user.name "lux-release"
+          git -C dist/homebrew-tap checkout -b "lux-${TAG}"
+          git -C dist/homebrew-tap add Casks/lux.rb
+          git -C dist/homebrew-tap commit -m "lux ${VERSION}"
+          git -C dist/homebrew-tap -c "http.extraheader=AUTHORIZATION: bearer ${HOMEBREW_TAP_TOKEN}" push origin "HEAD:lux-${TAG}"
+          GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh pr create \
+            --repo lcajigasm/homebrew-tap \
+            --base main \
+            --head "lux-${TAG}" \
+            --title "lux ${VERSION}" \
+            --body "Update the Lux cask to ${VERSION}. The disk image is ${TAG} on lcajigasm/lux."

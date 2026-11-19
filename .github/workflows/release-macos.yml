@@ -4,13 +4,11 @@ name: Release macOS
 # The repository is public, so this job is inside
 # the included quota. Not a larger runner. Not a pull_request, not a branch
 # push, and not a tag push.
-# The Linux tag workflow publishes the GitHub Release; that single
-# `published` event starts this job. Uploading the dmg and replacing
-# SHA256SUMS edit the same release and do not publish a second one.
-# workflow_dispatch is the manual retry, and it is not used by the tag workflow.
+# release-pr.yml builds the universal image when a "chore: release X"
+# pull request merges. This file is the manual retry for an existing tag.
+# It does not run on release published, or the merge would build the
+# image twice.
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -20,6 +18,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-macos-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   dmg:

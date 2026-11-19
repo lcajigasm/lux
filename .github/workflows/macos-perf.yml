@@ -1,0 +1,69 @@
+name: macOS performance
+
+# H1-H6, the key-frame comparison, and the release timings.
+# Nightly, manual, or a pull request that touches the renderer, startup,
+# or an H1-H6 script. Changing this file alone does not start it.
+# Not a required check. One macos-15 runner compiles the release binary once.
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "crates/lux-render/**"
+      - "crates/lux/src/app/startup.rs"
+      - "crates/lux/src/cli/**"
+      - "crates/lux/src/main.rs"
+      - "crates/lux/src/font.rs"
+      - "scripts/h1-*.sh"
+      - "scripts/h2-*.sh"
+      - "scripts/h3-*.sh"
+      - "scripts/h4-*.sh"
+      - "scripts/h5-*.sh"
+      - "scripts/h6-*.sh"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-perf-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  perf:
+    name: h1-h6 performance (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release lux once
+        run: |
+          chmod +x scripts/stage-lux-app.sh
+          ./scripts/stage-lux-app.sh --release
+          test -x target/release/lux
+      - name: H1-H6 and release timings
+        env:
+          LUX_PREBUILT: "1"
+        run: |
+          chmod +x scripts/macos-perf-suite.sh
+          ./scripts/macos-perf-suite.sh
+      - name: Upload performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-perf
+          path: |
+            docs/evidence/h1/**
+            docs/evidence/h1-overlap/**
+            docs/evidence/h2/**
+            docs/evidence/h3-open/**
+            docs/evidence/h4-open/**
+            docs/evidence/h5/**
+            docs/evidence/h6-rss/**
+            docs/evidence/key-frame/**
+            docs/evidence/perf.md
+            docs/evidence/perf-raw.txt
+          if-no-files-found: warn

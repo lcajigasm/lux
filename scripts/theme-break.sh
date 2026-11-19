@@ -25,7 +25,11 @@ pass() { echo "PASS $1" | tee -a "$report"; }
 fail() { echo "FAIL $1" | tee -a "$report" >&2; exit 1; }
 
 echo "--> Building lux"
-cargo build -p lux --locked
+if [[ -z "${LUX_PREBUILT:-}" || ! -x "$root/target/debug/lux" ]]; then
+  cargo build -p lux --locked
+else
+  echo "--> prebuilt binary, compile skipped"
+fi
 bin="$root/target/debug/lux"
 app="$(bash "$root/scripts/stage-lux-app.sh" --no-build)"
 echo "--> bundled app $app" | tee -a "$report"

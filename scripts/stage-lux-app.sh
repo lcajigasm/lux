@@ -21,6 +21,11 @@ done
 bin="$root/target/$profile/lux"
 app="$root/target/Lux.app"
 
+# macos-ui.yml compiles this profile once and sets LUX_PREBUILT.
+if [[ -n "${LUX_PREBUILT:-}" && -x "$bin" ]]; then
+  build=0
+fi
+
 if [[ "$build" == 1 || ! -x "$bin" ]]; then
   if [[ "$profile" == "release" ]]; then
     cargo build -p lux --release --locked

@@ -8,12 +8,20 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# A new push to the same branch or pull request cancels this workflow
+# only. It does not cancel macos-ui.yml or ok-gate.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 # Linux jobs stay on ubuntu-latest. Pull requests and main also run one
-# standard macos-15 job (tests, plus a universal .app/.dmg artifact that
-# is not published). Windows stays out of CI. No larger runners.
-# release-macos.yml still publishes the disk image only when a GitHub
-# Release is published, or on workflow_dispatch. The repository is public,
-# so these standard runners are inside the included quota.
+# standard macos-15 job: cargo test. Its name is the required check
+# "cargo test and universal dmg (macos-15)". The universal image is built
+# by release-pr.yml when a release pull request merges, not on this job.
+# UI scenarios are macos-ui.yml. H1-H6 are macos-perf.yml. Neither is a
+# required check. Windows stays out of CI. No larger runners.
+# The repository is public, so these standard runners are inside the
+# included quota.
 
 jobs:
   fmt:
@@ -83,27 +91,9 @@ jobs:
       - name: Toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
-      - name: Apple targets
-        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - name: Test
         run: cargo test --workspace
-      - name: Universal disk image
-        run: |
-          # cargo test leaves a debug tree the disk image does not need.
-          # Keeping it, then building both release architectures, makes
-          # hdiutil fail with "No space left on device" on the macOS runner
-          # (runs 41299748706 and 41300655725).
-          rm -rf "$HOME/Library/Developer/Xcode/DerivedData" \
-                 "$HOME/Library/Developer/CoreSimulator/Caches" \
-                 target/debug target/*/debug
-          df -h /
-          chmod +x scripts/package-macos.sh
-          ./scripts/package-macos.sh dist lux-macos-universal.dmg
-      - name: Upload disk image artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: lux-macos-universal
-          path: |
-            dist/lux-macos-universal.dmg
-            dist/Lux.app
-          if-no-files-found: error
+      # The universal disk image is release-pr.yml, after a merged
+      # "chore: release X" pull request. Building it here took 36m35s
+      # of run 44280711514 (job 134720328480) on top of a 4m59s test.
+      # The job name stays so the required check still reports.

@@ -72,7 +72,11 @@ fi
 echo "--> Spanish layout selected: $selected"
 
 echo "--> cargo build -p lux"
-cargo build -p lux --locked
+if [[ -z "${LUX_PREBUILT:-}" || ! -x "$root/target/debug/lux" ]]; then
+  cargo build -p lux --locked
+else
+  echo "--> prebuilt binary, compile skipped"
+fi
 bin="$root/target/debug/lux"
 note="$(mktemp -d)/note.txt"
 printf 'alpha\n' > "$note"
