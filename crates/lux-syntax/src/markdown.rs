@@ -346,4 +346,33 @@ mod tests {
             "fence body dropped indent: {text:?}"
         );
     }
+
+    #[test]
+    fn a_link_keeps_the_space_before_it() {
+        let source = "See [Lux](https://example.com).\n";
+        let mut doc = Document::new(LanguageId::Markdown);
+        doc.set_text(source);
+        let blocks = preview_document(&doc, source);
+        let spans = blocks.iter().find_map(|block| match block {
+            PreviewBlock::Paragraph { spans } => Some(spans),
+            _ => None,
+        });
+        let Some(spans) = spans else {
+            panic!("no paragraph: {blocks:?}");
+        };
+        assert_eq!(plain(spans), "See Lux.", "{spans:?}");
+    }
+
+    fn plain(spans: &[PreviewSpan]) -> String {
+        spans
+            .iter()
+            .map(|span| match span {
+                PreviewSpan::Text(text)
+                | PreviewSpan::Strong(text)
+                | PreviewSpan::Emphasis(text)
+                | PreviewSpan::Code(text) => text.as_str(),
+                PreviewSpan::Link { label, .. } => label.as_str(),
+            })
+            .collect()
+    }
 }

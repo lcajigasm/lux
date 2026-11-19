@@ -70,7 +70,19 @@ fn inline_spans(node: Node, source: &str) -> Vec<PreviewSpan> {
 
 fn push_spans(node: Node, source: &str, spans: &mut Vec<PreviewSpan>) {
     let mut cursor = node.walk();
+    let mut previous_end = None;
     for child in node.children(&mut cursor) {
+        // tree-sitter HTML leaves the space in `See <a` out of the text
+        // node. The bytes between children are that space.
+        if let Some(end) = previous_end
+            && child.start_byte() > end
+        {
+            let gap = &source[end..child.start_byte()];
+            if !gap.is_empty() && gap.chars().all(char::is_whitespace) {
+                spans.push(PreviewSpan::Text(" ".to_string()));
+            }
+        }
+        previous_end = Some(child.end_byte());
         match child.kind() {
             "text" => {
                 let text = slice(source, child);
@@ -222,6 +234,32 @@ mod tests {
             "{blocks:?}\n{}",
             dump(source)
         );
+    }
+
+    #[test]
+    fn a_link_keeps_the_space_before_it() {
+        let source = "<p>See <a href=\"https://example.com\">Lux</a>.</p>\n";
+        let mut doc = Document::new(LanguageId::Html);
+        doc.set_text(source);
+        let blocks = preview_html(&doc, source);
+        let spans = blocks.iter().find_map(|block| match block {
+            PreviewBlock::Paragraph { spans } => Some(spans),
+            _ => None,
+        });
+        let Some(spans) = spans else {
+            panic!("no paragraph: {blocks:?}\n{}", dump(source));
+        };
+        let plain: String = spans
+            .iter()
+            .map(|span| match span {
+                PreviewSpan::Text(text)
+                | PreviewSpan::Strong(text)
+                | PreviewSpan::Emphasis(text)
+                | PreviewSpan::Code(text) => text.as_str(),
+                PreviewSpan::Link { label, .. } => label.as_str(),
+            })
+            .collect();
+        assert_eq!(plain, "See Lux.", "{spans:?}\n{}", dump(source));
     }
 
     fn dump(source: &str) -> String {
