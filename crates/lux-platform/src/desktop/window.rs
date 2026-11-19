@@ -112,6 +112,25 @@ impl PlatformWindow for DesktopWindow {
     fn current_monitor(&self) -> Option<Screen> {
         self.window.current_monitor().map(screen_from)
     }
+
+    fn inner_position(&self) -> Option<(i32, i32)> {
+        self.window
+            .inner_position()
+            .ok()
+            .map(|position| (position.x, position.y))
+    }
+
+    fn set_cursor(&self, cursor: crate::window::CursorShape) {
+        use crate::window::CursorShape;
+        let icon = match cursor {
+            CursorShape::Arrow => winit::window::CursorIcon::Default,
+            CursorShape::Text => winit::window::CursorIcon::Text,
+            CursorShape::Hand => winit::window::CursorIcon::Pointer,
+            CursorShape::ResizeEastWest => winit::window::CursorIcon::EwResize,
+            CursorShape::ResizeNorthSouth => winit::window::CursorIcon::NsResize,
+        };
+        self.window.set_cursor(icon);
+    }
 }
 
 pub(super) fn screen_from(monitor: winit::monitor::MonitorHandle) -> Screen {

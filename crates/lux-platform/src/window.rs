@@ -74,6 +74,19 @@ pub struct Screen {
     pub scale_millis: u32,
 }
 
+/// The pointer a window shows. The desktop backend maps each value onto
+/// the system cursor. [`CursorShape::Arrow`] is the cursor outside every
+/// zone and the one restored when the pointer leaves the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CursorShape {
+    #[default]
+    Arrow,
+    Text,
+    Hand,
+    ResizeEastWest,
+    ResizeNorthSouth,
+}
+
 /// A live window. Also a valid target for a `wgpu` surface via the
 /// `raw-window-handle` supertraits.
 pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
@@ -132,6 +145,14 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     }
     fn current_monitor(&self) -> Option<Screen> {
         None
+    }
+    /// Content origin in physical pixels, top-left in screen space.
+    fn inner_position(&self) -> Option<(i32, i32)> {
+        None
+    }
+    /// Sets the pointer. A no-op where the backend has no pointer.
+    fn set_cursor(&self, cursor: CursorShape) {
+        let _ = cursor;
     }
 }
 

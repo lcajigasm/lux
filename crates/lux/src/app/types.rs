@@ -26,6 +26,7 @@ pub(crate) struct SelectionDrag {
     pub(crate) selection: Selection,
 }
 
+#[derive(Default)]
 pub(crate) struct MouseState {
     pub(crate) position: dpi::PhysicalPosition<f64>,
     /// Set once a cursor event has landed inside the view. Until then the
@@ -41,6 +42,7 @@ pub(crate) struct MouseState {
     /// The line a triple click selected. A drag unions further lines onto it.
     pub(crate) line_anchor: Option<Selection>,
     pub(crate) context_menu: Option<crate::edit_menu::BufferContextMenu>,
+    pub(crate) shape: lux_platform::CursorShape,
 }
 
 pub(crate) struct SyntaxState {

@@ -529,12 +529,9 @@ fn render_dump(app: &App, slot: &Slot) -> String {
         .lock()
         .map(|slot| slot.clone())
         .unwrap_or_default();
-    out.push_str("input=");
-    out.push_str(&escape(&input));
-    out.push('\n');
-    out.push_str("icon=");
-    out.push_str(crate::app_icon::probe_token());
-    out.push('\n');
+    out.push_str(&format!("input={}\n", escape(&input)));
+    out.push_str(&crate::pointer::probe_lines(app));
+    out.push_str(&format!("icon={}\n", crate::app_icon::probe_token()));
     out
 }
 

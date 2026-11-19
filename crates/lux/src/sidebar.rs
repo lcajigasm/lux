@@ -37,6 +37,7 @@ pub(crate) struct SidebarState {
     /// Folders opened beside the header folder. Closing one does not
     /// delete it.
     pub(crate) extra: Vec<folders::ExtraFolder>,
+    pub(crate) resizing: bool,
 }
 
 impl Default for SidebarState {
@@ -54,6 +55,7 @@ impl Default for SidebarState {
             git_marks: HashMap::new(),
             drag: None,
             extra: Vec::new(),
+            resizing: false,
         }
     }
 }
@@ -74,6 +76,7 @@ impl SidebarState {
             git_marks: HashMap::new(),
             drag: None,
             extra: Vec::new(),
+            resizing: false,
         })
     }
 
