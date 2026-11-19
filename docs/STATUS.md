@@ -13,7 +13,9 @@
 > `docs/compare/characters.png` (macos-15 compare run 41348580486) shows
 > áéíóúüñ, emoji, CJK, and combining marks on Monokai, with `UTF-8` in the
 > status bar. The default theme is Monokai, parsed from
-> `themes/Monokai.sublime-color-scheme` (MIT, `themes/NOTICE.md`). The
+> `themes/Monokai.sublime-color-scheme` (MIT, `themes/NOTICE.md`). A
+> scheme next to the user settings may contain comments, and a rule
+> scope may be one string or a list. The
 > sidebar, tabs, selectors, and status bar take their colors from that
 > theme. Scrolling the file tree clips each row to the rectangle under
 > the project header and above the status bar. The header stays put.
