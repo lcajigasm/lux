@@ -91,6 +91,13 @@ fn push_spans(node: Node, source: &str, spans: &mut Vec<PreviewSpan>) {
                 }
             }
             "start_tag" | "end_tag" | "self_closing_tag" => {}
+            kind if is_element(kind) && tag_name(child, source) == "img" => {
+                let alt = attr(child, source, "alt");
+                if !alt.is_empty() {
+                    spans.push(PreviewSpan::Text(alt));
+                }
+                push_spans(child, source, spans);
+            }
             kind if is_element(kind) && tag_name(child, source) == "a" => {
                 let label = visible_text(child, source);
                 if !label.is_empty() {
@@ -260,6 +267,32 @@ mod tests {
             })
             .collect();
         assert_eq!(plain, "See Lux.", "{spans:?}\n{}", dump(source));
+    }
+
+    #[test]
+    fn an_image_shows_its_alt_text() {
+        let source = "<p>Before <img alt=\"Lux\" src=\"https://example.com/a.png\"> after.</p>\n";
+        let mut doc = Document::new(LanguageId::Html);
+        doc.set_text(source);
+        let blocks = preview_html(&doc, source);
+        let spans = blocks.iter().find_map(|block| match block {
+            PreviewBlock::Paragraph { spans } => Some(spans),
+            _ => None,
+        });
+        let Some(spans) = spans else {
+            panic!("no paragraph: {blocks:?}\n{}", dump(source));
+        };
+        let plain: String = spans
+            .iter()
+            .map(|span| match span {
+                PreviewSpan::Text(text)
+                | PreviewSpan::Strong(text)
+                | PreviewSpan::Emphasis(text)
+                | PreviewSpan::Code(text) => text.as_str(),
+                PreviewSpan::Link { label, .. } => label.as_str(),
+            })
+            .collect();
+        assert_eq!(plain, "Before Lux after.", "{spans:?}\n{}", dump(source));
     }
 
     fn dump(source: &str) -> String {
