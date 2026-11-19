@@ -60,6 +60,11 @@ for _ in $(seq 1 10); do
     exit 1
   fi
   h1+=("$ms")
+  if [[ "$_" == 1 ]]; then
+    grep -E 'Lux: (present mode|phase )' "$DRIVE_LOG" | while read -r line; do
+      log "$line"
+    done || true
+  fi
   drive_stop
 done
 h1_median="$(median "${h1[@]}")"

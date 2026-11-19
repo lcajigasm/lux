@@ -56,11 +56,7 @@ impl<'window> Surface<'window> {
         let capabilities = surface.get_capabilities(adapter);
         let format =
             pick_format(&capabilities.formats).ok_or(RenderError::NoCompatibleSurfaceFormat)?;
-        let present_mode = capabilities
-            .present_modes
-            .first()
-            .copied()
-            .unwrap_or(wgpu::PresentMode::Fifo);
+        let present_mode = pick_present_mode(&capabilities.present_modes);
         let size = effective_size(size);
 
         let config = wgpu::SurfaceConfiguration {
@@ -114,6 +110,21 @@ impl<'window> Surface<'window> {
 /// panic into every caller.
 fn effective_size(size: PhysicalSize<u32>) -> PhysicalSize<u32> {
     PhysicalSize::new(size.width.max(1), size.height.max(1))
+}
+
+/// The lowest-latency mode the surface actually offers.
+///
+/// `Fifo` waits for the next vertical blank. On a 60 Hz display that wait
+/// is one 16.7 ms refresh, so a key-to-pixel sample cannot land under 8 ms.
+/// Metal's list is `Fifo` then `Immediate` and has no mailbox mode, so the
+/// non-blocking choice there is `Immediate`. Vulkan prefers `Mailbox`.
+fn pick_present_mode(modes: &[wgpu::PresentMode]) -> wgpu::PresentMode {
+    for mode in [wgpu::PresentMode::Mailbox, wgpu::PresentMode::Immediate] {
+        if modes.contains(&mode) {
+            return mode;
+        }
+    }
+    modes.first().copied().unwrap_or(wgpu::PresentMode::Fifo)
 }
 
 /// Prefers an sRGB-capable format so alpha-blended text and UI composite
@@ -194,5 +205,30 @@ mod tests {
     #[test]
     fn empty_format_list_yields_none() {
         assert_eq!(pick_format(&[]), None);
+    }
+
+    #[test]
+    fn present_mode_prefers_mailbox_then_immediate() {
+        assert_eq!(
+            pick_present_mode(&[
+                wgpu::PresentMode::Fifo,
+                wgpu::PresentMode::Mailbox,
+                wgpu::PresentMode::Immediate,
+            ]),
+            wgpu::PresentMode::Mailbox
+        );
+        assert_eq!(
+            pick_present_mode(&[wgpu::PresentMode::Fifo, wgpu::PresentMode::Immediate]),
+            wgpu::PresentMode::Immediate
+        );
+    }
+
+    #[test]
+    fn present_mode_keeps_fifo_when_it_is_the_only_mode() {
+        assert_eq!(
+            pick_present_mode(&[wgpu::PresentMode::Fifo]),
+            wgpu::PresentMode::Fifo
+        );
+        assert_eq!(pick_present_mode(&[]), wgpu::PresentMode::Fifo);
     }
 }
