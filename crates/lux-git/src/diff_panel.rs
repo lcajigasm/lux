@@ -100,7 +100,13 @@ pub fn changed_files(repo: &gix::Repository) -> Result<Vec<ChangedFile>, DiffPan
                     });
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Err(e)
+                if e.kind() == std::io::ErrorKind::NotFound
+                    || e.kind() == std::io::ErrorKind::IsADirectory =>
+            {
+                // A directory standing where a tracked file was is the same
+                // fact as a missing file: the blob is gone. `git status`
+                // reports that path deleted and lists the files inside.
                 changed.push(ChangedFile {
                     path: rel.clone(),
                     status: ChangeStatus::Deleted,
@@ -340,6 +346,30 @@ mod tests {
             let dir = tempfile::tempdir().expect("tempdir");
             let repo = init_repo_with_committed_files(dir.path(), &[("a.rs", "content\n")]);
             assert_eq!(changed_files(&repo).expect("changed_files"), vec![]);
+        }
+
+        #[test]
+        fn a_tracked_file_replaced_by_a_directory_stays_a_deletion() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let repo = init_repo_with_committed_files(dir.path(), &[("a.rs", "one\n")]);
+            fs::remove_file(dir.path().join("a.rs")).unwrap();
+            fs::create_dir(dir.path().join("a.rs")).unwrap();
+            fs::write(dir.path().join("a.rs").join("inside.txt"), "two\n").unwrap();
+
+            let files = changed_files(&repo).expect("changed_files");
+            assert!(
+                files.iter().any(|file| {
+                    file.path == Path::new("a.rs") && file.status == ChangeStatus::Deleted
+                }),
+                "{files:?}"
+            );
+            assert!(
+                files
+                    .iter()
+                    .any(|file| file.path == Path::new("a.rs/inside.txt")
+                        && file.status == ChangeStatus::Added),
+                "{files:?}"
+            );
         }
 
         #[test]
