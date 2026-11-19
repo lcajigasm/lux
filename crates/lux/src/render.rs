@@ -14,6 +14,7 @@ mod lsp;
 pub(crate) mod markdown;
 mod minimap;
 mod modals;
+pub(crate) mod overlay_list;
 pub(crate) mod paint;
 mod palette;
 pub(crate) mod panel;
@@ -428,8 +429,10 @@ impl App {
             ui,
             viewport,
             window_width,
+            window_height,
             sidebar_width,
             tab_bar_height,
+            status_bar_height,
             *scale_factor,
             stroke,
             font_size,
@@ -577,10 +580,6 @@ impl App {
             scheduler.request_repaint_at(next_toggle);
             ctx.request_wakeup(next_toggle);
         }
-        if crate::overlay_motion::take_animating() {
-            let at = Instant::now() + std::time::Duration::from_millis(16);
-            scheduler.request_repaint_at(at);
-            ctx.request_wakeup(at);
-        }
+        crate::overlay_motion::schedule_wakeup(scheduler, ctx);
     }
 }

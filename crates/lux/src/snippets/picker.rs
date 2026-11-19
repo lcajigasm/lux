@@ -20,31 +20,28 @@ impl SnippetPickerState {
     }
 
     pub(crate) fn filtered(&self) -> Vec<&Snippet> {
-        let q = self.query.trim().to_lowercase();
+        let q = self.query.trim();
         if q.is_empty() {
-            self.candidates.iter().collect()
-        } else {
-            self.candidates
-                .iter()
-                .filter(|s| {
-                    s.trigger.to_lowercase().contains(&q)
-                        || s.name.to_lowercase().contains(&q)
-                        || s.description.to_lowercase().contains(&q)
-                })
-                .collect()
+            return self.candidates.iter().collect();
         }
-    }
-
-    pub(crate) fn select_next(&mut self, total: usize) {
-        if total > 0 && self.selected_index + 1 < total {
-            self.selected_index += 1;
-        }
-    }
-
-    pub(crate) fn select_prev(&mut self) {
-        if self.selected_index > 0 {
-            self.selected_index -= 1;
-        }
+        let labels: Vec<(usize, String)> = self
+            .candidates
+            .iter()
+            .enumerate()
+            .map(|(index, snippet)| {
+                (
+                    index,
+                    format!(
+                        "{} {} {}",
+                        snippet.name, snippet.trigger, snippet.description
+                    ),
+                )
+            })
+            .collect();
+        lux_search::fuzzy::rank_by(q, &labels, |(_, label)| label.as_str())
+            .into_iter()
+            .map(|(item, _)| &self.candidates[item.0])
+            .collect()
     }
 }
 
@@ -59,6 +56,14 @@ pub(crate) fn handle_snippet_picker_key(
         };
         picker.filtered().len()
     };
+    let metrics = crate::modal::ModalMetrics::from_app(app);
+    let visible = crate::overlay_list::visible_rows(
+        metrics.vp_height,
+        metrics.tab_bar_height,
+        metrics.status_bar,
+        metrics.scale,
+        total,
+    );
 
     match &event.key {
         Key::Named(NamedKey::Escape) => {
@@ -66,17 +71,13 @@ pub(crate) fn handle_snippet_picker_key(
             app.scheduler.invalidate_all();
             true
         }
-        Key::Named(NamedKey::ArrowDown) => {
-            if let Some(picker) = app.ui.snippets.picker.as_mut() {
-                picker.select_next(total);
-            }
-            app.scheduler.invalidate_all();
-            true
-        }
-        Key::Named(NamedKey::ArrowUp) => {
-            if let Some(picker) = app.ui.snippets.picker.as_mut() {
-                picker.select_prev();
-            }
+        key if {
+            let Some(picker) = app.ui.snippets.picker.as_mut() else {
+                return false;
+            };
+            crate::overlay_list::nudge(&mut picker.selected_index, total, visible, key)
+        } =>
+        {
             app.scheduler.invalidate_all();
             true
         }

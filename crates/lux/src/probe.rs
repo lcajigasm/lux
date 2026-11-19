@@ -342,6 +342,13 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     out.push_str("announcement=");
     out.push_str(&escape(app.ui.announcement.as_deref().unwrap_or("")));
     out.push('\n');
+    let (picker, picker_index, picker_count, picker_label) = crate::probe_picker::open_picker(app);
+    out.push_str(&format!(
+        "picker={picker}\npicker_index={picker_index}\npicker_count={picker_count}\n"
+    ));
+    out.push_str("picker_label=");
+    out.push_str(&escape(&picker_label));
+    out.push('\n');
     let (find, replace) = match &app.ui.search_bar {
         Some(search) => (1, u8::from(search.replace_mode)),
         None => (0, 0),
