@@ -84,8 +84,111 @@ func describe(_ cursor: NSCursor, _ name: String) -> String {
     return "\(name) \(spot.x),\(spot.y) \(size.width)x\(size.height) px=\(px) tiff=\(tiff(cursor).count)"
 }
 
+// Factory `image.size` is still 0 while the cursor is being matched, then
+// becomes 32x32 or 24x24 once a representation is drawn. TIFF bytes also
+// miss: run 44421066716 showed the live hand at 13,8 32x32 and both resize
+// cursors at 12,12 24x24, and neither Data equality nor sameShape named them.
+// The live hotspot and size are enough for the hand, the arrow and the I-beam.
+// The two resize cursors share 12,12 24x24, so the ink axis splits them.
+func nameByMeasure(_ cursor: NSCursor) -> String? {
+    let spot = cursor.hotSpot
+    let size = cursor.image.size
+    if near(spot.x, 13) && near(spot.y, 8)
+        && near(size.width, 32) && near(size.height, 32) {
+        return "hand"
+    }
+    if near(spot.x, 4) && near(spot.y, 9)
+        && near(size.width, 9) && near(size.height, 18) {
+        return "ibeam"
+    }
+    if near(spot.x, 4) && near(spot.y, 4)
+        && near(size.width, 17) && near(size.height, 23) {
+        return "arrow"
+    }
+    if near(spot.x, 12) && near(spot.y, 12)
+        && near(size.width, 24) && near(size.height, 24) {
+        return resizeAxis(cursor)
+    }
+    return nil
+}
+
+func resizeAxis(_ cursor: NSCursor) -> String? {
+    guard let tiff = cursor.image.tiffRepresentation,
+        let rep = NSBitmapImageRep(data: tiff),
+        let raw = rep.bitmapData
+    else {
+        return nil
+    }
+    let width = rep.pixelsWide
+    let height = rep.pixelsHigh
+    let samples = rep.samplesPerPixel
+    guard width > 2, height > 2, samples > 0, rep.bitsPerSample == 8 else {
+        return nil
+    }
+    let stride = rep.bytesPerRow
+    let alpha = rep.hasAlpha ? samples - 1 : -1
+    var minX = width
+    var maxX = -1
+    var minY = height
+    var maxY = -1
+    var rowInk = 0
+    var colInk = 0
+    let midX = width / 2
+    let midY = height / 2
+    for y in 0..<height {
+        for x in 0..<width {
+            let index = y * stride + x * samples
+            let ink: Int
+            if alpha >= 0 {
+                ink = Int(raw[index + alpha])
+            } else {
+                var peak = 0
+                for sample in 0..<samples {
+                    peak = max(peak, Int(raw[index + sample]))
+                }
+                ink = peak
+            }
+            if ink <= 40 {
+                continue
+            }
+            minX = min(minX, x)
+            maxX = max(maxX, x)
+            minY = min(minY, y)
+            maxY = max(maxY, y)
+            if abs(y - midY) <= 1 {
+                rowInk += ink
+            }
+            if abs(x - midX) <= 1 {
+                colInk += ink
+            }
+        }
+    }
+    if maxX < 0 {
+        return nil
+    }
+    let spanX = maxX - minX
+    let spanY = maxY - minY
+    if spanX > spanY + 1 {
+        return "ew"
+    }
+    if spanY > spanX + 1 {
+        return "ns"
+    }
+    if rowInk > colInk {
+        return "ew"
+    }
+    if colInk > rowInk {
+        return "ns"
+    }
+    return nil
+}
+
 guard let current = NSCursor.currentSystem else {
     print("nil")
+    exit(0)
+}
+if let named = nameByMeasure(current) {
+    print(named)
     exit(0)
 }
 let known: [(NSCursor, String)] = [
