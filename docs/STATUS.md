@@ -18,10 +18,12 @@
 > theme. Scrolling the file tree clips each row to the rectangle under
 > the project header and above the status bar. The header stays put.
 > HTML preview (Shift+Command+V on an HTML file) keeps the source on the
-> left and paints the heading, paragraph, and link on the right. Editing
-> the source updates that pane. Markdown preview (Shift+Command+V) keeps
-> the source on the left and paints the heading, list, code, and link on
-> the right. Editing the source updates that pane. The pointer is an
+> left and paints the heading, paragraph, and link on the right. A space
+> before a link stays, and an image is its alt text. Editing the source
+> updates that pane. Markdown preview (Shift+Command+V) keeps the source
+> on the left and paints the heading, list, code, and link on the right.
+> The same space and alt text are kept there. Editing the source updates
+> that pane. The pointer is an
 > I-beam on editor text and on selectable preview text, a hand on links,
 > tabs, and buttons, a resize arrow on split dividers and the sidebar
 > edge, and an arrow on the gutter, the file tree, and menus. It returns
@@ -2571,7 +2573,7 @@ _Nothing is behind an `experimental.*` flag yet._
 ### ST-FIX-08: Grammar coverage and Markdown preview
 
 - **Status:** The languages in `crates/lux-syntax/vendor/SOURCES.md` highlight from vendored Tree-sitter grammars. Markdown paragraphs highlight emphasis, strong text, code spans, and links, and Command+Shift+V (Control+Shift+V) toggles a preview built from that parse tree. A fenced block names a language (`rust`, `python`, `ts`, and the other extensions this build highlights) and that fence is painted with the active syntax theme. The whole line is shaped once, so the spaces between tokens and the indent keep their width. A fence with no language stays one foreground color.
-- **Verification:** `lux-syntax` tests `coverage`, `golden_tokens`, and `input::syntax_tests` (Makefile, Dockerfile, PHP, a Ruby shebang, Command+/ on PHP, Command+Shift+V on a Markdown buffer).
+- **Verification:** `lux-syntax` tests `coverage`, `golden_tokens`, and `input::syntax_tests` (Makefile, Dockerfile, PHP, a Ruby shebang, Command+/ on PHP, Command+Shift+V on a Markdown buffer). `markdown::tests::a_link_keeps_the_space_before_it`, `html_preview::tests::a_link_keeps_the_space_before_it`, and `markdown_preview::tests::the_probe_keeps_the_space_before_a_link_and_an_image_alt` cover the space and the alt text. `scripts/markdown-preview.sh` and `scripts/html-preview.sh` capture that pane on macos-15.
 
 ### ST-FIX-07: Tab stops and the painted caret
 

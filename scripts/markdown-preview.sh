@@ -22,13 +22,15 @@ note="$HOME/note.md"
 cat > "$note" << 'EOF'
 # Title
 
+See [Lux](https://example.com).
+
+Before ![Lux](https://example.com/a.png) after.
+
 - item
 
 ```
 code
 ```
-
-[a](https://example.com)
 EOF
 
 drive_init "$root/target/Lux.app"
@@ -60,12 +62,16 @@ if [[ "$(drive_field preview)" != "1" ]]; then
   echo "preview did not open" >&2
   exit 1
 fi
-for kind in "heading:Title" "list:item" "code:code" "link"; do
+for kind in "heading:Title" "list:item" "code:code" "link" "paragraph:See Lux." "paragraph:Before Lux after."; do
   if [[ "$blocks" != *"$kind"* ]]; then
     echo "preview blocks missing $kind: $blocks" >&2
     exit 1
   fi
 done
+if [[ "$blocks" == *"SeeLux"* || "$blocks" == *"!["* ]]; then
+  echo "preview dropped the link space or the image alt: $blocks" >&2
+  exit 1
+fi
 
 capture() {
   local dest="$1"

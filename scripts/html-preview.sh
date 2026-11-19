@@ -21,7 +21,8 @@ HOME="$real_home" "$root/scripts/stage-lux-app.sh"
 page="$HOME/page.html"
 cat > "$page" << 'EOF'
 <h1>Hello</h1>
-<p>A paragraph with a <a href="https://example.com">link</a>.</p>
+<p>See <a href="https://example.com">Lux</a>.</p>
+<p>Before <img alt="Lux" src="https://example.com/a.png"> after.</p>
 <pre>code</pre>
 EOF
 
@@ -54,12 +55,16 @@ if [[ "$(drive_field preview)" != "1" ]]; then
   echo "preview did not open" >&2
   exit 1
 fi
-for kind in "heading:Hello" "link" "code:code"; do
+for kind in "heading:Hello" "link" "code:code" "paragraph:See Lux." "paragraph:Before Lux after."; do
   if [[ "$blocks" != *"$kind"* ]]; then
     echo "preview blocks missing $kind: $blocks" >&2
     exit 1
   fi
 done
+if [[ "$blocks" == *"SeeLux"* ]]; then
+  echo "preview dropped the space before the link: $blocks" >&2
+  exit 1
+fi
 
 capture() {
   local dest="$1"
