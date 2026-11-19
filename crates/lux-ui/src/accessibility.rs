@@ -287,9 +287,9 @@ pub fn build_full_window_tree(
     nodes.push((WINDOW_ID, window));
 
     let focus_node = match ctx.focused_target {
-        crate::focus::FocusTarget::Terminal => TERMINAL_ID,
-        crate::focus::FocusTarget::FileTree => FILE_TREE_ID,
-        crate::focus::FocusTarget::Search => SEARCH_INPUT_ID,
+        crate::focus::FocusTarget::Terminal if ctx.terminal_title.is_some() => TERMINAL_ID,
+        crate::focus::FocusTarget::FileTree if ctx.sidebar_items.is_some() => FILE_TREE_ID,
+        crate::focus::FocusTarget::Search if ctx.search_query.is_some() => SEARCH_INPUT_ID,
         _ => ROOT_ID,
     };
 

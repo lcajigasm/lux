@@ -201,7 +201,24 @@ pub(crate) fn close(app: &mut crate::app::App, index: usize) {
         .is_some_and(|sidebar| sidebar.tree.is_none());
     if empty {
         app.ui.sidebar = None;
+        app.ui.session.watcher = None;
+        app.ui.session.symbol_index = lux_workspace::SymbolIndex::default();
+        if app.chrome.focus.current() == lux_ui::focus::FocusTarget::FileTree {
+            app.chrome
+                .focus
+                .set_focus(lux_ui::focus::FocusTarget::Editor);
+        }
+    } else if index == 0
+        && let Some(root) = app
+            .ui
+            .sidebar
+            .as_ref()
+            .and_then(|sidebar| sidebar.workspace_root.clone())
+    {
+        app.ui.session.symbol_index = lux_workspace::SymbolIndex::default();
+        app.ui.session.init_watcher(&root);
     }
+    detach_closed_repo(app, &path);
     // A clean tab whose file lives in the closed folder goes with it.
     // A tab with unsaved edits stays open. There is no dialog: the
     // announcement says so, and the file is still on disk.
@@ -237,6 +254,32 @@ pub(crate) fn close(app: &mut crate::app::App, index: usize) {
     });
     app.update_viewport_dimensions();
     app.scheduler.invalidate_all();
+}
+
+/// Drops git state when the closed folder is that repository, and always
+/// when the last folder is gone. A status shot already in flight carries
+/// the old `folder_epoch` and is ignored.
+fn detach_closed_repo(app: &mut crate::app::App, closed: &std::path::Path) {
+    let repo = app.ui.git.repo_root.clone();
+    let drop_repo = match &repo {
+        Some(repo) => repo == closed || repo.starts_with(closed),
+        None => app.ui.sidebar.is_none(),
+    };
+    if !drop_repo {
+        return;
+    }
+    app.ui.git.repo_root = None;
+    app.ui.git.branch_name = None;
+    app.ui.git.hunks.clear();
+    app.ui.git.markers.clear();
+    app.ui.git.changed_files.clear();
+    app.ui.git.selected_file_index = 0;
+    app.ui.git.active_popup = None;
+    app.ui.git.conflict_blocks.clear();
+    app.ui.git.branch_picker = None;
+    app.ui.git.commit_message.clear();
+    app.ui.git.generation = app.ui.git.generation.wrapping_add(1);
+    app.ui.git.folder_epoch = app.ui.git.folder_epoch.wrapping_add(1);
 }
 
 #[cfg(test)]
@@ -398,6 +441,7 @@ mod tests {
         assert!(app.ui.session.watcher.is_none());
         assert!(app.ui.git.repo_root.is_none());
         assert!(app.ui.git.branch_name.is_none());
+        assert_eq!(app.ui.git.folder_epoch, 1);
         assert_eq!(
             app.chrome.focus.current(),
             lux_ui::focus::FocusTarget::Editor
