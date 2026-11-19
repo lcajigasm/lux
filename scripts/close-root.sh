@@ -54,7 +54,8 @@ trap drive_stop EXIT
 
 drive_launch "$repo/.github/workflows/ci.yml" \
   --snapshot-scale 2 \
-  --snapshot-on-usr1 "$out/frame.png" \
+  --snapshot-on-usr1 "$out/before.png" \
+  --snapshot-on-usr1 "$out/after.png" \
   "$repo"
 
 ready=0
@@ -105,32 +106,42 @@ if [[ "$tabs" -lt 2 || "$active" != *ci.yml ]]; then
   fail "wanted ci.yml plus Untitled, got tabs=$tabs active=$active"
 fi
 
-rm -f "$out/frame.png"
+rm -f "$out/before.png"
 kill -USR1 "$DRIVE_PID"
 for _ in $(seq 1 40); do
-  if [[ -s "$out/frame.png" ]]; then
+  if [[ -s "$out/before.png" ]]; then
     break
   fi
   sleep 0.25
 done
-if [[ ! -s "$out/frame.png" ]]; then
+if [[ ! -s "$out/before.png" ]]; then
   fail "before snapshot missing"
 fi
-cp "$out/frame.png" "$out/before.png"
 
-# Ask AppKit for the window. That activates the accessibility tree, which
-# is what turns the stale file-tree focus into the panic.
+# Ask AppKit for the focused element, not only the window list. The window
+# list is answered by AppKit and does not start AccessKit. The focused
+# element does, which is what turns a stale file-tree focus into the panic.
 cat > /tmp/lux-ax-window.swift << 'SWIFT'
 import ApplicationServices
 import Foundation
 let pid = pid_t(CommandLine.arguments[1])!
 let app = AXUIElementCreateApplication(pid)
-var value: CFTypeRef?
-let err = AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value)
-fputs("ax windows \(err.rawValue)\n", stderr)
+var windows: CFTypeRef?
+let windowsErr = AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windows)
+fputs("ax windows \(windowsErr.rawValue)\n", stderr)
+guard windowsErr == .success, let list = windows as? [AXUIElement], let window = list.first else {
+    exit(0)
+}
+var focused: CFTypeRef?
+let focusedErr = AXUIElementCopyAttributeValue(window, kAXFocusedUIElementAttribute as CFString, &focused)
+fputs("ax focused \(focusedErr.rawValue)\n", stderr)
+var children: CFTypeRef?
+let childrenErr = AXUIElementCopyAttributeValue(window, kAXChildrenAttribute as CFString, &children)
+let count = (children as? [AXUIElement])?.count ?? -1
+fputs("ax children \(childrenErr.rawValue) \(count)\n", stderr)
 SWIFT
 swift /tmp/lux-ax-window.swift "$DRIVE_PID" || true
-sleep 0.4
+sleep 0.8
 
 drive_dump || fail "Lux exited when accessibility was queried"
 sidebar_w="$(drive_field sidebar_w)"
@@ -171,18 +182,20 @@ if [[ ! -f "$repo/.github/workflows/ci.yml" ]]; then
   fail "closing the project removed ci.yml from disk"
 fi
 
-rm -f "$out/frame.png"
+rm -f "$out/after.png"
 kill -USR1 "$DRIVE_PID"
 for _ in $(seq 1 40); do
-  if [[ -s "$out/frame.png" ]]; then
+  if [[ -s "$out/after.png" ]]; then
     break
   fi
   sleep 0.25
 done
-if [[ ! -s "$out/frame.png" ]]; then
+if [[ ! -s "$out/after.png" ]]; then
+  if ! kill -0 "$DRIVE_PID" 2>/dev/null; then
+    fail "Lux exited before the after snapshot"
+  fi
   fail "after snapshot missing"
 fi
-cp "$out/frame.png" "$out/after.png"
 
 {
   echo "close root"
