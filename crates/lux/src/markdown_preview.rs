@@ -18,12 +18,17 @@ pub(crate) fn summary(source: &str) -> String {
                 let first = text.lines().next().unwrap_or("");
                 parts.push(format!("code:{first}"));
             }
-            PreviewBlock::Paragraph { spans }
+            PreviewBlock::Paragraph { spans } => {
                 if spans
                     .iter()
-                    .any(|span| matches!(span, PreviewSpan::Link { .. })) =>
-            {
-                parts.push("link".to_string());
+                    .any(|span| matches!(span, PreviewSpan::Link { .. }))
+                {
+                    parts.push("link".to_string());
+                }
+                let text = span_text(&spans);
+                if !text.is_empty() {
+                    parts.push(format!("paragraph:{text}"));
+                }
             }
             _ => {}
         }
@@ -86,14 +91,13 @@ pub(crate) fn html_summary(source: &str) -> String {
             lux_syntax::PreviewBlock::Heading { text, .. } => {
                 parts.push(format!("heading:{text}"));
             }
-            lux_syntax::PreviewBlock::Paragraph { spans }
+            lux_syntax::PreviewBlock::Paragraph { spans } => {
                 if spans
                     .iter()
-                    .any(|span| matches!(span, lux_syntax::PreviewSpan::Link { .. })) =>
-            {
-                parts.push("link".to_string());
-            }
-            lux_syntax::PreviewBlock::Paragraph { spans } => {
+                    .any(|span| matches!(span, lux_syntax::PreviewSpan::Link { .. }))
+                {
+                    parts.push("link".to_string());
+                }
                 let text = span_text(&spans);
                 if !text.is_empty() {
                     parts.push(format!("paragraph:{text}"));
@@ -123,4 +127,26 @@ fn span_text(spans: &[lux_syntax::PreviewSpan]) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{html_summary, summary};
+
+    #[test]
+    fn the_probe_keeps_the_space_before_a_link_and_an_image_alt() {
+        let markdown =
+            "See [Lux](https://example.com).\n\nBefore ![Lux](https://example.com/a.png) after.\n";
+        let blocks = summary(markdown);
+        assert!(blocks.contains("paragraph:See Lux."), "{blocks}");
+        assert!(blocks.contains("paragraph:Before Lux after."), "{blocks}");
+        assert!(!blocks.contains("SeeLux"), "{blocks}");
+        assert!(!blocks.contains("!["), "{blocks}");
+
+        let html = "<p>See <a href=\"https://example.com\">Lux</a>.</p>\n<p>Before <img alt=\"Lux\" src=\"https://example.com/a.png\"> after.</p>\n";
+        let blocks = html_summary(html);
+        assert!(blocks.contains("paragraph:See Lux."), "{blocks}");
+        assert!(blocks.contains("paragraph:Before Lux after."), "{blocks}");
+        assert!(!blocks.contains("SeeLux"), "{blocks}");
+    }
 }

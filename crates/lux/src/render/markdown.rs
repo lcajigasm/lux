@@ -364,11 +364,18 @@ pub(super) fn draw_line(
             glyph_instances,
         );
     }
-    // Paragraph spans are not whitespace-only. A fence is: the space
-    // between `fn` and `main` is its own run, and laying that run out by
-    // itself makes the space trailing. `width()` then returns 0. Fences
-    // use `draw_fence_line`, which lays the whole line out once.
-    line.width()
+    // `width()` drops trailing whitespace. The span "See " then places
+    // the link on top of the space: run 44432624262 painted "SeeLux.".
+    // The last cluster still carries that advance. A fence lays the
+    // joined line out once and does not use this return value.
+    span_advance(&line)
+}
+
+fn span_advance(line: &lux_render::LineLayout) -> f32 {
+    line.clusters()
+        .iter()
+        .map(|cluster| cluster.x + cluster.advance)
+        .fold(0.0, f32::max)
 }
 
 /// One layout for the whole fence line. Cluster `x` already includes
@@ -555,5 +562,33 @@ mod tests {
                 cluster.x
             );
         }
+    }
+
+    #[test]
+    fn a_link_keeps_the_space_before_it() {
+        let mut cx = lux_render::TextLayoutContext::new();
+        let family = cx
+            .register_font(include_bytes!(
+                "../../../lux-render/tests/fixtures/ahem.ttf"
+            ))
+            .expect("ahem");
+        let style = lux_render::LineStyle {
+            family: &family,
+            font_size: 16.0,
+            ligatures: false,
+        };
+        let cell = cx.layout_line(&style, "n", &[]).clusters()[0].advance;
+        // The painter used to return width(), which is 3 cells for "See ".
+        let see = cx.layout_line(&style, "See ", &[]);
+        assert!(
+            see.width() + 0.5 < cell * 4.0,
+            "width() started keeping the trailing space"
+        );
+        let advance = super::span_advance(&see);
+        assert!(
+            advance + 0.5 >= cell * 4.0,
+            "space before the link was dropped: advance={advance} width={} cell={cell}",
+            see.width()
+        );
     }
 }

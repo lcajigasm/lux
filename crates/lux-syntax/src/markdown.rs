@@ -181,6 +181,12 @@ fn spans(inline: Node, source: &str) -> Vec<PreviewSpan> {
                 label: field_or_kind(&text, child, "link_text", "link_text"),
                 destination: field_or_kind(&text, child, "link_destination", "link_destination"),
             }),
+            "image" => {
+                let alt = image_alt(&text, child);
+                if !alt.is_empty() {
+                    out.push(PreviewSpan::Text(alt));
+                }
+            }
             _ => {
                 let raw = text[child.start_byte()..child.end_byte()].to_string();
                 if !raw.trim().is_empty() {
@@ -231,6 +237,16 @@ fn inner_text(source: &str, node: Node) -> String {
     } else {
         parts.concat()
     }
+}
+
+fn image_alt(source: &str, node: Node) -> String {
+    let raw = field_or_kind(source, node, "image_description", "image_description");
+    let trimmed = raw.trim();
+    let inner = trimmed
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+        .unwrap_or(trimmed);
+    inner.to_string()
 }
 
 fn field_or_kind(source: &str, node: Node, field: &str, kind: &str) -> String {
@@ -345,5 +361,47 @@ mod tests {
             Some("    fn main() {\n        let value = 1;\n    }"),
             "fence body dropped indent: {text:?}"
         );
+    }
+
+    #[test]
+    fn a_link_keeps_the_space_before_it() {
+        let source = "See [Lux](https://example.com).\n";
+        let mut doc = Document::new(LanguageId::Markdown);
+        doc.set_text(source);
+        let blocks = preview_document(&doc, source);
+        let spans = blocks.iter().find_map(|block| match block {
+            PreviewBlock::Paragraph { spans } => Some(spans),
+            _ => None,
+        });
+        let Some(spans) = spans else {
+            panic!("no paragraph: {blocks:?}");
+        };
+        assert_eq!(plain(spans), "See Lux.", "{spans:?}");
+    }
+
+    #[test]
+    fn an_image_shows_its_alt_text() {
+        let source = "Before ![Lux](https://example.com/a.png) after.\n";
+        let mut doc = Document::new(LanguageId::Markdown);
+        doc.set_text(source);
+        let blocks = preview_document(&doc, source);
+        let text = blocks.iter().find_map(|block| match block {
+            PreviewBlock::Paragraph { spans } => Some(plain(spans)),
+            _ => None,
+        });
+        assert_eq!(text.as_deref(), Some("Before Lux after."), "{blocks:?}");
+    }
+
+    fn plain(spans: &[PreviewSpan]) -> String {
+        spans
+            .iter()
+            .map(|span| match span {
+                PreviewSpan::Text(text)
+                | PreviewSpan::Strong(text)
+                | PreviewSpan::Emphasis(text)
+                | PreviewSpan::Code(text) => text.as_str(),
+                PreviewSpan::Link { label, .. } => label.as_str(),
+            })
+            .collect()
     }
 }
