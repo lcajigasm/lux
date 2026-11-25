@@ -148,20 +148,23 @@ fn build_frame_skips_folded_lines() {
 
 fn sample<'a>(
     buffer: &'a Buffer,
-    version: u64,
-    edited_line: Option<usize>,
+    edit: Option<LineEdit>,
     visible: Range<usize>,
     available_rows: usize,
 ) -> MinimapSample<'a> {
     MinimapSample {
-        version,
+        revision: buffer.revision(),
         document: 7,
-        edited_line,
+        edit,
         buffer,
         visible,
         available_rows,
         folds: None,
     }
+}
+
+fn bars(frame: &MinimapFrame) -> Vec<usize> {
+    frame.rows.iter().map(|row| row.content_columns).collect()
 }
 
 #[test]
@@ -174,10 +177,10 @@ fn scrolling_reuses_the_row_bars() {
     let minimap = Minimap::new();
     let mut model = MinimapModel::default();
     let top = model
-        .frame(&minimap, sample(&buffer, 1, None, 0..10, 40))
+        .frame(&minimap, sample(&buffer, None, 0..10, 40))
         .unwrap();
     let scrolled = model
-        .frame(&minimap, sample(&buffer, 1, None, 80..100, 40))
+        .frame(&minimap, sample(&buffer, None, 80..100, 40))
         .unwrap();
     assert_eq!(top.rows, scrolled.rows);
     assert_ne!(top.viewport.rows, scrolled.viewport.rows);
@@ -188,16 +191,76 @@ fn one_typed_line_patches_that_bar() {
     let mut buffer = Buffer::from_bytes(b"a\nb\n").unwrap();
     let minimap = Minimap::new();
     let mut model = MinimapModel::default();
-    let before = model
-        .frame(&minimap, sample(&buffer, 1, None, 0..2, 100))
+    let first = model
+        .frame(&minimap, sample(&buffer, None, 0..2, 100))
         .unwrap();
+    let before = buffer.revision();
     buffer.insert(0, "zzz");
+    let edit = LineEdit {
+        line: 0,
+        before,
+        after: buffer.revision(),
+    };
     let after = model
-        .frame(&minimap, sample(&buffer, 2, Some(0), 0..2, 100))
+        .frame(&minimap, sample(&buffer, Some(edit), 0..2, 100))
         .unwrap();
-    assert_eq!(before.rows[0].content_columns, 1);
+    assert_eq!(first.rows[0].content_columns, 1);
     assert_eq!(after.rows[0].content_columns, 4);
-    assert_eq!(after.rows[1], before.rows[1]);
+    assert_eq!(after.rows[1], first.rows[1]);
+}
+
+#[test]
+fn a_stale_line_edit_rebuilds_every_bar() {
+    let mut buffer = Buffer::from_bytes(b"a\nb\n").unwrap();
+    let minimap = Minimap::new();
+    let mut model = MinimapModel::default();
+    model.frame(&minimap, sample(&buffer, None, 0..2, 100));
+    let before = buffer.revision();
+    buffer.insert(0, "x");
+    let edit = LineEdit {
+        line: 0,
+        before,
+        after: buffer.revision(),
+    };
+    // A later edit on another line that recorded no line edit.
+    buffer.insert(3, "yy");
+    let frame = model
+        .frame(&minimap, sample(&buffer, Some(edit), 0..2, 100))
+        .unwrap();
+    assert_eq!(bars(&frame), vec![2, 3, 0]);
+}
+
+#[test]
+fn a_line_edit_from_an_older_cache_rebuilds_every_bar() {
+    let mut buffer = Buffer::from_bytes(b"a\nb\n").unwrap();
+    let minimap = Minimap::new();
+    let mut model = MinimapModel::default();
+    model.frame(&minimap, sample(&buffer, None, 0..2, 100));
+    buffer.insert(3, "yy");
+    let before = buffer.revision();
+    buffer.insert(0, "x");
+    let edit = LineEdit {
+        line: 0,
+        before,
+        after: buffer.revision(),
+    };
+    let frame = model
+        .frame(&minimap, sample(&buffer, Some(edit), 0..2, 100))
+        .unwrap();
+    assert_eq!(bars(&frame), vec![2, 3, 0]);
+}
+
+#[test]
+fn a_replaced_buffer_with_the_same_line_count_refreshes() {
+    let buffer = Buffer::from_bytes(b"a\nb\n").unwrap();
+    let minimap = Minimap::new();
+    let mut model = MinimapModel::default();
+    model.frame(&minimap, sample(&buffer, None, 0..2, 100));
+    let replaced = Buffer::from_bytes(b"longer\nb\n").unwrap();
+    let frame = model
+        .frame(&minimap, sample(&replaced, None, 0..2, 100))
+        .unwrap();
+    assert_eq!(bars(&frame), vec![6, 1, 0]);
 }
 
 #[test]
@@ -230,7 +293,7 @@ fn a_huge_file_skips_the_cached_row_model() {
     assert!(buffer.is_huge_file_mode());
     let mut model = MinimapModel::default();
     let frame = model
-        .frame(&Minimap::new(), sample(&buffer, 1, None, 0..1, 1))
+        .frame(&Minimap::new(), sample(&buffer, None, 0..1, 1))
         .unwrap();
     assert_eq!(frame.rows.len(), 1);
     assert_eq!(frame.rows[0].line, 0);

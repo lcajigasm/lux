@@ -5,9 +5,8 @@ use std::path::PathBuf;
 use crate::app::{App, TAB_BAR_HEIGHT, TAB_MAX_WIDTH, TAB_MIN_WIDTH};
 
 impl App {
-    pub(crate) fn minimap_cache_key(&self) -> (u64, u64) {
-        let document = self.documents.active_tab.map(|id| id.as_u64()).unwrap_or(0);
-        (document, self.history.state_id())
+    pub(crate) fn minimap_document(&self) -> u64 {
+        self.documents.active_tab.map(|id| id.as_u64()).unwrap_or(0)
     }
 
     pub(crate) fn toggle_minimap(&mut self) {

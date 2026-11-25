@@ -55,7 +55,7 @@ impl App {
         let is_current_dirty = self.document_dirty();
         let editor_top = tab_bar_height;
 
-        let (minimap_document, minimap_version) = self.minimap_cache_key();
+        let minimap_document = self.minimap_document();
         let App {
             gpu_window,
             editor_view,
@@ -411,7 +411,6 @@ impl App {
             minimap::render_minimap(
                 &mut ui.minimap,
                 minimap_document,
-                minimap_version,
                 buffer,
                 viewport,
                 window_width,

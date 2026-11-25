@@ -100,11 +100,11 @@ pub fn build_frame(
 }
 
 /// Remembers one document's row bars so a scroll does not walk the rope again.
-/// `version` is the history state. `document` distinguishes two buffers that
-/// both still have state 0. `edited_line` patches one line after a key.
+/// `revision` is [`Buffer::revision`], which changes on every mutation,
+/// including replacements that bypass undo history. `document` is the tab.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MinimapModel {
-    version: u64,
+    revision: u64,
     document: u64,
     available_rows: usize,
     fold_stamp: u64,
@@ -112,10 +112,22 @@ pub struct MinimapModel {
     rows: Vec<MinimapRow>,
 }
 
+/// One edit that changed only `line`, taking the buffer from revision
+/// `before` straight to `after`. The model patches that bar only when its
+/// cached rows are exactly at `before` and the buffer is exactly at `after`;
+/// anything else, such as further edits while the minimap was hidden,
+/// rebuilds every bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LineEdit {
+    pub line: usize,
+    pub before: u64,
+    pub after: u64,
+}
+
 pub struct MinimapSample<'a> {
-    pub version: u64,
+    pub revision: u64,
     pub document: u64,
-    pub edited_line: Option<usize>,
+    pub edit: Option<LineEdit>,
     pub buffer: &'a Buffer,
     pub visible: Range<usize>,
     pub available_rows: usize,
@@ -138,7 +150,7 @@ impl MinimapModel {
         let total_lines = sample.buffer.len_lines();
         let fold_stamp = fold_stamp(sample.folds);
         let same = self.rows_match(
-            sample.version,
+            sample.revision,
             sample.document,
             sample.available_rows,
             total_lines,
@@ -150,7 +162,7 @@ impl MinimapModel {
                 self.lines = line_densities(sample.buffer);
                 self.rows = rows_from_densities(&self.lines, sample.available_rows, sample.folds);
             }
-            self.version = sample.version;
+            self.revision = sample.revision;
             self.document = sample.document;
             self.available_rows = sample.available_rows;
             self.fold_stamp = fold_stamp;
@@ -166,14 +178,14 @@ impl MinimapModel {
 
     fn rows_match(
         &self,
-        version: u64,
+        revision: u64,
         document: u64,
         available_rows: usize,
         total_lines: usize,
         fold_stamp: u64,
     ) -> bool {
         !self.rows.is_empty()
-            && self.version == version
+            && self.revision == revision
             && self.document == document
             && self.available_rows == available_rows
             && self.lines.len() == total_lines
@@ -186,10 +198,14 @@ impl MinimapModel {
         total_lines: usize,
         fold_stamp: u64,
     ) -> bool {
-        let Some(line) = sample.edited_line else {
+        let Some(edit) = sample.edit else {
             return false;
         };
-        if self.document != sample.document
+        let line = edit.line;
+        if self.rows.is_empty()
+            || self.revision != edit.before
+            || sample.revision != edit.after
+            || self.document != sample.document
             || self.available_rows != sample.available_rows
             || self.fold_stamp != fold_stamp
             || self.lines.len() != total_lines

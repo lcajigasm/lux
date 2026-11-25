@@ -22,6 +22,7 @@ use std::fs;
 use std::io;
 use std::ops::Range;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug, Clone)]
 pub struct Buffer {
@@ -34,6 +35,16 @@ pub struct Buffer {
     indent_explicit: bool,
     encoding: Encoding,
     huge_file_mode: bool,
+    /// Changes on every mutation. Drawn from a process-wide counter, so two
+    /// different buffers never share a value unless one is a clone of the
+    /// other with identical text.
+    revision: u64,
+}
+
+static NEXT_REVISION: AtomicU64 = AtomicU64::new(1);
+
+fn next_revision() -> u64 {
+    NEXT_REVISION.fetch_add(1, Ordering::Relaxed)
 }
 
 impl Buffer {
@@ -72,6 +83,7 @@ impl Buffer {
             indent_explicit: false,
             encoding,
             huge_file_mode: false,
+            revision: next_revision(),
         }
     }
 
@@ -193,6 +205,14 @@ impl Buffer {
     /// user-facing editing command.
     pub fn insert(&mut self, char_idx: usize, text: &str) {
         self.rope.insert(char_idx, text);
+        self.revision = next_revision();
+    }
+
+    /// Identifies the current text. Every insert or delete, and every newly
+    /// built buffer, gets a value no other text state has had, so a cache
+    /// keyed on it sees replacements that bypass undo history.
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     /// Removes the text in `char_range` and returns it, so the caller can
@@ -200,6 +220,7 @@ impl Buffer {
     pub fn delete(&mut self, char_range: Range<usize>) -> String {
         let removed = self.text_range(char_range.clone());
         self.rope.remove(char_range);
+        self.revision = next_revision();
         removed
     }
 
@@ -430,6 +451,20 @@ mod tests {
         assert_eq!(saved_bytes, original_bytes);
 
         fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn revision_changes_on_every_mutation_and_new_buffer() {
+        let mut buffer = Buffer::from_bytes(b"abc").unwrap();
+        let first = buffer.revision();
+        buffer.insert(0, "x");
+        let inserted = buffer.revision();
+        assert_ne!(first, inserted);
+        buffer.delete(0..1);
+        assert_ne!(inserted, buffer.revision());
+        let replaced = Buffer::from_bytes(b"abc").unwrap();
+        assert_ne!(replaced.revision(), first);
+        assert_ne!(replaced.revision(), buffer.revision());
     }
 
     #[test]

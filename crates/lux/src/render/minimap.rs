@@ -10,7 +10,6 @@ use lux_ui::{Theme, Viewport};
 pub(crate) fn render_minimap(
     state: &mut MinimapState,
     document: u64,
-    version: u64,
     buffer: &Buffer,
     viewport: &Viewport,
     window_width: f32,
@@ -45,18 +44,12 @@ pub(crate) fn render_minimap(
 
     let visible_start = (viewport.scroll_y / line_height).floor() as usize;
     let visible_end = ((viewport.scroll_y + viewport.height) / line_height).ceil() as usize;
-    let edited = state.edited_line.take();
-    let frame = state.model.frame(
-        &state.inner,
-        lux_ui::minimap::MinimapSample {
-            version,
-            document,
-            edited_line: edited,
-            buffer,
-            visible: visible_start..visible_end,
-            available_rows,
-            folds,
-        },
+    let frame = state.frame(
+        document,
+        buffer,
+        visible_start..visible_end,
+        available_rows,
+        folds,
     );
 
     let Some(frame) = frame else {

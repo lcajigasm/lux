@@ -119,18 +119,18 @@ impl App {
                 let piece = lines.get(line_idx).copied().unwrap_or("");
                 edit_ops::insert_text(buffer, selection, piece)
             });
-            self.ui.minimap.edited_line = None;
+            self.ui.minimap.edit = None;
             return;
         }
 
+        let before = self.buffer.revision();
         let chain = self.cursors.count() == 1 && text.chars().count() == 1;
         self.record_edit(
             self.cursors.clone(),
             |buffer, selection| edit_ops::insert_text(buffer, selection, text),
             chain,
         );
-        self.ui.minimap.edited_line =
-            (!text.contains('\n')).then(|| self.cursors.primary().head.line);
+        self.note_minimap_input(text, before);
     }
 
     #[allow(dead_code)]
