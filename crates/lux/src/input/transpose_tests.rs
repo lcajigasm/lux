@@ -67,3 +67,14 @@ fn palette_transpose_runs_the_same_command() {
     crate::palette::commands::execute_command(&mut app, &ctx, "edit.transpose");
     assert_eq!(app.buffer.text(), "yx z");
 }
+
+#[test]
+fn ctrl_t_after_cmd_l_on_a_one_word_line_is_a_no_op() {
+    let mut app = app("a\nbb");
+    let ctx = TestCtx::default();
+    select(&mut app, &[(0, 0)]);
+    press(&mut app, &ctx, chr("l"), primary(false));
+    assert_eq!(app.cursors.primary().char_range(), 0..2);
+    press(&mut app, &ctx, chr("t"), ctrl());
+    assert_eq!(app.buffer.text(), "a\nbb");
+}

@@ -124,3 +124,74 @@ fn transpose_is_one_undoable_transaction() {
     transaction.undo(&mut buffer);
     assert_eq!(buffer.text(), "ab cd");
 }
+
+#[test]
+fn whole_line_with_one_word_is_left_alone() {
+    // `Cmd+L` on the first line of `a\nbb` selects `a\n`.
+    assert_eq!(run("a\nbb", &[(0, 2)]), ("a\nbb".into(), vec![(0, 2)]));
+    assert_eq!(run("a\nbb", &[(2, 0)]), ("a\nbb".into(), vec![(2, 0)]));
+    assert_eq!(run("foo\n", &[(0, 4)]), ("foo\n".into(), vec![(0, 4)]));
+}
+
+#[test]
+fn whole_line_with_two_words_swaps_them() {
+    assert_eq!(
+        run("one two\nx", &[(0, 8)]),
+        ("two one\nx".into(), vec![(0, 8)])
+    );
+}
+
+#[test]
+fn selected_empty_line_is_left_alone() {
+    assert_eq!(run("\n", &[(0, 1)]), ("\n".into(), vec![(0, 1)]));
+    assert_eq!(run("a\n\nb", &[(2, 3)]), ("a\n\nb".into(), vec![(2, 3)]));
+    assert_eq!(run("a\n\nb", &[(3, 2)]), ("a\n\nb".into(), vec![(3, 2)]));
+}
+
+#[test]
+fn reversed_selection_through_the_line_break_is_left_alone() {
+    assert_eq!(
+        run("ab cd\nx", &[(6, 3)]),
+        ("ab cd\nx".into(), vec![(6, 3)])
+    );
+}
+
+mod property {
+    use super::*;
+    use proptest::prelude::*;
+
+    const TOKENS: &[&str] = &["a", "b", " ", "_", "-", "\n", "\r\n", "é"];
+
+    /// A small buffer and char offsets that never split a `\r\n`.
+    fn text_and_offsets() -> impl Strategy<Value = (String, Vec<usize>)> {
+        prop::collection::vec(0..TOKENS.len(), 0..12).prop_map(|picks| {
+            let mut text = String::new();
+            let mut offsets = vec![0];
+            for pick in picks {
+                text.push_str(TOKENS[pick]);
+                offsets.push(text.chars().count());
+            }
+            (text, offsets)
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn transpose_never_panics(
+            (text, offsets) in text_and_offsets(),
+            picks in prop::collection::vec((any::<prop::sample::Index>(), any::<prop::sample::Index>()), 1..4),
+        ) {
+            let ranges: Vec<(usize, usize)> = picks
+                .iter()
+                .map(|(a, h)| (*a.get(&offsets), *h.get(&offsets)))
+                .collect();
+            let (after, _) = run(&text, &ranges);
+            // Transpose only reorders text: the multiset of chars survives.
+            let mut before: Vec<char> = text.chars().collect();
+            let mut now: Vec<char> = after.chars().collect();
+            before.sort_unstable();
+            now.sort_unstable();
+            prop_assert_eq!(before, now);
+        }
+    }
+}

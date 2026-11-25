@@ -9,7 +9,9 @@
 //! - One selection over two lines swaps the content of those lines.
 //! - One selection inside a line: if it covers two or more words, the first
 //!   and last swap; otherwise it trades places with the next word on the
-//!   line, or the previous one when there is no next word.
+//!   line, or the previous one when there is no next word. A selection that
+//!   runs on through the line break (a whole line, as `Cmd+L` selects it)
+//!   with fewer than two words is left alone.
 
 use std::collections::HashMap;
 
@@ -129,7 +131,13 @@ fn transpose_selection(buffer: &mut Buffer, selection: Selection) -> (Vec<Edit>,
         );
         return replace(buffer, selection, range.clone(), &whole, 0, range.len());
     }
-    let (line_start, content_end) = line_bounds(buffer, selection.head.line);
+    // The selection starts on its only touched line; it may run on through
+    // that line's break (`touched_lines` drops a last line reached at
+    // column 0), which leaves no neighbour word on the line to trade with.
+    let (line_start, content_end) = line_bounds(buffer, *lines.start());
+    if range.end > content_end {
+        return (Vec::new(), selection);
+    }
     let line: Vec<char> = buffer.text_range(line_start..content_end).chars().collect();
     let (start, end) = (range.start - line_start, range.end - line_start);
     let after = word_runs(&line[end..].iter().collect::<String>());
