@@ -28,7 +28,12 @@ impl App {
         let mut selections = Vec::new();
         for (index, &selection) in self.cursors.cursors().iter().enumerate() {
             let pos = selection.head;
-            let goal = self.goal_columns.get(index).copied().unwrap_or(pos.column);
+            let goal = self
+                .carets
+                .goal_columns
+                .get(index)
+                .copied()
+                .unwrap_or(pos.column);
             let to = match key {
                 Home if command => Position::document_start(),
                 End if command => Position::document_end(&self.buffer),

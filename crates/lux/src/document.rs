@@ -297,7 +297,7 @@ impl App {
                 entry.path = self.documents.path.clone();
                 entry.buffer = self.buffer.clone();
                 entry.cursors = self.cursors.clone();
-                entry.goal_columns = self.goal_columns.clone();
+                entry.goal_columns = self.carets.goal_columns.clone();
                 entry.history = self.history.clone();
                 entry.saved_version = self.documents.saved_version;
                 entry.disk_snapshot = self.documents.disk_snapshot.clone();
@@ -348,7 +348,7 @@ impl App {
         self.documents.path = entry.path;
         self.buffer = entry.buffer;
         self.cursors = entry.cursors;
-        self.goal_columns = entry.goal_columns;
+        self.carets.goal_columns = entry.goal_columns;
         self.history = entry.history;
         self.documents.saved_version = entry.saved_version;
         self.documents.disk_snapshot = entry.disk_snapshot;

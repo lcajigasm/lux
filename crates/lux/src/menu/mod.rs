@@ -217,25 +217,11 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
                 crate::split::clone_view::clamp_cloned_panes_after_undo(app);
             }
         }
-        MenuAction::Cut => {
-            if !app.editing_blocked()
-                && !app.buffer.is_huge_file_mode()
-                && app.copy_to_clipboard(Some(ctx.clipboard()))
-            {
-                app.replace_selections(app.cursors.clone(), "");
-            }
-        }
+        MenuAction::Cut => app.cut_to_clipboard(Some(ctx.clipboard())),
         MenuAction::Copy => {
             app.copy_to_clipboard(Some(ctx.clipboard()));
         }
-        MenuAction::Paste => {
-            if !app.editing_blocked()
-                && !app.buffer.is_huge_file_mode()
-                && let Ok(text) = ctx.clipboard().read_text()
-            {
-                app.insert_at_cursor(&text);
-            }
-        }
+        MenuAction::Paste => app.paste_from_clipboard(Some(ctx.clipboard())),
         MenuAction::SelectAll => {
             app.cursors =
                 lux_core::multicursor::MultiCursor::new(lux_core::selection::Selection::new(

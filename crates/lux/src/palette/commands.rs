@@ -58,26 +58,11 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
                 crate::split::clone_view::clamp_cloned_panes_after_undo(app);
             }
         }
-        "edit.cut" => {
-            if !app.editing_blocked() && !app.buffer.is_huge_file_mode() {
-                let clipboard = Some(ctx.clipboard());
-                if app.copy_to_clipboard(clipboard) {
-                    app.insert_at_cursor("");
-                }
-            }
-        }
+        "edit.cut" => app.cut_to_clipboard(Some(ctx.clipboard())),
         "edit.copy" => {
-            let clipboard = Some(ctx.clipboard());
-            app.copy_to_clipboard(clipboard);
+            app.copy_to_clipboard(Some(ctx.clipboard()));
         }
-        "edit.paste" => {
-            if !app.editing_blocked()
-                && !app.buffer.is_huge_file_mode()
-                && let Ok(text) = ctx.clipboard().read_text()
-            {
-                app.insert_at_cursor(&text);
-            }
-        }
+        "edit.paste" => app.paste_from_clipboard(Some(ctx.clipboard())),
         "edit.select_all" => {
             app.cursors =
                 lux_core::multicursor::MultiCursor::new(lux_core::selection::Selection::new(

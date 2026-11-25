@@ -226,7 +226,7 @@ impl App {
         new_entry.saved_version = self.documents.saved_version;
         new_entry.disk_snapshot = self.documents.disk_snapshot.clone();
         new_entry.cursors = self.cursors.clone();
-        new_entry.goal_columns = self.goal_columns.clone();
+        new_entry.goal_columns = self.carets.goal_columns.clone();
         new_entry.scroll_x = self.viewport.scroll_x;
         new_entry.scroll_y = self.viewport.scroll_y;
         new_entry.fold_state = self.fold_state.clone();

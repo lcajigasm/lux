@@ -245,7 +245,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-EDIT-02 — Portapapeles Multi-Cursor Avanzado (Per-Caret Multi-Clip)
 - Prioridad: `P0 (Core Sublime)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: —
 - Objetivo: Comportamiento idéntico a Sublime Text al copiar y pegar con múltiples cursores.
 - Alcance detallado:
