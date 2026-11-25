@@ -285,7 +285,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-EDIT-04 — Navegación Visual de Cursor en Líneas con Ajuste de Palabra (Soft Word Wrap)
 - Prioridad: `P1 (Ergonomía)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: —
 - Problema actual:
   - Al activar el ajuste de línea (`Option+Z`), pulsar `Flecha Arriba` o `Flecha Abajo` navega entre líneas lógicas del buffer, saltándose las sub-líneas visuales renderizadas en pantalla.
