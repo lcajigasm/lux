@@ -293,6 +293,21 @@ fn escape_closes_the_menu_before_the_page() {
     assert!(app.ui.settings.panel.is_none());
 }
 
+#[test]
+fn escape_closes_a_palette_opened_over_settings_first() {
+    let mut app = app();
+    app.ui.settings.open_settings_ui();
+    app.open_command_palette("th");
+    app.handle_keyboard_event(&Ctx, &escape());
+    assert!(
+        app.ui.command_palette.is_none(),
+        "Esc left the palette open"
+    );
+    assert!(app.ui.settings.panel.is_some(), "Esc closed Settings too");
+    app.handle_keyboard_event(&Ctx, &escape());
+    assert!(app.ui.settings.panel.is_none());
+}
+
 fn item_index(app: &App, key: &str) -> usize {
     app.ui
         .settings
