@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 1.5.12 — 2026-11-25
+
+Test build. Not a closed release.
+
+### Added
+
+- A trackpad pinch zooms the editor font, in whole points from 8 to 48, like Command+= and Command+- (#139).
+- A user color scheme may contain comments, and a rule's `scope` may be a string or a list (#128).
+
+### Changed
+
+- The window presents a frame without waiting for the next display refresh: mailbox, then immediate, when the GPU offers them (#109).
+
+### Fixed
+
+- Closing the only project header no longer panics (#129).
+- Git status survives a tracked file becoming a directory (#127).
+- The Markdown preview keeps the space before a link and shows image alt text (#126).
+- The pointer shape follows the zone under it (#116).
+
+### Security
+
+- `url` 2.5.9 for RUSTSEC-2026-0592 (#136).
+- wasmtime 48.0.8 for its published advisories (#130).
+
 ## 1.5.11 — 2026-11-18
 
 Test build. Not a closed release.
