@@ -324,6 +324,7 @@ impl App {
             self.ui.session.mark_dirty(path);
         }
         self.save_recovery_snapshot();
+        crate::session::note_change();
         self.update_document_title();
         if self.ui.announcement.is_none() {
             let head = self.cursors.primary().head;
@@ -351,6 +352,7 @@ impl PlatformEventHandler for App {
         crate::menu::poll_and_dispatch(self, ctx);
         self.finish_document_operation(ctx);
         crate::ui_io::poll(self, ctx);
+        crate::session::write_if_due(self);
         crate::lsp::poll_lsp_events(self, ctx);
         self.poll_syntax_highlighter();
         crate::find_stream::pump(self);
@@ -370,11 +372,11 @@ impl PlatformEventHandler for App {
         } else {
             crate::document::open_queue::pump(self, ctx);
         }
-        if !crate::document::open_queue::busy(self) && self.ui.sidebar.is_none() {
-            let session_file = crate::session::default_session_path(None);
-            if session_file.exists() {
-                let _ = crate::session::restore_session(self, &session_file);
-            }
+        if !crate::document::open_queue::busy(self)
+            && self.ui.sidebar.is_none()
+            && let Some(session_file) = crate::session::location::readable_session_file(None)
+        {
+            let _ = crate::session::restore_session(self, &session_file);
         }
     }
 
@@ -522,6 +524,7 @@ impl PlatformEventHandler for App {
                     crate::tab_strip::release_drag(self);
                     self.end_divider_drag();
                 }
+                crate::session::note_change();
                 self.refresh_accessibility();
                 if let Some(gpu_window) = &self.gpu_window {
                     gpu_window.window.request_redraw();

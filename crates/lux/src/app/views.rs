@@ -107,12 +107,8 @@ impl App {
     }
 
     pub(crate) fn open_workspace(&mut self, path: PathBuf) {
-        let session_file = crate::session::default_session_path(Some(&path));
-        let restored = if session_file.exists() {
-            crate::session::restore_session(self, &session_file).unwrap_or(false)
-        } else {
-            false
-        };
+        let restored = crate::session::location::readable_session_file(Some(&path))
+            .is_some_and(|file| crate::session::restore_session(self, &file).unwrap_or(false));
         if !restored {
             self.ui.sidebar = crate::sidebar::SidebarState::open_folder(path.clone());
             self.ui.session.init_watcher(&path);

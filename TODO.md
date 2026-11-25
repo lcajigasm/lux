@@ -470,7 +470,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-TAB-03 — Hot Exit Completo y Persistencia Transaccional de Sesión
 - Prioridad: `P1 (Fiabilidad)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: ST-SPLIT-01
 - Objetivo: Nunca perder trabajo ni obligar al usuario a guardar antes de cerrar la aplicación.
 - Alcance detallado:

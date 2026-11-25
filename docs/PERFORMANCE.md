@@ -271,3 +271,13 @@ Run 43471189705 measured a warm 10 MB open at 706.3 ms, a warm 100 MB open at 90
 Run 43525490937 measured the cold-start head at 246.6 ms. On that launch the window and the GPU adapter each took about 97 ms, one after the other. This branch requests the adapter while the window is created. Sublime Text and Zed stay pending for a same-clock comparison: run 43471189705 recorded Sublime as "window did not appear" and Zed as "open -a Zed failed". The job installs the official casks again. A window that does not appear stays pending, with the reason in the artifact.
 
 Run 43525497637 measured key-to-frame at 21.41 ms p99 after recovery moved off the key path. The swapchain was taking the first listed present mode, which waits for the next refresh. This branch prefers mailbox, then immediate, when the surface offers them. Sublime Text and Zed stay pending: that earlier timings run recorded Sublime as "window did not appear" and Zed as "open -a Zed failed". Key-to-pixel is not readable from those processes. The job installs the official casks again and records whether a window appears.
+
+## Session restore, 20 tabs (ST-TAB-03)
+
+**2026-11-25, Apple M1 Max, `--release`, not the CI runner.** `session::tests::hot_exit::restore_twenty_tabs_reports_its_time` writes 20 files of 2,000 lines (about 100 KB each), types into each through `handle_keyboard_event`, quits through `PlatformEventHandler::exiting`, and times `restore_session` into a fresh `App`: reading the session JSON, opening the 20 files, decoding 20 undo histories, and switching to the active tab. No frame is presented, so this is not launch-to-pixel.
+
+| Measurement | Target | Runs (5) | Median |
+|---|---|---|---|
+| Restore 20 tabs with undo history | < 100 ms, not gated | 35.1, 36.0, 34.7, 42.5, 35.9 ms | 35.9 ms |
+
+The test prints the time and does not assert it (CLAUDE.md rule 3: budgets are gated only on repeatable hardware). Debug builds measured 413 ms on the same machine.
