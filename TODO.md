@@ -671,7 +671,11 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-MAC-03 — Gestos de Trackpad: Desplazamiento Suave Inercial y Pellizco para Zoom
 - Prioridad: `P2 (Ergonomía macOS)`
-- Estado: `OPEN`
+- Estado: `DONE`
+- Resolved:
+  - Inertia is the OS's: winit's macOS backend delivers the momentum phase as further pixel deltas, and Lux applies every pixel delta 1:1 (`render::window::tests::a_momentum_tail_keeps_each_pixel_delta`). Lux adds no inertia of its own.
+  - Mouse-wheel notches are not smoothed. A notch moves one line at the current zoom, as the OS reports it. No animation was added.
+  - Pinch: `PlatformEvent::Pinch { delta, phase }` (lux-platform) is converted from winit's `PinchGesture`, which macOS sends without opting in. `crates/lux/src/pinch.rs` multiplies the deltas of one gesture, moves the font in whole-point steps from the size the gesture started at, clamps to 8–48pt like Command+=/-, and relayouts only when the step changes. Command+0 resets it.
 - Dependencias: —
 - Objetivo: Suavidad cinemática en trackpads de MacBook y Magic Mouse.
 - Alcance detallado:

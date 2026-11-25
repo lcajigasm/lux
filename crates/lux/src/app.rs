@@ -463,6 +463,7 @@ impl PlatformEventHandler for App {
                 crate::probe::note_scroll();
                 self.on_wheel(delta);
             }
+            PlatformEvent::Pinch { delta, phase } => crate::pinch::on_pinch(self, delta, phase),
             PlatformEvent::MouseMoved(position) => {
                 self.mouse.position = position;
                 self.mouse.placed = true;

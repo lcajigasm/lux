@@ -218,6 +218,15 @@ fn touch_phase(phase: winit::event::TouchPhase) -> TouchPhase {
     }
 }
 
+/// winit documents the pinch delta as possibly NaN. A non-finite step
+/// carries no magnification, but its phase still opens or closes the gesture.
+pub(super) fn pinch(delta: f64, phase: winit::event::TouchPhase) -> PlatformEvent {
+    PlatformEvent::Pinch {
+        delta: if delta.is_finite() { delta } else { 0.0 },
+        phase: touch_phase(phase),
+    }
+}
+
 pub(super) fn ime(event: winit::event::Ime) -> Ime {
     match event {
         winit::event::Ime::Enabled => Ime::Enabled,
@@ -269,6 +278,7 @@ pub(super) fn window_event(event: winit::event::WindowEvent) -> Option<PlatformE
             state: element_state(state),
         },
         W::MouseWheel { delta, .. } => PlatformEvent::MouseWheel(scroll_delta(delta)),
+        W::PinchGesture { delta, phase, .. } => pinch(delta, phase),
         W::Touch(t) => PlatformEvent::Touch(touch(t.id, t.phase, t.location, t.force)),
         W::DroppedFile(path) => PlatformEvent::DroppedFile(path),
         _ => return None,
@@ -278,6 +288,38 @@ pub(super) fn window_event(event: winit::event::WindowEvent) -> Option<PlatformE
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pinch_gesture_becomes_a_finite_pinch_event() {
+        use winit::event::TouchPhase as W;
+        let device_id = winit::event::DeviceId::dummy();
+        let event = winit::event::WindowEvent::PinchGesture {
+            device_id,
+            delta: 0.125,
+            phase: W::Moved,
+        };
+        assert_eq!(
+            window_event(event),
+            Some(PlatformEvent::Pinch {
+                delta: 0.125,
+                phase: TouchPhase::Moved
+            })
+        );
+        assert_eq!(
+            pinch(f64::NAN, W::Ended),
+            PlatformEvent::Pinch {
+                delta: 0.0,
+                phase: TouchPhase::Ended
+            }
+        );
+        assert_eq!(
+            pinch(f64::INFINITY, W::Started),
+            PlatformEvent::Pinch {
+                delta: 0.0,
+                phase: TouchPhase::Started
+            }
+        );
+    }
 
     #[test]
     fn modifiers_map_each_bit_independently() {
