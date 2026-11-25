@@ -5,20 +5,28 @@
 //! batch it publishes an immutable [`SymbolSnapshot`] and calls the
 //! registered waker. The UI thread only swaps in the newest snapshot and
 //! filters it: no disk access and no parsing happen there.
+//!
+//! Dropping the [`SymbolIndexer`] cancels the thread: the first scan checks
+//! a flag between files, and no snapshot is published or waker called
+//! after the drop returns.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 
-use crate::index::WorkspaceIndex;
+use ignore::WalkBuilder;
+
 use crate::symbols::{SymbolIndex, SymbolKind};
 use crate::watcher::{ChangeKind, FileChange};
 
 type Wake = Arc<dyn Fn() + Send + Sync>;
 
-/// Files indexed between two progress snapshots during the first scan.
-const PROGRESS_EVERY_FILES: usize = 400;
+/// Files indexed before the first progress snapshot of the first scan.
+/// Each later interval doubles, so rebuilding the snapshot costs about
+/// twice the final snapshot in total instead of growing quadratically.
+const FIRST_PROGRESS_FILES: usize = 400;
 
 /// One symbol, with its lowercase forms computed once off the UI thread.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,6 +144,21 @@ pub struct SymbolIndexer {
     published: Arc<Mutex<Option<Arc<SymbolSnapshot>>>>,
     waker: Arc<Mutex<Option<Wake>>>,
     current: Arc<SymbolSnapshot>,
+    cancelled: Arc<AtomicBool>,
+    /// Never joined outside tests: dropping must not block the UI thread.
+    #[cfg_attr(not(test), allow(dead_code))]
+    thread: Option<JoinHandle<()>>,
+}
+
+impl Drop for SymbolIndexer {
+    /// Cancels the thread without waiting for it. The flag is set and the
+    /// waker cleared under the waker lock, which `publish` holds while it
+    /// checks the flag and wakes, so no wake can follow this call.
+    fn drop(&mut self) {
+        let mut slot = self.waker.lock().unwrap_or_else(|e| e.into_inner());
+        self.cancelled.store(true, Ordering::Relaxed);
+        *slot = None;
+    }
 }
 
 impl SymbolIndexer {
@@ -147,15 +170,19 @@ impl SymbolIndexer {
         let (tx, rx) = mpsc::channel();
         let published = Arc::new(Mutex::new(None));
         let waker = Arc::new(Mutex::new(waker));
+        let cancelled = Arc::new(AtomicBool::new(false));
         let worker = Worker {
             published: Arc::clone(&published),
             waker: Arc::clone(&waker),
+            cancelled: Arc::clone(&cancelled),
         };
-        thread::Builder::new()
+        let thread = thread::Builder::new()
             .name("lux-symbol-indexer".to_string())
             .spawn(move || worker.run(root.as_deref(), &rx))
             .expect("symbol indexing thread must spawn");
         Self {
+            cancelled,
+            thread: Some(thread),
             changes: tx,
             published,
             waker,
@@ -227,6 +254,7 @@ fn keyed_path(index: &SymbolIndex, path: &Path) -> PathBuf {
 struct Worker {
     published: Arc<Mutex<Option<Arc<SymbolSnapshot>>>>,
     waker: Arc<Mutex<Option<Wake>>>,
+    cancelled: Arc<AtomicBool>,
 }
 
 impl Worker {
@@ -237,14 +265,8 @@ impl Worker {
             // The watcher reports canonical paths; key the index the same way.
             let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
             index.set_root(&root);
-            let files: Vec<PathBuf> = WorkspaceIndex::build(&root)
-                .map(|w| w.files().map(Path::to_path_buf).collect())
-                .unwrap_or_default();
-            for (i, file) in files.iter().enumerate() {
-                index.index_file_path(file);
-                if (i + 1) % PROGRESS_EVERY_FILES == 0 {
-                    self.publish(&index, true);
-                }
+            if !self.first_scan(&root, &mut index) {
+                return;
             }
             self.publish(&index, false);
             ready = true;
@@ -264,6 +286,9 @@ impl Worker {
                     changed |= index.index_file_path(&path);
                 }
             }
+            if self.is_cancelled() {
+                return;
+            }
             if changed || !ready {
                 self.publish(&index, false);
                 ready = true;
@@ -271,13 +296,51 @@ impl Worker {
         }
     }
 
+    /// Walks `root` (`.gitignore`-aware, like `WorkspaceIndex::build`) and
+    /// indexes each file as it is found, publishing progress at doubling
+    /// intervals. Returns false if the indexer was dropped meanwhile.
+    fn first_scan(&self, root: &Path, index: &mut SymbolIndex) -> bool {
+        let mut indexed = 0usize;
+        let mut interval = FIRST_PROGRESS_FILES;
+        let mut next_publish = interval;
+        for entry in WalkBuilder::new(root).require_git(false).build() {
+            if self.is_cancelled() {
+                return false;
+            }
+            let Ok(entry) = entry else { continue };
+            if !entry.file_type().is_some_and(|t| t.is_file()) {
+                continue;
+            }
+            index.index_file_path(entry.path());
+            indexed += 1;
+            if indexed == next_publish {
+                self.publish(index, true);
+                interval *= 2;
+                next_publish += interval;
+            }
+        }
+        !self.is_cancelled()
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Relaxed)
+    }
+
     fn publish(&self, index: &SymbolIndex, indexing: bool) {
+        if self.is_cancelled() {
+            return;
+        }
         let snapshot = Arc::new(SymbolSnapshot::from_index(index, indexing));
         if let Ok(mut slot) = self.published.lock() {
             *slot = Some(snapshot);
         }
-        let wake = self.waker.lock().ok().and_then(|w| w.clone());
-        if let Some(wake) = wake {
+        // Held while waking so `Drop` cannot return between the check and
+        // the wake. The waker only posts to the platform loop.
+        let slot = self.waker.lock().unwrap_or_else(|e| e.into_inner());
+        if self.is_cancelled() {
+            return;
+        }
+        if let Some(wake) = slot.as_ref() {
             wake();
         }
     }
@@ -348,6 +411,51 @@ mod tests {
         ]);
         wait_for(&mut indexer, &woke, |s| s.search("gamma", 10).len() == 1);
         assert!(indexer.snapshot().search("beta", 10).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dropping_mid_scan_stops_the_thread_and_its_wakes() {
+        let dir = std::env::temp_dir().join(format!("lux-symbol-cancel-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for d in 0..10 {
+            let sub = dir.join(format!("d{d}"));
+            std::fs::create_dir_all(&sub).unwrap();
+            for f in 0..500 {
+                std::fs::write(
+                    sub.join(format!("f{f}.txt")),
+                    format!("fn s{d}_{f}() {{}}\n"),
+                )
+                .unwrap();
+            }
+        }
+        // A full scan of 5,000 files publishes at 400, 1,200 and 2,800
+        // files and once at the end: four wakes.
+        let wakes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (tx, woke) = mpsc::channel();
+        let counter = Arc::clone(&wakes);
+        let mut indexer = SymbolIndexer::start(
+            Some(dir.clone()),
+            Some(Arc::new(move || {
+                counter.fetch_add(1, Ordering::SeqCst);
+                let _ = tx.send(());
+            })),
+        );
+        woke.recv_timeout(Duration::from_secs(10))
+            .expect("the first progress snapshot");
+        indexer.refresh();
+        assert!(indexer.snapshot().is_indexing(), "still mid-scan");
+
+        let thread = indexer.thread.take().unwrap();
+        drop(indexer);
+        let at_drop = wakes.load(Ordering::SeqCst);
+        thread.join().unwrap();
+        assert_eq!(
+            wakes.load(Ordering::SeqCst),
+            at_drop,
+            "no wake after the indexer is dropped"
+        );
+        assert!(at_drop < 4, "the scan stopped before finishing");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
