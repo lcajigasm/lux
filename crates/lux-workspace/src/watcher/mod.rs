@@ -59,7 +59,10 @@
 //! before the batch is sent: whether a reported path still exists and
 //! whether it is a directory. Draining a batch on the UI thread
 //! ([`FileWatcher::try_recv`]) is memory only. [`FileWatcher::watch_detached`]
-//! adds a root and runs its seeding scan on a worker thread as well.
+//! adds a root and runs its seeding scan on a worker thread as well, and
+//! [`FileWatcher::unwatch_detached`] drops one there. Both go through one
+//! worker per watcher, in the order they were asked, so a folder closed
+//! right after it was added ends up unwatched.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -123,6 +126,12 @@ pub struct WatchBatch {
 
 type SharedDebouncer = Arc<Mutex<Debouncer<RecommendedWatcher, RecommendedCache>>>;
 
+/// A root change for the watcher's worker thread.
+enum RootOp {
+    Watch(PathBuf),
+    Unwatch(PathBuf),
+}
+
 pub struct FileWatcher {
     debouncer: SharedDebouncer,
     events: Receiver<Probed>,
@@ -137,6 +146,9 @@ pub struct FileWatcher {
     /// Shared with the debouncer thread. Set after `new` so a real OS
     /// event can wake the editor loop without a timer.
     waker: Arc<Mutex<Option<Wake>>>,
+    /// The worker that adds and drops roots, started by the first
+    /// detached call. It ends when this watcher is dropped.
+    roots: Option<Sender<RootOp>>,
 }
 
 fn probe(result: DebounceEventResult) -> Probed {
@@ -193,6 +205,7 @@ impl FileWatcher {
             dirty: HashSet::new(),
             known: Arc::new(Mutex::new(HashSet::new())),
             waker,
+            roots: None,
         })
     }
 
@@ -220,29 +233,11 @@ impl FileWatcher {
         watch_root(&self.debouncer, &self.known, root.as_ref())
     }
 
-    /// `watch` on a worker thread. A failure arrives as an error in a
-    /// later batch, and the registered waker runs once the watch is in
-    /// place, so the caller never blocks on the recursive scan.
+    /// `watch` on the watcher's worker thread. A failure arrives as an
+    /// error in a later batch, and the registered waker runs once the
+    /// watch is in place, so the caller never blocks on the recursive scan.
     pub fn watch_detached(&mut self, root: impl AsRef<Path>) {
-        let root = root.as_ref().to_path_buf();
-        let debouncer = Arc::clone(&self.debouncer);
-        let known = Arc::clone(&self.known);
-        let sender = self.sender.clone();
-        let slot = Arc::clone(&self.waker);
-        let spawned = std::thread::Builder::new()
-            .name("lux-watch-root".into())
-            .spawn(move || {
-                if let Err(error) = watch_root(&debouncer, &known, &root) {
-                    let message = format!("cannot watch {}: {error}", root.display());
-                    let _ = sender.send(Err(vec![message]));
-                }
-                wake(&slot);
-            });
-        if let Err(error) = spawned {
-            let _ = self
-                .sender
-                .send(Err(vec![format!("cannot watch: {error}")]));
-        }
+        self.send_root_op(RootOp::Watch(root.as_ref().to_path_buf()));
     }
 
     /// Stops watching `root`. Canonicalizes it, which is one `stat`.
@@ -254,20 +249,43 @@ impl FileWatcher {
             .unwatch(root)
     }
 
-    /// `unwatch` on a worker thread, so the caller does not resolve the
-    /// path itself. Other roots and dirty marks are kept.
+    /// `unwatch` on the watcher's worker thread, after every root change
+    /// asked before it. Other roots and dirty marks are kept.
     pub fn unwatch_detached(&mut self, root: impl AsRef<Path>) {
-        let root = root.as_ref().to_path_buf();
+        self.send_root_op(RootOp::Unwatch(root.as_ref().to_path_buf()));
+    }
+
+    fn send_root_op(&mut self, op: RootOp) {
+        let op = match self.roots.as_ref() {
+            Some(roots) => match roots.send(op) {
+                Ok(()) => return,
+                Err(mpsc::SendError(op)) => op,
+            },
+            None => op,
+        };
+        let (tx, rx) = mpsc::channel();
         let debouncer = Arc::clone(&self.debouncer);
-        let _ = std::thread::Builder::new()
-            .name("lux-unwatch-root".into())
+        let known = Arc::clone(&self.known);
+        let sender = self.sender.clone();
+        let slot = Arc::clone(&self.waker);
+        let spawned = std::thread::Builder::new()
+            .name("lux-watch-roots".into())
             .spawn(move || {
-                let root = normalize(&root);
-                let _ = debouncer
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .unwatch(root);
+                for op in rx {
+                    apply_root_op(&debouncer, &known, &sender, &slot, op);
+                }
             });
+        match spawned {
+            Ok(_) => {
+                let _ = tx.send(op);
+                self.roots = Some(tx);
+            }
+            Err(error) => {
+                let _ = self
+                    .sender
+                    .send(Err(vec![format!("cannot watch: {error}")]));
+            }
+        }
     }
 
     pub fn mark_dirty(&mut self, path: impl AsRef<Path>) {
@@ -387,6 +405,31 @@ impl FileWatcher {
                 kind,
                 is_dir: seen.is_dir,
             });
+        }
+    }
+}
+
+fn apply_root_op(
+    debouncer: &SharedDebouncer,
+    known: &Mutex<HashSet<PathBuf>>,
+    sender: &Sender<Probed>,
+    slot: &Mutex<Option<Wake>>,
+    op: RootOp,
+) {
+    match op {
+        RootOp::Watch(root) => {
+            if let Err(error) = watch_root(debouncer, known, &root) {
+                let message = format!("cannot watch {}: {error}", root.display());
+                let _ = sender.send(Err(vec![message]));
+            }
+            wake(slot);
+        }
+        RootOp::Unwatch(root) => {
+            let root = normalize(&root);
+            let _ = debouncer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .unwatch(root);
         }
     }
 }

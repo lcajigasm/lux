@@ -314,3 +314,51 @@ fn a_detached_watch_on_a_missing_root_reports_an_error() {
         batch.errors
     );
 }
+
+/// A root added and closed at once stays closed: the watch and the
+/// unwatch run on one worker in the order they were asked. The second
+/// root's watch, asked last, is in place only after both.
+#[test]
+fn a_root_closed_right_after_it_was_added_is_not_watched() {
+    let base = temp_dir().join("add-then-close");
+    let closed = base.join("closed");
+    let kept = base.join("kept");
+    fs::create_dir_all(&closed).unwrap();
+    fs::create_dir_all(&kept).unwrap();
+    let mut watcher = FileWatcher::new(DEBOUNCE).unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    watcher.set_waker(Arc::new(move || {
+        let _ = tx.send(());
+    }));
+    watcher.watch_detached(&closed);
+    watcher.unwatch_detached(&closed);
+    watcher.watch_detached(&kept);
+    for _ in 0..2 {
+        rx.recv_timeout(RECV_TIMEOUT)
+            .expect("each detached watch wakes the caller");
+    }
+    settle(&mut watcher);
+
+    fs::write(closed.join("ignored.txt"), "no").unwrap();
+    let file = kept.join("seen.txt");
+    fs::write(&file, "yes").unwrap();
+    let mut changes = Vec::new();
+    let deadline = std::time::Instant::now() + RECV_TIMEOUT;
+    while !changes.iter().any(|c: &FileChange| c.path == file) {
+        assert!(std::time::Instant::now() < deadline, "{changes:?}");
+        changes.extend(watcher.recv(RECV_TIMEOUT).changes);
+    }
+    loop {
+        let batch = watcher.recv(SETTLE_TIMEOUT);
+        if batch.changes.is_empty() {
+            break;
+        }
+        changes.extend(batch.changes);
+    }
+    assert!(
+        !changes.iter().any(|c| c.path.starts_with(&closed)),
+        "{changes:?}"
+    );
+
+    fs::remove_dir_all(&base).ok();
+}
