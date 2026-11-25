@@ -247,6 +247,7 @@ impl App {
         if key_event.state != ElementState::Pressed {
             return;
         }
+        self.settle_selection_history();
         // Before a dead-key commit or a field can swallow the press.
         if self.command_n(key_event) {
             if crate::menu::claim_document_request(&crate::document::Request::New) {

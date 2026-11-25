@@ -15,5 +15,6 @@ pub mod multicursor;
 pub mod position;
 pub mod preserve_case;
 pub mod selection;
+pub mod selection_history;
 pub mod selection_ops;
 pub mod snippets;

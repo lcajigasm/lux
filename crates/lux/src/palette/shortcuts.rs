@@ -13,6 +13,8 @@ const MAP: &[(&str, &str)] = &[
     ("file.reopen_closed_tab", "reopen_closed_tab"),
     ("edit.undo", "undo"),
     ("edit.redo", "redo"),
+    ("edit.soft_undo", "soft_undo"),
+    ("edit.soft_redo", "soft_redo"),
     ("edit.duplicate_line", "duplicate_line"),
     ("edit.insert_line_after", "insert_line_after"),
     ("edit.insert_line_before", "insert_line_before"),

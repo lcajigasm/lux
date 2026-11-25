@@ -185,6 +185,7 @@ impl App {
             transaction = transaction.chained();
         }
         self.history.record(transaction.clone());
+        self.note_edit_for_soft_undo(&transaction.edits);
         // `after` is normalized, but its default primary is document-last.
         debug_assert_eq!(self.cursors.cursors(), after.cursors());
         self.reset_goal_columns();
@@ -243,7 +244,7 @@ impl App {
         if event.state != ElementState::Pressed || self.ime.is_composing() {
             return;
         }
-
+        self.settle_selection_history();
         if dispatch::dispatch_keymap_or_chord(self, event, clipboard, ctx) {
             return;
         }
@@ -567,6 +568,8 @@ mod project_tests;
 mod search_tests;
 #[cfg(test)]
 mod snippet_tests;
+#[cfg(test)]
+mod soft_undo_tests;
 #[cfg(test)]
 mod syntax_tests;
 #[cfg(test)]
