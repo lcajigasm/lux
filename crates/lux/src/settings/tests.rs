@@ -81,7 +81,18 @@ fn theme_reload_keeps_the_buffer_and_scales_line_height() {
         .set_language(Some(lux_syntax::LanguageId::Rust));
     app.documents.saved_version = app.history.state_id();
     let text = app.buffer.text();
+    let ctx = crate::document::tests::Context::new(
+        None,
+        None,
+        lux_platform::dialog::SaveDecision::Discard,
+    );
+    app.ui
+        .dialogs
+        .jobs
+        .set_wake(lux_platform::PlatformContext::background_waker(&ctx));
     app.confirm_theme("One Dark");
+    // The settings worker writes the file, then the app re-applies it.
+    ctx.complete_io(&mut app);
     assert_eq!(app.buffer.text(), text);
     assert_eq!(
         app.documents.path.as_deref(),
@@ -109,6 +120,7 @@ fn theme_reload_keeps_the_buffer_and_scales_line_height() {
     app.viewport.scroll_x = 16.0;
     for name in crate::color_scheme::theme_setting_options() {
         app.confirm_theme(name);
+        ctx.complete_io(&mut app);
         assert_eq!(app.buffer.text(), text, "{name}");
         assert!(!app.document_dirty(), "{name}");
         assert_eq!(
@@ -132,6 +144,7 @@ fn theme_reload_keeps_the_buffer_and_scales_line_height() {
         assert!((app.viewport.scroll_x - 16.0).abs() < 0.01, "{name}");
     }
     app.confirm_theme("Solarized Light");
+    ctx.complete_io(&mut app);
     assert_eq!(app.chrome.theme.name, "Solarized Light");
     assert_eq!(app.buffer.text(), text);
     assert_eq!(app.cursors.primary().head.char, 8);

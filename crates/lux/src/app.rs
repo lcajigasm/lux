@@ -38,7 +38,7 @@ pub(crate) const TAB_CLOSE_BTN_WIDTH: f32 = 24.0;
 mod bookmarks;
 mod folding;
 mod selection;
-mod startup;
+pub(crate) mod startup;
 mod syntax;
 mod types;
 pub(crate) mod view_bind;
@@ -348,19 +348,15 @@ impl PlatformEventHandler for App {
         crate::sidebar::worker::poll(self, ctx);
         crate::menu::poll_and_dispatch(self, ctx);
         self.finish_document_operation(ctx);
+        crate::ui_io::poll(self, ctx);
         crate::lsp::poll_lsp_events(self, ctx);
         self.poll_syntax_highlighter();
         crate::find_stream::pump(self);
         crate::find_stream::pump_panel(self);
-        let mut settings = std::mem::take(&mut self.ui.settings);
-        settings.poll_watcher(self);
-        self.ui.settings = settings;
+        self.poll_settings_watcher();
     }
     fn resumed(&mut self, ctx: &dyn PlatformContext) {
-        crate::menu::register_waker(ctx.background_waker());
-        crate::cli::register_waker(ctx.background_waker());
-        crate::git::register_waker(ctx.background_waker());
-        self.ui.session.register_waker(ctx.background_waker());
+        self.register_wakers(ctx);
         if self.gpu_window.is_some() {
             return;
         }
@@ -565,9 +561,7 @@ impl PlatformEventHandler for App {
         // so the command has to land first.
         crate::menu::poll_and_dispatch(self, ctx);
         crate::session::poll_file_watcher(self);
-        let mut settings = std::mem::take(&mut self.ui.settings);
-        settings.poll_watcher(self);
-        self.ui.settings = settings;
+        self.poll_settings_watcher();
         crate::probe::poll(self, ctx);
         let waiting = crate::snapshot::usr1_waiting();
         let Some(gpu_window) = &self.gpu_window else {

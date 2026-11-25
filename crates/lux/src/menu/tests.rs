@@ -137,7 +137,9 @@ impl PlatformContext for TestCtx {
         Arc::new(|| {})
     }
     fn background_dialogs(&self) -> Arc<dyn FileDialogs> {
-        unimplemented!()
+        Arc::new(TestCtx {
+            folder_to_pick: self.folder_to_pick.clone(),
+        })
     }
     fn create_window(
         &self,
@@ -197,6 +199,12 @@ fn test_handle_menu_action_open_folder() {
     };
 
     super::handle_menu_action(&mut app, &ctx, MenuAction::OpenFolder);
+    // The panel runs on a worker; its result lands through `ui_io::poll`.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while app.ui.dialogs.jobs.in_flight() > 0 && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        crate::ui_io::poll(&mut app, &ctx);
+    }
     assert!(app.ui.sidebar.is_some());
     assert_eq!(
         app.ui.sidebar.as_ref().unwrap().workspace_root,

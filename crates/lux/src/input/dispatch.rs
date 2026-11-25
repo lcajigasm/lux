@@ -286,12 +286,12 @@ pub(crate) fn execute_keymap_command(
             crate::project_search::open_project_find(app);
         }
         "next_result" => {
-            if app.is_find_results_active() || !app.next_build_error(None) {
+            if app.is_find_results_active() || !app.next_build_error(ctx) {
                 crate::find_results::next_result(app, ctx);
             }
         }
         "prev_result" => {
-            if app.is_find_results_active() || !app.prev_build_error(None) {
+            if app.is_find_results_active() || !app.prev_build_error(ctx) {
                 crate::find_results::prev_result(app, ctx);
             }
         }

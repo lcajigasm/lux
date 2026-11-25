@@ -115,6 +115,18 @@ pub(crate) fn note_open_failed(request: &crate::document::Request) {
     opens::note_open_failed(request);
 }
 
+/// Places the cursor at `line`:`column` once the document worker opens
+/// `path`. A failed open drops the request.
+pub(crate) fn place_cursor_on_open(path: &std::path::Path, line: Option<u32>, column: Option<u32>) {
+    opens::register(&Location {
+        path: path.to_path_buf(),
+        line,
+        column,
+        scratch: false,
+        wait_token: 0,
+    });
+}
+
 pub(crate) fn apply_opened(app: &mut App) {
     opens::apply_opened(app);
 }

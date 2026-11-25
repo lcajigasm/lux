@@ -63,41 +63,64 @@ fn candidates() -> Vec<PathBuf> {
     }
 }
 
+/// Faces that cover scripts the primary monospace file does not: Han,
+/// kana, Hangul, and color emoji. Missing paths are skipped. The editor
+/// still shapes with the primary family; these are fallbacks only.
+const COVERAGE_FACES: &[(&str, &[[u8; 4]], bool)] = &[
+    ("/System/Library/Fonts/PingFang.ttc", HANI, false),
+    ("/System/Library/Fonts/Hiragino Sans GB.ttc", HANI, false),
+    ("/System/Library/Fonts/AppleSDGothicNeo.ttc", HANG, false),
+    ("/System/Library/Fonts/Apple Color Emoji.ttc", &[], true),
+    (
+        "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+        CJK,
+        false,
+    ),
+    (
+        "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+        &[],
+        true,
+    ),
+];
+const HANI: &[[u8; 4]] = &[*b"Hani", *b"Hira", *b"Kana"];
+const HANG: &[[u8; 4]] = &[*b"Hang"];
+const CJK: &[[u8; 4]] = &[*b"Hani", *b"Hira", *b"Kana", *b"Hang"];
+
+/// A coverage face read from disk, ready to register on the UI thread.
+pub(crate) struct CoverageFace {
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) scripts: &'static [[u8; 4]],
+    pub(crate) emoji: bool,
+}
+
+/// Reads every coverage face that exists. Disk I/O: call it on a worker.
+pub(crate) fn read_coverage_faces() -> Vec<CoverageFace> {
+    COVERAGE_FACES
+        .iter()
+        .filter_map(|(path, scripts, emoji)| {
+            std::fs::read(path).ok().map(|bytes| CoverageFace {
+                bytes,
+                scripts,
+                emoji: *emoji,
+            })
+        })
+        .collect()
+}
+
+/// Registers faces that `read_coverage_faces` returned. No disk access.
+pub(crate) fn install_coverage_faces(
+    layout: &mut lux_render::TextLayoutContext,
+    faces: &[CoverageFace],
+) {
+    for face in faces {
+        layout.register_coverage_font(&face.bytes, face.scripts, face.emoji);
+    }
+}
+
 /// Returns the first candidate's raw bytes that actually exists and reads
 /// successfully, along with the path it came from (for the window title and
 /// startup log). `None` only if every candidate is missing — a real,
 /// reportable failure, not a silent fallback to nothing.
-/// Faces that cover scripts the primary monospace file does not: Han,
-/// kana, Hangul, and color emoji. Missing paths are skipped. The editor
-/// still shapes with the primary family; these are fallbacks only.
-pub fn install_coverage_fallbacks(layout: &mut lux_render::TextLayoutContext) {
-    const HANI: &[[u8; 4]] = &[*b"Hani", *b"Hira", *b"Kana"];
-    const HANG: &[[u8; 4]] = &[*b"Hang"];
-    const CJK: &[[u8; 4]] = &[*b"Hani", *b"Hira", *b"Kana", *b"Hang"];
-    const FACES: &[(&str, &[[u8; 4]], bool)] = &[
-        ("/System/Library/Fonts/PingFang.ttc", HANI, false),
-        ("/System/Library/Fonts/Hiragino Sans GB.ttc", HANI, false),
-        ("/System/Library/Fonts/AppleSDGothicNeo.ttc", HANG, false),
-        ("/System/Library/Fonts/Apple Color Emoji.ttc", &[], true),
-        (
-            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-            CJK,
-            false,
-        ),
-        (
-            "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
-            &[],
-            true,
-        ),
-    ];
-    for (path, scripts, emoji) in FACES {
-        let Ok(bytes) = std::fs::read(path) else {
-            continue;
-        };
-        layout.register_coverage_font(&bytes, scripts, *emoji);
-    }
-}
-
 pub fn load_system_monospace_font() -> Option<(String, Vec<u8>)> {
     candidates().into_iter().find_map(|path| {
         std::fs::read(&path)
@@ -165,6 +188,12 @@ fn ui_face() -> Option<&'static UiFace> {
         None
     })
     .as_ref()
+}
+
+/// Reads the system UI face into its cache. Disk I/O: call it on a worker
+/// so `install_ui_font` finds the face already loaded.
+pub(crate) fn warm_ui_font() {
+    let _ = ui_face();
 }
 
 /// Registers the system UI face with `layout` so selector text can shape it.

@@ -7,9 +7,8 @@ use crate::document::Request;
 use crate::document::tests::{Context, app};
 
 fn open_settings(app: &mut crate::app::App, ctx: &Context) {
-    let settings = std::mem::take(&mut app.ui.settings);
-    settings.open_settings_json(app, ctx);
-    app.ui.settings = settings;
+    crate::settings::open_settings_json(app, ctx);
+    ctx.complete_io(app);
     ctx.complete(app);
 }
 

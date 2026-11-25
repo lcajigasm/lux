@@ -133,6 +133,12 @@ fn a_workspace_is_scanned_and_watcher_changes_reach_the_panel() {
     );
 
     press_key(&mut app, NamedKey::Enter);
+    // The document worker reads geom.rs; wait for it to land.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while crate::document::open_queue::busy(&app) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+        app.finish_document_operation(&DummyContext);
+    }
     assert_eq!(app.cursors.primary().head.line, 2);
     assert!(app.documents.path.as_ref().unwrap().ends_with("geom.rs"));
 

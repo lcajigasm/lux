@@ -691,7 +691,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-MAC-04 — Diálogos Nativos Asíncronos de Archivos (`NSOpenPanel` / `NSSavePanel`)
 - Prioridad: `P1 (Nativo macOS)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: ST-FIX-02
 - Objetivo: Diálogos del sistema operativo totalmente integrados y no bloqueantes.
 - Alcance detallado:

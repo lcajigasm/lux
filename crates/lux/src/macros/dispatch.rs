@@ -33,21 +33,37 @@ pub fn playback_macro(app: &mut App) {
     }
 }
 
-/// Saves the last recorded macro as a `.sublime-macro` file under `~/.lux/macros/`.
+/// Saves the last recorded macro as a `.sublime-macro` file under
+/// `~/.lux/macros/`. The write runs on a worker; `note_macro_saved` reports
+/// it when the worker finishes.
 pub fn save_macro_as(app: &mut App, name: &str) {
-    match app.ui.macros.save_macro_as(name, None) {
-        Ok(path) => {
-            let filename = path
-                .file_name()
-                .and_then(|f| f.to_str())
-                .unwrap_or("macro.sublime-macro");
-            app.documents.message = Some(format!("Saved macro to {filename}"));
-            app.ui.announcement = Some(format!("Macro saved as {filename}"));
-        }
+    save_macro_to(app, name, None);
+}
+
+pub(crate) fn save_macro_to(app: &mut App, name: &str, dir: Option<&std::path::Path>) {
+    let (path, saved) = match app.ui.macros.prepare_save(name, dir) {
+        Ok(prepared) => prepared,
         Err(e) => {
             app.documents.message = Some(format!("Failed to save macro: {e}"));
+            return;
         }
-    }
+    };
+    crate::ui_io::spawn(app, None, move || {
+        Some(match saved.save_to_file(&path) {
+            Ok(()) => crate::ui_io::Done::MacroSaved { path, saved },
+            Err(e) => crate::ui_io::Done::MacroFailed(e.to_string()),
+        })
+    });
+}
+
+pub(crate) fn note_macro_saved(app: &mut App, path: &std::path::Path, saved: super::Macro) {
+    app.ui.macros.note_saved(saved);
+    let filename = path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or("macro.sublime-macro");
+    app.documents.message = Some(format!("Saved macro to {filename}"));
+    app.ui.announcement = Some(format!("Macro saved as {filename}"));
 }
 
 /// Records text input if macro recording is currently active.
