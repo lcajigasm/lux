@@ -32,6 +32,8 @@
   { "command": "swap_line_up", "key": "ctrl+shift+up", "mac": "ctrl+cmd+up" },
   { "command": "swap_line_down", "key": "ctrl+shift+down", "mac": "ctrl+cmd+down" },
   { "command": "join_lines", "key": "ctrl+j", "mac": "cmd+j" },
+  // Ctrl on mac too, as in Sublime and the macOS text system.
+  { "command": "transpose", "key": "ctrl+t", "mac": "ctrl+t" },
   { "command": "toggle_comment", "key": "ctrl+/", "mac": "cmd+/" },
   { "command": "toggle_block_comment", "key": "ctrl+shift+/", "mac": "cmd+alt+/" },
   { "command": "indent", "key": "ctrl+]", "mac": "cmd+]" },

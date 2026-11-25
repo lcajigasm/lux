@@ -71,6 +71,10 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
                 ));
             app.reset_goal_columns();
         }
+        "edit.transpose" => {
+            let op = lux_core::edit_ops::transpose_op(&app.buffer, &app.cursors);
+            app.apply_edit_operation(app.cursors.clone(), op);
+        }
         "edit.duplicate_line" => {
             app.apply_edit_operation(app.cursors.clone(), lux_core::edit_ops::duplicate_line);
         }

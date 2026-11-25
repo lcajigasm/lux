@@ -15,6 +15,7 @@ mod comment;
 mod indent;
 mod lines;
 mod transform;
+mod transpose;
 mod whitespace;
 mod word;
 
@@ -24,7 +25,8 @@ pub use lines::{
     delete_line, duplicate_line, insert_line_after, insert_line_before, join_lines, move_line_down,
     move_line_up, sort_lines,
 };
-pub use transform::{CaseChange, change_case, transpose};
+pub use transform::{CaseChange, change_case};
+pub use transpose::{transpose, transpose_op};
 pub use whitespace::{ensure_final_newline, trim_trailing_whitespace};
 pub use word::{delete_word_backward, delete_word_forward};
 
