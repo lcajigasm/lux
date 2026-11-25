@@ -148,6 +148,7 @@ fn test_goto_anything_row_click_and_hover() {
         goto.items = vec![
             GotoItem {
                 label: "file_a.rs".into(),
+                hits: Vec::new(),
                 detail: "".into(),
                 path: "file_a.rs".into(),
                 line: Some(10),
@@ -159,6 +160,7 @@ fn test_goto_anything_row_click_and_hover() {
             },
             GotoItem {
                 label: "file_b.rs".into(),
+                hits: Vec::new(),
                 detail: "".into(),
                 path: "file_b.rs".into(),
                 line: Some(20),

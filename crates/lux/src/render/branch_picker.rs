@@ -27,11 +27,12 @@ pub(crate) fn render_branch_picker(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
-    let rows = picker.rows();
+    let rows = picker.rows_with_hits();
     let items: Vec<OverlayItem<'_>> = rows
         .iter()
-        .map(|label| OverlayItem {
+        .map(|(label, hits)| OverlayItem {
             title: label,
+            hits: hits.clone(),
             badge: None,
             detail: None,
             icon: None,

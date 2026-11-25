@@ -5,12 +5,15 @@ use swash::scale::ScaleContext;
 
 use crate::overlay_list::ListFrame;
 use crate::render::icons::Icon;
-use crate::render::paint::{fuzzy_spans, overlay_text, push_bold_glyph, push_glyph, span_covers};
+use crate::render::paint::{overlay_text, push_bold_glyph, push_glyph, span_covers};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
 
 pub(crate) struct OverlayItem<'a> {
     pub title: &'a str,
+    /// Byte ranges of `title` to draw as the match. They come from the
+    /// matcher that ranked the row, never from re-scanning the title.
+    pub hits: crate::overlay_list::Hits,
     pub badge: Option<&'a str>,
     pub detail: Option<&'a str>,
     pub icon: Option<Icon>,
@@ -246,12 +249,11 @@ pub(crate) fn paint_overlay(
         let title = editor_view
             .text_layout_mut()
             .layout_line(&style, item.title, &[]);
-        let hits = fuzzy_spans(item.title, query);
         for cluster in title.clusters() {
             if text_x + cluster.x + cluster.advance > limit {
                 continue;
             }
-            let matched = span_covers(&hits, &cluster.byte_range);
+            let matched = span_covers(&item.hits, &cluster.byte_range);
             let draw = if matched && selected_row {
                 push_bold_glyph
             } else {

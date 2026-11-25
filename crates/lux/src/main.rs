@@ -61,6 +61,8 @@ mod ui;
 
 #[cfg(test)]
 mod desktop_pass;
+#[cfg(test)]
+mod list_hits_tests;
 
 fn main() {
     probe::mark_process_start();

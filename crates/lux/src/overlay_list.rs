@@ -11,6 +11,10 @@
 
 use lux_platform::{Key, NamedKey, ScrollDelta};
 
+/// Byte ranges of a row's title the query matched, as the ranking matcher
+/// aligned them. The card lights exactly these glyphs.
+pub(crate) type Hits = Vec<std::ops::Range<usize>>;
+
 pub(crate) const HEIGHT_FRACTION: f32 = 0.60;
 pub(crate) const MIN_ROWS: usize = 6;
 const TRACK_PX: f32 = 16.0;

@@ -175,6 +175,8 @@ fn render_completion_popup(
         .zip(details.iter())
         .map(|((title, item), detail)| super::overlay_list::OverlayItem {
             title,
+            // The popup has no query of its own to light.
+            hits: Vec::new(),
             badge: None,
             detail: *detail,
             icon: Some(completion_icon(item.kind)),

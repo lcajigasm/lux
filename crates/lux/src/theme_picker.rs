@@ -43,13 +43,22 @@ impl ThemePickerState {
     }
 
     pub(crate) fn filtered(&self) -> Vec<&'static str> {
+        self.ranked().into_iter().map(|(name, _)| name).collect()
+    }
+
+    /// Matching theme names, best first, with the byte ranges of each name
+    /// the fuzzy matcher aligned the query to.
+    pub(crate) fn ranked(&self) -> Vec<(&'static str, crate::overlay_list::Hits)> {
         let q = self.query.trim();
         if q.is_empty() {
-            return self.candidates.clone();
+            return self.candidates.iter().map(|n| (*n, Vec::new())).collect();
         }
         lux_search::fuzzy::rank_by(q, &self.candidates, |name| *name)
             .into_iter()
-            .map(|(name, _)| *name)
+            .map(|ranked| {
+                let name = *ranked.item;
+                (name, lux_search::fuzzy::char_spans(name, &ranked.indices))
+            })
             .collect()
     }
 

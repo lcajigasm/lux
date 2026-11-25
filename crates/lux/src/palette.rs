@@ -223,15 +223,14 @@ mod tests {
             palette.results(&ctx)[0].command.id,
             "preferences.open_settings_ui"
         );
-        let spans = crate::render::paint::fuzzy_spans("Color Theme", "th");
-        assert!(
-            crate::render::paint::span_covers(&spans, &(6..7)),
-            "{spans:?}"
-        );
-        assert!(
-            crate::render::paint::span_covers(&spans, &(7..8)),
-            "{spans:?}"
-        );
+        palette.query = crate::field::QueryField::from_text("th");
+        let results = palette.results(&ctx);
+        let theme = results
+            .iter()
+            .find(|entry| entry.command.title == "Color Theme")
+            .expect("Color Theme matches `th`");
+        let spans = lux_search::fuzzy::char_spans(&theme.command.title, &theme.indices);
+        assert_eq!(spans, vec![6..7, 7..8], "{spans:?}");
     }
 
     #[test]

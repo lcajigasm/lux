@@ -43,6 +43,7 @@ pub(crate) fn render_command_palette(
         .iter()
         .map(|entry| OverlayItem {
             title: entry.command.title.as_str(),
+            hits: lux_search::fuzzy::char_spans(&entry.command.title, &entry.indices),
             badge: None,
             detail: palette.shortcuts.get(&entry.command.id).map(String::as_str),
             icon: Some(super::icons::icon_for_category(&entry.command.category)),

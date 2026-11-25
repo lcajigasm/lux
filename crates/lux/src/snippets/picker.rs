@@ -20,9 +20,19 @@ impl SnippetPickerState {
     }
 
     pub(crate) fn filtered(&self) -> Vec<&Snippet> {
+        self.ranked()
+            .into_iter()
+            .map(|(snippet, _)| snippet)
+            .collect()
+    }
+
+    /// Matching snippets, best first. The query ranks against
+    /// `name trigger description`; the hits are the part of that match in
+    /// the name, the title the list shows.
+    pub(crate) fn ranked(&self) -> Vec<(&Snippet, crate::overlay_list::Hits)> {
         let q = self.query.trim();
         if q.is_empty() {
-            return self.candidates.iter().collect();
+            return self.candidates.iter().map(|s| (s, Vec::new())).collect();
         }
         let labels: Vec<(usize, String)> = self
             .candidates
@@ -40,7 +50,13 @@ impl SnippetPickerState {
             .collect();
         lux_search::fuzzy::rank_by(q, &labels, |(_, label)| label.as_str())
             .into_iter()
-            .map(|(item, _)| &self.candidates[item.0])
+            .map(|ranked| {
+                let (index, label) = ranked.item;
+                let snippet = &self.candidates[*index];
+                let name = 0..snippet.name.len();
+                let hits = lux_search::fuzzy::char_spans_in(label, &ranked.indices, name);
+                (snippet, hits)
+            })
             .collect()
     }
 }

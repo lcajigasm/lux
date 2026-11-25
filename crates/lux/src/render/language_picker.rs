@@ -27,11 +27,12 @@ pub(crate) fn render_language_picker(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
-    let filtered = picker.filtered();
+    let filtered = picker.ranked();
     let items: Vec<OverlayItem<'_>> = filtered
-        .iter()
-        .map(|item| OverlayItem {
+        .into_iter()
+        .map(|(item, hits)| OverlayItem {
             title: item.1,
+            hits,
             badge: None,
             detail: None,
             icon: None,

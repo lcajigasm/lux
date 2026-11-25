@@ -73,9 +73,16 @@ pub(crate) struct ProjectSwitchState {
 
 impl ProjectSwitchState {
     pub(crate) fn filtered(&self) -> Vec<&PathBuf> {
+        self.ranked().into_iter().map(|(path, _)| path).collect()
+    }
+
+    /// Matching projects, best first. The query ranks against the whole
+    /// path; the hits are the part of that match inside the folder name,
+    /// the title the list shows.
+    pub(crate) fn ranked(&self) -> Vec<(&PathBuf, crate::overlay_list::Hits)> {
         let q = self.query.trim();
         if q.is_empty() {
-            return self.projects.iter().collect();
+            return self.projects.iter().map(|p| (p, Vec::new())).collect();
         }
         let labels: Vec<(usize, String)> = self
             .projects
@@ -85,7 +92,14 @@ impl ProjectSwitchState {
             .collect();
         lux_search::fuzzy::rank_by(q, &labels, |(_, label)| label.as_str())
             .into_iter()
-            .map(|(item, _)| &self.projects[item.0])
+            .map(|ranked| {
+                let (index, label) = ranked.item;
+                let path = &self.projects[*index];
+                let hits = folder_name_range(label, path)
+                    .map(|name| lux_search::fuzzy::char_spans_in(label, &ranked.indices, name))
+                    .unwrap_or_default();
+                (path, hits)
+            })
             .collect()
     }
 
@@ -102,6 +116,15 @@ impl ProjectSwitchState {
             self.selected -= 1;
         }
     }
+}
+
+/// The byte range of `path`'s last component inside `label`, its display
+/// string. The list title is that folder name.
+fn folder_name_range(label: &str, path: &std::path::Path) -> Option<std::ops::Range<usize>> {
+    let name = path.file_name()?.to_str()?;
+    label
+        .ends_with(name)
+        .then(|| label.len() - name.len()..label.len())
 }
 
 /// State of current project workspace and modal switch overlay.

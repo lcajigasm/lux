@@ -29,7 +29,8 @@ pub(crate) fn render_project_picker(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
-    let filtered = picker.filtered();
+    let ranked = picker.ranked();
+    let filtered: Vec<&std::path::PathBuf> = ranked.iter().map(|(path, _)| *path).collect();
     let titles: Vec<String> = filtered
         .iter()
         .map(|path| {
@@ -46,8 +47,10 @@ pub(crate) fn render_project_picker(
     let items: Vec<OverlayItem<'_>> = filtered
         .iter()
         .zip(titles.iter().zip(details.iter()))
-        .map(|(path, (title, detail))| OverlayItem {
+        .zip(ranked.iter())
+        .map(|((path, (title, detail)), (_, hits))| OverlayItem {
             title,
+            hits: hits.clone(),
             badge: if active_path == Some(path.as_path()) {
                 Some("active")
             } else {
