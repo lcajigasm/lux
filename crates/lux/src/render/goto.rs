@@ -84,6 +84,27 @@ pub(crate) fn render_goto(
         );
     }
 
+    if let Some(notice) = goto.notice {
+        let line = editor_view
+            .text_layout_mut()
+            .layout_line(&style, notice, &[]);
+        let notice_x = chrome.left + chrome.width - 22.0 * scale_factor - line.width();
+        for cluster in line.clusters() {
+            push_glyph(
+                atlas,
+                atlas_dirty,
+                scale_cx,
+                font,
+                modal_font_size,
+                &cluster,
+                notice_x,
+                text_y + line.baseline(),
+                super::panel::placeholder_ink(theme),
+                glyph_instances,
+            );
+        }
+    }
+
     if !goto.query.is_empty() {
         let caret_x = text_x + input_line.width() + 2.0 * stroke;
         quad_instances.push(QuadInstance::solid(

@@ -179,6 +179,18 @@ generation, edit-site selection, visible-range simulation) and
 `crates/lux-syntax/src/lib.rs`'s `highlight`/`highlight_range` doc
 comments for the API-level explanation.
 
+**2026-11-25, ST-NAV-03 Goto Symbol in Project, Apple Silicon Mac (developer machine, not gated hardware), `--release`
+(`cargo bench -p lux-benches --bench project_symbols`):**
+
+| Metric | Budget | Measured | Result |
+|---|---|---|---|
+| Rank a 50,000-symbol snapshot, query every symbol matches (one keystroke on the UI thread) | < 30 ms | **1.48 ms** (mean) | pass |
+| Same, query with one match | < 30 ms | **0.30 ms** (mean) | pass |
+| Same, `file@symbol` query | < 30 ms | **0.33 ms** (mean) | pass |
+| Build the snapshot (indexing thread, never on the UI thread) | — | **11.4 ms** (mean) | not a UI budget |
+
+This is the filter component, not the end-to-end keypress-to-frame time on a real 50k-line project, which is not measured yet. See `benches/benches/project_symbols.rs`.
+
 **2026-08-10, Phase 4 "Find in Files" deliverable, MacBook Pro M-series,
 `--release` (`cargo bench -p lux-benches --bench phase4_budgets --
 --save-baseline none`):**

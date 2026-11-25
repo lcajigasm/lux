@@ -21,7 +21,8 @@ use crate::document::DocumentEntry;
 pub(crate) struct WorkspaceSession {
     pub(crate) watcher: Option<FileWatcher>,
     pub(crate) session_path: Option<PathBuf>,
-    pub(crate) symbol_index: lux_workspace::SymbolIndex,
+    /// Background project symbol index for `Cmd+Shift+R`.
+    pub(crate) symbols: Option<lux_workspace::SymbolIndexer>,
     waker: Option<Arc<dyn Fn() + Send + Sync>>,
     /// Last measured frame. Written on move and resize, and used at quit
     /// if the window has already closed.
@@ -30,7 +31,10 @@ pub(crate) struct WorkspaceSession {
 
 impl WorkspaceSession {
     pub(crate) fn init_watcher(&mut self, root: &Path) {
-        self.symbol_index.set_root(root);
+        self.symbols = Some(lux_workspace::SymbolIndexer::start(
+            Some(root.to_path_buf()),
+            self.waker.clone(),
+        ));
         if let Ok(mut watcher) = FileWatcher::new(Duration::from_millis(150)) {
             let _ = watcher.watch(root);
             if let Some(waker) = &self.waker {
@@ -45,6 +49,9 @@ impl WorkspaceSession {
     pub(crate) fn register_waker(&mut self, waker: Arc<dyn Fn() + Send + Sync>) {
         if let Some(watcher) = &mut self.watcher {
             watcher.set_waker(Arc::clone(&waker));
+        }
+        if let Some(symbols) = &self.symbols {
+            symbols.set_waker(Arc::clone(&waker));
         }
         self.waker = Some(waker);
     }
@@ -278,13 +285,14 @@ pub(crate) fn restore_session(app: &mut App, session_path: &Path) -> std::io::Re
 }
 
 pub(crate) fn poll_file_watcher(app: &mut App) {
+    crate::goto::symbols::poll(app);
     let changes = if let Some(watcher) = &mut app.ui.session.watcher {
         watcher.try_recv().changes
     } else {
         return;
     };
 
-    app.ui.session.symbol_index.apply_changes(&changes);
+    crate::goto::symbols::note_changes(app, &changes);
 
     let mut repaint_needed = false;
     for change in changes {
