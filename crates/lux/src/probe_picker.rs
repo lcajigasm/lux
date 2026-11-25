@@ -38,3 +38,26 @@ pub(crate) fn open_picker(app: &crate::app::App) -> (&'static str, usize, usize,
     }
     ("off", 0, 0, String::new())
 }
+
+/// The open Settings menu: highlighted option, first visible option, count.
+pub(crate) fn settings_menu_lines(app: &crate::app::App) -> String {
+    let menu = app.ui.settings.panel.as_ref().and_then(|panel| panel.menu);
+    let menu_count = app
+        .ui
+        .settings
+        .panel
+        .as_ref()
+        .and_then(|panel| {
+            let menu = panel.menu?;
+            match &panel.items.get(menu.item)?.kind {
+                crate::settings::SettingKind::Enum { options, .. } => Some(options.len()),
+                _ => None,
+            }
+        })
+        .unwrap_or(0);
+    format!(
+        "settings_menu={}\nsettings_menu_first={}\nsettings_menu_count={menu_count}\n",
+        menu.map(|menu| menu.highlight).unwrap_or(0),
+        menu.map(|menu| menu.scroll).unwrap_or(0),
+    )
+}
