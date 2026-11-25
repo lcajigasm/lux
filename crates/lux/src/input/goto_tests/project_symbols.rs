@@ -145,6 +145,50 @@ fn a_workspace_is_scanned_and_watcher_changes_reach_the_panel() {
 }
 
 #[test]
+fn a_new_snapshot_keeps_the_selected_symbol_and_the_preview_in_step() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut app, tab1, tab2) = open_two_tabs(dir.path());
+    let woke = with_waker(&mut app);
+
+    app.open_goto_project_symbols();
+    wait_until(&mut app, &woke, |g| g.notice.is_none());
+    type_str(&mut app, "tab");
+    assert_eq!(labels(&app), ["first_tab_handler", "second_tab_calculator"]);
+    press_key(&mut app, NamedKey::ArrowDown);
+    assert_eq!(app.documents.active_tab, Some(tab2));
+
+    // A better match is published above the selection: it stays put.
+    let third = dir.path().join("tab3.rs");
+    std::fs::write(&third, "fn tab() {}\n").unwrap();
+    let indexer = app.ui.session.symbols.as_ref().unwrap();
+    indexer.index_files([third]);
+    wait_until(&mut app, &woke, |g| g.items.len() == 3);
+    let goto = app.ui.goto_anything.as_ref().unwrap();
+    assert_eq!(goto.items[0].label, "tab");
+    assert_eq!(
+        goto.items[goto.selected_index].label,
+        "second_tab_calculator"
+    );
+    assert_eq!(app.documents.active_tab, Some(tab2));
+    assert_eq!(app.cursors.primary().head.line, 2);
+
+    // The selected symbol disappears: the preview follows the new row.
+    let second = dir.path().join("tab2.rs");
+    std::fs::write(&second, "fn unrelated() {}\n").unwrap();
+    let indexer = app.ui.session.symbols.as_ref().unwrap();
+    indexer.index_files([second]);
+    wait_until(&mut app, &woke, |g| g.items.len() == 2);
+    let goto = app.ui.goto_anything.as_ref().unwrap();
+    assert_eq!(goto.items[goto.selected_index].label, "first_tab_handler");
+    assert_eq!(app.documents.active_tab, Some(tab1));
+    assert_eq!(app.cursors.primary().head.line, 1);
+
+    press_key(&mut app, NamedKey::Enter);
+    assert_eq!(app.documents.active_tab, Some(tab1));
+    assert_eq!(app.cursors.primary().head.line, 1);
+}
+
+#[test]
 fn escape_restores_the_tab_and_caret_after_a_symbol_preview() {
     let dir = tempfile::tempdir().unwrap();
     let (mut app, tab1, tab2) = open_two_tabs(dir.path());

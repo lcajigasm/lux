@@ -54,7 +54,10 @@ pub(crate) fn note_changes(app: &App, changes: &[FileChange]) {
 }
 
 /// Runs when the platform loop is woken. Takes the newest snapshot and,
-/// if the panel is open on project symbols, re-filters it.
+/// if the panel is open on project symbols, re-filters it. The selected
+/// symbol stays selected if it is still listed; if the selection lands on
+/// a different symbol, the live preview follows it, so Enter always opens
+/// what the preview shows.
 pub(crate) fn poll(app: &mut App) {
     let changed = app
         .ui
@@ -71,11 +74,21 @@ pub(crate) fn poll(app: &mut App) {
     if goto.mode != GotoMode::ProjectSymbols {
         return;
     }
+    let previous = goto.items.get(goto.selected_index).cloned();
     let (items, notice) = items(app, &goto.query);
+    let mut moved = false;
     if let Some(goto) = app.ui.goto_anything.as_mut() {
         goto.items = items;
         goto.notice = notice;
-        goto.selected_index = goto.selected_index.min(goto.items.len().saturating_sub(1));
+        let kept = previous
+            .as_ref()
+            .and_then(|prev| goto.items.iter().position(|it| it == prev));
+        goto.selected_index =
+            kept.unwrap_or_else(|| goto.selected_index.min(goto.items.len().saturating_sub(1)));
+        moved = goto.items.get(goto.selected_index) != previous.as_ref();
+    }
+    if moved {
+        super::update_live_preview(app);
     }
     app.scheduler.invalidate_all();
 }
