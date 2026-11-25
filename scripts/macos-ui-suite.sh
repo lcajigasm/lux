@@ -44,6 +44,7 @@ scenarios=(
   sidebar-clip.sh
   tab-view-audit.sh
   theme-break.sh
+  theme-jsonc.sh
   tree-drag.sh
   tree-watch.sh
   triple-click.sh
