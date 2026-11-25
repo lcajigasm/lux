@@ -267,7 +267,7 @@ fn move_into(app: &mut App, id: NodeId, new_parent: NodeId) {
     app.scheduler.invalidate_all();
 }
 
-fn retarget_paths(app: &mut App, old: &Path, new: &Path) {
+pub(crate) fn retarget_paths(app: &mut App, old: &Path, new: &Path) {
     let mut titles = Vec::new();
     rewrite_entries(&mut app.documents.entries, old, new, &mut titles);
     for entry in &mut app.documents.closed_entries {

@@ -20,6 +20,9 @@ pub trait FileDialogs: Send + Sync {
     fn pick_folder(&self, options: &FileDialogOptions) -> Option<PathBuf>;
     fn save_file(&self, options: &FileDialogOptions) -> Option<PathBuf>;
     fn confirm_save(&self, document: &str) -> SaveDecision;
+    /// Asks before moving `item` to the system trash. `true` only when
+    /// the user chose to proceed.
+    fn confirm_trash(&self, item: &str) -> bool;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -156,6 +156,10 @@ pub(crate) fn render_sidebar(
 
     let rows = crate::sidebar::folders::slots(sidebar);
     let selected_id = sidebar.selected_node;
+    let editing_slot = sidebar
+        .inline_input
+        .as_ref()
+        .and_then(|input| crate::sidebar::inline::slot_index(input, &rows));
 
     for (i, row) in rows.iter().enumerate() {
         let row_y = rows_top + i as f32 * row_h - sidebar.scroll_y;
@@ -204,17 +208,13 @@ pub(crate) fn render_sidebar(
 
         // Node Name or Inline Input
         let name_x = indent + icon_size + 4.0 * scale_factor;
-        let is_editing = sidebar
+        let editing = sidebar
             .inline_input
             .as_ref()
-            .is_some_and(|inp| inp.row_idx == i);
+            .filter(|_| editing_slot == Some(i));
 
-        if is_editing {
-            let input_text = sidebar
-                .inline_input
-                .as_ref()
-                .map(|inp| inp.text.as_str())
-                .unwrap_or("");
+        if let Some(input) = editing {
+            let input_text = input.field.as_str();
             let input_box_w = sidebar_width - stroke - name_x - 8.0 * scale_factor;
             quad_instances.push(QuadInstance::solid(
                 [
@@ -234,6 +234,33 @@ pub(crate) fn render_sidebar(
                 ],
                 accent,
             ));
+            // Caret and selection edges measured on the text before them.
+            let mut x_at = |chars: usize| {
+                let end = input_text
+                    .char_indices()
+                    .nth(chars)
+                    .map_or(input_text.len(), |(byte, _)| byte);
+                name_x
+                    + editor_view
+                        .text_layout_mut()
+                        .layout_line(&style, &input_text[..end], &[])
+                        .width()
+            };
+            let (sel_start, sel_end) = input.field.selection();
+            let caret_x = x_at(input.field.caret());
+            if sel_start != sel_end {
+                let left = x_at(sel_start);
+                let right = x_at(sel_end);
+                quad_instances.push(QuadInstance::solid(
+                    [
+                        left,
+                        row_y + 3.0 * stroke,
+                        right - left,
+                        row_h - 6.0 * stroke,
+                    ],
+                    color(theme.selection),
+                ));
+            }
             let edit_line = editor_view
                 .text_layout_mut()
                 .layout_line(&style, input_text, &[]);
@@ -251,7 +278,6 @@ pub(crate) fn render_sidebar(
                     glyph_instances,
                 );
             }
-            let caret_x = name_x + edit_line.width();
             quad_instances.push(QuadInstance::solid(
                 [
                     caret_x,

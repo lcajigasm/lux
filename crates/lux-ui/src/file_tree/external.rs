@@ -1,50 +1,61 @@
-//! Insert or drop a tree row when the watcher reports a path.
+//! Apply a change that already happened on disk: a watcher event, or the
+//! result of a worker that created, renamed, or trashed an entry.
 //!
-//! Only a directory whose children have already been read is updated.
-//! A folder that has never been expanded still reads disk on the next
-//! expand, so an event for a file inside it does not walk that folder.
+//! None of these touch the filesystem. A path is matched by stripping
+//! the root (as given, or as resolved once in `open`) and walking the
+//! remaining components through children already in memory. Only a
+//! directory whose children have been read is updated, so an event for a
+//! file inside a folder never expanded does not walk that folder.
 
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use super::{FileTree, Node, NodeId, NodeKind};
 
 impl FileTree {
+    /// The path the tree was opened with.
+    pub fn root_path(&self) -> &Path {
+        &self.nodes[&self.root].path
+    }
+
     /// Adds `path` under its already-loaded parent. `false` when the row
     /// is already present, the parent has not been read, or the name is a
     /// hidden version-control directory.
-    pub fn note_created(&mut self, path: &Path) -> bool {
-        if self.find_id(path).is_some() {
-            return false;
+    pub fn note_created(&mut self, path: &Path, kind: NodeKind) -> bool {
+        self.insert_known(path, kind).is_some()
+    }
+
+    /// Like `note_created`, but returns the row's id, including when the
+    /// row was already present (a watcher event can arrive first).
+    pub fn note_created_id(&mut self, path: &Path, kind: NodeKind) -> Option<NodeId> {
+        if let Some(id) = self.find_id(path) {
+            return Some(id);
         }
-        let Some(parent_path) = path.parent() else {
-            return false;
-        };
-        let Some(parent) = self.find_id(parent_path) else {
-            return false;
-        };
-        let Some(node) = self.nodes.get(&parent) else {
-            return false;
-        };
+        self.insert_known(path, kind)
+    }
+
+    fn insert_known(&mut self, path: &Path, kind: NodeKind) -> Option<NodeId> {
+        if self.find_id(path).is_some() {
+            return None;
+        }
+        let parent = self.find_id(path.parent()?)?;
+        let node = self.nodes.get(&parent)?;
         if node.kind != NodeKind::Directory || node.children.is_none() {
-            return false;
+            return None;
         }
         let name = super::display_name(path);
-        let kind = if path.is_dir() {
-            NodeKind::Directory
-        } else {
-            NodeKind::File
-        };
         if kind == NodeKind::Directory && super::hidden_directory(&name) {
-            return false;
+            return None;
         }
+        // The tree's own spelling of the parent, so every path in the tree
+        // shares the root as the caller gave it.
+        let path = node.path.join(&name);
         let id = self.mint_id();
         self.nodes.insert(
             id,
             Node {
                 id,
                 parent: Some(parent),
-                path: path.to_path_buf(),
+                path,
                 name,
                 kind,
                 expanded: false,
@@ -52,14 +63,13 @@ impl FileTree {
             },
         );
         self.nodes
-            .get_mut(&parent)
-            .unwrap()
+            .get_mut(&parent)?
             .children
             .get_or_insert_with(Vec::new)
             .push(id);
         self.resort_children(parent);
         self.rows_dirty = true;
-        true
+        Some(id)
     }
 
     /// Drops `path` and any loaded descendants. The root stays. `false`
@@ -80,25 +90,73 @@ impl FileTree {
         true
     }
 
-    fn find_id(&self, path: &Path) -> Option<NodeId> {
-        let key = canonical_key(path);
-        self.nodes.iter().find_map(|(id, node)| {
-            (node.path == path || canonical_key(&node.path) == key).then_some(*id)
-        })
+    /// `from` was renamed to `to` in the same directory. The node keeps its
+    /// id, its expansion, and its loaded children. If `from` is already
+    /// gone (the watcher was faster), `to` is inserted as a new row.
+    pub fn note_renamed(&mut self, from: &Path, to: &Path, kind: NodeKind) -> Option<NodeId> {
+        let Some(id) = self.find_id(from) else {
+            return self.note_created_id(to, kind);
+        };
+        if id == self.root {
+            return None;
+        }
+        if let Some(existing) = self.find_id(to)
+            && existing != id
+        {
+            // The watcher already inserted `to`. Keep that row.
+            self.note_removed(from);
+            return Some(existing);
+        }
+        let old_path = self.nodes.get(&id)?.path.clone();
+        let name = super::display_name(to);
+        let new_path = old_path.with_file_name(&name);
+        self.reparent_path(id, &old_path, &new_path);
+        let parent = {
+            let node = self.nodes.get_mut(&id)?;
+            node.name = name;
+            node.parent
+        };
+        if let Some(parent) = parent {
+            self.resort_children(parent);
+        }
+        self.rows_dirty = true;
+        Some(id)
     }
-}
 
-/// Compares a tree path with a watcher path. A removed file no longer
-/// canonicalizes, so the parent directory is resolved and the file name
-/// is joined back on.
-fn canonical_key(path: &Path) -> PathBuf {
-    if let Ok(canon) = fs::canonicalize(path) {
-        return canon;
+    /// The loaded node at `path`, given either the tree's spelling of the
+    /// root or the resolved one. Memory only.
+    pub fn find_id(&self, path: &Path) -> Option<NodeId> {
+        let relative = path
+            .strip_prefix(self.root_path())
+            .or_else(|_| path.strip_prefix(&self.canonical_root))
+            .ok()?;
+        let mut current = self.root;
+        for component in relative.components() {
+            let Component::Normal(name) = component else {
+                return None;
+            };
+            let name = name.to_string_lossy();
+            let children = self.nodes.get(&current)?.children.as_ref()?;
+            current = children
+                .iter()
+                .copied()
+                .find(|child| self.nodes.get(child).is_some_and(|n| n.name == name))?;
+        }
+        Some(current)
     }
-    match (path.parent(), path.file_name()) {
-        (Some(parent), Some(name)) => fs::canonicalize(parent)
-            .map(|parent| parent.join(name))
-            .unwrap_or_else(|_| path.to_path_buf()),
-        _ => path.to_path_buf(),
+
+    /// Whether `path` is under this tree's root, in either spelling.
+    pub fn contains_path(&self, path: &Path) -> bool {
+        path.starts_with(self.root_path()) || path.starts_with(&self.canonical_root)
+    }
+
+    /// `path` respelled under the root as the caller gave it, so a
+    /// watcher path compares equal to tab paths. `None` outside the tree.
+    pub fn local_path(&self, path: &Path) -> Option<PathBuf> {
+        if let Ok(rest) = path.strip_prefix(self.root_path()) {
+            return Some(self.root_path().join(rest));
+        }
+        let rest = path.strip_prefix(&self.canonical_root).ok()?;
+        Some(self.root_path().join(rest))
     }
 }

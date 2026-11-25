@@ -410,8 +410,8 @@ fn a_created_file_joins_a_loaded_directory_and_a_removed_file_leaves() {
 
     let arrived = dir.join("arrived.txt");
     fs::write(&arrived, "a").unwrap();
-    assert!(tree.note_created(&arrived));
-    assert!(!tree.note_created(&arrived));
+    assert!(tree.note_created(&arrived, NodeKind::File));
+    assert!(!tree.note_created(&arrived, NodeKind::File));
     assert!(names(tree.rows()).contains(&"arrived.txt"));
 
     assert!(tree.note_removed(&arrived));
@@ -429,7 +429,7 @@ fn a_created_file_in_a_collapsed_loaded_folder_shows_on_expand() {
 
     let arrived = dir.join("arrived.txt");
     fs::write(&arrived, "a").unwrap();
-    assert!(tree.note_created(&fs::canonicalize(&arrived).unwrap()));
+    assert!(tree.note_created(&fs::canonicalize(&arrived).unwrap(), NodeKind::File));
     tree.expand(tree.root()).unwrap();
     assert!(names(tree.rows()).contains(&"arrived.txt"));
     fs::remove_dir_all(&dir).ok();
@@ -443,7 +443,7 @@ fn a_file_inside_an_unloaded_folder_waits_for_expand() {
     let mut tree = FileTree::open(&dir).unwrap();
     let inside = sub.join("inside.txt");
     fs::write(&inside, "i").unwrap();
-    assert!(!tree.note_created(&inside));
+    assert!(!tree.note_created(&inside, NodeKind::File));
     let sub_id = tree.rows().iter().find(|row| row.name == "sub").unwrap().id;
     tree.expand(sub_id).unwrap();
     assert!(names(tree.rows()).contains(&"inside.txt"));
@@ -474,7 +474,7 @@ fn a_hidden_directory_create_is_ignored() {
     let mut tree = FileTree::open(&dir).unwrap();
     let git = dir.join(".git");
     fs::create_dir(&git).unwrap();
-    assert!(!tree.note_created(&git));
+    assert!(!tree.note_created(&git, NodeKind::Directory));
     assert!(!names(tree.rows()).contains(&".git"));
     fs::remove_dir_all(&dir).ok();
 }
@@ -490,7 +490,48 @@ fn a_canonical_create_lands_in_a_tree_opened_through_a_symlink() {
     let mut tree = FileTree::open(&link).unwrap();
     let arrived = real.join("arrived.txt");
     fs::write(&arrived, "a").unwrap();
-    assert!(tree.note_created(&fs::canonicalize(&arrived).unwrap()));
+    assert!(tree.note_created(&fs::canonicalize(&arrived).unwrap(), NodeKind::File));
     assert!(names(tree.rows()).contains(&"arrived.txt"));
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_noted_rename_keeps_the_id_and_the_loaded_children() {
+    let dir = temp_dir().join("noted-rename");
+    let sub = dir.join("sub");
+    fs::create_dir_all(&sub).unwrap();
+    fs::write(sub.join("inside.txt"), "i").unwrap();
+    let mut tree = FileTree::open(&dir).unwrap();
+    let sub_id = tree.find_id(&sub).unwrap();
+    tree.expand(sub_id).unwrap();
+    let moved = dir.join("zeta");
+    fs::rename(&sub, &moved).unwrap();
+    assert_eq!(
+        tree.note_renamed(&sub, &moved, NodeKind::Directory),
+        Some(sub_id)
+    );
+    assert_eq!(tree.node_path(sub_id), Some(moved.as_path()));
+    assert!(tree.find_id(&moved.join("inside.txt")).is_some());
+    assert!(names(tree.rows()).contains(&"inside.txt"));
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn disk_helpers_refuse_collisions_and_names_with_a_separator() {
+    let dir = temp_dir().join("disk-helpers");
+    fs::create_dir_all(&dir).unwrap();
+    let a = disk::create_entry(&dir, "a.txt", NodeKind::File).unwrap();
+    fs::write(&a, "hello").unwrap();
+    assert!(disk::create_entry(&dir, "a.txt", NodeKind::File).is_err());
+    assert!(disk::create_entry(&dir, "../escape.txt", NodeKind::File).is_err());
+    fs::write(dir.join("b.txt"), "b").unwrap();
+    let err = disk::rename_entry(&a, "b.txt").unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+    assert_eq!(fs::read_to_string(dir.join("b.txt")).unwrap(), "b");
+    let first = disk::duplicate_file(&a).unwrap();
+    let second = disk::duplicate_file(&a).unwrap();
+    assert_eq!(first, dir.join("a copy.txt"));
+    assert_eq!(second, dir.join("a copy 2.txt"));
+    assert_eq!(fs::read_to_string(&second).unwrap(), "hello");
     fs::remove_dir_all(&dir).ok();
 }

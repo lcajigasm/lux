@@ -30,17 +30,28 @@ pub(crate) struct WorkspaceSession {
 }
 
 impl WorkspaceSession {
+    /// A fresh watcher on `root`. The watch and its seeding scan run on a
+    /// worker, and the waker fires once the watch is in place.
     pub(crate) fn init_watcher(&mut self, root: &Path) {
         self.symbols = Some(lux_workspace::SymbolIndexer::start(
             Some(root.to_path_buf()),
             self.waker.clone(),
         ));
         if let Ok(mut watcher) = FileWatcher::new(Duration::from_millis(150)) {
-            let _ = watcher.watch(root);
             if let Some(waker) = &self.waker {
                 watcher.set_waker(Arc::clone(waker));
             }
+            watcher.watch_detached(root);
             self.watcher = Some(watcher);
+        }
+    }
+
+    /// Adds or drops one more sidebar folder. Off the UI thread.
+    pub(crate) fn watch_folder(&mut self, root: &Path, watch: bool) {
+        match self.watcher.as_mut() {
+            Some(watcher) if watch => watcher.watch_detached(root),
+            Some(watcher) => watcher.unwatch_detached(root),
+            None => {}
         }
     }
 
@@ -286,11 +297,13 @@ pub(crate) fn restore_session(app: &mut App, session_path: &Path) -> std::io::Re
 
 pub(crate) fn poll_file_watcher(app: &mut App) {
     crate::goto::symbols::poll(app);
-    let changes = if let Some(watcher) = &mut app.ui.session.watcher {
-        watcher.try_recv().changes
-    } else {
+    let Some(batch) = app.ui.session.watcher.as_mut().map(|w| w.try_recv()) else {
         return;
     };
+    if let Some(error) = batch.errors.first() {
+        app.ui.announcement = Some(format!("File watcher: {error}"));
+    }
+    let changes = batch.changes;
 
     crate::goto::symbols::note_changes(app, &changes);
 
@@ -339,7 +352,7 @@ pub(crate) fn poll_file_watcher(app: &mut App) {
                 }
             }
             ChangeKind::Created | ChangeKind::Removed => {
-                if crate::sidebar::watch::apply(app, &change.path, change.kind) {
+                if crate::sidebar::watch::apply(app, &change) {
                     repaint_needed = true;
                 }
             }
@@ -545,7 +558,7 @@ mod tests {
         app.documents.entries[0].path = Some(file.clone());
         app.documents.entries[0].buffer = buf.clone();
         app.buffer = buf;
-        app.ui.session.init_watcher(dir.path());
+        crate::sidebar::watch::watch_and_wait(&mut app, dir.path());
 
         std::fs::write(&file, "fresh\n").unwrap();
         let deadline = std::time::Instant::now() + Duration::from_secs(4);

@@ -12,7 +12,12 @@ use std::sync::mpsc::{self, Receiver, Sender};
 
 use super::*;
 
-struct Dialogs;
+/// `trash` is the answer to the Move to Trash confirmation.
+pub(super) struct Dialogs {
+    trash: bool,
+    /// The thread that showed the trash confirmation.
+    pub(super) asked_on: std::sync::Mutex<Option<std::thread::ThreadId>>,
+}
 
 impl FileDialogs for Dialogs {
     fn pick_file(&self, _: &FileDialogOptions) -> Option<PathBuf> {
@@ -30,30 +35,56 @@ impl FileDialogs for Dialogs {
     fn confirm_save(&self, _: &str) -> SaveDecision {
         SaveDecision::Discard
     }
+    fn confirm_trash(&self, _: &str) -> bool {
+        *self.asked_on.lock().unwrap() = Some(std::thread::current().id());
+        self.trash
+    }
 }
 
-struct Context {
-    dialogs: Arc<Dialogs>,
+pub(super) struct Context {
+    pub(super) dialogs: Arc<Dialogs>,
     events: Receiver<()>,
     sender: Sender<()>,
     exited: Cell<bool>,
 }
 
 impl Context {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
+        Self::answering_trash(true)
+    }
+
+    pub(super) fn answering_trash(trash: bool) -> Self {
         let (sender, events) = mpsc::channel();
         Self {
-            dialogs: Arc::new(Dialogs),
+            dialogs: Arc::new(Dialogs {
+                trash,
+                asked_on: std::sync::Mutex::new(None),
+            }),
             events,
             sender,
             exited: Cell::new(false),
         }
     }
 
-    fn complete(&self, app: &mut crate::app::App) {
+    pub(super) fn complete(&self, app: &mut crate::app::App) {
         self.events
             .recv_timeout(Duration::from_secs(10))
             .expect("worker must notify completion");
+        app.finish_document_operation(self);
+    }
+
+    /// Registers this context's waker as the app's, as `resumed` does.
+    pub(super) fn attach(&self, app: &mut crate::app::App) {
+        app.ui.session.register_waker(self.background_waker());
+    }
+
+    /// Waits for one wake, then runs the background event, as the
+    /// platform loop does.
+    pub(super) fn wake(&self, app: &mut crate::app::App) {
+        self.events
+            .recv_timeout(Duration::from_secs(10))
+            .expect("worker must wake the loop");
+        crate::sidebar::worker::poll(app, self);
         app.finish_document_operation(self);
     }
 }
@@ -92,7 +123,7 @@ impl PlatformContext for Context {
     fn request_wakeup(&self, _: std::time::Instant) {}
 }
 
-fn app() -> crate::app::App {
+pub(super) fn app() -> crate::app::App {
     crate::app::App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec())
 }
 
@@ -173,6 +204,7 @@ fn the_keyboard_creates_renames_and_trashes_and_reveal_selects_the_open_file() {
     let mut app = app();
     app.ui.sidebar = SidebarState::open_folder(dir.path().to_path_buf());
     let ctx = Context::new();
+    ctx.attach(&mut app);
     app.documents.path = Some(dir.path().join("notes").join("readme.txt"));
     crate::palette::execute_command(&mut app, &ctx, "view.reveal_active_file");
     let selected = app.ui.sidebar.as_ref().unwrap().selected_node;
@@ -221,13 +253,20 @@ fn the_keyboard_creates_renames_and_trashes_and_reveal_selects_the_open_file() {
         physical: None,
     };
     assert!(handle_sidebar_key(&mut app, &ctx, &enter));
+    // The create result, then the document open it starts.
+    ctx.wake(&mut app);
     ctx.complete(&mut app);
     assert!(dir.path().join("notes").join("b.txt").is_file());
     let created = listed_rows(app.ui.sidebar.as_mut().unwrap().tree.as_mut().unwrap())
         .into_iter()
         .find(|row| row.name == "b.txt")
         .map(|row| row.id);
-    app.ui.sidebar.as_mut().unwrap().selected_node = created;
+    assert!(created.is_some());
+    assert_eq!(app.ui.sidebar.as_ref().unwrap().selected_node, created);
+    assert_eq!(
+        app.documents.path.as_deref(),
+        Some(dir.path().join("notes").join("b.txt").as_path())
+    );
     let rename = KeyEvent {
         key: Key::Named(NamedKey::F(2)),
         text: None,
@@ -236,29 +275,24 @@ fn the_keyboard_creates_renames_and_trashes_and_reveal_selects_the_open_file() {
         physical: None,
     };
     assert!(handle_sidebar_key(&mut app, &ctx, &rename));
-    for _ in 0..5 {
-        let backspace = KeyEvent {
-            key: Key::Named(NamedKey::Backspace),
-            text: None,
-            state: ElementState::Pressed,
-            repeat: false,
-            physical: None,
-        };
-        assert!(handle_sidebar_key(&mut app, &ctx, &backspace));
-    }
-    for ch in ["c", ".", "t", "x", "t"] {
-        let key = KeyEvent {
-            key: Key::Character(ch.into()),
-            text: Some(ch.into()),
-            state: ElementState::Pressed,
-            repeat: false,
-            physical: None,
-        };
-        assert!(handle_sidebar_key(&mut app, &ctx, &key));
-    }
+    // The base name is selected, so one letter replaces it.
+    let letter = KeyEvent {
+        key: Key::Character("c".into()),
+        text: Some("c".into()),
+        state: ElementState::Pressed,
+        repeat: false,
+        physical: None,
+    };
+    assert!(handle_sidebar_key(&mut app, &ctx, &letter));
     assert!(handle_sidebar_key(&mut app, &ctx, &enter));
+    ctx.wake(&mut app);
     assert!(dir.path().join("notes").join("c.txt").is_file());
     assert!(!dir.path().join("notes").join("b.txt").exists());
+    // The open tab follows the rename.
+    assert_eq!(
+        app.documents.path.as_deref(),
+        Some(dir.path().join("notes").join("c.txt").as_path())
+    );
 
     let delete = KeyEvent {
         key: Key::Named(NamedKey::Delete),
@@ -268,7 +302,13 @@ fn the_keyboard_creates_renames_and_trashes_and_reveal_selects_the_open_file() {
         physical: None,
     };
     assert!(handle_sidebar_key(&mut app, &ctx, &delete));
+    ctx.wake(&mut app);
     assert!(!dir.path().join("notes").join("c.txt").exists());
+    assert!(
+        !row_names(&mut app)
+            .iter()
+            .any(|name| name.ends_with("c.txt"))
+    );
     assert!(
         app.documents
             .message
@@ -277,14 +317,14 @@ fn the_keyboard_creates_renames_and_trashes_and_reveal_selects_the_open_file() {
     );
 }
 
-fn row_center(app: &crate::app::App, index: usize) -> f32 {
+pub(super) fn row_center(app: &crate::app::App, index: usize) -> f32 {
     let scale = app.scale_factor;
     app.tab_bar_height()
         + SIDEBAR_HEADER_HEIGHT * scale
         + (index as f32 + 0.5) * SIDEBAR_ROW_HEIGHT * scale
 }
 
-fn row_names(app: &mut crate::app::App) -> Vec<String> {
+pub(super) fn row_names(app: &mut crate::app::App) -> Vec<String> {
     listed_rows(app.ui.sidebar.as_mut().unwrap().tree.as_mut().unwrap())
         .into_iter()
         .map(|row| format!("{}:{}", row.depth, row.name))

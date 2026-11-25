@@ -341,6 +341,7 @@ impl PlatformEventHandler for App {
         crate::cli::dispatch(self, ctx);
         crate::git::poll(self);
         crate::session::poll_file_watcher(self);
+        crate::sidebar::worker::poll(self, ctx);
         crate::menu::poll_and_dispatch(self, ctx);
         self.finish_document_operation(ctx);
         crate::lsp::poll_lsp_events(self, ctx);

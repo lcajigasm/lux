@@ -54,10 +54,16 @@
 //! there would report a deleted file as merely modified. `classify` closes
 //! this by treating any event whose path no longer exists on disk as
 //! `Removed`, regardless of what kind the debouncer attached to it.
+//!
+//! Every `stat` this module needs happens on the debouncer's own thread,
+//! before the batch is sent: whether a reported path still exists and
+//! whether it is a directory. Draining a batch on the UI thread
+//! ([`FileWatcher::try_recv`]) is memory only. [`FileWatcher::watch_detached`]
+//! adds a root and runs its seeding scan on a worker thread as well.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -89,9 +95,22 @@ pub enum ChangeKind {
 pub struct FileChange {
     pub path: PathBuf,
     pub kind: ChangeKind,
+    /// Whether `path` was a directory when the debouncer thread looked at
+    /// it. Always `false` for `Removed`.
+    pub is_dir: bool,
 }
 
 type Wake = Arc<dyn Fn() + Send + Sync>;
+
+/// What the debouncer thread learned about one reported path.
+#[derive(Debug, Clone, Copy)]
+struct Seen {
+    exists: bool,
+    is_dir: bool,
+}
+
+/// A debounced batch with each event's paths already stat'ed.
+type Probed = Result<Vec<(DebouncedEvent, Vec<Seen>)>, Vec<String>>;
 
 /// One drained batch: classified file changes, plus any watcher-level
 /// errors from that same batch (kept separate from `changes` since they
@@ -102,18 +121,56 @@ pub struct WatchBatch {
     pub errors: Vec<String>,
 }
 
+type SharedDebouncer = Arc<Mutex<Debouncer<RecommendedWatcher, RecommendedCache>>>;
+
 pub struct FileWatcher {
-    debouncer: Debouncer<RecommendedWatcher, RecommendedCache>,
-    events: Receiver<DebounceEventResult>,
+    debouncer: SharedDebouncer,
+    events: Receiver<Probed>,
+    /// Lets a detached `watch` report its error through the same channel.
+    sender: Sender<Probed>,
     dirty: HashSet<PathBuf>,
     /// Files known to exist as of the last `watch()` call (or since
     /// discovered via a `Create`/`Modify` event) — how `classify`
     /// distinguishes a genuinely new file from macOS's spurious
     /// re-`Create` on an existing file's first edit (see module docs).
-    known: HashSet<PathBuf>,
+    known: Arc<Mutex<HashSet<PathBuf>>>,
     /// Shared with the debouncer thread. Set after `new` so a real OS
     /// event can wake the editor loop without a timer.
     waker: Arc<Mutex<Option<Wake>>>,
+}
+
+fn probe(result: DebounceEventResult) -> Probed {
+    match result {
+        Ok(events) => Ok(events
+            .into_iter()
+            .map(|event| {
+                let seen = event
+                    .paths
+                    .iter()
+                    .map(|path| match std::fs::metadata(path) {
+                        Ok(meta) => Seen {
+                            exists: true,
+                            is_dir: meta.is_dir(),
+                        },
+                        Err(_) => Seen {
+                            exists: path.exists(),
+                            is_dir: false,
+                        },
+                    })
+                    .collect();
+                (event, seen)
+            })
+            .collect()),
+        Err(errors) => Err(errors.into_iter().map(|e| e.to_string()).collect()),
+    }
+}
+
+fn wake(slot: &Mutex<Option<Wake>>) {
+    if let Ok(guard) = slot.lock()
+        && let Some(wake) = guard.as_ref()
+    {
+        wake();
+    }
 }
 
 impl FileWatcher {
@@ -124,19 +181,17 @@ impl FileWatcher {
         let (tx, rx) = mpsc::channel();
         let waker: Arc<Mutex<Option<Wake>>> = Arc::new(Mutex::new(None));
         let slot = Arc::clone(&waker);
+        let events = tx.clone();
         let debouncer = new_debouncer(debounce, None, move |event| {
-            let _ = tx.send(event);
-            if let Ok(guard) = slot.lock()
-                && let Some(wake) = guard.as_ref()
-            {
-                wake();
-            }
+            let _ = events.send(probe(event));
+            wake(&slot);
         })?;
         Ok(FileWatcher {
-            debouncer,
+            debouncer: Arc::new(Mutex::new(debouncer)),
             events: rx,
+            sender: tx,
             dirty: HashSet::new(),
-            known: HashSet::new(),
+            known: Arc::new(Mutex::new(HashSet::new())),
             waker,
         })
     }
@@ -159,18 +214,60 @@ impl FileWatcher {
     /// module (or a caller's dirty-tracking) compares it against.
     /// `mark_dirty`/`mark_clean`/`is_dirty` normalize the same way so both
     /// sides agree. Also does one synchronous recursive read of `root` to
-    /// seed `known` (see module docs) — real I/O, so whichever layer wires
-    /// this into the running app must call it off the UI thread (golden
-    /// rule #6), same caveat already noted for `lux-ui::file_tree`.
+    /// seed `known` (see module docs). That is real I/O on the caller;
+    /// the editor uses [`FileWatcher::watch_detached`] instead.
     pub fn watch(&mut self, root: impl AsRef<Path>) -> notify::Result<()> {
-        let root = normalize(root.as_ref());
-        self.debouncer.watch(&root, RecursiveMode::Recursive)?;
-        scan_known(&root, &mut self.known);
-        Ok(())
+        watch_root(&self.debouncer, &self.known, root.as_ref())
     }
 
+    /// `watch` on a worker thread. A failure arrives as an error in a
+    /// later batch, and the registered waker runs once the watch is in
+    /// place, so the caller never blocks on the recursive scan.
+    pub fn watch_detached(&mut self, root: impl AsRef<Path>) {
+        let root = root.as_ref().to_path_buf();
+        let debouncer = Arc::clone(&self.debouncer);
+        let known = Arc::clone(&self.known);
+        let sender = self.sender.clone();
+        let slot = Arc::clone(&self.waker);
+        let spawned = std::thread::Builder::new()
+            .name("lux-watch-root".into())
+            .spawn(move || {
+                if let Err(error) = watch_root(&debouncer, &known, &root) {
+                    let message = format!("cannot watch {}: {error}", root.display());
+                    let _ = sender.send(Err(vec![message]));
+                }
+                wake(&slot);
+            });
+        if let Err(error) = spawned {
+            let _ = self
+                .sender
+                .send(Err(vec![format!("cannot watch: {error}")]));
+        }
+    }
+
+    /// Stops watching `root`. Canonicalizes it, which is one `stat`.
     pub fn unwatch(&mut self, root: impl AsRef<Path>) -> notify::Result<()> {
-        self.debouncer.unwatch(normalize(root.as_ref()))
+        let root = normalize(root.as_ref());
+        self.debouncer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .unwatch(root)
+    }
+
+    /// `unwatch` on a worker thread, so the caller does not resolve the
+    /// path itself. Other roots and dirty marks are kept.
+    pub fn unwatch_detached(&mut self, root: impl AsRef<Path>) {
+        let root = root.as_ref().to_path_buf();
+        let debouncer = Arc::clone(&self.debouncer);
+        let _ = std::thread::Builder::new()
+            .name("lux-unwatch-root".into())
+            .spawn(move || {
+                let root = normalize(&root);
+                let _ = debouncer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .unwatch(root);
+            });
     }
 
     pub fn mark_dirty(&mut self, path: impl AsRef<Path>) {
@@ -215,22 +312,26 @@ impl FileWatcher {
         }
     }
 
-    fn absorb(&mut self, result: DebounceEventResult, batch: &mut WatchBatch) {
+    fn absorb(&mut self, result: Probed, batch: &mut WatchBatch) {
         match result {
             Ok(events) => {
-                for event in &events {
-                    self.classify_into(event, &mut batch.changes);
+                let known = Arc::clone(&self.known);
+                let mut known = known.lock().unwrap_or_else(|e| e.into_inner());
+                for (event, seen) in &events {
+                    self.classify_into(event, seen, &mut known, &mut batch.changes);
                 }
             }
-            Err(errors) => {
-                batch
-                    .errors
-                    .extend(errors.into_iter().map(|e| e.to_string()));
-            }
+            Err(errors) => batch.errors.extend(errors),
         }
     }
 
-    fn classify_into(&mut self, event: &DebouncedEvent, changes: &mut Vec<FileChange>) {
+    fn classify_into(
+        &self,
+        event: &DebouncedEvent,
+        seen: &[Seen],
+        known: &mut HashSet<PathBuf>,
+        changes: &mut Vec<FileChange>,
+    ) {
         let is_create = event.kind.is_create();
         let is_modify = event.kind.is_modify();
         let is_remove = event.kind.is_remove();
@@ -238,7 +339,11 @@ impl FileWatcher {
             // Access/Other/Any: not a content change worth surfacing.
             return;
         }
-        for path in &event.paths {
+        for (index, path) in event.paths.iter().enumerate() {
+            let seen = seen.get(index).copied().unwrap_or(Seen {
+                exists: false,
+                is_dir: false,
+            });
             // A real `Remove`, or a path that no longer exists no matter
             // what kind the debouncer reported — macOS's other real
             // particularity (see module docs): a fast create-then-remove
@@ -249,19 +354,21 @@ impl FileWatcher {
             // `Modify` events that were queued after it. Trusting
             // `event.kind` alone would then misreport a deleted file as
             // still there.
-            if is_remove || !path.exists() {
-                self.known.remove(path);
+            if is_remove || !seen.exists {
+                known.remove(path);
                 changes.push(FileChange {
                     path: path.clone(),
                     kind: ChangeKind::Removed,
+                    is_dir: false,
                 });
                 continue;
             }
-            if is_create && !self.known.contains(path) {
-                self.known.insert(path.clone());
+            if is_create && !known.contains(path) {
+                known.insert(path.clone());
                 changes.push(FileChange {
                     path: path.clone(),
                     kind: ChangeKind::Created,
+                    is_dir: seen.is_dir,
                 });
                 continue;
             }
@@ -269,7 +376,7 @@ impl FileWatcher {
             // `known` — macOS's own particularity described in the module
             // docs. Both mean the same thing from here: the file already
             // existed, so classify by dirty state instead.
-            self.known.insert(path.clone());
+            known.insert(path.clone());
             let kind = if self.dirty.contains(path) {
                 ChangeKind::Conflict
             } else {
@@ -278,11 +385,30 @@ impl FileWatcher {
             changes.push(FileChange {
                 path: path.clone(),
                 kind,
+                is_dir: seen.is_dir,
             });
         }
     }
 }
 
+fn watch_root(
+    debouncer: &SharedDebouncer,
+    known: &Mutex<HashSet<PathBuf>>,
+    root: &Path,
+) -> notify::Result<()> {
+    let root = normalize(root);
+    debouncer
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .watch(&root, RecursiveMode::Recursive)?;
+    let mut found = HashSet::new();
+    scan_known(&root, &mut found);
+    known
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .extend(found);
+    Ok(())
+}
 /// Resolves symlinks so paths compare consistently across `watch`,
 /// `mark_dirty`/`mark_clean`/`is_dirty`, and the paths backends actually
 /// report (see `watch`'s doc comment). Best-effort: a path that no longer
@@ -319,265 +445,4 @@ fn scan_known(dir: &Path, known: &mut HashSet<PathBuf>) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use std::thread;
-
-    const DEBOUNCE: Duration = Duration::from_millis(150);
-    const RECV_TIMEOUT: Duration = Duration::from_secs(5);
-    // How long a settle wait blocks for before deciding nothing more is
-    // coming — see `drain_until_quiet`/`settle`.
-    const SETTLE_TIMEOUT: Duration = Duration::from_millis(2000);
-
-    fn temp_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "lux-workspace-watcher-test-{:?}-{}",
-            thread::current().id(),
-            std::process::id()
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        // Canonicalized so paths built from this (`dir.join(...)`) compare
-        // equal to what `FileWatcher` reports — see `normalize`'s doc
-        // comment for why that's not automatic on macOS.
-        fs::canonicalize(&dir).unwrap()
-    }
-
-    /// Drains whatever batches keep arriving until a full `recv` call times
-    /// out with nothing new — i.e. the channel has gone quiet. `watch()`'s
-    /// historical-replay burst (FSEvents (macOS) and other native backends
-    /// report at least "this directory exists" right after `watch()`
-    /// returns) and `unwatch()`'s OS-level teardown both have latency that
-    /// varies a lot by machine (a loaded CI runner is not a quiet laptop);
-    /// waiting for actual quiescence instead of guessing a fixed sleep
-    /// duration is what makes these tests reliable across both. Bounded by
-    /// `SETTLE_TIMEOUT` per `recv` call, not a polling loop — each call
-    /// blocks on the same real, event-driven channel every other test uses.
-    fn settle(watcher: &mut FileWatcher) {
-        loop {
-            let batch = watcher.recv(SETTLE_TIMEOUT);
-            if batch.changes.is_empty() && batch.errors.is_empty() {
-                break;
-            }
-        }
-    }
-
-    fn watch_dir(dir: &Path) -> FileWatcher {
-        let mut watcher = FileWatcher::new(DEBOUNCE).unwrap();
-        watcher.watch(dir).unwrap();
-        settle(&mut watcher);
-        watcher
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn scan_known_does_not_recurse_into_a_symlink_cycle() {
-        let dir = temp_dir();
-        let sub = dir.join("sub");
-        fs::create_dir(&sub).unwrap();
-        // A symlink inside `sub` pointing back at `dir` — a real cycle a
-        // naive `Path::is_dir()`-following recursion would loop on forever.
-        std::os::unix::fs::symlink(&dir, sub.join("back_to_root")).unwrap();
-
-        let mut known = HashSet::new();
-        scan_known(&dir, &mut known);
-        // Terminates at all is the actual assertion; the symlink itself is
-        // recorded as a leaf, not descended into.
-        assert!(known.contains(&sub.join("back_to_root")));
-
-        fs::remove_dir_all(&dir).ok();
-    }
-
-    fn wait_for(
-        watcher: &mut FileWatcher,
-        mut matches: impl FnMut(&FileChange) -> bool,
-    ) -> FileChange {
-        let deadline = std::time::Instant::now() + RECV_TIMEOUT;
-        loop {
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            assert!(
-                !remaining.is_zero(),
-                "timed out waiting for the expected change"
-            );
-            let batch = watcher.recv(remaining);
-            if let Some(change) = batch.changes.into_iter().find(|c| matches(c)) {
-                return change;
-            }
-        }
-    }
-
-    #[test]
-    fn detects_a_created_file() {
-        let dir = temp_dir();
-        let mut watcher = watch_dir(&dir);
-
-        let file = dir.join("new.txt");
-        fs::write(&file, "hi").unwrap();
-
-        let change = wait_for(&mut watcher, |c| c.path == file);
-        assert_eq!(change.kind, ChangeKind::Created);
-
-        fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn detects_a_removed_file() {
-        let dir = temp_dir();
-        let file = dir.join("gone.txt");
-        fs::write(&file, "hi").unwrap();
-        let mut watcher = watch_dir(&dir);
-
-        fs::remove_file(&file).unwrap();
-
-        let change = wait_for(&mut watcher, |c| {
-            c.path == file && c.kind == ChangeKind::Removed
-        });
-        assert_eq!(change.kind, ChangeKind::Removed);
-
-        fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn modifying_a_clean_file_reports_reload() {
-        let dir = temp_dir();
-        let file = dir.join("clean.txt");
-        fs::write(&file, "before").unwrap();
-        let mut watcher = watch_dir(&dir);
-
-        fs::write(&file, "after").unwrap();
-
-        let change = wait_for(&mut watcher, |c| {
-            c.path == file && c.kind == ChangeKind::Reload
-        });
-        assert_eq!(change.kind, ChangeKind::Reload);
-
-        fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn modifying_a_dirty_file_reports_conflict() {
-        let dir = temp_dir();
-        let file = dir.join("dirty.txt");
-        fs::write(&file, "before").unwrap();
-        let mut watcher = watch_dir(&dir);
-        watcher.mark_dirty(file.clone());
-
-        fs::write(&file, "changed externally").unwrap();
-
-        let change = wait_for(&mut watcher, |c| {
-            c.path == file && c.kind == ChangeKind::Conflict
-        });
-        assert_eq!(change.kind, ChangeKind::Conflict);
-
-        fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn mark_clean_reverts_to_reload_classification() {
-        let dir = temp_dir();
-        let file = dir.join("was_dirty.txt");
-        fs::write(&file, "before").unwrap();
-        let mut watcher = watch_dir(&dir);
-        watcher.mark_dirty(file.clone());
-        assert!(watcher.is_dirty(&file));
-
-        watcher.mark_clean(&file);
-        assert!(!watcher.is_dirty(&file));
-
-        fs::write(&file, "after").unwrap();
-        let change = wait_for(&mut watcher, |c| {
-            c.path == file && c.kind == ChangeKind::Reload
-        });
-        assert_eq!(change.kind, ChangeKind::Reload);
-
-        fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn try_recv_is_non_blocking_and_empty_with_no_changes() {
-        let dir = temp_dir();
-        let mut watcher = watch_dir(&dir);
-        let batch = watcher.try_recv();
-        assert!(batch.changes.is_empty());
-        assert!(batch.errors.is_empty());
-        fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn recv_returns_empty_batch_on_timeout_with_no_changes() {
-        let dir = temp_dir();
-        let mut watcher = watch_dir(&dir);
-        let batch = watcher.recv(Duration::from_millis(200));
-        assert!(batch.changes.is_empty());
-        fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn unwatch_stops_reporting_changes_from_that_root() {
-        let dir = temp_dir();
-        let mut watcher = watch_dir(&dir);
-        watcher.unwatch(&dir).unwrap();
-        // `unwatch` returning doesn't guarantee the OS has actually torn
-        // down the underlying watch stream yet — settle the same way
-        // `watch_dir` does, so a write made right after this doesn't race
-        // a not-yet-finished teardown on a slower machine.
-        settle(&mut watcher);
-
-        fs::write(dir.join("after_unwatch.txt"), "hi").unwrap();
-
-        let batch = watcher.recv(Duration::from_millis(500));
-        assert!(batch.changes.is_empty());
-
-        fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn an_external_edit_invokes_the_registered_waker() {
-        use std::sync::Arc;
-        use std::sync::atomic::{AtomicBool, Ordering};
-
-        let dir = temp_dir();
-        let file = dir.join("wake.txt");
-        fs::write(&file, "a").unwrap();
-        let mut watcher = watch_dir(&dir);
-        let hit = Arc::new(AtomicBool::new(false));
-        let flag = Arc::clone(&hit);
-        watcher.set_waker(Arc::new(move || flag.store(true, Ordering::SeqCst)));
-
-        fs::write(&file, "b").unwrap();
-        let deadline = std::time::Instant::now() + RECV_TIMEOUT;
-        while !hit.load(Ordering::SeqCst) {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "the waker was not called after an external edit"
-            );
-            thread::sleep(Duration::from_millis(20));
-        }
-        fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn is_watch_limit_reached_identifies_the_max_files_watch_error() {
-        let limit_err = notify::Error::new(notify::ErrorKind::MaxFilesWatch);
-        assert!(is_watch_limit_reached(&limit_err));
-
-        let other_err = notify::Error::new(notify::ErrorKind::WatchNotFound);
-        assert!(!is_watch_limit_reached(&other_err));
-    }
-
-    #[test]
-    fn dirty_tracking_is_independent_per_path() {
-        let dir = temp_dir();
-        let a = dir.join("a.txt");
-        let b = dir.join("b.txt");
-        fs::write(&a, "a").unwrap();
-        fs::write(&b, "b").unwrap();
-        let mut watcher = watch_dir(&dir);
-
-        watcher.mark_dirty(a.clone());
-        assert!(watcher.is_dirty(&a));
-        assert!(!watcher.is_dirty(&b));
-
-        fs::remove_dir_all(&dir).ok();
-    }
-}
+mod tests;

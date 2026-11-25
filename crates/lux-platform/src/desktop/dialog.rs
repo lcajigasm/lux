@@ -47,6 +47,22 @@ impl FileDialogs for RfdFileDialogs {
             _ => SaveDecision::Cancel,
         }
     }
+    fn confirm_trash(&self, item: &str) -> bool {
+        let dialog = self
+            .confirmation
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        matches!(
+            dialog
+                .set_level(rfd::MessageLevel::Warning)
+                .set_title("Move to Trash")
+                .set_description(format!("Move \"{item}\" to the Trash?"))
+                .set_buttons(rfd::MessageButtons::OkCancel)
+                .show(),
+            rfd::MessageDialogResult::Ok | rfd::MessageDialogResult::Yes
+        )
+    }
     fn pick_file(&self, options: &FileDialogOptions) -> Option<PathBuf> {
         build(options).pick_file()
     }

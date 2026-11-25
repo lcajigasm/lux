@@ -6,7 +6,10 @@
 //! folder reads that one directory on the caller; keep the read to the
 //! directory the user opened.
 
+pub mod disk;
 mod external;
+
+use disk::reject_if_exists;
 
 use std::collections::HashMap;
 use std::fs;
@@ -58,6 +61,9 @@ pub struct FileTree {
     next_id: u64,
     rows: Vec<Row>,
     rows_dirty: bool,
+    /// The root with symlinks resolved, read once in `open`. Watcher
+    /// paths arrive resolved, so lookups strip either spelling.
+    canonical_root: PathBuf,
 }
 
 impl FileTree {
@@ -73,6 +79,7 @@ impl FileTree {
             NodeKind::File
         };
         let name = display_name(&root_path);
+        let canonical_root = fs::canonicalize(&root_path).unwrap_or_else(|_| root_path.clone());
         let root = NodeId(0);
         let mut tree = FileTree {
             nodes: HashMap::new(),
@@ -80,6 +87,7 @@ impl FileTree {
             next_id: 1,
             rows: Vec::new(),
             rows_dirty: true,
+            canonical_root,
         };
         tree.nodes.insert(
             root,
@@ -288,19 +296,7 @@ impl FileTree {
                 "cannot create a child under a file",
             ));
         }
-        let path = parent_node.path.join(name);
-        match kind {
-            NodeKind::Directory => fs::create_dir(&path)?,
-            NodeKind::File => {
-                // `create_new`, not `File::create`: the latter truncates a
-                // pre-existing file silently, which in a file explorer
-                // means data loss. This fails with `AlreadyExists` instead.
-                fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&path)?;
-            }
-        }
+        let path = disk::create_entry(&parent_node.path, name, kind)?;
 
         let id = self.mint_id();
         self.nodes.insert(
@@ -341,10 +337,7 @@ impl FileTree {
         let node = self.nodes.get(&id).ok_or_else(not_found)?;
         let old_path = node.path.clone();
         let parent = node.parent;
-        let new_path = old_path.with_file_name(new_name);
-
-        reject_if_exists(&new_path)?;
-        fs::rename(&old_path, &new_path)?;
+        let new_path = disk::rename_entry(&old_path, new_name)?;
 
         self.reparent_path(id, &old_path, &new_path);
         self.nodes.get_mut(&id).unwrap().name = new_name.to_owned();
@@ -421,7 +414,7 @@ impl FileTree {
         let path = node.path.clone();
         let parent = node.parent;
 
-        move_path_to_trash(&path)?;
+        disk::move_to_trash(&path)?;
 
         self.remove_subtree(id);
         if let Some(parent) = parent {
@@ -503,43 +496,6 @@ fn is_ancestor_or_self(ancestor: &Path, candidate: &Path) -> bool {
 
 fn not_found() -> io::Error {
     io::Error::new(io::ErrorKind::NotFound, "unknown tree node")
-}
-
-/// Guards `rename`/`move_node` against `fs::rename`'s own POSIX semantics:
-/// unlike `File::create`'s `create_new` option, `fs::rename` silently
-/// replaces an existing destination rather than erroring — real data loss
-/// for a rename/move landing on top of something already there. Checked
-/// explicitly rather than relying on `fs::rename` itself, which has no
-/// "fail if destination exists" mode. `try_exists` (not `exists`) so a
-/// stat error (e.g. permission denied) surfaces as a real `io::Error`
-/// instead of silently reading as "doesn't exist".
-fn reject_if_exists(path: &Path) -> io::Result<()> {
-    if path.try_exists()? {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            format!("{} already exists", path.display()),
-        ));
-    }
-    Ok(())
-}
-
-/// Moves `path` into the system trash. On macOS the default `trash` path
-/// asks Finder, via AppleScript, and that call fails when the process has
-/// no Automation permission (a sandboxed `cargo test`, or a terminal that
-/// has never been allowed to control Finder).
-/// `NSFileManager.trashItemAtURL` is the same Trash and does not ask.
-fn move_path_to_trash(path: &Path) -> io::Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        use trash::macos::{DeleteMethod, TrashContextExtMacos};
-        let mut ctx = trash::TrashContext::default();
-        ctx.set_delete_method(DeleteMethod::NsFileManager);
-        ctx.delete(path).map_err(io::Error::other)
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        trash::delete(path).map_err(io::Error::other)
-    }
 }
 
 /// Version-control metadata directories. Sublime's default

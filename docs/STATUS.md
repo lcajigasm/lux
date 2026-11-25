@@ -916,6 +916,24 @@ tab). When visible, the sidebar cleanly offsets the main editor viewport and top
 Gate: `cargo test -p lux sidebar::` and `cargo test -p lux-ui file_tree::`. Verified on macOS
 (aarch64-apple-darwin). Windows/Linux integration remains `not-started`.
 
+File operations from the sidebar (ST-SIDE-01, `crates/lux/src/sidebar/worker.rs`,
+`sidebar/inline.rs`): New File..., New Folder..., Rename... (`F2`), Duplicate,
+and Delete run their disk work on a worker thread. The result comes back through
+the platform waker and updates the tree; an error (an existing name, a name with
+`/`, a permission failure) is shown in the status message and the tree is left as
+it was. A new file opens in a tab. A renamed file's open tab follows the new path.
+Delete asks first with a native "Move to Trash" dialog, the same `rfd` message
+dialog the unsaved-changes prompt uses, shown from the worker; Cancel keeps the
+file. There is no setting to skip the question. Duplicate names the copy
+`name copy.ext`, then `name copy 2.ext`, and never overwrites. The inline name
+field has a caret and a selection: Left/Right, Home/End (Up/Down too), Shift to
+extend, Backspace/Delete, and Cmd+A/C/X/V/Z. Rename opens with the base name
+selected (`service` in `service.rs`; `.gitignore` whole). The context menu of a
+row in a second open folder acts on that folder's file. Still on the UI thread:
+drag-and-drop move (`FileTree::move_node`) and expanding a folder (one
+`read_dir`). Gate: `cargo test -p lux sidebar::ops_tests` (6 tests) and
+`cargo test -p lux-ui file_tree::`. Verified on macOS (aarch64-apple-darwin).
+
 **Scope note (`lux-workspace`'s native watchers — this phase's third
 deliverable, tracked in
 `docs/receipts/phase-04-watchers-nativos-notify-debouncer.md`)**: the
@@ -923,7 +941,16 @@ deliverable, tracked in
 verified directly against the real OS backend (not mocked). The editor
 consumes those events: a clean open file reloads and a dirty one asks
 (ST-FIX-13), and a loaded sidebar row appears or disappears when a file
-is created or removed (ST-FIX-14). What exists and is verified:
+is created or removed (ST-FIX-14), in every folder open in the sidebar,
+not just the first (ST-SIDE-02). Adding, closing, or opening a folder
+starts or stops its watch on a worker thread (`FileWatcher::watch_detached`
+/ `unwatch_detached`); closing one folder keeps the others watched and
+keeps unsaved-file marks. The `stat` that classifies each event (does the
+path exist, is it a directory) runs on the debouncer thread, so draining
+events on the UI thread is memory only, and the tree matches an event
+path by stripping its root (resolved once when the folder opens) instead
+of resolving every loaded path. A watch that fails is announced in the
+status bar. What exists and is verified:
 `notify` 8.2.0 + `notify-debouncer-full` 0.7.0 (the version that actually
 pairs with `notify` 8.2.0, not the crate registry's default "latest," which
 tracks `notify` 9's still-unstable RC — see `docs/DEPENDENCIES.md`), fully
@@ -947,7 +974,7 @@ FSEvents coalesce the whole lifecycle into one raw batch, which trips
 silently swallows the real `Remove`, leaving only stray `Modify` events —
 `classify` now treats any event whose path no longer exists on disk as
 `Removed` regardless of the kind the debouncer attached. Verified on macOS
-(aarch64-apple-darwin): `cargo test -p lux-workspace watcher::` (10 tests,
+(aarch64-apple-darwin): `cargo test -p lux-workspace watcher::` (15 tests,
 6 of them driving the real FSEvents backend against real temp
 directories — re-run 3× clean to rule out flakiness from the timing
 involved). **Not yet exercised**: Linux's inotify backend and Windows'

@@ -110,6 +110,14 @@ impl SidebarState {
         Some(removed.path)
     }
 
+    /// The tree of open folder `root`: 0 is the header, then `extra`.
+    pub(crate) fn tree_at(&self, root: usize) -> Option<&FileTree> {
+        match root {
+            0 => self.tree.as_ref(),
+            n => self.extra.get(n - 1).map(|folder| &folder.tree),
+        }
+    }
+
     pub(crate) fn root_names(&self) -> Vec<String> {
         let mut names = Vec::new();
         if let Some(path) = &self.workspace_root {
@@ -208,14 +216,22 @@ pub(crate) fn close(app: &mut crate::app::App, index: usize) {
                 .focus
                 .set_focus(lux_ui::focus::FocusTarget::Editor);
         }
-    } else if index == 0
-        && let Some(root) = app
-            .ui
-            .sidebar
-            .as_ref()
-            .and_then(|sidebar| sidebar.workspace_root.clone())
-    {
-        app.ui.session.init_watcher(&root);
+    } else {
+        // The other folders stay watched, and so do unsaved-file marks.
+        app.ui.session.watch_folder(&path, false);
+        if index == 0
+            && let Some(root) = app
+                .ui
+                .sidebar
+                .as_ref()
+                .and_then(|sidebar| sidebar.workspace_root.clone())
+        {
+            // The project symbol index follows the new first folder.
+            app.ui.session.symbols = Some(lux_workspace::SymbolIndexer::start(
+                Some(root),
+                app.ui.session.waker(),
+            ));
+        }
     }
     detach_closed_repo(app, &path);
     // A clean tab whose file lives in the closed folder goes with it.

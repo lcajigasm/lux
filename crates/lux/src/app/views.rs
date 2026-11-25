@@ -128,11 +128,12 @@ impl App {
             .sidebar
             .as_mut()
             .is_some_and(|sidebar| sidebar.add_folder(path.clone()));
+        if added {
+            self.ui.session.watch_folder(&path, true);
+            self.scheduler.invalidate_all();
+        }
         if added && let Some(workspace) = self.ui.project.workspace.as_mut() {
             workspace.add_root(path, None);
-        }
-        if added {
-            self.scheduler.invalidate_all();
         }
         added
     }

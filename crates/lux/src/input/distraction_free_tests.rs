@@ -28,6 +28,9 @@ impl lux_platform::FileDialogs for TestDialogs {
     fn confirm_save(&self, _: &str) -> lux_platform::dialog::SaveDecision {
         lux_platform::dialog::SaveDecision::Cancel
     }
+    fn confirm_trash(&self, _: &str) -> bool {
+        false
+    }
 }
 
 struct TestContext {

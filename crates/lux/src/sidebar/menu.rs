@@ -42,7 +42,7 @@ pub(crate) struct SidebarContextMenu {
     pub(crate) node_id: NodeId,
     #[allow(dead_code)]
     pub(crate) is_dir: bool,
-    /// Which open folder this menu closes. Zero is the header folder.
+    /// Which open folder this menu acts on. Zero is the header folder.
     pub(crate) root_index: usize,
     pub(crate) rect: [f32; 4],
     pub(crate) items: Vec<SidebarAction>,
@@ -81,6 +81,12 @@ impl SidebarContextMenu {
             rect: [x, y, width, height],
             items,
         }
+    }
+
+    /// The menu acts on a row of open folder `root` (0 is the header).
+    pub(crate) fn in_root(mut self, root: usize) -> Self {
+        self.root_index = root;
+        self
     }
 
     /// A menu whose only command removes that folder from the sidebar.

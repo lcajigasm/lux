@@ -93,6 +93,9 @@ mod tests {
         fn confirm_save(&self, _: &str) -> SaveDecision {
             SaveDecision::Cancel
         }
+        fn confirm_trash(&self, _: &str) -> bool {
+            false
+        }
         fn pick_file(&self, _: &FileDialogOptions) -> Option<PathBuf> {
             None
         }

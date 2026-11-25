@@ -11,9 +11,11 @@ use lux_ui::file_tree::{FileTree, NodeId, NodeKind, Row};
 
 pub(crate) mod drag;
 pub(crate) mod folders;
+pub(crate) mod inline;
 pub(crate) mod menu;
 pub(crate) mod ops;
 pub(crate) mod watch;
+pub(crate) mod worker;
 
 pub(crate) const DEFAULT_SIDEBAR_WIDTH: f32 = 220.0;
 pub(crate) const SIDEBAR_ROW_HEIGHT: f32 = 22.0;
@@ -28,7 +30,9 @@ pub(crate) struct SidebarState {
     pub(crate) width: f32,
     pub(crate) focused: bool,
     pub(crate) context_menu: Option<menu::SidebarContextMenu>,
-    pub(crate) inline_input: Option<ops::InlineInputState>,
+    pub(crate) inline_input: Option<inline::InlineInputState>,
+    /// Create, rename, duplicate, and trash results from the worker.
+    pub(crate) jobs: worker::Jobs,
     /// Absolute paths of files and parent directories that differ from `HEAD`.
     pub(crate) git_marks: HashMap<PathBuf, char>,
     /// Row press that becomes a move once the pointer travels, or a click
@@ -52,6 +56,7 @@ impl Default for SidebarState {
             focused: false,
             context_menu: None,
             inline_input: None,
+            jobs: worker::Jobs::default(),
             git_marks: HashMap::new(),
             drag: None,
             extra: Vec::new(),
@@ -73,6 +78,7 @@ impl SidebarState {
             focused: false,
             context_menu: None,
             inline_input: None,
+            jobs: worker::Jobs::default(),
             git_marks: HashMap::new(),
             drag: None,
             extra: Vec::new(),
@@ -274,6 +280,7 @@ pub(crate) fn handle_sidebar_click(
                             mouse_y,
                             app.scale_factor,
                         )
+                        .in_root(root)
                     });
                 }
                 app.scheduler.invalidate_all();
@@ -314,33 +321,13 @@ pub(crate) fn handle_sidebar_key(
         return true;
     }
 
-    // Handle inline input typing if active
-    if let Some(sidebar) = app.ui.sidebar.as_mut()
-        && sidebar.inline_input.is_some()
+    if app
+        .ui
+        .sidebar
+        .as_ref()
+        .is_some_and(|sidebar| sidebar.inline_input.is_some())
     {
-        match &event.key {
-            lux_platform::Key::Named(lux_platform::NamedKey::Enter) => {
-                return ops::commit_inline_input(app, ctx);
-            }
-            lux_platform::Key::Named(lux_platform::NamedKey::Backspace) => {
-                if let Some(inp) = sidebar.inline_input.as_mut() {
-                    inp.text.pop();
-                    app.scheduler.invalidate_all();
-                }
-                return true;
-            }
-            lux_platform::Key::Character(text)
-                if !app.modifiers.meta && !app.modifiers.control && !app.modifiers.alt =>
-            {
-                if let Some(inp) = sidebar.inline_input.as_mut() {
-                    inp.text.push_str(text);
-                    app.scheduler.invalidate_all();
-                }
-                return true;
-            }
-            _ => {}
-        }
-        return false;
+        return inline::handle_key(app, ctx, event);
     }
 
     if let lux_platform::Key::Character(text) = &event.key
@@ -388,7 +375,7 @@ pub(crate) fn handle_sidebar_key(
         }
         lux_platform::Key::Named(lux_platform::NamedKey::Delete) => {
             if let Some(node_id) = sidebar.selected_node {
-                ops::delete_sidebar_node(app, node_id);
+                ops::delete_sidebar_node(app, ctx, 0, node_id);
                 return true;
             }
         }
@@ -456,6 +443,8 @@ pub(crate) fn handle_sidebar_key(
 
 #[cfg(test)]
 mod behavior_tests;
+#[cfg(test)]
+mod ops_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -527,33 +516,5 @@ mod tests {
         assert!(file_menu.items.contains(&SidebarAction::Rename));
         assert!(file_menu.items.contains(&SidebarAction::Delete));
         assert!(file_menu.items.contains(&SidebarAction::Duplicate));
-    }
-
-    #[test]
-    fn sidebar_duplicate_and_delete_operations() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let file_path = temp_dir.path().join("source.txt");
-        std::fs::write(&file_path, "hello world").unwrap();
-
-        let mut app = crate::app::App::new(
-            include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec(),
-        );
-        app.ui.sidebar = SidebarState::open_folder(temp_dir.path().to_path_buf());
-        let tree = app.ui.sidebar.as_mut().unwrap().tree.as_mut().unwrap();
-        let rows = tree.rows().to_vec();
-        let file_row = rows.iter().find(|r| r.name == "source.txt").unwrap();
-        let file_id = file_row.id;
-
-        assert!(ops::duplicate_sidebar_node(&mut app, file_id));
-        let copy_path = temp_dir.path().join("source copy.txt");
-        assert!(copy_path.exists());
-        assert_eq!(std::fs::read_to_string(&copy_path).unwrap(), "hello world");
-
-        assert!(
-            ops::delete_sidebar_node(&mut app, file_id),
-            "sidebar trash delete failed: {:?}",
-            app.documents.message
-        );
-        assert!(!file_path.exists(), "trashed file is still on disk");
     }
 }

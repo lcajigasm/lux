@@ -134,6 +134,9 @@ mod tests {
                     fn confirm_save(&self, _: &str) -> lux_platform::dialog::SaveDecision {
                         lux_platform::dialog::SaveDecision::Cancel
                     }
+                    fn confirm_trash(&self, _: &str) -> bool {
+                        false
+                    }
                     fn pick_file(
                         &self,
                         _: &lux_platform::FileDialogOptions,
@@ -185,6 +188,9 @@ mod tests {
                 impl lux_platform::FileDialogs for DummyDialogs {
                     fn confirm_save(&self, _: &str) -> lux_platform::dialog::SaveDecision {
                         lux_platform::dialog::SaveDecision::Cancel
+                    }
+                    fn confirm_trash(&self, _: &str) -> bool {
+                        false
                     }
                     fn pick_file(
                         &self,
