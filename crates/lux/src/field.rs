@@ -497,8 +497,9 @@ fn sync_search(app: &mut App) {
     }
 }
 
-/// Regex / case / word toggles. Only Option+Command (Alt+Ctrl elsewhere)
-/// plus the physical letter. A Spanish `ç` is text, not the case toggle.
+/// Regex / case / word / preserve-case / in-selection toggles. Only
+/// Option+Command (Alt+Ctrl elsewhere) plus the physical letter, as in
+/// Sublime. A Spanish `ç` is text, not the case toggle.
 pub(crate) fn search_option_toggle(app: &mut App, event: &KeyEvent) -> bool {
     if app.ui.search_bar.is_none() || !app.modifiers.alt || !command_held(app) {
         return false;
@@ -523,6 +524,11 @@ pub(crate) fn search_option_toggle(app: &mut App, event: &KeyEvent) -> bool {
             search.toggle_word(&buffer);
             true
         }
+        'a' => {
+            search.toggle_preserve_case(&buffer);
+            true
+        }
+        's' => return crate::search::in_selection_chord(app),
         _ => false,
     };
     if handled {

@@ -412,3 +412,146 @@ fn search_click_interaction_dismisses_or_navigates() {
     assert!(app.ui.search_bar.is_none());
     assert_eq!(app.chrome.focus.current(), FocusTarget::Editor);
 }
+
+fn search(app: &App) -> &crate::search::SearchBarState {
+    app.ui.search_bar.as_ref().unwrap()
+}
+
+fn option_command_key(app: &mut App, letter: &str) {
+    app.modifiers = option_command();
+    send_search_key(app, &option_letter(letter));
+    app.modifiers = Modifiers::default();
+}
+
+#[test]
+fn preserve_case_replace_all_through_the_bar() {
+    let mut app = test_app("Foo FOO foo");
+    crate::search::open_find(&mut app, true);
+    type_search_str(&mut app, "foo");
+    press_search_key(&mut app, NamedKey::Tab);
+    type_search_str(&mut app, "bar");
+
+    // Option+Command+A, Sublime's Preserve Case chord.
+    option_command_key(&mut app, "a");
+    assert!(search(&app).preserve_case);
+    assert_eq!(search(&app).replace_text.as_str(), "bar");
+
+    app.modifiers = Modifiers {
+        alt: true,
+        ..Default::default()
+    };
+    press_search_key(&mut app, NamedKey::Enter);
+    app.modifiers = Modifiers::default();
+    assert_eq!(app.buffer.text(), "Bar BAR bar");
+
+    // One undo step restores every occurrence.
+    app.history.undo(&mut app.buffer);
+    assert_eq!(app.buffer.text(), "Foo FOO foo");
+}
+
+#[test]
+fn preserve_case_replace_current_and_button_toggle() {
+    let mut app = test_app("Foo foo_Foo");
+    crate::search::open_find(&mut app, true);
+    type_search_str(&mut app, "foo");
+    press_search_key(&mut app, NamedKey::Tab);
+    type_search_str(&mut app, "bar");
+
+    if let Some(s) = app.ui.search_bar.as_mut() {
+        s.layout.bar_rect = [0.0, 500.0, 800.0, 64.0];
+        s.layout.preserve_case_btn_rect = [340.0, 534.0, 24.0, 24.0];
+    }
+    assert!(crate::search::handle_search_click(&mut app, 350.0, 540.0));
+    assert!(search(&app).preserve_case);
+
+    press_search_key(&mut app, NamedKey::Enter);
+    assert_eq!(app.buffer.text(), "Bar foo_Foo");
+    press_search_key(&mut app, NamedKey::Enter);
+    press_search_key(&mut app, NamedKey::Enter);
+    assert_eq!(app.buffer.text(), "Bar bar_Bar");
+
+    // Off again: the replacement is inserted exactly as typed.
+    assert!(crate::search::handle_search_click(&mut app, 350.0, 540.0));
+    assert!(!search(&app).preserve_case);
+}
+
+#[test]
+fn option_command_s_toggles_in_selection_while_the_bar_has_focus() {
+    crate::menu::clear_claim();
+    let mut app = test_app("aaa bbb aaa bbb aaa");
+    app.cursors = MultiCursor::new(Selection::new(
+        Position::from_char(&app.buffer, 4),
+        Position::from_char(&app.buffer, 15),
+    ));
+    crate::search::open_find(&mut app, false);
+    // A one-line selection seeds the query instead of the scope.
+    assert!(!search(&app).in_selection);
+    assert_eq!(search(&app).find_query.as_str(), "bbb aaa bbb");
+    app.ui.search_bar.as_mut().unwrap().find_query = crate::field::QueryField::from_text("aaa");
+    app.cursors = MultiCursor::new(Selection::new(
+        Position::from_char(&app.buffer, 4),
+        Position::from_char(&app.buffer, 15),
+    ));
+
+    option_command_key(&mut app, "s");
+    assert!(search(&app).in_selection);
+    let ranges: Vec<_> = search(&app)
+        .search_bar
+        .matches()
+        .iter()
+        .map(|m| m.char_range())
+        .collect();
+    assert_eq!(ranges, vec![8..11]);
+
+    option_command_key(&mut app, "s");
+    assert!(!search(&app).in_selection);
+    assert_eq!(search(&app).search_bar.matches().len(), 3);
+
+    // With the editor focused the chord is Save All, not the toggle.
+    crate::focus::focus_editor(&mut app);
+    option_command_key(&mut app, "s");
+    assert!(!search(&app).in_selection);
+}
+
+fn last_line_visible(app: &App) -> bool {
+    let line_height = app.editor_view.metrics().line_height;
+    let last = (app.buffer.len_lines() - 1) as f32;
+    let bottom = (last + 1.0) * line_height;
+    bottom <= app.viewport.scroll_y + app.viewport.height + 0.5
+}
+
+#[test]
+fn opening_the_bar_keeps_the_last_line_visible() {
+    let text: String = (0..200).map(|i| format!("line {i}\n")).collect();
+    let mut app = test_app(text.trim_end());
+    let editor_height = 600.0;
+    app.viewport.height = editor_height;
+    let last = app.buffer.len_lines() - 1;
+    app.cursors = MultiCursor::new(Selection::cursor(Position::from_char(
+        &app.buffer,
+        app.buffer.len_chars(),
+    )));
+    assert_eq!(app.cursors.primary().head.line, last);
+    app.reveal_primary_cursor();
+    assert!(last_line_visible(&app));
+
+    // Cmd+F: the editor gives up exactly the bar's height and stays scrolled
+    // so the last line sits above the bar, not under it.
+    crate::search::open_find(&mut app, false);
+    let find_height = app.search_bar_height();
+    assert!(find_height > 0.0);
+    assert_eq!(app.viewport.height, editor_height - find_height);
+    assert!(last_line_visible(&app));
+
+    // Cmd+Option+F on the open bar grows it to two rows.
+    crate::search::open_find(&mut app, true);
+    let replace_height = app.search_bar_height();
+    assert!(replace_height > find_height);
+    assert_eq!(app.viewport.height, editor_height - replace_height);
+    assert!(last_line_visible(&app));
+
+    // Escape gives the space back.
+    press_search_key(&mut app, NamedKey::Escape);
+    assert_eq!(app.viewport.height, editor_height);
+    assert!(last_line_visible(&app));
+}

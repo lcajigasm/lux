@@ -377,7 +377,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-FIND-01 — Barra de Búsqueda Docked Inferior Pulida y "Preserve Case"
 - Prioridad: `P0 (Ergonomía)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: —
 - Problema actual:
   - La barra inferior actual (`Cmd+F`) tiene problemas de posicionamiento geométrico que pueden superponerse con las últimas líneas de texto y carece de la opción de sustitución respetando mayúsculas/minúsculas.

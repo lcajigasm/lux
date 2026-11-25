@@ -19,6 +19,7 @@ pub struct Query {
     case_sensitive: bool,
     whole_word: bool,
     is_regex: bool,
+    preserve_case: bool,
 }
 
 impl Query {
@@ -30,6 +31,7 @@ impl Query {
             case_sensitive: true,
             whole_word: false,
             is_regex: false,
+            preserve_case: false,
         }
     }
 
@@ -45,6 +47,13 @@ impl Query {
 
     pub fn regex(mut self, is_regex: bool) -> Query {
         self.is_regex = is_regex;
+        self
+    }
+
+    /// Replacements take on each match's case pattern (see
+    /// [`crate::preserve_case`]). Searching is unaffected.
+    pub fn preserve_case(mut self, preserve_case: bool) -> Query {
+        self.preserve_case = preserve_case;
         self
     }
 
@@ -82,7 +91,7 @@ impl fmt::Display for QueryError {
 impl std::error::Error for QueryError {}
 
 fn expand_for_match(query: &Query, caps: &Captures, replacement: &str) -> String {
-    if query.is_regex {
+    let expanded = if query.is_regex {
         let mut dest = String::new();
         caps.expand(replacement, &mut dest);
         dest
@@ -90,6 +99,10 @@ fn expand_for_match(query: &Query, caps: &Captures, replacement: &str) -> String
         // No `$1`-style expansion outside regex mode — a literal `$` in the
         // replacement is just a literal `$`.
         replacement.to_string()
+    };
+    match caps.get(0) {
+        Some(m) if query.preserve_case => crate::preserve_case::apply(m.as_str(), &expanded),
+        _ => expanded,
     }
 }
 
@@ -434,6 +447,23 @@ mod tests {
         let transaction = replace_all(&mut buffer, &query, "x").unwrap();
         assert_eq!(buffer.text(), "hello");
         assert!(transaction.edits.is_empty());
+    }
+
+    #[test]
+    fn replace_all_preserves_each_matchs_case() {
+        let mut buffer = Buffer::from_bytes(b"Foo FOO foo foo_Bar").unwrap();
+        let query = Query::new("foo").case_sensitive(false).preserve_case(true);
+        replace_all(&mut buffer, &query, "bar").unwrap();
+        assert_eq!(buffer.text(), "Bar BAR bar bar_Bar");
+    }
+
+    #[test]
+    fn replace_one_preserves_case_after_capture_expansion() {
+        let mut buffer = Buffer::from_bytes(b"USER_NAME").unwrap();
+        let query = Query::new(r"(\w+)_NAME").regex(true).preserve_case(true);
+        let m = find_all(&buffer, &query).unwrap()[0];
+        replace_one(&mut buffer, &query, m, "${1}_label").unwrap();
+        assert_eq!(buffer.text(), "USER_LABEL");
     }
 
     #[test]
