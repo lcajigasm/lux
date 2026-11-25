@@ -8,13 +8,15 @@
 //! blocking until the whole tree is scanned. `SearchStream` also stays
 //! navigable (`next_match`/`previous_match`/`current`) the same way
 //! `lux_ui::search_bar::SearchBar` already is for in-buffer search — this
-//! is the project-wide counterpart, one layer down: no dedicated panel
-//! exists yet in `lux-ui` to put these results in (same "state a UI would
-//! render and drive" pattern as everything else not yet wired to pixels).
+//! is the project-wide counterpart, one layer down. The desktop shell
+//! drains it into the `Find Results` tab when the worker's `Notify` wakes
+//! the event loop.
 
 use std::error::Error as StdError;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
@@ -59,17 +61,66 @@ impl fmt::Display for SearchError {
 
 impl StdError for SearchError {}
 
+/// Called from a search worker thread when new results (or the end of the
+/// search) are ready to be drained. The desktop shell passes its platform
+/// loop waker here, so the UI drains on an event instead of polling.
+pub type Notify = Arc<dyn Fn() + Send + Sync>;
+
+/// State shared between a [`SearchStream`] and its worker threads.
+struct Progress {
+    cancelled: AtomicBool,
+    files_searched: AtomicUsize,
+    /// Set by the consumer before it drains; the first worker to deliver a
+    /// batch after that clears it and wakes. Wakes are coalesced to one per
+    /// drain, however many files report in between.
+    wake_armed: AtomicBool,
+    notify: Option<Notify>,
+}
+
+impl Progress {
+    fn batch_ready(&self) {
+        if self.wake_armed.swap(false, Ordering::AcqRel) {
+            self.wake();
+        }
+    }
+
+    fn wake(&self) {
+        if !self.cancelled.load(Ordering::Acquire)
+            && let Some(notify) = &self.notify
+        {
+            notify();
+        }
+    }
+}
+
+impl fmt::Debug for Progress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Progress")
+            .field("cancelled", &self.cancelled)
+            .field("files_searched", &self.files_searched)
+            .finish_non_exhaustive()
+    }
+}
+
 /// One project-wide search: results stream in on a background thread pool
-/// (`ignore::WalkParallel`) as they're found. `poll` drains whatever has
+/// (`ignore::WalkParallel`) as they're found, one batch per file, so a
+/// file's matches always arrive together. `poll` drains whatever has
 /// arrived without blocking; `wait_until_done` blocks until the whole tree
 /// has been searched. Either way, everything received so far is kept and
-/// navigable.
+/// navigable. Dropping the stream (or calling `cancel`) stops the workers.
 #[derive(Debug)]
 pub struct SearchStream {
-    rx: Receiver<SearchMatch>,
+    rx: Receiver<Vec<SearchMatch>>,
+    progress: Arc<Progress>,
     matches: Vec<SearchMatch>,
     current: Option<usize>,
     finished: bool,
+}
+
+impl Drop for SearchStream {
+    fn drop(&mut self) {
+        self.cancel();
+    }
 }
 
 impl SearchStream {
@@ -78,9 +129,11 @@ impl SearchStream {
     /// what `matches()` returns).
     pub fn poll(&mut self) -> &[SearchMatch] {
         let start = self.matches.len();
+        // Arm before draining: a batch sent after the drain ends wakes again.
+        self.progress.wake_armed.store(true, Ordering::Release);
         loop {
             match self.rx.try_recv() {
-                Ok(m) => self.matches.push(m),
+                Ok(batch) => self.matches.extend(batch),
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
                     self.finished = true;
@@ -98,8 +151,8 @@ impl SearchStream {
     /// keep streaming in; this is for callers (tests included) that want
     /// the complete result set.
     pub fn wait_until_done(&mut self) {
-        while let Ok(m) = self.rx.recv() {
-            self.matches.push(m);
+        while let Ok(batch) = self.rx.recv() {
+            self.matches.extend(batch);
         }
         self.finished = true;
         self.settle_current();
@@ -117,6 +170,18 @@ impl SearchStream {
 
     pub fn is_finished(&self) -> bool {
         self.finished
+    }
+
+    /// Files the workers have opened and searched so far (not just those
+    /// with matches). Final once `is_finished` is true.
+    pub fn files_searched(&self) -> usize {
+        self.progress.files_searched.load(Ordering::Acquire)
+    }
+
+    /// Stops the workers: the walk quits and in-flight files stop at their
+    /// next match. No further wakes are sent.
+    pub fn cancel(&self) {
+        self.progress.cancelled.store(true, Ordering::Release);
     }
 
     pub fn current_index(&self) -> Option<usize> {
@@ -160,6 +225,18 @@ pub fn find_in_files(
     pattern: &str,
     options: &SearchOptions,
 ) -> Result<SearchStream, SearchError> {
+    find_in_files_notify(root, pattern, options, None)
+}
+
+/// [`find_in_files`] that also calls `notify` from a worker thread whenever
+/// a batch is ready after the last [`SearchStream::poll`], and once more
+/// when the whole search has finished.
+pub fn find_in_files_notify(
+    root: impl AsRef<Path>,
+    pattern: &str,
+    options: &SearchOptions,
+    notify: Option<Notify>,
+) -> Result<SearchStream, SearchError> {
     let matcher = RegexMatcherBuilder::new()
         .case_insensitive(options.case_insensitive)
         .build(pattern)
@@ -177,28 +254,49 @@ pub fn find_in_files(
         .require_git(false)
         .build_parallel();
 
+    let progress = Arc::new(Progress {
+        cancelled: AtomicBool::new(false),
+        files_searched: AtomicUsize::new(0),
+        wake_armed: AtomicBool::new(true),
+        notify,
+    });
+    let shared = Arc::clone(&progress);
     thread::spawn(move || {
         walker.run(|| {
             let tx = tx.clone();
             let matcher = matcher.clone();
+            let progress = Arc::clone(&shared);
             let mut searcher = SearcherBuilder::new().line_number(true).build();
             Box::new(move |entry| {
+                if progress.cancelled.load(Ordering::Acquire) {
+                    return WalkState::Quit;
+                }
                 let Ok(entry) = entry else {
                     return WalkState::Continue;
                 };
                 if entry.file_type().is_some_and(|t| t.is_file()) {
-                    search_one_file(&mut searcher, &matcher, entry.path(), &tx);
+                    let batch = search_one_file(&mut searcher, &matcher, entry.path(), &progress);
+                    progress.files_searched.fetch_add(1, Ordering::AcqRel);
+                    if !batch.is_empty() {
+                        if tx.send(batch).is_err() {
+                            return WalkState::Quit;
+                        }
+                        progress.batch_ready();
+                    }
                 }
                 WalkState::Continue
             })
         });
-        // `tx` (and every per-worker clone) is dropped here, once `run`
-        // returns — that's what turns a later `rx.recv()` into `Err`,
-        // telling `SearchStream` the search is done.
+        // Every per-worker clone is gone once `run` returns; dropping the
+        // last sender turns the consumer's next receive into
+        // `Disconnected`, which is how `SearchStream` learns it is done.
+        drop(tx);
+        shared.wake();
     });
 
     Ok(SearchStream {
         rx,
+        progress,
         matches: Vec::new(),
         current: None,
         finished: false,
@@ -229,7 +327,7 @@ fn build_overrides(
         .map_err(|e| SearchError::InvalidGlob(e.to_string()))
 }
 
-/// Searches one file and streams its matches through `tx`. Errors (a
+/// Searches one file and returns its matches as one batch. Errors (a
 /// binary file, invalid UTF-8, a permission error) just skip that file —
 /// the same "not searchable as text" stance `lux_core::buffer::Buffer`
 /// already takes on binary content, not a reason to abort the whole
@@ -238,24 +336,23 @@ fn search_one_file(
     searcher: &mut grep_searcher::Searcher,
     matcher: &grep_regex::RegexMatcher,
     path: &Path,
-    tx: &mpsc::Sender<SearchMatch>,
-) {
-    let path_owned = path.to_path_buf();
+    progress: &Progress,
+) -> Vec<SearchMatch> {
+    let mut batch = Vec::new();
     let _ = searcher.search_path(
         matcher,
         path,
-        UTF8(move |line_number, line| {
-            let sent = tx.send(SearchMatch {
-                path: path_owned.clone(),
+        UTF8(|line_number, line| {
+            batch.push(SearchMatch {
+                path: path.to_path_buf(),
                 line_number,
                 line: line.to_string(),
             });
-            // If the receiver's gone (the caller dropped the
-            // `SearchStream`), stop searching this file — no point
-            // finding matches nobody will read.
-            Ok(sent.is_ok())
+            // A cancelled search stops reading this file at the next match.
+            Ok(!progress.cancelled.load(Ordering::Acquire))
         }),
     );
+    batch
 }
 
 #[cfg(test)]
@@ -449,3 +546,7 @@ mod tests {
         fs::remove_dir_all(&dir).ok();
     }
 }
+
+#[cfg(test)]
+#[path = "find_in_files_notify_tests.rs"]
+mod notify_tests;

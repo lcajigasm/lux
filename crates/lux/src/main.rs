@@ -17,6 +17,7 @@ mod document;
 mod edit_menu;
 mod field;
 mod find_results;
+mod find_stream;
 mod focus;
 mod font;
 mod git;

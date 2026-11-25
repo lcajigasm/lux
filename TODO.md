@@ -400,7 +400,8 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-FIND-02 — Búsqueda en Archivos (Find in Files) Asíncrona con Buffer Virtual `Find Results`
 - Prioridad: `P1 (Sublime Parity)`
-- Estado: `OPEN`
+- Estado: `IN_PROGRESS`
+- Remaining: measure in a real window on a 5,000-file project that frames stay within budget while batches are appended; today this is verified only by windowless app tests.
 - Dependencias: ST-FIX-03
 - Objetivo: La experiencia emblemática de `Find in Files` de Sublime Text 3/4.
 - Alcance detallado:
