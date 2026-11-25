@@ -10,11 +10,14 @@
 //! `should_coalesce`. A pause is the gap since the previous chained edit,
 //! measured when the next edit arrives. Nothing wakes up to watch the clock.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::buffer::Buffer;
 use crate::edit::Edit;
 use crate::selection::Selection;
+
+pub mod codec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Transaction {
@@ -178,6 +181,28 @@ pub struct History {
     state: u64,
     next_state: u64,
     last_chained_at: Option<Instant>,
+    revision: Revision,
+}
+
+/// Process-unique identifier of a history's exact contents. Every mutation
+/// takes a fresh value from one global counter, so two histories share a
+/// revision only when one is an unmodified clone of the other. Session
+/// persistence uses it to skip re-encoding a history that has not changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Revision(u64);
+
+static NEXT_REVISION: AtomicU64 = AtomicU64::new(1);
+
+impl Revision {
+    fn fresh() -> Revision {
+        Revision(NEXT_REVISION.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+impl Default for Revision {
+    fn default() -> Self {
+        Revision::fresh()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -207,6 +232,7 @@ impl History {
         if transaction.edits.is_empty() {
             return;
         }
+        self.revision = Revision::fresh();
         if transaction.chainable {
             let now = Instant::now();
             if self
@@ -244,6 +270,7 @@ impl History {
     /// undo.
     pub fn undo(&mut self, buffer: &mut Buffer) -> Option<Vec<Selection>> {
         let entry = self.undo_stack.pop()?;
+        self.revision = Revision::fresh();
         entry.transaction.undo(buffer);
         let selections = entry.transaction.selections_before.clone();
         self.state = entry.before;
@@ -255,6 +282,7 @@ impl History {
     /// restore, or `None` if there's nothing to redo.
     pub fn redo(&mut self, buffer: &mut Buffer) -> Option<Vec<Selection>> {
         let entry = self.redo_stack.pop()?;
+        self.revision = Revision::fresh();
         entry.transaction.apply(buffer);
         let selections = entry.transaction.selections_after.clone();
         self.state = entry.after;
@@ -279,10 +307,19 @@ impl History {
     /// Makes the current state reachable by undo even if later typing would
     /// otherwise coalesce across a saved snapshot or explicit command boundary.
     pub fn checkpoint(&mut self) -> u64 {
-        if let Some(last) = self.undo_stack.last_mut() {
+        if let Some(last) = self.undo_stack.last_mut()
+            && last.transaction.chainable
+        {
             last.transaction.chainable = false;
+            self.revision = Revision::fresh();
         }
         self.state
+    }
+
+    /// Changes whenever undo, redo, recording or a checkpoint changes this
+    /// history. Equal values mean equal contents (see [`Revision`]).
+    pub fn revision(&self) -> u64 {
+        self.revision.0
     }
 }
 
