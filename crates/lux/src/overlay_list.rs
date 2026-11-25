@@ -48,7 +48,11 @@ pub(crate) fn centered_frame(
 ) -> ListFrame {
     let box_ = crate::render::panel::selector_box(viewport_width, tab_bar, scale);
     let available = (window_height - tab_bar - status_bar - 16.0 * scale).max(box_.row_height);
-    let target = (window_height * HEIGHT_FRACTION).clamp(box_.row_height * 4.0, available);
+    // A short window wins over the four-row floor: `clamp` would panic when
+    // the floor is taller than the space, so cap after the floor instead.
+    let target = (window_height * HEIGHT_FRACTION)
+        .max(box_.row_height * 4.0)
+        .min(available);
     frame_from(
         box_.left,
         box_.top,
@@ -210,6 +214,30 @@ mod tests {
         assert!(frame.visible > 8, "visible {}", frame.visible);
         assert!(frame.height <= 1200.0 * HEIGHT_FRACTION + 1.0);
         assert!(frame.height >= 36.0 * 6.0);
+    }
+
+    #[test]
+    fn a_tiny_window_degrades_to_fewer_rows_without_panicking() {
+        for scale in [1.0, 2.0] {
+            for status_bar in [0.0, 24.0 * scale] {
+                for height in (0..=400).step_by(4) {
+                    let frame = centered_frame(
+                        800.0,
+                        height as f32,
+                        32.0 * scale,
+                        status_bar,
+                        scale,
+                        40,
+                        39,
+                    );
+                    assert!(frame.visible >= 1 && frame.visible <= 40);
+                    assert!(frame.height.is_finite());
+                    assert!(frame.origin + frame.visible <= 40);
+                }
+            }
+        }
+        let short = centered_frame(800.0, 200.0, 32.0, 24.0, 1.0, 40, 0);
+        assert!(short.visible < MIN_ROWS, "visible {}", short.visible);
     }
 
     #[test]
