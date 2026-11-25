@@ -491,6 +491,7 @@ impl App {
             *scale_factor,
             cx,
             cy,
+            window_height,
         );
 
         term::render_term(

@@ -43,7 +43,9 @@ pub(crate) struct ModalMetrics {
 
 impl ModalMetrics {
     pub(crate) fn from_app(app: &App) -> Self {
-        let status = crate::status_bar::STATUS_BAR_HEIGHT;
+        // The renderer sizes the card with this same scaled height, which is
+        // 0 in distraction-free mode. Hit-testing must not drift from it.
+        let status = app.status_bar_height();
         let tab = app.tab_bar_height();
         let height = app
             .gpu_window

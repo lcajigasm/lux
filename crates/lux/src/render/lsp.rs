@@ -31,6 +31,7 @@ pub(crate) fn render_lsp(
     scale_factor: f32,
     cursor_x: f32,
     cursor_y: f32,
+    window_height: f32,
 ) {
     // 1. Diagnostics squiggles
     render_diagnostics_squiggles(
@@ -59,7 +60,7 @@ pub(crate) fn render_lsp(
             cursor_x,
             cursor_y + line_height,
             viewport_width,
-            editor_top + viewport_height + crate::status_bar::STATUS_BAR_HEIGHT,
+            window_height,
             scale_factor,
         );
     }
