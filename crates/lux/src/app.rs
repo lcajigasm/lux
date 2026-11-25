@@ -295,7 +295,8 @@ impl App {
         }
 
         // Modals own keys before the document. An unhandled shortcut still falls through.
-        if !crate::about::handle_about_key(self, ctx, key_event)
+        if !crate::tab_strip::handle_key(self, key_event)
+            && !crate::about::handle_about_key(self, ctx, key_event)
             && !crate::conflict::handle_conflict_key(self, ctx, key_event)
             && !crate::git::handle_branch_picker_key(self, key_event)
             && !crate::palette::handle_palette_key(self, ctx, key_event)
@@ -479,7 +480,7 @@ impl PlatformEventHandler for App {
                 {
                     gpu_window.window.request_redraw();
                 }
-                if crate::chrome::drag_tab(self)
+                if crate::tab_strip::drag_tab(self)
                     && let Some(gpu_window) = &self.gpu_window
                 {
                     gpu_window.window.request_redraw();
@@ -521,7 +522,7 @@ impl PlatformEventHandler for App {
                     self.mouse.selection_anchor = None;
                     self.mouse.word_anchor = None;
                     self.mouse.line_anchor = None;
-                    self.documents.tab_drag = None;
+                    crate::tab_strip::release_drag(self);
                     self.end_divider_drag();
                 }
                 self.refresh_accessibility();

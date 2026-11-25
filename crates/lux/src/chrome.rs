@@ -1,6 +1,7 @@
 //! Mouse click handling on desktop window chrome (tabs, sidebar, minimap, status bar).
 
-use crate::app::{App, TAB_CLOSE_BTN_WIDTH};
+use crate::app::App;
+use crate::tab_strip::tab_at;
 use lux_platform::{MouseButton, PlatformContext};
 
 pub(crate) fn handle_mouse_click_on_chrome(
@@ -62,22 +63,24 @@ pub(crate) fn handle_mouse_click_on_chrome(
     }
 
     if mouse_y < app.tab_bar_height() {
-        if let Some((index, on_close)) = tab_at(app, mouse_x) {
+        if button == MouseButton::Left && crate::tab_strip::layout(app).on_button(mouse_x) {
+            crate::tab_strip::list::open(app);
+        } else if let Some((index, on_close)) = tab_at(app, mouse_x) {
             let tab_id = app.documents.tabs.tabs()[index].id;
             let pinned = app.documents.tabs.tabs()[index].pinned;
             match button {
                 MouseButton::Left => {
                     if on_close {
                         app.close_tab(ctx, tab_id);
-                        app.documents.tab_drag = None;
+                        app.documents.strip.drag = None;
                     } else {
                         app.switch_to_tab(tab_id);
-                        app.documents.tab_drag = Some((tab_id, mouse_x));
+                        crate::tab_strip::press_tab(app, tab_id, index, mouse_x);
                     }
                 }
                 MouseButton::Middle => {
                     app.close_tab(ctx, tab_id);
-                    app.documents.tab_drag = None;
+                    app.documents.strip.drag = None;
                 }
                 MouseButton::Right => {
                     app.documents.tab_context_menu =
@@ -232,54 +235,6 @@ pub(crate) fn handle_mouse_click_on_chrome(
     }
 
     false
-}
-
-pub(crate) fn tab_at(app: &App, mouse_x: f32) -> Option<(usize, bool)> {
-    let count = app.documents.tabs.tabs().len();
-    if count == 0 {
-        return None;
-    }
-    let width = app.tab_width().max(1.0);
-    let origin = app.sidebar_width() - app.documents.tabs.scroll();
-    let local = mouse_x - origin;
-    if local < 0.0 {
-        return None;
-    }
-    let index = (local / width) as usize;
-    if index >= count {
-        return None;
-    }
-    let close_w = TAB_CLOSE_BTN_WIDTH * app.scale_factor;
-    let on_close = local - index as f32 * width >= width - close_w;
-    Some((index, on_close))
-}
-
-pub(crate) fn scroll_tabs(app: &mut App, delta_x: f32) {
-    let count = app.documents.tabs.tabs().len() as f32;
-    let width = app.tab_width();
-    let max_scroll = (count * width - app.viewport.width).max(0.0);
-    let next = (app.documents.tabs.scroll() - delta_x).clamp(0.0, max_scroll);
-    app.documents.tabs.set_scroll(next);
-    app.scheduler.invalidate_all();
-}
-
-pub(crate) fn drag_tab(app: &mut App) -> bool {
-    let Some((id, origin_x)) = app.documents.tab_drag else {
-        return false;
-    };
-    let mouse_x = app.mouse.position.x as f32;
-    if (mouse_x - origin_x).abs() < 6.0 {
-        return false;
-    }
-    let Some((index, _)) = tab_at(app, mouse_x) else {
-        return false;
-    };
-    if app.reorder_tab(id, index) {
-        app.documents.tab_drag = Some((id, mouse_x));
-        true
-    } else {
-        false
-    }
 }
 
 pub(crate) fn handle_status_bar_click(app: &mut App, mouse_x: f32, mouse_y: f32) {

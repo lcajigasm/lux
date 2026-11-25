@@ -28,6 +28,7 @@ mod snippet_picker;
 pub(crate) mod split;
 mod status_bar;
 mod tab_bar;
+mod tab_list;
 mod term;
 pub(crate) mod text;
 mod theme_picker;
@@ -47,6 +48,7 @@ impl App {
     /// Paints one frame: the editor or the Markdown preview, then chrome.
     pub(crate) fn redraw(&mut self, ctx: &dyn PlatformContext) {
         crate::overlay_motion::begin_frame(self.chrome.motion.reduced);
+        crate::tab_strip::follow_active(self);
         if !self.presentation.ready(Instant::now()) {
             return;
         }
@@ -427,8 +429,10 @@ impl App {
                 &mut quad_instances,
             );
         }
+        let tab_list = crate::tab_strip::list::view(documents, is_current_dirty);
         modals::render_all_modals(
             ui,
+            tab_list.as_ref(),
             viewport,
             window_width,
             window_height,

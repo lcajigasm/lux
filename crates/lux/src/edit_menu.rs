@@ -287,6 +287,7 @@ fn dismiss_pickers(app: &mut App) {
     app.ui.command_palette = None;
     app.ui.goto_anything = None;
     app.ui.language_picker = None;
+    app.documents.strip.list = None;
     app.ui.build.picker = None;
     app.ui.project.picker = None;
     app.ui.theme_picker = None;

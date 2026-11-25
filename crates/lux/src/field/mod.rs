@@ -250,6 +250,9 @@ fn text_field(app: &mut App) -> Option<&mut QueryField> {
     if let Some(picker) = app.ui.language_picker.as_mut() {
         return Some(&mut picker.query);
     }
+    if let Some(list) = app.documents.strip.list.as_mut() {
+        return Some(&mut list.query);
+    }
     if let Some(picker) = app.ui.build.picker.as_mut() {
         return Some(&mut picker.query);
     }
@@ -329,6 +332,15 @@ fn composing_flag(app: &App) -> bool {
         return true;
     }
     if app
+        .documents
+        .strip
+        .list
+        .as_ref()
+        .is_some_and(|l| l.query.is_composing())
+    {
+        return true;
+    }
+    if app
         .ui
         .project
         .picker
@@ -381,6 +393,7 @@ pub(crate) fn panel_blocks_document_ime(app: &App) -> bool {
     app.ui.command_palette.is_some()
         || app.ui.git.branch_picker.is_some()
         || app.ui.language_picker.is_some()
+        || app.documents.strip.list.is_some()
         || app.ui.build.picker.is_some()
         || app.ui.project.picker.is_some()
         || app.ui.theme_picker.is_some()
@@ -489,6 +502,7 @@ fn has_text_field(app: &App) -> bool {
     app.ui.command_palette.is_some()
         || app.ui.git.branch_picker.is_some()
         || app.ui.language_picker.is_some()
+        || app.documents.strip.list.is_some()
         || app.ui.build.picker.is_some()
         || app.ui.project.picker.is_some()
         || app.ui.theme_picker.is_some()

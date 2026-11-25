@@ -12,6 +12,7 @@ use crate::ui::UiOverlays;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_all_modals(
     ui: &mut UiOverlays,
+    tab_list: Option<&crate::tab_strip::list::TabListView>,
     viewport: &Viewport,
     window_width: f32,
     window_height: f32,
@@ -76,6 +77,26 @@ pub(crate) fn render_all_modals(
     if let Some(picker) = &ui.language_picker {
         super::language_picker::render_language_picker(
             picker,
+            window_width,
+            window_height,
+            tab_bar_height,
+            status_bar_height,
+            scale_factor,
+            stroke,
+            font,
+            editor_view,
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            theme,
+            quad_instances,
+            glyph_instances,
+        );
+    }
+
+    if let Some(list) = tab_list {
+        super::tab_list::render_tab_list(
+            list,
             window_width,
             window_height,
             tab_bar_height,
