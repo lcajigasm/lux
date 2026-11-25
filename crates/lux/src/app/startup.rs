@@ -31,12 +31,18 @@ impl App {
         self.start_deferred_loads();
     }
 
-    /// Starts the coverage-font read and the recovery scan on workers.
+    /// Starts the UI-font read, the coverage-font read, and the recovery
+    /// scan on workers. The UI face is small and selectors wait for it, so
+    /// it gets its own worker instead of queueing behind the coverage faces
+    /// (Apple Color Emoji alone is ~180 MB).
     pub(crate) fn start_deferred_loads(&mut self) {
+        ui_io::spawn(self, None, || {
+            crate::font::load_ui_font();
+            Some(Done::UiFont)
+        });
         ui_io::spawn(self, None, || {
             let started = std::time::Instant::now();
             let faces = crate::font::read_coverage_faces();
-            crate::font::warm_ui_font();
             eprintln!(
                 "Lux: phase coverage {:.1} ms (worker)",
                 started.elapsed().as_secs_f64() * 1000.0

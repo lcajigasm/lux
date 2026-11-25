@@ -286,9 +286,9 @@ fn coverage_fonts_and_recovery_scan_load_after_the_call_returns() {
     app.ui.dialogs.jobs.set_wake(ctx.background_waker());
     let hold = app.ui.dialogs.jobs.hold();
     app.start_deferred_loads();
-    assert_eq!(app.ui.dialogs.jobs.in_flight(), 2, "reads ran inline");
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 3, "reads ran inline");
 
     hold.release();
-    ctx.settle(&mut app, 2);
+    ctx.settle(&mut app, 3);
     assert_eq!(app.ui.dialogs.jobs.in_flight(), 0);
 }

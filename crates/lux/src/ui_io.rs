@@ -38,6 +38,8 @@ pub(crate) enum Done {
         saved: crate::macros::Macro,
     },
     MacroFailed(String),
+    /// The UI face was read from disk and can be registered.
+    UiFont,
     /// Coverage font faces read from disk.
     Fonts(Vec<crate::font::CoverageFace>),
     /// First document with an unsaved recovery snapshot, if any.
@@ -243,8 +245,8 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
         Done::Fonts(faces) => {
             let layout = app.editor_view.text_layout_mut();
             crate::font::install_coverage_faces(layout, &faces);
-            crate::font::install_ui_font(layout);
         }
+        Done::UiFont => crate::font::install_ui_font(app.editor_view.text_layout_mut()),
         Done::Recovery(first) => crate::app::startup::note_recovery(app, first),
     }
 }
