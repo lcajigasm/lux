@@ -9,5 +9,6 @@ pub mod merge_conflicts;
 pub mod staging;
 pub mod stash;
 pub mod status;
+mod worktree;
 
 pub use gix;

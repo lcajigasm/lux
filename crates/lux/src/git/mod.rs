@@ -3,7 +3,6 @@
 //! Provides gutter change indicators against HEAD, hunk staging/reverting popup,
 //! Source Control sidebar panel, diff views, and inline merge conflict resolution.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use lux_core::buffer::Buffer;
@@ -16,7 +15,10 @@ use crate::app::App;
 use crate::document::DocumentEntry;
 
 pub(crate) mod branch_picker;
+pub(crate) mod colors;
 mod job;
+pub(crate) mod live;
+pub(crate) mod marks;
 mod snapshot;
 
 pub(crate) use branch_picker::handle_branch_picker_key;
@@ -25,6 +27,8 @@ pub(crate) use job::{
     request_history, request_stage_cursor_hunk, request_stage_file, request_status,
     request_unstage_cursor_hunk,
 };
+pub(crate) use live::{note_disk_changes, note_edit, note_folder};
+pub(crate) use marks::{git_marks_label, publish_git_marks};
 
 #[derive(Debug, Clone)]
 pub(crate) struct GutterHunkPopup {
@@ -56,6 +60,12 @@ pub(crate) struct GitState {
     pub(crate) hunks: Vec<Hunk>,
     pub(crate) markers: Vec<GutterMarker>,
     pub(crate) changed_files: Vec<ChangedFile>,
+    /// Ignored paths relative to `repo_root`, outermost first.
+    pub(crate) ignored: Vec<PathBuf>,
+    /// Active tab and history state the gutter was last requested for.
+    pub(crate) edit_key: Option<(Option<lux_ui::tabs::TabId>, u64)>,
+    /// Folder and folder epoch the tree's status was last requested for.
+    pub(crate) status_for: Option<(PathBuf, u64)>,
     pub(crate) selected_file_index: usize,
     pub(crate) active_popup: Option<GutterHunkPopup>,
     pub(crate) conflict_blocks: Vec<ConflictMarkerBlock>,
@@ -72,57 +82,6 @@ pub(crate) struct GitState {
 impl GitState {
     pub(crate) fn new() -> Self {
         Self::default()
-    }
-}
-
-/// `M`, `A`, or `D` for each changed path, plus the same letter on every
-/// parent directory under `root`. The repository root itself is unmarked.
-pub(crate) fn git_mark_map(root: &Path, files: &[ChangedFile]) -> HashMap<PathBuf, char> {
-    let mut marks = HashMap::new();
-    for file in files {
-        let letter = match file.status {
-            lux_git::diff_panel::ChangeStatus::Added => 'A',
-            lux_git::diff_panel::ChangeStatus::Modified => 'M',
-            lux_git::diff_panel::ChangeStatus::Deleted => 'D',
-        };
-        let absolute = root.join(&file.path);
-        marks.insert(absolute.clone(), letter);
-        let mut parent = absolute.parent();
-        while let Some(dir) = parent {
-            if dir == root {
-                break;
-            }
-            marks.entry(dir.to_path_buf()).or_insert(letter);
-            parent = dir.parent();
-        }
-    }
-    marks
-}
-
-/// Probe and test label: relative paths, sorted, `path:M`.
-pub(crate) fn git_marks_label(files: &[ChangedFile]) -> String {
-    let mut parts = files
-        .iter()
-        .map(|file| {
-            let letter = match file.status {
-                lux_git::diff_panel::ChangeStatus::Added => 'A',
-                lux_git::diff_panel::ChangeStatus::Modified => 'M',
-                lux_git::diff_panel::ChangeStatus::Deleted => 'D',
-            };
-            format!("{}:{letter}", file.path.display())
-        })
-        .collect::<Vec<_>>();
-    parts.sort();
-    parts.join(",")
-}
-
-pub(crate) fn publish_git_marks(app: &mut App) {
-    let Some(root) = app.ui.git.repo_root.clone() else {
-        return;
-    };
-    let marks = git_mark_map(&root, &app.ui.git.changed_files);
-    if let Some(sidebar) = app.ui.sidebar.as_mut() {
-        sidebar.git_marks = marks;
     }
 }
 
@@ -171,6 +130,12 @@ pub(crate) fn apply_switched_file(app: &mut App, bytes: &[u8]) {
 pub(crate) fn refresh_git_state(app: &mut App) {
     app.ui.git.conflict_blocks = find_conflict_blocks(&app.buffer);
     job::request_refresh(app);
+}
+
+/// A save rewrote a file: the gutter and the tree's state both change.
+pub(crate) fn after_save(app: &mut App) {
+    refresh_git_state(app);
+    live::refresh_status(app);
 }
 
 pub(crate) fn find_conflict_blocks(buffer: &Buffer) -> Vec<ConflictMarkerBlock> {
@@ -438,6 +403,13 @@ pub(crate) fn handle_git_click(
 
 #[cfg(test)]
 mod feature_tests;
+#[cfg(test)]
+mod live_tests;
+
+/// The worker mailbox is process-wide, so two tests draining it at once
+/// would steal each other's results. Tests that call [`poll`] hold this.
+#[cfg(test)]
+pub(crate) static MAILBOX_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 #[cfg(test)]
 mod tests {
     use super::*;

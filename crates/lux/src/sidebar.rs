@@ -32,8 +32,8 @@ pub(crate) struct SidebarState {
     pub(crate) focused: bool,
     pub(crate) context_menu: Option<menu::SidebarContextMenu>,
     pub(crate) inline_input: Option<inline::InlineInputState>,
-    /// Absolute paths of files and parent directories that differ from `HEAD`.
-    pub(crate) git_marks: HashMap<PathBuf, char>,
+    /// Git state of changed files, their parent directories, and ignored paths.
+    pub(crate) git_marks: HashMap<PathBuf, crate::git::marks::GitMark>,
     /// Row press that becomes a move once the pointer travels, or a click
     /// if it does not.
     pub(crate) drag: Option<drag::TreeDrag>,

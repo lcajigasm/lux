@@ -57,7 +57,8 @@ impl fmt::Display for StatusError {
 
 impl std::error::Error for StatusError {}
 
-fn branch_state(repo: &gix::Repository) -> Result<BranchState, StatusError> {
+/// Where `HEAD` points, without walking the working tree.
+pub fn branch_state(repo: &gix::Repository) -> Result<BranchState, StatusError> {
     let head = repo
         .head()
         .map_err(|e| StatusError::ReadHead(Box::new(e)))?;

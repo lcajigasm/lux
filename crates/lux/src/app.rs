@@ -324,6 +324,7 @@ impl App {
             self.ui.session.mark_dirty(path);
         }
         self.save_recovery_snapshot();
+        crate::git::note_edit(self);
         crate::session::note_change();
         self.update_document_title();
         if self.ui.announcement.is_none() {
@@ -566,6 +567,9 @@ impl PlatformEventHandler for App {
         // so the command has to land first.
         crate::menu::poll_and_dispatch(self, ctx);
         crate::session::poll_file_watcher(self);
+        // Edits from the mouse, menus and IME end here too.
+        crate::git::note_edit(self);
+        crate::git::note_folder(self);
         self.poll_settings_watcher();
         crate::probe::poll(self, ctx);
         let waiting = crate::snapshot::usr1_waiting();

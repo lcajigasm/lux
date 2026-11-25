@@ -481,7 +481,7 @@ impl App {
                     }
                     self.sync_active_document_to_entry();
                     self.update_syntax_on_open();
-                    crate::git::refresh_git_state(self);
+                    crate::git::after_save(self);
                     if let Some(path) = self.documents.path.clone() {
                         crate::lsp::sync_document_save(self, &path);
                     }

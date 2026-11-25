@@ -8,7 +8,7 @@ use lux_git::gutter::Hunk;
 use super::snapshot::{self, FileShot};
 use crate::app::App;
 
-enum Event {
+pub(super) enum Event {
     File {
         generation: u64,
         shot: FileShot,
@@ -54,28 +54,37 @@ pub(crate) fn register_waker(waker: Wake) {
     }
 }
 
-fn spawn(work: impl FnOnce() -> Event + Send + 'static) {
-    let tx = mail().0.clone();
+/// Hands a finished result to the UI thread and wakes its event loop.
+pub(super) fn deliver(event: Event) {
     let wake = waker_slot().lock().ok().and_then(|slot| slot.clone());
+    if mail().0.send(event).is_ok()
+        && let Some(wake) = wake
+    {
+        wake();
+    }
+}
+
+fn spawn(work: impl FnOnce() -> Event + Send + 'static) {
     let _ = std::thread::Builder::new()
         .name("lux-git".into())
         .spawn(move || {
             let event = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work))
                 .unwrap_or_else(|_| Event::Failed("git task failed".into()));
-            if tx.send(event).is_ok()
-                && let Some(wake) = wake
-            {
-                wake();
-            }
+            deliver(event);
         });
 }
 
-pub(crate) fn request_refresh(app: &mut App) {
-    let generation = {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    };
+/// A new gutter generation: results for any older one are dropped.
+pub(super) fn next_generation(app: &mut App) -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let generation = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     app.ui.git.generation = generation;
+    generation
+}
+
+pub(crate) fn request_refresh(app: &mut App) {
+    let generation = next_generation(app);
+    app.ui.git.edit_key = Some((app.documents.active_tab, app.history.state_id()));
     app.ui.git.hunks.clear();
     app.ui.git.markers.clear();
     let path = app.documents.path.clone().or_else(|| {
@@ -277,6 +286,7 @@ pub(crate) fn poll(app: &mut App) {
                 app.ui.git.repo_root = Some(shot.root);
                 app.ui.git.branch_name = shot.branch;
                 app.ui.git.changed_files = shot.files;
+                app.ui.git.ignored = shot.ignored;
                 super::publish_git_marks(app);
                 app.scheduler.invalidate_all();
             }
@@ -295,8 +305,12 @@ pub(crate) fn poll(app: &mut App) {
                     super::apply_switched_file(app, &bytes);
                 }
                 super::refresh_git_state(app);
+                super::live::refresh_status(app);
             }
-            Event::Again => super::refresh_git_state(app),
+            Event::Again => {
+                super::refresh_git_state(app);
+                super::live::refresh_status(app);
+            }
             Event::Failed(message) => {
                 app.ui.announcement = Some(message);
             }

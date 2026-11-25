@@ -174,11 +174,17 @@ fn a_modified_file_marks_itself_and_its_parent() {
         path: Path::new("src/note.txt").into(),
         status: lux_git::diff_panel::ChangeStatus::Modified,
     }];
-    let marks = super::git_mark_map(Path::new("/repo"), &files);
-    assert_eq!(marks.get(Path::new("/repo/src/note.txt")), Some(&'M'));
-    assert_eq!(marks.get(Path::new("/repo/src")), Some(&'M'));
+    let marks = super::marks::git_mark_map(Path::new("/repo"), &files, &[]);
+    assert_eq!(
+        marks.get(Path::new("/repo/src/note.txt")),
+        Some(&super::marks::GitMark::Modified)
+    );
+    assert_eq!(
+        marks.get(Path::new("/repo/src")),
+        Some(&super::marks::GitMark::Modified)
+    );
     assert!(!marks.contains_key(Path::new("/repo")));
-    assert_eq!(super::git_marks_label(&files), "src/note.txt:M");
+    assert_eq!(super::git_marks_label(&files, &[]), "src/note.txt:M");
 }
 
 #[test]
@@ -193,11 +199,17 @@ fn status_copies_the_mark_onto_the_sidebar() {
     }];
     super::publish_git_marks(&mut app);
     let marks = &app.ui.sidebar.as_ref().unwrap().git_marks;
-    assert_eq!(marks.get(file.as_path()), Some(&'M'));
+    assert_eq!(
+        marks.get(file.as_path()),
+        Some(&super::marks::GitMark::Modified)
+    );
 }
 
 #[test]
 fn the_worker_applies_gutter_markers() {
+    let _mailbox = super::MAILBOX_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let (_dir, file) = note_repo();
     let mut app = app();
     app.documents.path = Some(file);

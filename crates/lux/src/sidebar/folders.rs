@@ -306,6 +306,7 @@ fn detach_closed_repo(app: &mut crate::app::App, closed: &std::path::Path) {
     app.ui.git.hunks.clear();
     app.ui.git.markers.clear();
     app.ui.git.changed_files.clear();
+    app.ui.git.ignored.clear();
     app.ui.git.selected_file_index = 0;
     app.ui.git.active_popup = None;
     app.ui.git.conflict_blocks.clear();

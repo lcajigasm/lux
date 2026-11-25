@@ -7,8 +7,8 @@ thread wakes it.
 
 | Surface | What it does | Test |
 |---|---|---|
-| Gutter | Markers for lines that differ from `HEAD` in the open buffer | `gutter_marks_the_added_line` |
-| Status | Changed paths in the worktree. `Git: Refresh Status` draws `M`, `A`, or `D` on that row in the file tree, and the same letter on each parent directory. A tracked file replaced by a directory is `D`; each file inside it is `A` | `status_lists_the_changed_file`, `a_tracked_file_replaced_by_a_directory_stays_a_deletion`, `a_modified_file_marks_itself_and_its_parent`, `status_copies_the_mark_onto_the_sidebar` |
+| Gutter | Markers for lines that differ from `HEAD` in the open buffer: green bar added, orange bar modified, red triangle removed. Recomputed on a worker 250 ms after edits pause, without saving | `gutter_marks_the_added_line`, `typing_in_a_tracked_file_updates_the_gutter_after_the_debounce_without_saving`, `every_gutter_mark_is_visible_on_every_builtin_gutter` |
+| Status | Changed, untracked, conflicted and ignored paths in the worktree. The file tree shows `M`, `A`, `D`, `U` or `C` and colors the name; a directory takes the strongest state below it; ignored paths are dimmed. Read when a folder opens, after file-watcher batches, saves and Lux git operations, and on `Git: Refresh Status`. A tracked file replaced by a directory is `D`; each file inside it is `U` | `status_lists_the_changed_file`, `a_tracked_file_replaced_by_a_directory_stays_a_deletion`, `a_staged_new_file_is_added_and_an_unstaged_one_untracked`, `an_unmerged_index_entry_is_conflicted`, `ignored_paths_collapse_to_the_ignored_directory`, `a_new_untracked_file_appears_in_the_tree_after_a_watcher_event`, `opening_a_folder_reads_its_status_once_without_a_command`, `every_tree_state_is_legible_on_every_builtin_sidebar` |
 | Branch | The current `HEAD` name in the status bar. The click, `Git: Switch Branch`, and `Git: Create Branch` open the branch list. Enter checks out a name when the worktree is clean, or creates a branch at the current commit without rewriting files | `create_branch_keeps_a_dirty_file_and_moves_head`, `switch_branch_refuses_a_dirty_worktree`, `switch_branch_checks_out_a_clean_tree` |
 | Diff | A unified diff tab of the open file against `HEAD` | `diff_shows_the_added_line` |
 | Stage hunk | Writes one hunk into the index. The gutter popup and `Git: Stage Hunk` both use it | `stage_hunk_records_that_hunk` |
@@ -26,8 +26,16 @@ Palette commands: `Git: Refresh Status`, `Git: View File Diff`,
 `Git: Unstage Hunk`,
 `Git: Commit Staged Changes`, `Git: Blame`, `Git: File History`.
 
-A file refresh does not walk the worktree. Status does, and only when
-`Git: Refresh Status` runs. The letters use the theme accent because the
-theme has no separate git color. Blame and history describe the committed
+A file refresh does not walk the worktree. Status does, on the
+`lux-git-status` worker: one walk at a time, and requests that arrive
+during a walk collapse into one more. A watcher batch whose paths all
+sit inside ignored directories (build output) does not start a walk. An
+ignored directory is reported once and not entered. The gutter diff runs
+on the `lux-git-gutter` worker, which waits for edits to pause for
+250 ms (1 s at most) and diffs only the newest buffer copy; huge-file
+mode diffs once on open only. State colors have fixed hues (green added
+or untracked, orange modified, red deleted or conflicted) moved toward
+the theme's contrast until they reach WCAG 4.5:1 on the sidebar and 3:1
+on the gutter. Blame and history describe the committed
 file, not unsaved buffer text. Staging reads the file on disk, so an
 unsaved buffer is not what gets staged.

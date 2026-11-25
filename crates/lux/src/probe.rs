@@ -463,6 +463,7 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     out.push_str("git_marks=");
     out.push_str(&escape(&crate::git::git_marks_label(
         &app.ui.git.changed_files,
+        &app.ui.git.ignored,
     )));
     out.push('\n');
     let chord = app
