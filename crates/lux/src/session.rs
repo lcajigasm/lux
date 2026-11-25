@@ -11,11 +11,14 @@ use lux_core::multicursor::MultiCursor;
 use lux_core::position::Position;
 use lux_core::selection::Selection;
 use lux_workspace::session::{CursorState, SESSION_FILE_NAME, Session, TabState};
-use lux_workspace::watcher::{ChangeKind, FileWatcher};
+use lux_workspace::watcher::FileWatcher;
 
 use crate::app::App;
-use crate::conflict::ConflictPrompt;
 use crate::document::DocumentEntry;
+
+mod disk_events;
+
+pub(crate) use disk_events::{mark_removed, poll_file_watcher};
 
 #[derive(Default)]
 pub(crate) struct WorkspaceSession {
@@ -24,6 +27,11 @@ pub(crate) struct WorkspaceSession {
     /// Background project symbol index for `Cmd+Shift+R`.
     pub(crate) symbols: Option<lux_workspace::SymbolIndexer>,
     waker: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// Sidebar create, rename, duplicate, and trash jobs. Kept here so a
+    /// result still reaches the tabs after the last folder closes.
+    pub(crate) file_ops: crate::sidebar::worker::Jobs,
+    /// Clean open files being read again after an external edit.
+    pub(crate) reloads: disk_events::Reloads,
     /// Last measured frame. Written on move and resize, and used at quit
     /// if the window has already closed.
     pub(crate) frame: Option<lux_workspace::WindowFrame>,
@@ -293,78 +301,6 @@ pub(crate) fn restore_session(app: &mut App, session_path: &Path) -> std::io::Re
 
     app.scheduler.invalidate_all();
     Ok(restored_any)
-}
-
-pub(crate) fn poll_file_watcher(app: &mut App) {
-    crate::goto::symbols::poll(app);
-    let Some(batch) = app.ui.session.watcher.as_mut().map(|w| w.try_recv()) else {
-        return;
-    };
-    if let Some(error) = batch.errors.first() {
-        app.ui.announcement = Some(format!("File watcher: {error}"));
-    }
-    let changes = batch.changes;
-
-    crate::goto::symbols::note_changes(app, &changes);
-
-    let mut repaint_needed = false;
-    for change in changes {
-        match change.kind {
-            ChangeKind::Reload => {
-                let is_active_reloaded = if let Some(entry) = app
-                    .documents
-                    .entries
-                    .iter_mut()
-                    .find(|e| e.path.as_ref() == Some(&change.path))
-                {
-                    if !entry.is_dirty() {
-                        if let Ok(new_buf) = Buffer::open(&change.path) {
-                            entry.buffer = new_buf.clone();
-                            entry.saved_version = entry.history.state_id();
-                            entry.disk_snapshot = Some(new_buf);
-                            app.documents.active_tab == Some(entry.tab_id)
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
-
-                if is_active_reloaded && let Ok(new_buf) = Buffer::open(&change.path) {
-                    app.buffer = new_buf;
-                    app.update_syntax_on_open();
-                }
-                repaint_needed = true;
-            }
-            ChangeKind::Conflict => {
-                let is_dirty_open = app
-                    .documents
-                    .entries
-                    .iter()
-                    .any(|e| e.path.as_ref() == Some(&change.path) && e.is_dirty());
-
-                if is_dirty_open {
-                    app.ui.dialogs.conflict_prompt = Some(ConflictPrompt::new(change.path));
-                    repaint_needed = true;
-                }
-            }
-            ChangeKind::Created | ChangeKind::Removed => {
-                if crate::sidebar::watch::apply(app, &change) {
-                    repaint_needed = true;
-                }
-            }
-        }
-    }
-
-    if repaint_needed {
-        app.scheduler.invalidate_all();
-        if let Some(gpu) = &app.gpu_window {
-            gpu.window.request_redraw();
-        }
-    }
 }
 
 #[cfg(test)]

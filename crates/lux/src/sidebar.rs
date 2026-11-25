@@ -14,6 +14,7 @@ pub(crate) mod folders;
 pub(crate) mod inline;
 pub(crate) mod menu;
 pub(crate) mod ops;
+pub(crate) mod pending;
 pub(crate) mod watch;
 pub(crate) mod worker;
 
@@ -31,8 +32,6 @@ pub(crate) struct SidebarState {
     pub(crate) focused: bool,
     pub(crate) context_menu: Option<menu::SidebarContextMenu>,
     pub(crate) inline_input: Option<inline::InlineInputState>,
-    /// Create, rename, duplicate, and trash results from the worker.
-    pub(crate) jobs: worker::Jobs,
     /// Absolute paths of files and parent directories that differ from `HEAD`.
     pub(crate) git_marks: HashMap<PathBuf, char>,
     /// Row press that becomes a move once the pointer travels, or a click
@@ -56,7 +55,6 @@ impl Default for SidebarState {
             focused: false,
             context_menu: None,
             inline_input: None,
-            jobs: worker::Jobs::default(),
             git_marks: HashMap::new(),
             drag: None,
             extra: Vec::new(),
@@ -78,7 +76,6 @@ impl SidebarState {
             focused: false,
             context_menu: None,
             inline_input: None,
-            jobs: worker::Jobs::default(),
             git_marks: HashMap::new(),
             drag: None,
             extra: Vec::new(),

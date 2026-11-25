@@ -922,6 +922,13 @@ and Delete run their disk work on a worker thread. The result comes back through
 the platform waker and updates the tree; an error (an existing name, a name with
 `/`, a permission failure) is shown in the status message and the tree is left as
 it was. A new file opens in a tab. A renamed file's open tab follows the new path.
+A Save, Close, or Save All of a file whose rename has not reported back yet waits
+for it, then runs against the new path, or the old one if the rename failed, so
+it never recreates the old file. Trashing an open file keeps its tab with the
+text, marked modified, the same as a file deleted by another program; Save writes
+it back. The jobs belong to the workspace session, so a result still reaches the
+tabs after the last folder is closed. Closing a folder cancels an inline name
+field opened in it, and a field in a later folder follows it to its new index.
 Delete asks first with a native "Move to Trash" dialog, the same `rfd` message
 dialog the unsaved-changes prompt uses, shown from the worker; Cancel keeps the
 file. There is no setting to skip the question. Duplicate names the copy
@@ -931,7 +938,7 @@ extend, Backspace/Delete, and Cmd+A/C/X/V/Z. Rename opens with the base name
 selected (`service` in `service.rs`; `.gitignore` whole). The context menu of a
 row in a second open folder acts on that folder's file. Still on the UI thread:
 drag-and-drop move (`FileTree::move_node`) and expanding a folder (one
-`read_dir`). Gate: `cargo test -p lux sidebar::ops_tests` (6 tests) and
+`read_dir`). Gate: `cargo test -p lux sidebar::ops_tests` (9 tests), `sidebar::folders::tests`, and
 `cargo test -p lux-ui file_tree::`. Verified on macOS (aarch64-apple-darwin).
 
 **Scope note (`lux-workspace`'s native watchers — this phase's third
@@ -943,9 +950,15 @@ consumes those events: a clean open file reloads and a dirty one asks
 (ST-FIX-13), and a loaded sidebar row appears or disappears when a file
 is created or removed (ST-FIX-14), in every folder open in the sidebar,
 not just the first (ST-SIDE-02). Adding, closing, or opening a folder
-starts or stops its watch on a worker thread (`FileWatcher::watch_detached`
-/ `unwatch_detached`); closing one folder keeps the others watched and
-keeps unsaved-file marks. The `stat` that classifies each event (does the
+starts or stops its watch on one worker thread per watcher
+(`FileWatcher::watch_detached` / `unwatch_detached`), in the order asked,
+so a folder closed right after it was added stays unwatched; closing one
+folder keeps the others watched and keeps unsaved-file marks. A clean
+open file edited elsewhere is read again on a worker thread
+(`crates/lux/src/session/disk_events.rs`); the new text replaces the
+tab's when the read arrives, unless the tab was edited meanwhile. A file
+removed from disk keeps its tab, marked modified with no disk baseline,
+so Save writes it again instead of failing its on-disk check. The `stat` that classifies each event (does the
 path exist, is it a directory) runs on the debouncer thread, so draining
 events on the UI thread is memory only, and the tree matches an event
 path by stripping its root (resolved once when the folder opens) instead
@@ -974,7 +987,7 @@ FSEvents coalesce the whole lifecycle into one raw batch, which trips
 silently swallows the real `Remove`, leaving only stray `Modify` events —
 `classify` now treats any event whose path no longer exists on disk as
 `Removed` regardless of the kind the debouncer attached. Verified on macOS
-(aarch64-apple-darwin): `cargo test -p lux-workspace watcher::` (15 tests,
+(aarch64-apple-darwin): `cargo test -p lux-workspace watcher::` (16 tests,
 6 of them driving the real FSEvents backend against real temp
 directories — re-run 3× clean to rule out flakiness from the timing
 involved). **Not yet exercised**: Linux's inotify backend and Windows'

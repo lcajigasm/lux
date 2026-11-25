@@ -104,10 +104,7 @@ pub(crate) fn duplicate_sidebar_node(app: &mut App, root: usize, node_id: NodeId
 
 fn submit(app: &mut App, job: worker::Job) -> bool {
     let waker = app.ui.session.waker();
-    let Some(sidebar) = app.ui.sidebar.as_mut() else {
-        return false;
-    };
-    sidebar.jobs.submit(job, waker);
+    app.ui.session.file_ops.submit(job, waker);
     true
 }
 

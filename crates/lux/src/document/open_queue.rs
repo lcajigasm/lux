@@ -31,7 +31,10 @@ pub(crate) fn enqueue(app: &mut App, ctx: &dyn PlatformContext, path: std::path:
     pump(app, ctx);
 }
 
+/// Starts the next waiting request once the document worker is free: a
+/// save that waited for a sidebar rename first, then the next queued open.
 pub(crate) fn pump(app: &mut App, ctx: &dyn PlatformContext) {
+    crate::sidebar::pending::replay(app, ctx);
     if app.documents.pending.is_some() || app.documents.open_queue.is_empty() {
         return;
     }

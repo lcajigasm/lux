@@ -3,7 +3,8 @@
 //! thread, sends one `Done` back, and wakes the platform loop. `poll`
 //! applies the result to whichever open folder holds the path. The
 //! watcher may report the same change first; applying it twice is a
-//! no-op.
+//! no-op. The jobs live in the workspace session, so a result still
+//! reaches the open tabs after the last folder is closed.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -13,6 +14,7 @@ use lux_platform::{FileDialogs, PlatformContext};
 use lux_ui::file_tree::{FileTree, NodeId, NodeKind, disk};
 
 use super::SidebarState;
+use super::pending::{self, Renames};
 use crate::app::App;
 
 type Wake = Arc<dyn Fn() + Send + Sync>;
@@ -52,6 +54,11 @@ pub(crate) enum Done {
     Duplicated {
         path: PathBuf,
     },
+    /// The rename did not happen; `from` is still the file's path.
+    RenameFailed {
+        from: PathBuf,
+        message: String,
+    },
     Trashed {
         path: PathBuf,
     },
@@ -63,23 +70,52 @@ pub(crate) enum Done {
 pub(crate) struct Jobs {
     tx: Sender<Done>,
     rx: Receiver<Done>,
+    /// Renames in flight, and the saves waiting for them.
+    pub(crate) renames: Renames,
+    /// Tests: the next job waits for one message here before it runs.
+    #[cfg(test)]
+    pub(crate) hold: Option<Receiver<()>>,
 }
 
 impl Default for Jobs {
     fn default() -> Self {
         let (tx, rx) = mpsc::channel();
-        Self { tx, rx }
+        Self {
+            tx,
+            rx,
+            renames: Renames::default(),
+            #[cfg(test)]
+            hold: None,
+        }
     }
 }
 
 impl Jobs {
-    pub(crate) fn submit(&self, job: Job, wake: Option<Wake>) {
+    pub(crate) fn submit(&mut self, job: Job, wake: Option<Wake>) {
+        let renaming = match &job {
+            Job::Rename { from, .. } => Some(from.clone()),
+            _ => None,
+        };
+        if let Some(from) = &renaming {
+            self.renames.begin(from.clone());
+        }
+        #[cfg(test)]
+        let hold = self.hold.take();
         let tx = self.tx.clone();
+        let failed = |message: String| match renaming.clone() {
+            Some(from) => Done::RenameFailed { from, message },
+            None => Done::Failed(message),
+        };
+        let on_panic = failed("File operation failed".into());
         let spawned = std::thread::Builder::new()
             .name("lux-sidebar-op".into())
             .spawn(move || {
+                #[cfg(test)]
+                if let Some(hold) = hold {
+                    let _ = hold.recv();
+                }
                 let done = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(job)))
-                    .unwrap_or_else(|_| Done::Failed("File operation failed".into()));
+                    .unwrap_or(on_panic);
                 if tx.send(done).is_ok()
                     && let Some(wake) = wake
                 {
@@ -87,13 +123,13 @@ impl Jobs {
                 }
             });
         if let Err(error) = spawned {
-            let _ = self.tx.send(Done::Failed(format!(
-                "Cannot start file operation: {error}"
-            )));
+            let _ = self
+                .tx
+                .send(failed(format!("Cannot start file operation: {error}")));
         }
     }
 
-    fn drain(&self) -> Vec<Done> {
+    pub(crate) fn drain(&self) -> Vec<Done> {
         self.rx.try_iter().collect()
     }
 }
@@ -106,7 +142,10 @@ fn run(job: Job) -> Done {
         },
         Job::Rename { from, name, kind } => match disk::rename_entry(&from, &name) {
             Ok(to) => Done::Renamed { from, to, kind },
-            Err(error) => Done::Failed(format!("Cannot rename to {name}: {error}")),
+            Err(error) => Done::RenameFailed {
+                from,
+                message: format!("Cannot rename to {name}: {error}"),
+            },
         },
         Job::Duplicate { src } => match disk::duplicate_file(&src) {
             Ok(path) => Done::Duplicated { path },
@@ -150,60 +189,73 @@ fn select(sidebar: &mut SidebarState, root: usize, id: Option<NodeId>) {
     }
 }
 
-/// Applies finished jobs. Called from the platform's background event.
+/// Applies finished jobs, then runs any save that waited for a rename.
+/// Called from the platform's background event.
 pub(crate) fn poll(app: &mut App, ctx: &dyn PlatformContext) {
-    let Some(done) = app.ui.sidebar.as_ref().map(|sidebar| sidebar.jobs.drain()) else {
+    let done = app.ui.session.file_ops.drain();
+    if done.is_empty() {
         return;
-    };
+    }
     for result in done {
         apply(app, ctx, result);
         app.scheduler.invalidate_all();
     }
+    pending::replay(app, ctx);
 }
 
-fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
+/// Updates the folder that holds `path`, if it is still open.
+fn note(app: &mut App, path: &Path, update: impl FnOnce(&mut FileTree) -> Option<NodeId>) {
     let Some(sidebar) = app.ui.sidebar.as_mut() else {
         return;
     };
+    if let Some((root, tree)) = tree_for(sidebar, path) {
+        let id = update(tree);
+        select(sidebar, root, id);
+    }
+}
+
+fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
     match done {
         Done::Created { path, kind } => {
-            if let Some((root, tree)) = tree_for(sidebar, &path) {
-                let id = tree.note_created_id(&path, kind);
-                select(sidebar, root, id);
-            }
+            note(app, &path, |tree| tree.note_created_id(&path, kind));
             if kind == NodeKind::File {
                 app.request_document(ctx, crate::document::Request::Open(Some(path)));
             }
         }
         Done::Renamed { from, to, kind } => {
-            if let Some((root, tree)) = tree_for(sidebar, &from) {
-                let id = tree.note_renamed(&from, &to, kind);
-                select(sidebar, root, id);
-            }
+            note(app, &from, |tree| tree.note_renamed(&from, &to, kind));
             super::drag::retarget_paths(app, &from, &to);
+            app.ui.session.file_ops.renames.finish(&from);
             app.documents.message = Some(format!("Renamed to {}", label(&to)));
         }
+        Done::RenameFailed { from, message } => {
+            app.ui.session.file_ops.renames.finish(&from);
+            app.documents.message = Some(message);
+        }
         Done::Duplicated { path } => {
-            if let Some((root, tree)) = tree_for(sidebar, &path) {
-                let id = tree.note_created_id(&path, NodeKind::File);
-                select(sidebar, root, id);
-            }
+            note(app, &path, |tree| {
+                tree.note_created_id(&path, NodeKind::File)
+            });
             app.documents.message = Some(format!("Duplicated: {}", label(&path)));
         }
         Done::Trashed { path } => {
-            if let Some((_, tree)) = tree_for(sidebar, &path) {
+            note(app, &path, |tree| {
                 tree.note_removed(&path);
-            }
-            let gone = sidebar.selected_node.is_some_and(|id| {
-                sidebar
-                    .tree
-                    .as_ref()
-                    .and_then(|tree| tree.node_path(id))
-                    .is_none()
+                None
             });
-            if gone {
-                sidebar.selected_node = None;
+            if let Some(sidebar) = app.ui.sidebar.as_mut() {
+                let gone = sidebar.selected_node.is_some_and(|id| {
+                    sidebar
+                        .tree
+                        .as_ref()
+                        .and_then(|tree| tree.node_path(id))
+                        .is_none()
+                });
+                if gone {
+                    sidebar.selected_node = None;
+                }
             }
+            crate::session::mark_removed(app, &path);
             app.documents.message = Some(format!("Moved to trash: {}", path.display()));
         }
         Done::Kept => {}

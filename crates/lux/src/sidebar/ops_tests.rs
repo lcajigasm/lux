@@ -207,3 +207,110 @@ fn duplicate_in_a_second_folder_copies_that_folders_file() {
     let label = tree_label(app.ui.sidebar.as_ref().unwrap());
     assert!(label.contains("1:beta copy.txt"), "{label}");
 }
+
+/// Opens `path` through the document worker and waits for it.
+fn open(app: &mut crate::app::App, ctx: &Context, path: &std::path::Path) {
+    app.request_document(
+        ctx,
+        crate::document::Request::Open(Some(path.to_path_buf())),
+    );
+    ctx.complete(app);
+    assert_eq!(app.documents.path.as_deref(), Some(path));
+}
+
+/// Holds the next sidebar job on its worker until the sender sends.
+fn hold_jobs(app: &mut crate::app::App) -> std::sync::mpsc::Sender<()> {
+    let (release, hold) = std::sync::mpsc::channel();
+    app.ui.session.file_ops.hold = Some(hold);
+    release
+}
+
+/// Starts renaming `a.rs` to `b.rs` from the menu, then asks to save the
+/// open `a.rs` while the rename is still held on the worker.
+fn save_during_rename(app: &mut crate::app::App, ctx: &Context) -> std::sync::mpsc::Sender<()> {
+    app.buffer = lux_core::buffer::Buffer::from_bytes(b"new\n").unwrap();
+    let release = hold_jobs(app);
+    let row = index_of(app, "a.rs");
+    menu_action(app, ctx, row, SidebarAction::Rename);
+    type_text(app, ctx, "b");
+    key(app, ctx, Key::Named(NamedKey::Enter));
+    app.request_document(ctx, crate::document::Request::Save { save_as: false });
+    assert!(!crate::document::open_queue::busy(app), "the save waits");
+    assert_eq!(app.ui.session.file_ops.renames.waiting(), 1);
+    release
+}
+
+fn finish(app: &mut crate::app::App, ctx: &Context, release: std::sync::mpsc::Sender<()>) {
+    release.send(()).unwrap();
+    // Each wake runs the background event, as the platform loop does,
+    // until the rename has reported and the waiting save has finished.
+    while app.ui.session.file_ops.renames.waiting() > 0 || crate::document::open_queue::busy(app) {
+        ctx.wake(app);
+    }
+}
+
+/// Review finding: a save right after a rename of the open file used to
+/// write the old path. It now waits for the rename and writes the new one.
+#[test]
+fn a_save_during_a_rename_writes_the_renamed_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = dir.path().join("a.rs");
+    let b = dir.path().join("b.rs");
+    std::fs::write(&a, "old\n").unwrap();
+    let (mut app, ctx) = setup(dir.path());
+    open(&mut app, &ctx, &a);
+    let release = save_during_rename(&mut app, &ctx);
+    assert_eq!(std::fs::read_to_string(&a).unwrap(), "old\n");
+    assert!(!b.exists());
+
+    finish(&mut app, &ctx, release);
+    assert!(!a.exists(), "the old path was not recreated");
+    assert_eq!(std::fs::read_to_string(&b).unwrap(), "new\n");
+    assert_eq!(app.documents.path.as_deref(), Some(b.as_path()));
+    assert!(!app.document_dirty());
+}
+
+/// A rename that fails leaves the tab on the old path, and the waiting
+/// save writes there.
+#[test]
+fn a_save_during_a_failed_rename_writes_the_old_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = dir.path().join("a.rs");
+    let b = dir.path().join("b.rs");
+    std::fs::write(&a, "old\n").unwrap();
+    std::fs::write(&b, "taken\n").unwrap();
+    let (mut app, ctx) = setup(dir.path());
+    open(&mut app, &ctx, &a);
+    let release = save_during_rename(&mut app, &ctx);
+
+    finish(&mut app, &ctx, release);
+    assert_eq!(std::fs::read_to_string(&a).unwrap(), "new\n");
+    assert_eq!(std::fs::read_to_string(&b).unwrap(), "taken\n");
+    assert_eq!(app.documents.path.as_deref(), Some(a.as_path()));
+    let message = app.documents.message.clone().unwrap_or_default();
+    assert!(!message.contains("Cannot check"), "{message}");
+}
+
+/// Trashing the open file keeps its tab, marked modified like a file
+/// deleted by another program, and Save writes it back.
+#[test]
+fn trashing_the_open_file_marks_its_tab_modified() {
+    let dir = tempfile::tempdir().unwrap();
+    let gone = dir.path().join("gone.txt");
+    std::fs::write(&gone, "text\n").unwrap();
+    let (mut app, ctx) = setup(dir.path());
+    open(&mut app, &ctx, &gone);
+    assert!(!app.document_dirty());
+    let row = index_of(&mut app, "gone.txt");
+    menu_action(&mut app, &ctx, row, SidebarAction::Delete);
+    ctx.wake(&mut app);
+    assert!(!gone.exists());
+    assert!(app.document_dirty());
+    assert!(app.documents.disk_snapshot.is_none());
+    assert_eq!(app.documents.path.as_deref(), Some(gone.as_path()));
+
+    app.request_document(&ctx, crate::document::Request::Save { save_as: false });
+    ctx.complete(&mut app);
+    assert_eq!(std::fs::read_to_string(&gone).unwrap(), "text\n");
+    assert!(!app.document_dirty());
+}

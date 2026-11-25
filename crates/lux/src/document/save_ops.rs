@@ -180,6 +180,10 @@ impl App {
         if self.documents.pending.is_some() {
             return;
         }
+        self.sync_active_document_to_entry();
+        if crate::sidebar::pending::defer_save_all(self) {
+            return;
+        }
         self.apply_on_save_transforms();
         self.sync_active_document_to_entry();
         let active = self.documents.active_tab;

@@ -68,6 +68,9 @@ pub(crate) fn save_snapshot(
 /// `None` when `request` was applied or stored. `Some` when the caller
 /// should run it on the worker.
 pub(super) fn accept(app: &mut crate::app::App, request: super::Request) -> Option<super::Request> {
+    if crate::sidebar::pending::defer_request(app, &request) {
+        return None;
+    }
     if app.documents.pending.is_some() {
         if matches!(request, super::Request::Close | super::Request::New) {
             app.documents.follow_up = Some(request);

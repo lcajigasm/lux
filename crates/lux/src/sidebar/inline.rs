@@ -156,7 +156,7 @@ pub(crate) fn commit(app: &mut App, _ctx: &dyn PlatformContext) -> bool {
             }
         }
     };
-    sidebar.jobs.submit(job, waker);
+    app.ui.session.file_ops.submit(job, waker);
     true
 }
 
