@@ -56,11 +56,8 @@ impl<'window> Surface<'window> {
         let capabilities = surface.get_capabilities(adapter);
         let format =
             pick_format(&capabilities.formats).ok_or(RenderError::NoCompatibleSurfaceFormat)?;
-        let present_mode = capabilities
-            .present_modes
-            .first()
-            .copied()
-            .unwrap_or(wgpu::PresentMode::Fifo);
+        let present_mode = pick_present_mode(&capabilities.present_modes);
+        eprintln!("Lux: present {present_mode:?}");
         let size = effective_size(size);
 
         let config = wgpu::SurfaceConfiguration {
@@ -69,7 +66,7 @@ impl<'window> Surface<'window> {
             color_space: wgpu::SurfaceColorSpace::Auto,
             width: size.width,
             height: size.height,
-            desired_maximum_frame_latency: 2,
+            desired_maximum_frame_latency: 1,
             present_mode,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: Vec::new(),
@@ -119,6 +116,24 @@ fn effective_size(size: PhysicalSize<u32>) -> PhysicalSize<u32> {
 /// Prefers an sRGB-capable format so alpha-blended text and UI composite
 /// correctly against the framebuffer; falls back to whatever the surface
 /// reports first otherwise.
+/// The first listed mode is usually Fifo, which waits for the next
+/// refresh. A key that just missed that refresh then cannot reach the
+/// screen in under 8 ms. Prefer a mode that presents without that wait.
+fn pick_present_mode(modes: &[wgpu::PresentMode]) -> wgpu::PresentMode {
+    const PREFERRED: [wgpu::PresentMode; 4] = [
+        wgpu::PresentMode::Mailbox,
+        wgpu::PresentMode::Immediate,
+        wgpu::PresentMode::FifoRelaxed,
+        wgpu::PresentMode::Fifo,
+    ];
+    for mode in PREFERRED {
+        if modes.contains(&mode) {
+            return mode;
+        }
+    }
+    modes.first().copied().unwrap_or(wgpu::PresentMode::Fifo)
+}
+
 fn pick_format(formats: &[wgpu::TextureFormat]) -> Option<wgpu::TextureFormat> {
     formats
         .iter()
@@ -194,5 +209,26 @@ mod tests {
     #[test]
     fn empty_format_list_yields_none() {
         assert_eq!(pick_format(&[]), None);
+    }
+
+    #[test]
+    fn present_mode_prefers_mailbox_over_fifo() {
+        let modes = [wgpu::PresentMode::Fifo, wgpu::PresentMode::Mailbox];
+        assert_eq!(pick_present_mode(&modes), wgpu::PresentMode::Mailbox);
+    }
+
+    #[test]
+    fn present_mode_uses_immediate_when_mailbox_is_absent() {
+        let modes = [wgpu::PresentMode::Fifo, wgpu::PresentMode::Immediate];
+        assert_eq!(pick_present_mode(&modes), wgpu::PresentMode::Immediate);
+    }
+
+    #[test]
+    fn present_mode_keeps_fifo_when_it_is_the_only_choice() {
+        assert_eq!(
+            pick_present_mode(&[wgpu::PresentMode::Fifo]),
+            wgpu::PresentMode::Fifo
+        );
+        assert_eq!(pick_present_mode(&[]), wgpu::PresentMode::Fifo);
     }
 }
