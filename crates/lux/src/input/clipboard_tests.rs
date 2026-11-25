@@ -133,6 +133,19 @@ fn one_piece_pastes_whole_at_every_caret() {
 }
 
 #[test]
+fn one_multi_line_selection_pastes_a_line_per_matching_caret() {
+    let mut app = app("a\nb\nc\nx\ny\nz\n");
+    let clipboard = TestClipboard::default();
+    select(&mut app, &[(0, 5)]);
+    chord(&mut app, &clipboard, "c", false);
+
+    carets(&mut app, &[7, 9, 11]);
+    chord(&mut app, &clipboard, "v", false);
+
+    assert_eq!(app.buffer.text(), "a\nb\nc\nxa\nyb\nzc\n");
+}
+
+#[test]
 fn pieces_paste_joined_at_a_single_caret() {
     let mut app = app("one two three\n");
     let clipboard = TestClipboard::default();

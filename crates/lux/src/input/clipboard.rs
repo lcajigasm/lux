@@ -45,10 +45,13 @@ fn distribution(memory: &ClipboardMemory, text: &str, carets: usize) -> Option<V
     if carets < 2 {
         return None;
     }
-    if let Some(pieces) = memory.pieces_for(text) {
+    // A single remembered piece says nothing a line split would not, so it
+    // only takes over from the line split when the copy had several.
+    if let Some(pieces) = memory.pieces_for(text).filter(|pieces| pieces.len() >= 2) {
         return (pieces.len() == carets).then(|| pieces.to_vec());
     }
-    // Text copied outside Lux: one line per caret when the counts agree.
+    // Text copied outside Lux, or from a single selection: one line per
+    // caret when the counts agree.
     let lines: Vec<String> = text
         .split('\n')
         .map(|line| line.strip_suffix('\r').unwrap_or(line).to_owned())
@@ -154,5 +157,16 @@ mod unit {
             Some(vec!["x".into(), "y".into()])
         );
         assert_eq!(distribution(&memory, "a\nb\nc", 1), None);
+    }
+
+    #[test]
+    fn a_single_copied_selection_spreads_its_lines_over_matching_carets() {
+        let mut memory = ClipboardMemory::default();
+        memory.remember(vec!["a\nb\nc".into()], "a\nb\nc");
+        assert_eq!(
+            distribution(&memory, "a\nb\nc", 3),
+            Some(vec!["a".into(), "b".into(), "c".into()])
+        );
+        assert_eq!(distribution(&memory, "a\nb\nc", 2), None);
     }
 }
