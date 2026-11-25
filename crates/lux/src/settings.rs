@@ -323,9 +323,9 @@ pub(crate) fn set_string_setting(app: &mut App, key: &str, value: &str) {
         if let Ok(json_str) = serde_json::to_string_pretty(&Value::Object(map)) {
             let _ = fs::write(&path, json_str);
         }
-        if let Ok(mut config) = config.lock() {
-            let _ = config.reload_layer(Layer::User);
-        }
+        // Reads outside the lock: `apply_config` on the UI thread takes
+        // the same mutex and must never wait on the disk.
+        let _ = LayeredConfig::reload_layer_shared(&config, Layer::User);
         Some(crate::ui_io::Done::SettingsSaved)
     });
 }

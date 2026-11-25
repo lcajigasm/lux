@@ -75,7 +75,7 @@ impl ConfigWatcher {
                 let Some(&(_, layer)) = by_path.iter().find(|(path, _)| *path == changed) else {
                     continue;
                 };
-                let outcome = watch_config.lock().unwrap().reload_layer(layer);
+                let outcome = LayeredConfig::reload_layer_shared(&watch_config, layer);
                 let reload_event = match outcome {
                     Ok(()) => ReloadEvent::Reloaded(layer),
                     Err(err) => ReloadEvent::Failed(layer, err),
