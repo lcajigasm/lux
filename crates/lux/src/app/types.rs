@@ -43,6 +43,8 @@ pub(crate) struct MouseState {
     pub(crate) line_anchor: Option<Selection>,
     pub(crate) context_menu: Option<crate::edit_menu::BufferContextMenu>,
     pub(crate) shape: lux_platform::CursorShape,
+    /// The trackpad pinch in progress, if any.
+    pub(crate) pinch: Option<crate::pinch::PinchZoom>,
 }
 
 pub(crate) struct SyntaxState {

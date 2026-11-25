@@ -214,6 +214,15 @@ pub enum PlatformEvent {
         state: ElementState,
     },
     MouseWheel(ScrollDelta),
+    /// A trackpad pinch (macOS `magnifyWithEvent:`). `delta` is the change in
+    /// magnification since the previous event of the same gesture: positive
+    /// zooms in, negative zooms out. A gesture opens with
+    /// [`TouchPhase::Started`] and closes with `Ended` or `Cancelled`.
+    /// Always finite; the backend maps a non-finite OS value to `0.0`.
+    Pinch {
+        delta: f64,
+        phase: TouchPhase,
+    },
     MouseEntered,
     MouseLeft,
     Touch(Touch),

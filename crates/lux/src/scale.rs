@@ -3,6 +3,10 @@
 
 use crate::app::{App, FONT_SIZE};
 
+/// Smallest and largest logical font size any zoom (keys or pinch) reaches.
+pub(crate) const MIN_FONT: f32 = 8.0;
+pub(crate) const MAX_FONT: f32 = 48.0;
+
 impl App {
     pub(crate) fn set_display_scale(&mut self, scale: f64) {
         let scale = scale as f32;
@@ -22,8 +26,24 @@ impl App {
     /// Changes the logical font size by `delta` points and keeps the line
     /// height at 1.4×. Display scale stays applied on top.
     pub(crate) fn zoom_font(&mut self, delta: f32) {
-        let logical = self.editor_view.metrics().font_size / self.scale_factor;
-        self.apply_logical_font((logical + delta).clamp(8.0, 48.0));
+        let logical = self.logical_font_size();
+        self.apply_logical_font((logical + delta).clamp(MIN_FONT, MAX_FONT));
+    }
+
+    /// The editor font size in points, before the display scale.
+    pub(crate) fn logical_font_size(&self) -> f32 {
+        self.editor_view.metrics().font_size / self.scale_factor
+    }
+
+    /// Sets the logical font size, clamped to the zoom range. Returns `false`
+    /// and leaves layout alone when the size would not change.
+    pub(crate) fn set_logical_font_size(&mut self, logical: f32) -> bool {
+        let logical = logical.clamp(MIN_FONT, MAX_FONT);
+        if (logical - self.logical_font_size()).abs() < 0.01 {
+            return false;
+        }
+        self.apply_logical_font(logical);
+        true
     }
 
     pub(crate) fn reset_font_zoom(&mut self) {

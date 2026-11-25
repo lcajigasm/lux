@@ -34,6 +34,7 @@ mod overlay_motion;
 mod overlay_wheel;
 mod palette;
 mod pane_view;
+mod pinch;
 mod place;
 mod plugin;
 mod pointer;
