@@ -1258,6 +1258,7 @@ rather than leaving implicit:
 | `.editorconfig` / `.gitattributes` | implemented | not-started | not-started | not-started | not-started |
 | Settings importers | implemented | not-started | not-started | not-started | not-started |
 | Font settings + overrides | implemented | not-started | not-started | not-started | not-started |
+| Bundled developer fonts (`editor.fontFamily`) | implemented | not-started | not-started | not-started | not-started |
 | Schema-aware settings-file completion | implemented | not-started | not-started | not-started | not-started |
 
 **Scope note (`lux-config::layering` — JSONC, layered precedence, hot
@@ -1360,6 +1361,37 @@ report; consuming it is a future integration's job, same design language
 `layering`/`keymap`/`editorconfig`/`gitattributes` already established
 this phase); import of anything beyond the handful of indent/whitespace/
 font settings each importer currently recognizes.
+
+**Scope note (bundled developer fonts, ADR 0020)**: JetBrains Mono 2.304,
+Fira Code 6.2, IBM Plex Mono 2.5.0, Source Code Pro 2.042, and Cascadia
+Code 2407.24 ship as unmodified Regular TTFs under `fonts/` with each
+family's SIL OFL 1.1 text and `fonts/NOTICE.md` (1.5 MB of fonts).
+`scripts/install-fonts.sh` checks `fonts/SHA256SUMS` and copies them into
+`Lux.app/Contents/Resources/fonts` (`stage-lux-app.sh`,
+`package-macos.sh`, which also checks the mounted DMG), the `.deb`
+(`/usr/share/lux/fonts`), and the dist tree (`share/lux/fonts`); dev runs
+use the repository's `fonts/`. `editor.fontFamily` accepts `system`
+(default: SF Mono, then Menlo on macOS), the five families
+(case-insensitive), and on macOS `SF Mono` and `Menlo`. Settings → Font
+Family lists exactly those; its description line is a preview drawn in the
+editor face with the current ligature setting. The startup read loads the
+selected face instead of the system one (one file either way, before the
+event loop). A later change reads the file on a `ui_io` worker and swaps
+the editor family and rasterizing face when it lands; a face loaded once is
+reused without disk access. A missing file or unknown name logs and keeps
+the system face. `editor.fontLigatures` changes `->`, `!=`, `=>` in
+JetBrains Mono, Fira Code, and Cascadia Code, and leaves Plex and Source
+Code Pro unchanged. Only Regular ships: nothing draws bold or italic.
+Verified on macOS (aarch64-apple-darwin): `cargo test -p lux font::bundled`
+(each family registers under its name, shapes ASCII without `.notdef`, and
+the ligature on/off result per family), `ui_io::tests::a_new_editor_font_is_read_on_a_worker_and_swapped_in_after`
+(the UI thread returns before the worker reads; the layout family and face
+change after; switching back reads nothing),
+`settings::tests::the_font_family_row_lists_the_system_face_and_every_bundled_family`,
+and a staged `target/Lux.app` that loaded JetBrains Mono from
+`Contents/Resources/fonts` and painted `→ ≠ ⇒`. Windows: the MSI does not
+install `fonts/`, so every bundled name falls back to Consolas. Linux: the
+`.deb` installs them, not run on Linux hardware.
 
 **Scope note (`lux-config::font_settings` — typography with project/folder
 overrides, tracked in

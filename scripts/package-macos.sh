@@ -107,6 +107,8 @@ sed "s/<string>1.0.0<\\/string>/<string>${version}<\\/string>/g" \
   packaging/macos/Info.plist > "$app_path/Contents/Info.plist"
 cp "$icns_file" "$app_path/Contents/Resources/lux.icns"
 cp "$classic_file" "$app_path/Contents/Resources/lux-classic.icns"
+# Bundled fonts and their OFL licenses (ADR 0020).
+./scripts/install-fonts.sh "$app_path/Contents/Resources/fonts"
 echo -n "APPLlux " > "$app_path/Contents/PkgInfo"
 
 # Ad-hoc signature only. There is no Apple Developer ID certificate in CI,
@@ -229,6 +231,13 @@ if [[ ! -x "$cli" ]]; then
   echo "Error: CLI executable missing inside mounted DMG!" >&2
   exit 1
 fi
+fonts_dir="$mounted/$app_name/Contents/Resources/fonts"
+for required in NOTICE.md JetBrainsMono/OFL.txt JetBrainsMono/JetBrainsMono-Regular.ttf; do
+  if [[ ! -f "$fonts_dir/$required" ]]; then
+    echo "Error: $required missing from the bundled fonts inside the DMG!" >&2
+    exit 1
+  fi
+done
 version_line="$("$cli" --version)"
 case "$version_line" in
   lux\ *) ;;

@@ -12,6 +12,9 @@ use crate::render::panel::settings_selection;
 use crate::settings::layout::{ControlGeom, SettingsBounds, format_number, layout_settings};
 use crate::settings::{SettingKind, SettingsPanelState};
 
+#[path = "font_sample.rs"]
+mod font_sample;
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_settings_panel(
     panel: &SettingsPanelState,
@@ -63,6 +66,7 @@ pub(crate) fn render_settings_panel(
         border,
     ));
 
+    let editor_face = font_sample::EditorFace::of(editor_view, font);
     let (font, family) = crate::font::ui_font(font, editor_view.family());
     draw_line(
         editor_view,
@@ -208,20 +212,37 @@ pub(crate) fn render_settings_panel(
             },
             glyph_instances,
         );
-        draw_line(
-            editor_view,
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            font,
-            &family,
-            13.0 * scale,
-            item.description,
-            row.description.x,
-            row.description.y,
-            if selected { hint_on_row } else { hint_on_page },
-            glyph_instances,
-        );
+        let hint = if selected { hint_on_row } else { hint_on_page };
+        if item.key == lux_config::font_settings::FONT_FAMILY_KEY {
+            font_sample::draw_preview(
+                &editor_face,
+                editor_view,
+                atlas,
+                atlas_dirty,
+                scale_cx,
+                13.0 * scale,
+                item.description,
+                row.description.x,
+                row.description.y,
+                hint,
+                glyph_instances,
+            );
+        } else {
+            draw_line(
+                editor_view,
+                atlas,
+                atlas_dirty,
+                scale_cx,
+                font,
+                &family,
+                13.0 * scale,
+                item.description,
+                row.description.x,
+                row.description.y,
+                hint,
+                glyph_instances,
+            );
+        }
         paint_control(
             &item.kind,
             &row.kind,

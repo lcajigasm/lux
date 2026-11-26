@@ -11,3 +11,6 @@
 # checkouts agree with that everywhere, not only what already-decoded
 # buffer content defaults to.
 * text=auto eol=lf
+
+# Bundled fonts are binary; never normalize them.
+*.ttf binary

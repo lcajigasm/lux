@@ -26,6 +26,7 @@ for license in LICENSE*; do
   [[ -f "$license" ]] || continue
   cp "$license" "$dest/share/doc/"
 done
+./scripts/install-fonts.sh "$dest/share/lux/fonts" >/dev/null
 echo "packed $dest (unsigned)"
 
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"

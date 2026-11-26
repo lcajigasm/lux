@@ -1,6 +1,6 @@
-//! Real system monospace font loading.
+//! Real system monospace font loading. Bundled developer fonts are in
+//! `bundled`, and switching the editor face is in `editor` (ADR 0020).
 //!
-//! No font ships bundled with the editor yet (a real Phase 3+ concern), and
 //! `fontique`'s system-discovery feature is off workspace-wide (see
 //! `lux-render/Cargo.toml`'s own doc comment: it pulls a `fontconfig`
 //! version that conflicts with `lux-platform`'s Wayland CSD dependency).
@@ -10,6 +10,9 @@
 //! already uses, just pointed at a real, legible system file instead.
 
 use std::path::PathBuf;
+
+pub(crate) mod bundled;
+pub(crate) mod editor;
 
 /// SF Mono before Menlo. `SFNSMono.ttf` is the older system file; current
 /// macOS ships SF Mono from Xcode at the Supplemental and `/Library/Fonts`

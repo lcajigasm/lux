@@ -188,7 +188,7 @@ fn settings_row_lays_out_label_description_and_value() {
         frame.window_height,
         frame.scale,
     );
-    let plus = match layout.rows[0].kind {
+    let plus = match layout.rows[item_index(&app, "editor.fontSize")].kind {
         layout::ControlGeom::Stepper { plus, .. } => plus,
         _ => panic!("font size is a stepper"),
     };
@@ -211,10 +211,12 @@ fn settings_toggle_stepper_and_menu_change_the_stored_value() {
     app.ui.settings = super::SettingsState::new(dir.path().join("settings.json"));
     app.ui.settings.open_settings_ui();
     let frame = bounds(&app);
+    let ligatures = item_index(&app, "editor.fontLigatures");
+    let size = item_index(&app, "editor.fontSize");
 
     let toggle = {
         let layout = layout_settings(app.ui.settings.panel.as_ref().unwrap(), frame);
-        match layout.rows[2].kind {
+        match layout.rows[ligatures].kind {
             layout::ControlGeom::Toggle { track, .. } => track,
             _ => panic!("ligatures is a toggle"),
         }
@@ -222,19 +224,19 @@ fn settings_toggle_stepper_and_menu_change_the_stored_value() {
     let (x, y) = (toggle.x + toggle.w * 0.5, toggle.y + toggle.h * 0.5);
     click(&mut app, x, y);
     assert!(matches!(
-        app.ui.settings.panel.as_ref().unwrap().items[2].kind,
+        app.ui.settings.panel.as_ref().unwrap().items[ligatures].kind,
         SettingKind::Boolean { value: false }
     ));
 
     let plus = {
         let layout = layout_settings(app.ui.settings.panel.as_ref().unwrap(), frame);
-        match layout.rows[0].kind {
+        match layout.rows[size].kind {
             layout::ControlGeom::Stepper { plus, .. } => plus,
             _ => panic!("font size is a stepper"),
         }
     };
     click(&mut app, plus.x + plus.w * 0.5, plus.y + plus.h * 0.5);
-    match &app.ui.settings.panel.as_ref().unwrap().items[0].kind {
+    match &app.ui.settings.panel.as_ref().unwrap().items[size].kind {
         SettingKind::Number { value, .. } => assert!((*value - 14.0).abs() < 0.01),
         _ => panic!("font size"),
     }

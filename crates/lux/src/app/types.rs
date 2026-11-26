@@ -57,8 +57,22 @@ pub(crate) struct SyntaxState {
     pub(crate) version: usize,
 }
 
+impl AtlasState {
+    /// A dirty atlas, so the first frame uploads it.
+    pub(crate) fn new(atlas: GlyphAtlas) -> Self {
+        Self {
+            atlas,
+            dirty: true,
+            scale_cx: ScaleContext::new(),
+            fonts: Default::default(),
+        }
+    }
+}
+
 pub(crate) struct AtlasState {
     pub(crate) atlas: GlyphAtlas,
     pub(crate) dirty: bool,
     pub(crate) scale_cx: ScaleContext,
+    /// Editor faces loaded so far and the one in use (ADR 0020).
+    pub(crate) fonts: crate::font::editor::EditorFonts,
 }

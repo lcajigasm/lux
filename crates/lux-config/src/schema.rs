@@ -43,7 +43,9 @@ pub const PROPERTIES: &[PropertySchema] = &[
     PropertySchema {
         key: "editor.fontFamily",
         kind: PropertyKind::String,
-        description: "Typeface used for editing.",
+        description: "Typeface used for editing: \"system\" or a bundled family \
+                      (JetBrains Mono, Fira Code, IBM Plex Mono, Source Code Pro, \
+                      Cascadia Code). On macOS also \"SF Mono\" or \"Menlo\".",
     },
     PropertySchema {
         key: "editor.fontSize",

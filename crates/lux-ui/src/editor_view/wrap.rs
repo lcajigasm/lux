@@ -17,6 +17,13 @@ pub(super) fn text_width(viewport_width: f32, gutter_width: f32, font_size: f32)
 }
 
 impl EditorView {
+    /// Shapes later frames with `family`, which the caller has already
+    /// registered with [`Self::text_layout_mut`]. Nothing here caches per
+    /// family, so the next `build_frame` lays out with it.
+    pub fn set_family(&mut self, family: String) {
+        self.family = family;
+    }
+
     /// Byte offsets inside `line` where its soft-wrap rows start, wrapped
     /// as `build_frame` wraps it in a viewport `viewport_width` wide. Only
     /// this line is shaped, so it works before any frame is drawn. `[0]`
