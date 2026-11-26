@@ -72,7 +72,10 @@ pub fn transpose(buffer: &mut Buffer, selection: Selection) -> (Vec<Edit>, Selec
     if !selection.is_empty() {
         return (Vec::new(), selection);
     }
-    let cursor = selection.head;
+    // An earlier caret in the same command may already have rewritten the
+    // text around this one, so its cached byte offset can sit inside a
+    // multi-byte char. The char offset is still right; rebuild from it.
+    let cursor = Position::from_char(buffer, selection.head.char);
     let (line_start, content_end) = line_bounds(buffer, cursor.line);
     if cursor.char <= line_start {
         return (Vec::new(), selection);

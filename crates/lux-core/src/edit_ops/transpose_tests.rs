@@ -29,6 +29,16 @@ fn run(text: &str, ranges: &[(usize, usize)]) -> (String, Vec<(usize, usize)>) {
     (buffer.text(), ranges)
 }
 
+/// Regression: the end-of-line caret rewrites `éa` to `aé` first, which
+/// left the other caret's cached byte offset inside the `é`.
+#[test]
+fn two_carets_around_a_multibyte_char_do_not_panic() {
+    let (text, _) = run("éa", &[(1, 1), (2, 2)]);
+    let mut chars: Vec<char> = text.chars().collect();
+    chars.sort_unstable();
+    assert_eq!(chars, vec!['a', 'é']);
+}
+
 #[test]
 fn caret_between_two_chars_swaps_them_and_advances() {
     assert_eq!(run("ab", &[(1, 1)]), ("ba".into(), vec![(2, 2)]));
