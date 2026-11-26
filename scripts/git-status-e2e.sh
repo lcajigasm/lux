@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # macOS: a real Lux.app draws the git status letter in the file tree.
 # Git: Refresh Status must report note.txt:M, a.rs:D, and
-# a.rs/inside.txt:A, and the window is captured.
+# a.rs/inside.txt:U (never added, so untracked, as `git status` shows
+# it with ??), and the window is captured.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -88,12 +89,12 @@ marks=""
 for _ in $(seq 1 40); do
   drive_dump
   marks="$(drive_field git_marks)"
-  if [[ "$marks" == *note.txt:M* && "$marks" == *a.rs:D* && "$marks" == *a.rs/inside.txt:A* ]]; then
+  if [[ "$marks" == *note.txt:M* && "$marks" == *a.rs:D* && "$marks" == *a.rs/inside.txt:U* ]]; then
     break
   fi
   sleep 0.3
 done
-if [[ "$marks" != *note.txt:M* || "$marks" != *a.rs:D* || "$marks" != *a.rs/inside.txt:A* ]]; then
+if [[ "$marks" != *note.txt:M* || "$marks" != *a.rs:D* || "$marks" != *a.rs/inside.txt:U* ]]; then
   fail "refresh left git_marks=${marks:-missing}"
 fi
 sleep 0.4

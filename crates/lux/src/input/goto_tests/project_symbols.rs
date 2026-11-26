@@ -29,6 +29,10 @@ fn wait_until(app: &mut App, woke: &mpsc::Receiver<()>, done: impl Fn(&GotoState
         let left = deadline.saturating_duration_since(Instant::now());
         woke.recv_timeout(left)
             .expect("the symbol indexer never woke the editor");
+        // `background_event` also drains the process-wide git mailbox.
+        let _mailbox = crate::git::MAILBOX_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         app.background_event(&DummyContext);
     }
 }

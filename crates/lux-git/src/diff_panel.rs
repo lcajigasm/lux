@@ -3,9 +3,8 @@
 //! Scope: this module answers "which files changed" — it doesn't stage,
 //! commit, or write anything, and it doesn't render a diff (see
 //! `diff_view` for side-by-side/inline rendering). Reading the working
-//! tree happens in-process via `gix` and the same `ignore`-crate
-//! gitignore matcher `lux-search`/`lux-workspace` already use elsewhere
-//! in this workspace (Phase 4); no shell-out to `git` (see
+//! tree happens in-process via `gix`, with `gix`'s own exclude stack for
+//! `.gitignore` (see `worktree`); no shell-out to `git` (see
 //! `docs/adr/0010-git-backend-gix.md`).
 
 use std::collections::BTreeMap;
@@ -15,9 +14,26 @@ use std::path::PathBuf;
 /// Where a changed path stands relative to `HEAD`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeStatus {
+    /// Not in `HEAD`, staged in the index.
     Added,
     Modified,
     Deleted,
+    /// Not in `HEAD`, not in the index, not ignored.
+    Untracked,
+    /// The index holds an unresolved merge conflict for this path.
+    Conflicted,
+}
+
+/// Everything `git status --ignored` would show: the changes plus the
+/// ignored paths, collapsed to the outermost ignored directory.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WorktreeStatus {
+    pub changes: Vec<ChangedFile>,
+    /// Untracked directories reported whole, like `git status` shows
+    /// `?? dir/`. Each also appears in `changes` as one `Untracked` entry;
+    /// everything below one is untracked or ignored.
+    pub untracked_dirs: Vec<PathBuf>,
+    pub ignored: Vec<PathBuf>,
 }
 
 /// One changed path, relative to the repository's working directory.
@@ -34,7 +50,7 @@ pub enum DiffPanelError {
     HeadTree(gix::reference::head_tree_id::Error),
     ReadTree(Box<dyn std::error::Error + Send + Sync>),
     ReadBlob(Box<dyn std::error::Error + Send + Sync>),
-    Walk(ignore::Error),
+    Index(Box<dyn std::error::Error + Send + Sync>),
     Io(std::io::Error),
 }
 
@@ -45,7 +61,7 @@ impl fmt::Display for DiffPanelError {
             DiffPanelError::HeadTree(e) => write!(f, "failed to resolve HEAD tree: {e}"),
             DiffPanelError::ReadTree(e) => write!(f, "failed to read HEAD tree: {e}"),
             DiffPanelError::ReadBlob(e) => write!(f, "failed to read blob: {e}"),
-            DiffPanelError::Walk(e) => write!(f, "failed to walk working directory: {e}"),
+            DiffPanelError::Index(e) => write!(f, "failed to read the index: {e}"),
             DiffPanelError::Io(e) => write!(f, "failed to read working directory: {e}"),
         }
     }
@@ -58,6 +74,11 @@ impl std::error::Error for DiffPanelError {}
 /// per path that differs, sorted by path for deterministic, folder-grouped
 /// display.
 pub fn changed_files(repo: &gix::Repository) -> Result<Vec<ChangedFile>, DiffPanelError> {
+    worktree_status(repo).map(|status| status.changes)
+}
+
+/// [`changed_files`] plus the ignored paths, from one walk.
+pub fn worktree_status(repo: &gix::Repository) -> Result<WorktreeStatus, DiffPanelError> {
     let work_dir = repo.workdir().ok_or(DiffPanelError::BareRepository)?;
 
     let tree_id = repo
@@ -77,72 +98,57 @@ pub fn changed_files(repo: &gix::Repository) -> Result<Vec<ChangedFile>, DiffPan
         .map(|entry| (PathBuf::from(entry.filepath.to_string()), entry.oid))
         .collect();
 
-    let mut changed = Vec::new();
-
     // Every tracked path, checked directly on disk rather than through the
     // gitignore-aware walk below: a `.gitignore` rule never hides a path git
     // already tracks (the rule only ever governs *untracked*-file discovery),
     // so a tracked file that also happens to match one — e.g. a project's
     // own `.vscode/settings.json` committed before a later-added ignore rule
     // — must still be compared, not treated as silently deleted just because
-    // the walk skipped it.
-    for (rel, oid) in &head_blobs {
-        let absolute = work_dir.join(rel);
-        match std::fs::read(&absolute) {
-            Ok(disk_bytes) => {
-                let blob = repo
-                    .find_blob(*oid)
-                    .map_err(|e| DiffPanelError::ReadBlob(Box::new(e)))?;
-                if blob.data != disk_bytes {
-                    changed.push(ChangedFile {
-                        path: rel.clone(),
-                        status: ChangeStatus::Modified,
-                    });
-                }
-            }
-            Err(e)
-                if e.kind() == std::io::ErrorKind::NotFound
-                    || e.kind() == std::io::ErrorKind::IsADirectory =>
-            {
-                // A directory standing where a tracked file was is the same
-                // fact as a missing file: the blob is gone. `git status`
-                // reports that path deleted and lists the files inside.
-                changed.push(ChangedFile {
-                    path: rel.clone(),
-                    status: ChangeStatus::Deleted,
-                });
-            }
-            Err(e) => return Err(DiffPanelError::Io(e)),
-        }
+    // the walk skipped it. The index's stat cache answers for every file
+    // that has not been touched since it was staged (see `tracked`).
+    let (index, facts) = crate::worktree::index_facts(repo)?;
+    let mut changed = Vec::new();
+    crate::tracked::compare(repo, work_dir, &head_blobs, &index, &mut changed)?;
+
+    // Everything `HEAD` does not track: staged new files, untracked files,
+    // and ignored paths. A path git tracks in `HEAD` or the index is never
+    // ignored, and neither is a directory holding one.
+    let tracked: std::collections::BTreeSet<PathBuf> = head_blobs.keys().cloned().collect();
+    let keep = crate::worktree::with_parents(tracked.iter().chain(facts.staged.iter()));
+    let untracked = crate::worktree::walk(repo, &index, &tracked, &keep)?;
+    for rel in untracked.files {
+        let status = if facts.staged.contains(&rel) {
+            ChangeStatus::Added
+        } else {
+            ChangeStatus::Untracked
+        };
+        changed.push(ChangedFile { path: rel, status });
+    }
+    for rel in &untracked.dirs {
+        changed.push(ChangedFile {
+            path: rel.clone(),
+            status: ChangeStatus::Untracked,
+        });
     }
 
-    // The gitignore-aware walk only needs to find *untracked* files now —
-    // every tracked path was already handled above regardless of ignore
-    // status.
-    let walker = ignore::WalkBuilder::new(work_dir).hidden(false).build();
-    for result in walker {
-        let entry = result.map_err(DiffPanelError::Walk)?;
-        if !entry.file_type().is_some_and(|t| t.is_file()) {
-            continue;
-        }
-        let path = entry.path();
-        if path.components().any(|c| c.as_os_str() == ".git") {
-            continue;
-        }
-        let rel = path
-            .strip_prefix(work_dir)
-            .expect("walker yields paths under work_dir")
-            .to_path_buf();
-        if !head_blobs.contains_key(&rel) {
-            changed.push(ChangedFile {
-                path: rel,
-                status: ChangeStatus::Added,
-            });
+    // A conflicted path wins over whatever the content comparison said:
+    // the file holds markers, and the user must resolve it.
+    for path in &facts.conflicted {
+        match changed.iter_mut().find(|file| &file.path == path) {
+            Some(file) => file.status = ChangeStatus::Conflicted,
+            None => changed.push(ChangedFile {
+                path: path.clone(),
+                status: ChangeStatus::Conflicted,
+            }),
         }
     }
 
     changed.sort_by(|a, b| a.path.cmp(&b.path));
-    Ok(changed)
+    Ok(WorktreeStatus {
+        changes: changed,
+        untracked_dirs: untracked.dirs,
+        ignored: untracked.ignored,
+    })
 }
 
 /// A folder in the changes tree, grouping its direct file changes and
@@ -331,7 +337,7 @@ mod tests {
                     },
                     ChangedFile {
                         path: PathBuf::from("new.rs"),
-                        status: ChangeStatus::Added
+                        status: ChangeStatus::Untracked
                     },
                     ChangedFile {
                         path: PathBuf::from("remove.rs"),
@@ -367,7 +373,7 @@ mod tests {
                 files
                     .iter()
                     .any(|file| file.path == Path::new("a.rs/inside.txt")
-                        && file.status == ChangeStatus::Added),
+                        && file.status == ChangeStatus::Untracked),
                 "{files:?}"
             );
         }
@@ -408,6 +414,90 @@ mod tests {
                     .any(|f| f.path == Path::new("settings.local.json")),
                 "the tracked, unmodified, now-ignored file must not show up as changed: {files:?}"
             );
+        }
+
+        #[test]
+        fn a_staged_new_file_is_added_and_an_unstaged_one_untracked() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let repo = init_repo_with_committed_files(dir.path(), &[("a.rs", "content\n")]);
+            fs::write(dir.path().join("staged.rs"), "staged\n").unwrap();
+            fs::write(dir.path().join("loose.rs"), "loose\n").unwrap();
+            crate::staging::stage(&repo, Path::new("staged.rs")).unwrap();
+
+            let files = changed_files(&repo).expect("changed_files");
+            let status_of = |name: &str| {
+                files
+                    .iter()
+                    .find(|file| file.path == Path::new(name))
+                    .map(|file| file.status)
+            };
+            assert_eq!(
+                status_of("staged.rs"),
+                Some(ChangeStatus::Added),
+                "{files:?}"
+            );
+            assert_eq!(
+                status_of("loose.rs"),
+                Some(ChangeStatus::Untracked),
+                "{files:?}"
+            );
+            assert_eq!(status_of("a.rs"), None, "{files:?}");
+        }
+
+        #[test]
+        fn an_unmerged_index_entry_is_conflicted() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let repo = init_repo_with_committed_files(dir.path(), &[("a.rs", "base\n")]);
+            fs::write(
+                dir.path().join("a.rs"),
+                "<<<<<<< ours\nmine\n=======\ntheirs\n>>>>>>> theirs\n",
+            )
+            .unwrap();
+            let mut index = crate::staging::open_or_create_index(&repo).unwrap();
+            for stage in [
+                gix::index::entry::Stage::Base,
+                gix::index::entry::Stage::Ours,
+                gix::index::entry::Stage::Theirs,
+            ] {
+                let blob = repo.write_blob(format!("{stage:?}\n").as_bytes()).unwrap();
+                index.dangerously_push_entry(
+                    gix::index::entry::Stat::default(),
+                    blob.detach(),
+                    gix::index::entry::Flags::from_stage(stage),
+                    gix::index::entry::Mode::FILE,
+                    "a.rs".into(),
+                );
+            }
+            index.sort_entries();
+            index.write(gix::index::write::Options::default()).unwrap();
+
+            let files = changed_files(&repo).expect("changed_files");
+            assert_eq!(
+                files,
+                vec![ChangedFile {
+                    path: PathBuf::from("a.rs"),
+                    status: ChangeStatus::Conflicted
+                }]
+            );
+        }
+
+        #[test]
+        fn ignored_paths_collapse_to_the_ignored_directory() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let repo = init_repo_with_committed_files(
+                dir.path(),
+                &[(".gitignore", "build/\n*.log\n"), ("kept.log", "tracked\n")],
+            );
+            fs::create_dir_all(dir.path().join("build/deep")).unwrap();
+            fs::write(dir.path().join("build/deep/out.o"), "junk").unwrap();
+            fs::write(dir.path().join("debug.log"), "noise").unwrap();
+
+            let status = worktree_status(&repo).expect("worktree_status");
+            assert_eq!(
+                status.ignored,
+                vec![PathBuf::from("build"), PathBuf::from("debug.log")]
+            );
+            assert!(status.changes.is_empty(), "{:?}", status.changes);
         }
     }
 }

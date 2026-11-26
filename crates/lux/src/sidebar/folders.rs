@@ -306,12 +306,14 @@ fn detach_closed_repo(app: &mut crate::app::App, closed: &std::path::Path) {
     app.ui.git.hunks.clear();
     app.ui.git.markers.clear();
     app.ui.git.changed_files.clear();
+    app.ui.git.untracked_dirs.clear();
+    app.ui.git.ignored.clear();
     app.ui.git.selected_file_index = 0;
     app.ui.git.active_popup = None;
     app.ui.git.conflict_blocks.clear();
     app.ui.git.branch_picker = None;
     app.ui.git.commit_message.clear();
-    app.ui.git.generation = app.ui.git.generation.wrapping_add(1);
+    crate::git::new_gutter_context(app);
     app.ui.git.folder_epoch = app.ui.git.folder_epoch.wrapping_add(1);
 }
 

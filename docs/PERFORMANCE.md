@@ -246,6 +246,16 @@ hosted runner is slower; that result is written down instead.
 
 The 8 ms release ceiling holds. 242 ms to load 100 MB is this VM. There is still no GPU frame in the typing or scroll sample.
 
+**2026-11-26, ST-SIDE-03 live tree git status, Apple M1 Max (developer machine, not gated hardware), `--release`.** lux-benches `git_status` (20 samples) runs `lux_git::diff_panel::worktree_status` on a generated repository: 10,000 tracked files of ~2 KB (100 directories x 100 files) and one untracked directory of 500 files. The status reruns on a worker after every save, git operation and watcher batch, so this is the cost of one refresh, never a UI-thread cost.
+
+| Case | Measured |
+|---|---|
+| Every tracked file matches its index stat (`stat_clean`) | 66.2 ms mean |
+| One tracked file edited (`one_file_edited`) | 66.5 ms mean |
+| Index without stat data, every file read (`no_stat_cache`, the behavior before the stat cache) | 651 ms mean |
+
+A tracked file whose stat matches its index entry is not read; the untracked directory is reported once, as `git status` does, after reading only until its first untracked file. The remaining time is the `HEAD` tree walk, one `lstat` per tracked file and one `read_dir` per tracked directory. There is no budget row for this yet; it is a note, not a gate.
+
 ## macos-15 runner, release Lux.app
 
 `p0-macos.yml` measures the rows below on the free runner. Lux H1 is process start until the first presented frame, median of 10. H3 and H4 are a warm process opening the file on SIGUSR2 until that buffer's first presented frame. H2 is the key event until the next presented frame, p99, on a 20k-line file. H5 is the slowest redraw while a 50k-line file is scrolling. H6 is extra RSS across the 100 MB open. Sublime and Zed, when the free cask installs, are timed only until a window is listed. That clock is not H1. H2 and H5 are not readable from those processes. A missed budget stays in the table and does not fail the job.

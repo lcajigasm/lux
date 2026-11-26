@@ -291,7 +291,10 @@ pub(crate) fn render_sidebar(
             let name_line = editor_view
                 .text_layout_mut()
                 .layout_line(&style, &row.name, &[]);
-            let text_color = foreground;
+            let git_mark = (row.root == 0).then(|| git_mark(sidebar, row.id)).flatten();
+            let text_color = git_mark.map_or(foreground, |mark| {
+                color(crate::git::colors::mark_color(mark, theme))
+            });
             for c in name_line.clusters() {
                 push_glyph(
                     atlas,
@@ -323,9 +326,7 @@ pub(crate) fn render_sidebar(
                         glyph_instances,
                     );
                 }
-            } else if row.root == 0
-                && let Some(letter) = git_letter(sidebar, row.id)
-            {
+            } else if let Some(letter) = git_mark.and_then(|mark| mark.letter()) {
                 let label = letter.to_string();
                 let mark = editor_view
                     .text_layout_mut()
@@ -341,7 +342,7 @@ pub(crate) fn render_sidebar(
                         &cluster,
                         mark_x,
                         row_y + baseline + mark.baseline(),
-                        accent,
+                        text_color,
                         glyph_instances,
                     );
                 }
@@ -392,7 +393,10 @@ pub(crate) fn render_sidebar(
     }
 }
 
-fn git_letter(sidebar: &SidebarState, id: lux_ui::file_tree::NodeId) -> Option<char> {
+fn git_mark(
+    sidebar: &SidebarState,
+    id: lux_ui::file_tree::NodeId,
+) -> Option<crate::git::marks::GitMark> {
     let path = sidebar.tree.as_ref()?.node_path(id)?;
-    sidebar.git_marks.get(path).copied()
+    sidebar.git_marks.mark_for(path)
 }

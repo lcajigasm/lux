@@ -530,7 +530,8 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-SIDE-03 — Indicadores de Estado Git en el Árbol de Archivos y en el Gutter
 - Prioridad: `P1 (Sublime Parity)`
-- Estado: `OPEN`
+- Estado: `IN_PROGRESS`
+- Remaining: the tree shows the files on disk (as `git status` and Sublime do); an unsaved edit marks the gutter after 250 ms but colors the row only once saved. Decide whether the acceptance criterion also requires unsaved buffer state in the tree.
 - Dependencias: —
 - Objetivo: Visualización nítida y elegante del estado del repositorio Git en tiempo real.
 - Alcance detallado:

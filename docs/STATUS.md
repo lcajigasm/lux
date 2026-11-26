@@ -220,11 +220,28 @@ staged hunk's `HEAD` lines back into the index and leaves the file on
 disk. The status-bar branch, `Git: Switch Branch`,
 and `Git: Create Branch` open the branch list. A checkout runs only when
 the worktree is clean. Creating a branch points `HEAD` at the current
-commit and leaves the files alone. `Git: Refresh Status` draws `M`, `A`,
-or `D` on the changed row in the file tree, and the same letter on each
-parent directory. A tracked file that has become a directory is `D`, and
-each file inside it is `A`. That replacement used to abort the whole
-status read. Conflict markers in the buffer still resolve in the
+commit and leaves the files alone. The gutter follows the buffer while
+typing: 250 ms after edits pause (at most 1 s during continuous typing)
+a worker diffs the unsaved text against `HEAD`, one diff in flight at a
+time. When a diff is slower than the typing, its result is still shown
+and may trail the text by the keys typed while it ran. Added lines get a green bar, modified lines an orange bar, removed
+lines a red triangle. The file tree reads its git state when a folder
+opens, after each file-watcher batch inside the repository and outside
+ignored directories, after a save, and after a Lux git operation; like
+`git status` it reads only tracked files whose stat no longer matches the
+index, and reports an untracked directory as one entry whose rows are all
+`U`; the walk runs on one worker and
+requests that arrive meanwhile collapse into one more walk. Each row
+shows `M` (modified), `A` (staged new), `D` (deleted), `U` (untracked)
+or `C` (conflicted), and its name takes that state's color; a directory
+takes the strongest state below it. Ignored paths (`.gitignore`,
+`.git/info/exclude`, `core.excludesFile`, read by `gix`) are dimmed with
+the theme's muted color and show no letter. State colors keep WCAG
+4.5:1 against every built-in sidebar and 3:1 against every built-in
+gutter. The tree shows the files on disk, as `git status` does, so an
+unsaved edit marks the gutter but not the tree row until it is saved.
+A tracked file that has become a directory is `D`, and each file inside
+it is `U`. Conflict markers in the buffer still resolve in the
 editor. `Git: Accept Current Change`, `Git: Accept Incoming Change`, and
 `Git: Accept Both Changes` resolve the block under the caret and keep that
 text on the tab. See `docs/GIT.md`.

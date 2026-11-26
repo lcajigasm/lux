@@ -7,6 +7,7 @@ use lux_ui::editor_view::EditorView;
 use swash::FontRef;
 use swash::scale::ScaleContext;
 
+use crate::git::colors::{GutterKind, gutter_color};
 use crate::git::{ConflictMarkerBlock, GutterHunkPopup};
 use crate::render::paint::{active_theme, color, push_glyph};
 
@@ -94,6 +95,8 @@ pub(crate) fn render_gutter_markers(
     }
     let marker_w = 3.0 * scale_factor;
     let marker_x = super::text::gutter_marker_x(sidebar_width, gutter_width, scale_factor);
+    let surface = active_theme().chrome.gutter;
+    let paint = |kind| color(gutter_color(kind, surface));
 
     for marker in markers {
         let line_0 = marker.line.saturating_sub(1);
@@ -101,14 +104,49 @@ pub(crate) fn render_gutter_markers(
         if y + line_height < editor_top || y > editor_top + viewport_height {
             continue;
         }
+        match marker.kind {
+            HunkKind::Added => quad_instances.push(QuadInstance::solid(
+                [marker_x, y, marker_w, line_height],
+                paint(GutterKind::Added),
+            )),
+            HunkKind::Modified => quad_instances.push(QuadInstance::solid(
+                [marker_x, y, marker_w, line_height],
+                paint(GutterKind::Modified),
+            )),
+            HunkKind::Removed => push_removed_triangle(
+                quad_instances,
+                marker_x,
+                y,
+                scale_factor,
+                paint(GutterKind::Removed),
+            ),
+        }
+    }
+}
 
-        let (color, h) = match marker.kind {
-            HunkKind::Added => ([0.22, 0.72, 0.35, 0.95], line_height),
-            HunkKind::Modified => ([0.25, 0.55, 0.92, 0.95], line_height),
-            HunkKind::Removed => ([0.90, 0.25, 0.25, 0.95], 3.0 * scale_factor),
-        };
-
-        quad_instances.push(QuadInstance::solid([marker_x, y, marker_w, h], color));
+/// A right-pointing triangle centered on the boundary where lines were
+/// removed (the top edge of the line that follows them), as Sublime Text
+/// draws it. Built from one-device-pixel rows, so it stays crisp.
+pub(crate) fn push_removed_triangle(
+    quad_instances: &mut Vec<QuadInstance>,
+    x: f32,
+    boundary_y: f32,
+    scale_factor: f32,
+    fill: [f32; 4],
+) {
+    let half = (4.0 * scale_factor).round().max(3.0);
+    let width = (5.0 * scale_factor).round().max(3.0);
+    let rows = (2.0 * half) as usize;
+    for row in 0..rows {
+        let offset = row as f32 + 0.5 - half;
+        let w = width * (1.0 - offset.abs() / half);
+        if w < 0.5 {
+            continue;
+        }
+        quad_instances.push(QuadInstance::solid(
+            [x, boundary_y - half + row as f32, w, 1.0],
+            fill,
+        ));
     }
 }
 

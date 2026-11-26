@@ -75,6 +75,7 @@ pub(crate) fn poll_file_watcher(app: &mut App) {
 /// Applies one drained batch. `true` when something visible changed.
 pub(crate) fn apply_changes(app: &mut App, changes: Vec<FileChange>) -> bool {
     crate::goto::symbols::note_changes(app, &changes);
+    crate::git::note_disk_changes(app, changes.iter().map(|change| &change.path));
     let mut repaint_needed = false;
     for change in changes {
         match change.kind {

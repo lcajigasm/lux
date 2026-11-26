@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use lux_git::diff_panel::{ChangedFile, changed_files};
+use lux_git::diff_panel::{ChangedFile, worktree_status};
 use lux_git::diff_view::{InlineDiffLineKind, inline_diff};
 use lux_git::gutter::{GutterMarker, Hunk, gutter_markers, hunks_against_head};
 
@@ -22,6 +22,10 @@ pub(crate) struct StatusShot {
     pub(crate) root: PathBuf,
     pub(crate) branch: Option<String>,
     pub(crate) files: Vec<ChangedFile>,
+    /// Untracked directories reported whole, relative to `root`.
+    pub(crate) untracked_dirs: Vec<PathBuf>,
+    /// Ignored paths relative to `root`, collapsed to the outermost one.
+    pub(crate) ignored: Vec<PathBuf>,
 }
 
 pub(crate) fn file_shot(path: Option<&Path>, text: &str) -> FileShot {
@@ -66,8 +70,8 @@ pub(crate) fn status_of(start: &Path) -> Result<StatusShot, String> {
         .workdir()
         .map(Path::to_path_buf)
         .ok_or_else(|| "repository has no working directory".to_string())?;
-    let branch = match lux_git::status::status(&repo) {
-        Ok(st) => match st.branch {
+    let branch = match lux_git::status::branch_state(&repo) {
+        Ok(state) => match state {
             lux_git::status::BranchState::Named(name) => Some(name),
             lux_git::status::BranchState::Unborn(name) => Some(format!("{name} (unborn)")),
             lux_git::status::BranchState::Detached(id) => {
@@ -76,11 +80,13 @@ pub(crate) fn status_of(start: &Path) -> Result<StatusShot, String> {
         },
         Err(_) => head_label(&repo),
     };
-    let files = changed_files(&repo).map_err(|error| error.to_string())?;
+    let status = worktree_status(&repo).map_err(|error| error.to_string())?;
     Ok(StatusShot {
         root,
         branch,
-        files,
+        files: status.changes,
+        untracked_dirs: status.untracked_dirs,
+        ignored: status.ignored,
     })
 }
 
