@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::pty::{CommandBuilder, ExitStatus, Pty, PtyError, PtySize};
+use crate::pty::{CommandBuilder, ExitStatus, Pty, PtyError, PtyNotify, PtySize};
 
 /// Handle for one running (or just-finished) task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -46,8 +46,20 @@ impl TaskPanel {
         command: CommandBuilder,
         size: PtySize,
     ) -> Result<TaskId, PtyError> {
-        let pty = Pty::spawn(command, size)?;
+        self.start_with(name, command, size, |_| PtyNotify::default())
+    }
+
+    /// `start`, with callbacks for output and exit. `notify` receives the
+    /// new task's id so the callbacks can name it.
+    pub fn start_with(
+        &mut self,
+        name: impl Into<String>,
+        command: CommandBuilder,
+        size: PtySize,
+        notify: impl FnOnce(TaskId) -> PtyNotify,
+    ) -> Result<TaskId, PtyError> {
         let id = TaskId(self.next_id);
+        let pty = Pty::spawn_with(command, size, notify(id))?;
         self.next_id += 1;
         self.tasks.insert(
             id,
@@ -63,8 +75,17 @@ impl TaskPanel {
         self.tasks.get(&id).map(|t| &t.pty)
     }
 
+    pub fn get_mut(&mut self, id: TaskId) -> Option<&mut Pty> {
+        self.tasks.get_mut(&id).map(|t| &mut t.pty)
+    }
+
     pub fn name(&self, id: TaskId) -> Option<&str> {
         self.tasks.get(&id).map(|t| t.name.as_str())
+    }
+
+    /// Every task's terminal, for resizing them together.
+    pub fn ptys(&self) -> impl Iterator<Item = &Pty> {
+        self.tasks.values().map(|t| &t.pty)
     }
 
     /// Kill the child and drop it from the panel. Real cancellation.
@@ -127,5 +148,59 @@ mod tests {
         let rc = unsafe { libc::kill(pid_b as libc::pid_t, 0) };
         assert_eq!(rc, 0);
         panel.cancel(b).expect("cancel b");
+    }
+
+    fn notified(
+        panel: &mut TaskPanel,
+        script: &str,
+    ) -> (TaskId, std::sync::mpsc::Receiver<(TaskId, u32)>) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut cmd = CommandBuilder::new("/bin/sh");
+        cmd.args(["-c", script]);
+        let id = panel
+            .start_with("t", cmd, small(), move |id| PtyNotify {
+                output: None,
+                exit: Some(Box::new(move |status: &ExitStatus| {
+                    let _ = tx.send((id, status.exit_code()));
+                })),
+            })
+            .expect("start");
+        (id, rx)
+    }
+
+    #[test]
+    fn the_exit_notice_carries_the_code_after_the_output_is_in_the_grid() {
+        let mut panel = TaskPanel::new();
+        let (id, rx) = notified(&mut panel, "printf 'built ok\\n'; exit 3");
+        let (noticed, code) = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("exit notice");
+        assert_eq!((noticed, code), (id, 3));
+        let pty = panel.get_mut(id).unwrap();
+        assert!(pty.snapshot().contains("built ok"), "{}", pty.snapshot());
+        assert_eq!(pty.try_wait().unwrap().map(|s| s.exit_code()), Some(3));
+
+        pty.append_line("[Finished in 0.1s with exit code 3]");
+        let lines: Vec<String> = pty.snapshot().lines().map(str::to_string).collect();
+        let built = lines.iter().position(|l| l == "built ok").unwrap();
+        assert_eq!(lines[built + 1], "[Finished in 0.1s with exit code 3]");
+    }
+
+    #[test]
+    fn request_kill_returns_at_once_and_keeps_the_task() {
+        let mut panel = TaskPanel::new();
+        // Ignores the hangup, so only the forced kill ends it.
+        let (id, rx) = notified(&mut panel, "trap '' HUP; echo started; sleep 30");
+        let pid = panel.get(id).and_then(Pty::pid).expect("pid");
+        let asked = std::time::Instant::now();
+        panel.get_mut(id).unwrap().request_kill();
+        assert!(asked.elapsed() < std::time::Duration::from_millis(100));
+        let (noticed, _) = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("exit notice after the forced kill");
+        assert_eq!(noticed, id);
+        assert!(panel.get(id).is_some(), "output kept");
+        let rc = unsafe { libc::kill(pid as libc::pid_t, 0) };
+        assert_eq!(rc, -1, "child still alive");
     }
 }

@@ -1,6 +1,7 @@
 mod about;
 mod branch_picker;
 mod build;
+mod build_output;
 mod clip;
 mod conflict;
 mod edit_menu;
@@ -402,6 +403,7 @@ impl App {
 
         term::render_term(
             &mut ui.term,
+            &ui.build,
             &mut quad_instances,
             &mut glyph_instances,
             editor_view,

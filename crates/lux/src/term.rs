@@ -9,7 +9,8 @@ mod tests;
 use std::path::Path;
 
 use lux_term::{
-    CommandBuilder, Pty, PtyError, PtySize, ShellProfile, TaskId, TaskPanel, TerminalId, Terminals,
+    CommandBuilder, Pty, PtyError, PtyNotify, PtySize, ShellProfile, TaskId, TaskPanel, TerminalId,
+    Terminals,
 };
 
 pub(crate) const DEFAULT_TERM_HEIGHT: f32 = 240.0;
@@ -66,6 +67,11 @@ impl TerminalState {
     pub(crate) fn active_pty_mut(&mut self) -> Option<&mut Pty> {
         let id = self.active_id()?;
         self.terminals.get_mut(id)
+    }
+
+    /// The task shown in the Tasks view, if it is still in the panel.
+    pub(crate) fn active_task_pty(&self) -> Option<&Pty> {
+        self.tasks.get(self.active_task?)
     }
 
     #[cfg(test)]
@@ -159,6 +165,9 @@ impl TerminalState {
                 let _ = pty.resize(size);
             }
         }
+        for pty in self.tasks.ptys() {
+            let _ = pty.resize(size);
+        }
     }
 
     /// Starts a project task command in the TaskPanel.
@@ -167,8 +176,18 @@ impl TerminalState {
         name: &str,
         command: CommandBuilder,
     ) -> Result<TaskId, PtyError> {
+        self.run_task_with(name, command, |_| PtyNotify::default())
+    }
+
+    /// `run_task`, reporting the task's output and exit through `notify`.
+    pub(crate) fn run_task_with(
+        &mut self,
+        name: &str,
+        command: CommandBuilder,
+        notify: impl FnOnce(TaskId) -> PtyNotify,
+    ) -> Result<TaskId, PtyError> {
         let size = self.default_size();
-        let id = self.tasks.start(name, command, size)?;
+        let id = self.tasks.start_with(name, command, size, notify)?;
         self.task_ids.push(id);
         self.active_task = Some(id);
         self.show_tasks = true;

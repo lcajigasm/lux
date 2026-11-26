@@ -625,7 +625,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-BUILD-02 — Panel Docked de Salida de Compilación y Terminal PTY
 - Prioridad: `P2 (Ergonomía)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: ST-BUILD-01
 - Objetivo: Visualización limpia de la salida de procesos y terminal integrado.
 - Alcance detallado:
