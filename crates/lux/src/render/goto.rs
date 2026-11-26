@@ -49,6 +49,7 @@ pub(crate) fn render_goto(
             };
             OverlayItem {
                 title: item.label.as_str(),
+                hits: item.hits.clone(),
                 badge,
                 detail: if item.detail.is_empty() {
                     None

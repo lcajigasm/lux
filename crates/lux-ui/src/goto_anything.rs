@@ -106,12 +106,15 @@ impl Query {
     }
 }
 
-/// One ranked Goto Anything result: a candidate path, its fuzzy score, and
-/// the line/col to jump to (if the query had a `:line` or `:line:col` suffix).
+/// One ranked Goto Anything result: a candidate path, its fuzzy score, the
+/// character indices the matcher aligned the query to (what the list
+/// highlights), and the line/col to jump to (if the query had a `:line` or
+/// `:line:col` suffix).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Match<'a> {
     pub path: &'a str,
     pub score: u32,
+    pub indices: Vec<u32>,
     pub line: Option<u32>,
     pub col: Option<u32>,
 }
@@ -124,9 +127,10 @@ pub fn search<'a>(
     let query = Query::parse(raw_query);
     rank_paths(&query.text, candidates)
         .into_iter()
-        .map(|(path, score)| Match {
-            path,
-            score,
+        .map(|ranked| Match {
+            path: ranked.item,
+            score: ranked.score,
+            indices: ranked.indices,
             line: query.line,
             col: query.col,
         })
@@ -158,15 +162,43 @@ impl RecentFiles {
     fn recency_of(&self, path: &str) -> u64 {
         self.last_opened.get(path).copied().unwrap_or(0)
     }
+
+    /// Score bonus for the [`RECENT_BOOST_SLOTS`] most recently opened
+    /// files: [`RECENT_BOOST`] for the latest, one [`RECENT_BOOST_STEP`]
+    /// less for each file opened after it. A bonus of five gap steps lifts
+    /// a file over at most five skipped characters and never into a higher
+    /// ranking tier of `lux_search::fuzzy::rank_paths` (shape, word start,
+    /// file name).
+    fn boosts(&self) -> HashMap<&str, u32> {
+        let mut recent: Vec<(&str, u64)> = self
+            .last_opened
+            .iter()
+            .map(|(path, clock)| (path.as_str(), *clock))
+            .collect();
+        recent.sort_by_key(|(_, clock)| std::cmp::Reverse(*clock));
+        recent
+            .into_iter()
+            .take(RECENT_BOOST_SLOTS)
+            .enumerate()
+            .map(|(rank, (path, _))| (path, RECENT_BOOST - rank as u32 * RECENT_BOOST_STEP))
+            .collect()
+    }
 }
+
+/// Bonus for the most recently opened file: worth five skipped characters
+/// in `rank_paths`' gap tier.
+pub const RECENT_BOOST: u32 = 5 * lux_search::fuzzy::GAP_STEP;
+/// How much less each older recent file gets: half a skipped character.
+pub const RECENT_BOOST_STEP: u32 = lux_search::fuzzy::GAP_STEP / 2;
+/// How many recent files get any bonus.
+pub const RECENT_BOOST_SLOTS: usize = 10;
 
 /// Like [`search`], but recency-aware. An empty query (no fuzzy text —
 /// the palette just opened, nothing typed yet) lists every candidate
 /// most-recently-opened first, never-opened candidates last in their
 /// original order — the "recent files" view a query-less Goto Anything
-/// shows. A non-empty query still ranks by fuzzy score first, breaking
-/// ties between equally good matches by recency, same as
-/// `command_palette::CommandRegistry::search`.
+/// shows. A non-empty query ranks by fuzzy score plus a bounded recency
+/// bonus (see [`RecentFiles`]'s boost), breaking remaining ties by recency.
 pub fn search_with_recency<'a>(
     raw_query: &str,
     candidates: impl IntoIterator<Item = &'a str>,
@@ -181,6 +213,7 @@ pub fn search_with_recency<'a>(
             .map(|path| Match {
                 path,
                 score: 0,
+                indices: Vec::new(),
                 line: query.line,
                 col: query.col,
             })
@@ -188,6 +221,12 @@ pub fn search_with_recency<'a>(
     }
 
     let mut results = search(raw_query, candidates);
+    let boosts = recent.boosts();
+    for result in &mut results {
+        if let Some(boost) = boosts.get(result.path) {
+            result.score = result.score.saturating_add(*boost);
+        }
+    }
     results.sort_by(|a, b| {
         b.score
             .cmp(&a.score)
@@ -381,6 +420,7 @@ mod tests {
             vec![Match {
                 path: "src/lib.rs",
                 score: results[0].score,
+                indices: vec![4, 5, 6],
                 line: None,
                 col: None,
             }]
@@ -396,12 +436,14 @@ mod tests {
                 Match {
                     path: "b.rs",
                     score: 0,
+                    indices: Vec::new(),
                     line: Some(7),
                     col: None,
                 },
                 Match {
                     path: "a.rs",
                     score: 0,
+                    indices: Vec::new(),
                     line: Some(7),
                     col: None,
                 },
@@ -464,6 +506,70 @@ mod tests {
 
         let results = search_with_recency("main", ["a/main.rs", "b/manual_index.rs"], &recent);
         assert_eq!(results[0].path, "a/main.rs");
+    }
+
+    #[test]
+    fn search_with_recency_lifts_a_recent_file_over_a_slightly_better_match() {
+        // Both scattered word-start matches in the file name; `main_tab.rs`
+        // skips one character fewer. Recency outweighs a small gap.
+        let mut recent = RecentFiles::new();
+        recent.record_open("b/mai_n.rs");
+
+        let fresh =
+            search_with_recency("man", ["a/main_tab.rs", "b/mai_n.rs"], &RecentFiles::new());
+        assert_eq!(fresh[0].path, "a/main_tab.rs");
+        let results = search_with_recency("man", ["a/main_tab.rs", "b/mai_n.rs"], &recent);
+        assert_eq!(results[0].path, "b/mai_n.rs");
+    }
+
+    #[test]
+    fn search_with_recency_lifts_over_up_to_five_skipped_characters_not_six() {
+        // All scattered word-start matches in the file name. `a/mxn.rs`
+        // skips one character. The bonus is worth five: a recent file that
+        // skips four more wins, one that skips six more does not. (Exactly
+        // five more ties on gap and `nucleo` decides.)
+        for (recent_path, wins) in [("b/mxxxxxn.rs", true), ("b/mxxxxxxxn.rs", false)] {
+            let mut recent = RecentFiles::new();
+            recent.record_open(recent_path);
+            let results = search_with_recency("mn", ["a/mxn.rs", recent_path], &recent);
+            let expected = if wins { recent_path } else { "a/mxn.rs" };
+            assert_eq!(results[0].path, expected, "{recent_path}");
+        }
+    }
+
+    #[test]
+    fn search_with_recency_boost_is_bounded_below_a_ranking_tier() {
+        // `src/lib.rs` matches inside its file name, `lib/mod.rs` only in
+        // the directory: one tier apart, which no recency bonus crosses.
+        let mut recent = RecentFiles::new();
+        recent.record_open("lib/mod.rs");
+
+        let results = search_with_recency("lib", ["lib/mod.rs", "src/lib.rs"], &recent);
+        assert_eq!(results[0].path, "src/lib.rs");
+    }
+
+    #[test]
+    fn recent_boost_decays_with_age_and_stops_after_the_last_slot() {
+        let mut recent = RecentFiles::new();
+        for i in 0..=RECENT_BOOST_SLOTS {
+            recent.record_open(&format!("f{i}.rs"));
+        }
+        let boosts = recent.boosts();
+        assert_eq!(
+            boosts[format!("f{RECENT_BOOST_SLOTS}.rs").as_str()],
+            RECENT_BOOST
+        );
+        assert_eq!(
+            boosts[format!("f{}.rs", RECENT_BOOST_SLOTS - 1).as_str()],
+            RECENT_BOOST - RECENT_BOOST_STEP
+        );
+        assert!(!boosts.contains_key("f0.rs"));
+    }
+
+    #[test]
+    fn search_attaches_the_matched_positions() {
+        let results = search("apprs", ["crates/lux/src/app.rs"]);
+        assert_eq!(results[0].indices, vec![15, 16, 17, 19, 20]);
     }
 
     #[test]

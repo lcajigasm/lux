@@ -100,12 +100,20 @@ pub(crate) fn items(app: &App, query: &str) -> (Vec<GotoItem>, Option<&'static s
     };
     let snapshot = indexer.snapshot();
     let notice = snapshot.is_indexing().then_some(INDEXING_NOTICE);
+    // The index filters names by substring of the part after `@`, if any.
+    let trimmed = query.trim();
+    let sym_part = trimmed
+        .split_once('@')
+        .map_or(trimmed, |(_, sym)| sym.trim());
     let rows = snapshot
         .search(query, MAX_RESULTS)
         .into_iter()
         .map(|s| {
             let path = s.path.to_string_lossy().to_string();
             GotoItem {
+                hits: lux_search::fuzzy::substring_span(&s.name, sym_part)
+                    .into_iter()
+                    .collect(),
                 label: s.name.clone(),
                 detail: format!("{}:{}", path, s.line),
                 path,

@@ -27,11 +27,12 @@ pub(crate) fn render_build_picker(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
-    let filtered = picker.filtered();
+    let filtered = picker.ranked();
     let items: Vec<OverlayItem<'_>> = filtered
-        .iter()
-        .map(|variant| OverlayItem {
+        .into_iter()
+        .map(|(variant, hits)| OverlayItem {
             title: variant.name.as_str(),
+            hits,
             badge: None,
             detail: Some(variant.command.as_str()),
             icon: Some(super::icons::Icon::Build),

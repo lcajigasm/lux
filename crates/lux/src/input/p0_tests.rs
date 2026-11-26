@@ -251,6 +251,7 @@ fn goto_wheel_scrolls_the_panel_and_not_the_editor() {
 fn item(label: &str) -> crate::goto::GotoItem {
     crate::goto::GotoItem {
         label: label.into(),
+        hits: Vec::new(),
         detail: String::new(),
         path: label.into(),
         line: None,

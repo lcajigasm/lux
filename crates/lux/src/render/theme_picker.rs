@@ -34,7 +34,8 @@ pub(crate) fn render_theme_picker(
     };
     let now = std::time::Instant::now();
     let reduced = crate::overlay_motion::reduced_motion();
-    let filtered = picker.filtered();
+    let ranked = picker.ranked();
+    let filtered: Vec<&'static str> = ranked.iter().map(|(name, _)| *name).collect();
     let labels: Vec<String> = filtered
         .iter()
         .map(|name| {
@@ -60,8 +61,12 @@ pub(crate) fn render_theme_picker(
     let items: Vec<OverlayItem<'_>> = labels
         .iter()
         .zip(swatches.iter())
-        .map(|(title, swatch)| OverlayItem {
+        .zip(ranked.iter())
+        // The name leads the label, so its byte ranges hold for the label;
+        // the "(active)" suffix is never lit.
+        .map(|((title, swatch), (_, hits))| OverlayItem {
             title,
+            hits: hits.clone(),
             badge: None,
             detail: None,
             icon: Some(super::icons::Icon::Theme),

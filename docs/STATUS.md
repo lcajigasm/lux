@@ -102,8 +102,9 @@
 > lists share one card. It is about 60% of the window, keeps the selection
 > on screen, and draws a scrollbar when the list is longer than that.
 > Wheel, arrows, Page Up/Down, Home, and End move the selection. Every
-> list filters with the same fuzzy matcher and draws the match on the
-> row. Shift+Command+M and the status-bar language label open the
+> list draws the positions its own filter matched, carried on the row:
+> the fuzzy matcher's alignment, or the substring a substring filter
+> found. Nothing re-scans the title left to right. Shift+Command+M and the status-bar language label open the
 > language list, and Enter applies the row. A chained typing undo groups one word; a one-second gap before the
 > next edit starts another step, and undo restores the earlier selections.
 > `docs/compare/selectors.png` (compare run 41357599959) shows the command
@@ -111,10 +112,12 @@
 > sits under the tab bar, about half the window, with a shadow. The editor
 > stays visible above and beside it. The field shows `sel`. The selected
 > row uses the theme's panel-row color, and matched letters stay at or
-> above WCAG AA against that row. Go to file keeps a contiguous run or a word-initial match
-> and drops a scattered hit when one of those exists. `mon` on the compare
-> fixtures keeps `monokai.rs`. The `sample-*.bin` names match only as
-> `m`…`o`…`n` (`sample`, a later `o`, and the `n` in `.bin`).
+> above WCAG AA against that row. Go to file ranks a contiguous run or a word-initial match
+> above every scattered hit and keeps the scattered hits listed below them.
+> `mon` on the compare fixtures lists `monokai.rs` first, then the
+> `sample-*.bin` names, which match only as `m`…`o`…`n` (`sample`, a later
+> `o`, and the `n` in `.bin`). The `goto.png` capture below predates this:
+> it shows `monokai.rs` alone in Lux, as in Sublime Text and Zed.
 > `docs/compare/` is compare run 41363899505. `goto.png` is Lux, Sublime,
 > and Zed with `mon`; each list is `monokai.rs`. `selectors.png` is the
 > palette with `sel`, which Forge accepted. `theme.png` is the theme
@@ -842,14 +845,36 @@ it displays a centered floating overlay with real-time fuzzy search powered by
 recent history. Sublime-style `:line` suffix syntax (`path:line`, e.g. `main.rs:42`)
 is parsed seamlessly: selecting an entry jumps the editor cursor to that line.
 Navigation (`Up`/`Down`), execution (`Enter`), and dismissal (`Esc`) are fully wired
-to real application actions. Gate: `cargo test -p lux goto::`.
+to real application actions. Ranking is tiered: a contiguous run beats a
+word-initial (acronym) match, which beats a scattered one; inside each tier a
+match that starts a word beats one that doesn't, and a match wholly inside the
+file name beats one reaching into the directory; then fewer skipped characters
+win; `nucleo`'s own score only breaks ties. The tiers are packed into one
+score so each outweighs every tier below it combined, and a match is never
+hidden because a better one exists. The ten most recently opened files get
+a bounded bonus (five skipped characters' worth for the latest, half a
+character less per older file) that never crosses a tier. The matcher returns the
+character positions of the alignment it ranked, and the list draws exactly
+those in the accent color: `apprs` on `crates/lux/src/app.rs` lights `a`, `p`,
+`p` of `app` and `r`, `s` of `rs`, not the `a` of `crates`. `@symbol`,
+`#term`, and Goto Symbol in Project rows light the substring their filter
+matched. Every list on the shared overlay card paints the byte ranges its
+row carries (`OverlayItem::hits`). Gate: `cargo test -p lux goto::`, `cargo test -p lux-search fuzzy`,
+`cargo test -p lux-ui goto_anything`, `cargo test -p lux list_hits`.
 
 **Command palette** is `implemented` on macOS (`crates/lux/src/palette.rs`,
 `crates/lux/src/render/palette.rs`). Toggled with `Cmd+Shift+P`, it renders a floating
 modal overlay with real-time fuzzy filtering over `lux-ui::command_palette::CommandRegistry`.
 All core desktop commands across File, Edit, Selection, View, and Status Bar categories
 are registered with real actions. Results rank match query characters, navigate with
-`Up`/`Down`, execute on `Enter`, and dismiss on `Esc`. Gate: `cargo test -p lux palette::`.
+`Up`/`Down`, execute on `Enter`, and dismiss on `Esc`. Highlighted title
+characters are the positions `nucleo` matched, carried on each result. The
+language and theme pickers rank fuzzily and light their `nucleo` positions
+the same way. The build, snippet, and project pickers rank a longer key
+(`name command args`, `name trigger description`, the full path) and light
+the part of the match inside the title they show; a match only in the
+command or directory lights nothing. The branch list filters by substring
+and lights that substring; its create row lights nothing. Gate: `cargo test -p lux palette::`.
 
 **Search/replace bar** is `implemented` on macOS (`crates/lux/src/search/`,
 `crates/lux/src/render/search.rs`). Toggled with `Cmd+F` (find) or `Cmd+H` (replace), it

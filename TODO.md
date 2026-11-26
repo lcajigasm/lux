@@ -337,7 +337,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-NAV-02 — Resaltado de Caracteres Coincidentes y Scoring Jerárquico en Búsquedas Difusas
 - Prioridad: `P1 (UX Sublime)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: ST-FIX-01
 - Objetivo: Coincidencia difusa de máxima precisión y legibilidad.
 - Alcance detallado:
@@ -350,6 +350,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
     - Los caracteres que coinciden con la consulta escrita por el usuario deben dibujarse con el color de acento (`theme.accent`) o negrita, distinguiéndose nítidamente del resto del nombre de archivo.
 - Criterios de aceptación:
   - Al escribir `apprs` en `Cmd+P`, las letras `a`, `p`, `p`, `.`, `r`, `s` en `crates/lux/src/app.rs` aparecen resaltadas en color dorado/ámbar.
+  - Note: `.` is not part of the query `apprs`, so it is not highlighted; the matched `a`, `p`, `p`, `r`, `s` are (`file_results_carry_the_ranked_match_positions`).
 
 ---
 

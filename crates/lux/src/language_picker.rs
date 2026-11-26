@@ -4,10 +4,13 @@ use lux_platform::event::KeyEvent;
 use lux_platform::{Key, NamedKey, PlatformContext, ScrollDelta};
 use lux_syntax::LanguageId;
 
+/// One selectable row: the language (`None` is Plain Text) and its name.
+pub(crate) type LanguageRow = (Option<LanguageId>, &'static str);
+
 pub(crate) struct LanguagePickerState {
     pub(crate) query: crate::field::QueryField,
     pub(crate) selected_index: usize,
-    pub(crate) candidates: Vec<(Option<LanguageId>, &'static str)>,
+    pub(crate) candidates: Vec<LanguageRow>,
 }
 
 impl Default for LanguagePickerState {
@@ -25,14 +28,27 @@ impl LanguagePickerState {
         }
     }
 
-    pub(crate) fn filtered(&self) -> Vec<&(Option<LanguageId>, &'static str)> {
+    pub(crate) fn filtered(&self) -> Vec<&LanguageRow> {
+        self.ranked().into_iter().map(|(item, _)| item).collect()
+    }
+
+    /// Matching languages, best first, with the byte ranges of the name
+    /// the matcher aligned the query to.
+    pub(crate) fn ranked(&self) -> Vec<(&LanguageRow, crate::overlay_list::Hits)> {
         let q = self.query.trim();
         if q.is_empty() {
-            return self.candidates.iter().collect();
+            return self
+                .candidates
+                .iter()
+                .map(|item| (item, Vec::new()))
+                .collect();
         }
         lux_search::fuzzy::rank_by(q, &self.candidates, |item| item.1)
             .into_iter()
-            .map(|(item, _)| item)
+            .map(|ranked| {
+                let hits = lux_search::fuzzy::char_spans(ranked.item.1, &ranked.indices);
+                (ranked.item, hits)
+            })
             .collect()
     }
 }

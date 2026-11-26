@@ -35,6 +35,8 @@ pub(crate) enum GotoItemKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GotoItem {
     pub(crate) label: String,
+    /// Byte ranges of `label` the query matched, as the matcher aligned it.
+    pub(crate) hits: Vec<std::ops::Range<usize>>,
     pub(crate) detail: String,
     pub(crate) path: String,
     pub(crate) line: Option<u32>,
@@ -456,6 +458,29 @@ mod tests {
         assert_eq!(goto.selected_index, 1);
         goto.select_next(2);
         assert_eq!(goto.selected_index, 1);
+    }
+
+    #[test]
+    fn file_results_carry_the_ranked_match_positions() {
+        let app = crate::app::App::new(
+            include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec(),
+        );
+        let mut goto = GotoState {
+            query: crate::field::QueryField::from_text("apprs"),
+            cached_candidates: vec!["crates/lux/src/app.rs".to_string()],
+            ..Default::default()
+        };
+        goto.refresh_results(&app);
+        let item = &goto.items[0];
+        let lit: Vec<&str> = item
+            .hits
+            .iter()
+            .map(|span| &item.label[span.clone()])
+            .collect();
+        // `a`, `p`, `p` of `app` and `r`, `s` of `rs` — not the `a` of `crates`.
+        assert_eq!(lit, ["a", "p", "p", "r", "s"]);
+        assert_eq!(item.hits[0], 15..16);
+        assert_eq!(item.hits[4], 20..21);
     }
 
     #[test]

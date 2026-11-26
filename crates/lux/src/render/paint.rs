@@ -2,6 +2,9 @@
 
 use std::cell::Cell;
 
+pub(crate) mod highlight;
+pub(crate) use highlight::span_covers;
+
 use swash::FontRef;
 use wgpu::CurrentSurfaceTexture;
 
@@ -440,44 +443,6 @@ pub(crate) fn draw_on_top(
     encoder
 }
 
-/// Byte ranges in `haystack` that a case-insensitive subsequence `needle` hits.
-pub(crate) fn fuzzy_spans(haystack: &str, needle: &str) -> Vec<std::ops::Range<usize>> {
-    let mut spans = Vec::new();
-    if needle.trim().is_empty() {
-        return spans;
-    }
-    let mut rest = haystack;
-    let mut base = 0usize;
-    for ch in needle.chars() {
-        if ch.is_whitespace() {
-            continue;
-        }
-        let lower = ch.to_lowercase().next().unwrap_or(ch);
-        let Some((index, matched)) = rest
-            .char_indices()
-            .find(|(_, candidate)| candidate.to_lowercase().next().unwrap_or(*candidate) == lower)
-        else {
-            break;
-        };
-        let start = base + index;
-        let len = matched.len_utf8();
-        spans.push(start..start + len);
-        let next = index + len;
-        base += next;
-        rest = &rest[next..];
-    }
-    spans
-}
-
-pub(crate) fn span_covers(
-    spans: &[std::ops::Range<usize>],
-    range: &std::ops::Range<usize>,
-) -> bool {
-    spans
-        .iter()
-        .any(|span| span.start < range.end && range.start < span.end)
-}
-
 /// Column rulers and the minimap edge. A full `muted` stroke reads as a
 /// hard line on Monokai; a translucent border sits close to the editor.
 pub(crate) fn faint_rule(theme: &lux_ui::Theme) -> [f32; 4] {
@@ -505,7 +470,7 @@ pub(super) fn syntax_color(c: lux_syntax::theme::Color) -> [f32; 4] {
 
 #[cfg(test)]
 mod tests {
-    use super::{fuzzy_spans, rendering_mode_for_scale, span_covers};
+    use super::rendering_mode_for_scale;
     use lux_render::TextRenderingMode;
 
     #[test]
@@ -539,13 +504,5 @@ mod tests {
         let kept = super::clip_glyphs(&[glyph(1200.0), glyph(12.0)], 1000.0, 700.0);
         assert_eq!(kept.len(), 1);
         assert!((kept[0].rect[0] - 12.0).abs() < 0.1);
-    }
-
-    #[test]
-    fn fuzzy_spans_cover_a_case_insensitive_subsequence() {
-        let spans = fuzzy_spans("Goto Line", "gl");
-        assert!(span_covers(&spans, &(0..1)), "{spans:?}");
-        assert!(span_covers(&spans, &(5..6)), "{spans:?}");
-        assert!(!span_covers(&spans, &(1..2)), "{spans:?}");
     }
 }

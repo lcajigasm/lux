@@ -31,11 +31,27 @@ impl BranchPicker {
     }
 
     pub(crate) fn rows(&self) -> Vec<String> {
+        self.rows_with_hits()
+            .into_iter()
+            .map(|(label, _)| label)
+            .collect()
+    }
+
+    /// Rows with the byte ranges to draw as the match. Branch names are
+    /// filtered by substring, so a name lights the substring it matched;
+    /// the create row matched nothing and lights nothing.
+    pub(crate) fn rows_with_hits(&self) -> Vec<(String, crate::overlay_list::Hits)> {
+        let query = self.query.text().trim();
         self.row_kinds()
             .into_iter()
             .map(|row| match row {
-                Row::Create => self.create_label(),
-                Row::Branch(name) => name,
+                Row::Create => (self.create_label(), Vec::new()),
+                Row::Branch(name) => {
+                    let hits = lux_search::fuzzy::substring_span(&name, query)
+                        .into_iter()
+                        .collect();
+                    (name, hits)
+                }
             })
             .collect()
     }

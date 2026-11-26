@@ -338,28 +338,38 @@ impl CommandRegistry {
             entries.sort_by_key(|c| std::cmp::Reverse(recency_of(&c.id)));
             return entries
                 .into_iter()
-                .map(|command| PaletteEntry { command, score: 0 })
+                .map(|command| PaletteEntry {
+                    command,
+                    score: 0,
+                    indices: Vec::new(),
+                })
                 .collect();
         }
 
         let mut ranked = rank_by(query, enabled, |c| c.title.as_str());
-        ranked.sort_by(|(a, score_a), (b, score_b)| {
-            score_b
-                .cmp(score_a)
-                .then_with(|| recency_of(&b.id).cmp(&recency_of(&a.id)))
+        ranked.sort_by(|a, b| {
+            b.score
+                .cmp(&a.score)
+                .then_with(|| recency_of(&b.item.id).cmp(&recency_of(&a.item.id)))
         });
         ranked
             .into_iter()
-            .map(|(command, score)| PaletteEntry { command, score })
+            .map(|ranked| PaletteEntry {
+                command: ranked.item,
+                score: ranked.score,
+                indices: ranked.indices,
+            })
             .collect()
     }
 }
 
-/// One ranked palette result.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// One ranked palette result. `indices` are the title's character indices
+/// the matcher aligned the query to — what the palette highlights.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaletteEntry<'a> {
     pub command: &'a Command,
     pub score: u32,
+    pub indices: Vec<u32>,
 }
 
 #[cfg(test)]

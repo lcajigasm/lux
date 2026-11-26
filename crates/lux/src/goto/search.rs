@@ -1,6 +1,7 @@
 //! Candidate collection and query search logic for Goto Anything.
 
 use super::{GotoItem, GotoItemKind};
+use lux_search::fuzzy::{char_spans, substring_span};
 use lux_ui::goto_anything::{self, RecentFiles};
 
 pub(super) fn collect_candidates(app: &crate::app::App) -> Vec<String> {
@@ -82,6 +83,7 @@ pub(super) fn compute_items(
         .into_iter()
         .map(|m| GotoItem {
             label: m.path.to_string(),
+            hits: char_spans(m.path, &m.indices),
             detail: String::new(),
             path: m.path.to_string(),
             line: m.line,
@@ -150,6 +152,7 @@ fn compute_symbol_results(
             }
         })
         .map(|s| GotoItem {
+            hits: substring_span(&s.name, sym_query).into_iter().collect(),
             label: s.name,
             detail: format!("{} :{}", s.kind.badge(), s.line),
             path: target_path.clone(),
@@ -205,6 +208,7 @@ fn compute_term_results(
         if term_query.is_empty() || trimmed.to_lowercase().contains(&term_lower) {
             items.push(GotoItem {
                 label: trimmed.to_string(),
+                hits: substring_span(trimmed, term_query).into_iter().collect(),
                 detail: format!(":{}", line_num),
                 path: target_path.clone(),
                 line: Some(line_num),
@@ -243,6 +247,7 @@ fn compute_line_results(
         };
         vec![GotoItem {
             label: path.clone(),
+            hits: Vec::new(),
             detail,
             path,
             line: query.line,
@@ -264,6 +269,7 @@ fn compute_line_results(
             .into_iter()
             .map(|m| GotoItem {
                 label: m.path.to_string(),
+                hits: char_spans(m.path, &m.indices),
                 detail: detail.clone(),
                 path: m.path.to_string(),
                 line: query.line,

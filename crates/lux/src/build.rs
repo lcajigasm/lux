@@ -25,9 +25,19 @@ pub(crate) struct BuildPickerState {
 
 impl BuildPickerState {
     pub(crate) fn filtered(&self) -> Vec<&BuildVariant> {
+        self.ranked()
+            .into_iter()
+            .map(|(variant, _)| variant)
+            .collect()
+    }
+
+    /// Matching variants, best first. The query ranks against
+    /// `name command args`; the hits are the part of that match that falls
+    /// in the name, the title the list shows.
+    pub(crate) fn ranked(&self) -> Vec<(&BuildVariant, crate::overlay_list::Hits)> {
         let q = self.query.trim();
         if q.is_empty() {
-            return self.variants.iter().collect();
+            return self.variants.iter().map(|v| (v, Vec::new())).collect();
         }
         let labels: Vec<(usize, String)> = self
             .variants
@@ -47,7 +57,13 @@ impl BuildPickerState {
             .collect();
         lux_search::fuzzy::rank_by(q, &labels, |(_, label)| label.as_str())
             .into_iter()
-            .map(|(item, _)| &self.variants[item.0])
+            .map(|ranked| {
+                let (index, label) = ranked.item;
+                let variant = &self.variants[*index];
+                let name = 0..variant.name.len();
+                let hits = lux_search::fuzzy::char_spans_in(label, &ranked.indices, name);
+                (variant, hits)
+            })
             .collect()
     }
 
