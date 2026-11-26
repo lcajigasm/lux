@@ -87,13 +87,15 @@ impl MacroState {
         self.current_recording.push(cmd);
     }
 
-    /// Saves the current or last recorded macro as a named `.sublime-macro` file.
-    pub fn save_macro_as(
-        &mut self,
+    /// Picks the macro to save and its target path. No disk access: the
+    /// caller writes `Macro::save_to_file` on a worker, then calls
+    /// `note_saved`.
+    pub fn prepare_save(
+        &self,
         name: &str,
         custom_dir: Option<&Path>,
-    ) -> std::io::Result<PathBuf> {
-        let macro_to_save = match &self.last_macro {
+    ) -> std::io::Result<(PathBuf, Macro)> {
+        let mut macro_to_save = match &self.last_macro {
             Some(m) => m.clone(),
             None => {
                 if !self.current_recording.is_empty() {
@@ -115,16 +117,26 @@ impl MacroState {
 
         let sanitized_name = name.trim().trim_end_matches(".sublime-macro");
         let filename = format!("{sanitized_name}.sublime-macro");
-        let path = target_dir.join(filename);
+        macro_to_save.name = Some(sanitized_name.to_string());
+        Ok((target_dir.join(filename), macro_to_save))
+    }
 
-        macro_to_save.save_to_file(&path)?;
-
-        let mut saved = macro_to_save;
-        saved.name = Some(sanitized_name.to_string());
-        self.saved_macros
-            .retain(|m| m.name.as_deref() != Some(sanitized_name));
+    /// Lists a macro that was written to disk.
+    pub fn note_saved(&mut self, saved: Macro) {
+        self.saved_macros.retain(|m| m.name != saved.name);
         self.saved_macros.push(saved);
+    }
 
+    /// Saves the current or last recorded macro synchronously.
+    #[cfg(test)]
+    pub fn save_macro_as(
+        &mut self,
+        name: &str,
+        custom_dir: Option<&Path>,
+    ) -> std::io::Result<PathBuf> {
+        let (path, saved) = self.prepare_save(name, custom_dir)?;
+        saved.save_to_file(&path)?;
+        self.note_saved(saved);
         Ok(path)
     }
 

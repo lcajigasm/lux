@@ -29,6 +29,10 @@ fn paint(
     scale: f32,
 ) -> (Vec<QuadInstance>, Vec<lux_render::GlyphInstance>) {
     app.scale_factor = scale;
+    // The app installs the UI face once its startup worker reports back;
+    // these checks describe that steady state.
+    crate::font::load_ui_font();
+    crate::font::install_ui_font(app.editor_view.text_layout_mut());
     let panel = app.ui.settings.panel.clone().expect("settings page");
     let mut quads = Vec::new();
     let mut glyphs = Vec::new();

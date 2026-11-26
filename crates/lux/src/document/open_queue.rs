@@ -41,3 +41,27 @@ pub(crate) fn pump(app: &mut App, ctx: &dyn PlatformContext) {
     let path = app.documents.open_queue.remove(0);
     app.request_document(ctx, crate::document::Request::Open(Some(path)));
 }
+
+/// Opens `path` on the document worker and moves the cursor to
+/// `line`:`column` when it lands. Without a platform context the path waits
+/// in the queue for the next document operation.
+pub(crate) fn open_at(
+    app: &mut App,
+    ctx: Option<&dyn PlatformContext>,
+    path: std::path::PathBuf,
+    line: Option<u32>,
+    column: Option<u32>,
+) {
+    if path.as_os_str().is_empty() {
+        return;
+    }
+    crate::cli::place_cursor_on_open(&path, line, column);
+    app.documents.open_queue.push(path);
+    if let Some(ctx) = ctx {
+        pump(app, ctx);
+    }
+}
+
+#[cfg(test)]
+#[path = "jump_tests.rs"]
+mod jump_tests;

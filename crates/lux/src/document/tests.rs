@@ -76,6 +76,13 @@ impl Context {
             .expect("worker must notify completion");
         app.finish_document_operation(self);
     }
+    /// Waits for a `ui_io` worker and applies its result.
+    pub(crate) fn complete_io(&self, app: &mut App) {
+        self.events
+            .recv_timeout(Duration::from_secs(10))
+            .expect("ui_io worker must notify completion");
+        crate::ui_io::poll(app, self);
+    }
 }
 
 impl Clipboard for Context {

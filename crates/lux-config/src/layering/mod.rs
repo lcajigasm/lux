@@ -36,6 +36,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, PoisonError};
 
 use serde_json::Value;
 
@@ -170,23 +171,48 @@ impl LayeredConfig {
         let Some(path) = self.layers.get(&layer).and_then(|s| s.path.clone()) else {
             return Ok(());
         };
-        let text = match fs::read_to_string(&path) {
-            Ok(text) => text,
-            Err(err) if err.kind() == io::ErrorKind::NotFound => {
-                self.layers.get_mut(&layer).unwrap().value = None;
-                self.recompute();
-                return Ok(());
-            }
-            Err(err) => return Err(LayerError::Io(err)),
+        self.apply_read(layer, read_layer_file(&path))
+    }
+
+    /// Like [`LayeredConfig::reload_layer`], but reads and parses the file
+    /// without holding `config`'s lock. The lock is taken only to look up
+    /// the layer's path and, afterwards, to swap the parsed value in, so a
+    /// thread that reads `config` never waits on the disk. If the layer's
+    /// path changed while the file was being read, the stale result is
+    /// dropped.
+    ///
+    /// # Panics
+    /// If `layer` is [`Layer::Default`].
+    pub fn reload_layer_shared(config: &Mutex<Self>, layer: Layer) -> Result<(), LayerError> {
+        assert_ne!(
+            layer,
+            Layer::Default,
+            "the default layer has no file to reload"
+        );
+        let lock = || config.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some(path) = lock().layer_path(layer).map(Path::to_path_buf) else {
+            return Ok(());
         };
-        match jsonc::parse(&text) {
-            Ok(value) => {
-                self.layers.get_mut(&layer).unwrap().value = Some(value);
-                self.recompute();
-                Ok(())
-            }
-            Err(err) => Err(LayerError::Parse(err)),
+        let read = read_layer_file(&path);
+        let mut config = lock();
+        if config.layer_path(layer) != Some(path.as_path()) {
+            return Ok(());
         }
+        config.apply_read(layer, read)
+    }
+
+    /// Installs a finished read. No disk access.
+    fn apply_read(&mut self, layer: Layer, read: LayerRead) -> Result<(), LayerError> {
+        let value = match read {
+            LayerRead::Missing => None,
+            LayerRead::Parsed(value) => Some(value),
+            LayerRead::Failed(err) => return Err(err),
+        };
+        if let Some(state) = self.layers.get_mut(&layer) {
+            state.value = value;
+            self.recompute();
+        }
+        Ok(())
     }
 
     /// The merged view: `Default` overridden by every set layer, in
@@ -203,6 +229,28 @@ impl LayeredConfig {
             }
         }
         self.merged = merged;
+    }
+}
+
+/// What reading one layer's file produced, before it is applied.
+enum LayerRead {
+    /// No file: the layer contributes nothing.
+    Missing,
+    Parsed(Value),
+    /// Unreadable or malformed: the layer keeps its last good value.
+    Failed(LayerError),
+}
+
+/// Reads and parses a layer file. Touches only the disk, never a config.
+fn read_layer_file(path: &Path) -> LayerRead {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return LayerRead::Missing,
+        Err(err) => return LayerRead::Failed(LayerError::Io(err)),
+    };
+    match jsonc::parse(&text) {
+        Ok(value) => LayerRead::Parsed(value),
+        Err(err) => LayerRead::Failed(LayerError::Parse(err)),
     }
 }
 
@@ -420,6 +468,44 @@ mod tests {
         assert_eq!(config.resolved()["value"], "default");
         assert!(config.layer_path(Layer::User).is_none());
 
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A FIFO blocks the reader until a writer opens it, so the test can
+    /// check the lock while the reload is provably inside its file read.
+    #[cfg(unix)]
+    #[test]
+    fn shared_reload_reads_the_file_without_holding_the_lock() {
+        use std::io::Write;
+        use std::sync::{Arc, Mutex};
+
+        let dir = temp_dir("shared");
+        let path = dir.join("user.jsonc");
+        let _ = fs::remove_file(&path);
+        let mut config = LayeredConfig::new(r#"{ "value": "default" }"#).unwrap();
+        config.set_layer_path(Layer::User, path.clone()).unwrap();
+        let status = std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .expect("mkfifo runs");
+        assert!(status.success());
+
+        let config = Arc::new(Mutex::new(config));
+        let reload = {
+            let config = Arc::clone(&config);
+            thread::spawn(move || LayeredConfig::reload_layer_shared(&config, Layer::User))
+        };
+        // Opening for write waits until the reload has opened for read.
+        let mut fifo = fs::OpenOptions::new().write(true).open(&path).unwrap();
+        assert!(
+            config.try_lock().is_ok(),
+            "the lock must be free while the file is read"
+        );
+        fifo.write_all(br#"{ "value": "user" }"#).unwrap();
+        drop(fifo);
+
+        reload.join().unwrap().unwrap();
+        assert_eq!(config.lock().unwrap().resolved()["value"], "user");
         fs::remove_dir_all(&dir).ok();
     }
 

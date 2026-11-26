@@ -428,9 +428,7 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
             app.open_theme_picker();
         }
         "preferences.open_settings_json" => {
-            let settings = std::mem::take(&mut app.ui.settings);
-            settings.open_settings_json(app, ctx);
-            app.ui.settings = settings;
+            crate::settings::open_settings_json(app, ctx);
         }
         "view.zoom_in" => app.zoom_font(1.0),
         "view.zoom_out" => app.zoom_font(-1.0),

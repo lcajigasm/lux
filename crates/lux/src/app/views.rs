@@ -144,9 +144,13 @@ impl App {
             starting_directory: self.workspace_root(),
             filters: Vec::new(),
         };
-        if let Some(path) = ctx.file_dialogs().pick_folder(&opts) {
-            self.open_workspace(path);
-        }
+        // The panel is shown from a worker so this call returns at once. On
+        // macOS `rfd` still runs the modal panel on the main thread while the
+        // worker waits, so the editor does not paint behind it.
+        let dialogs = ctx.background_dialogs();
+        crate::ui_io::spawn(self, Some(ctx), move || {
+            dialogs.pick_folder(&opts).map(crate::ui_io::Done::Folder)
+        });
     }
 
     pub(crate) fn open_about_dialog(&mut self) {

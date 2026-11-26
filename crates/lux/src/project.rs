@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 
 use lux_platform::event::KeyEvent;
 use lux_platform::{FileDialogOptions, Key, NamedKey, PlatformContext};
-use lux_workspace::project::{ProjectBuildSystem, Workspace, find_sublime_project};
+use lux_workspace::project::{ProjectBuildSystem, ProjectFile, Workspace, find_sublime_project};
+
+use crate::ui_io::Done;
 
 use crate::app::App;
 
@@ -202,16 +204,17 @@ impl App {
         path: &Path,
         _ctx: Option<&dyn PlatformContext>,
     ) -> bool {
-        let Ok(workspace) = Workspace::open_project_file(path) else {
+        let Ok(workspace) = load_project(path) else {
             self.ui.announcement = Some(format!("Failed to open project: {}", path.display()));
             self.scheduler.invalidate_all();
             return false;
         };
+        self.apply_project(path, workspace);
+        true
+    }
 
-        let mut recents = RecentProjects::load();
-        recents.record(path.to_path_buf());
-        recents.save();
-
+    /// Shows a project that `load_project` already read and parsed.
+    pub(crate) fn apply_project(&mut self, path: &Path, workspace: Workspace) {
         let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
 
         if let Some(first_root) = workspace.roots().first() {
@@ -252,7 +255,6 @@ impl App {
         self.ui.project.workspace = Some(workspace);
         self.update_viewport_dimensions();
         self.scheduler.invalidate_all();
-        true
     }
 
     /// Invokes native file dialog to choose a project file to open.
@@ -265,9 +267,14 @@ impl App {
                 vec!["sublime-project".into(), "lux-project".into()],
             )],
         };
-        if let Some(path) = ctx.file_dialogs().pick_file(&opts) {
-            self.open_project_file(&path, Some(ctx));
-        }
+        let dialogs = ctx.background_dialogs();
+        crate::ui_io::spawn(self, Some(ctx), move || {
+            let path = dialogs.pick_file(&opts)?;
+            Some(match load_project(&path) {
+                Ok(workspace) => Done::ProjectOpened { path, workspace },
+                Err(_) => Done::ProjectFailed(path),
+            })
+        });
     }
 
     /// Invokes native file dialog to save current workspace as a `.sublime-project`.
@@ -280,35 +287,46 @@ impl App {
                 vec!["sublime-project".into()],
             )],
         };
-        if let Some(path) = ctx.file_dialogs().save_file(&opts) {
-            self.save_project_as(&path);
+        let project_file = self.current_project_file();
+        let dialogs = ctx.background_dialogs();
+        crate::ui_io::spawn(self, Some(ctx), move || {
+            let path = dialogs.save_file(&opts)?;
+            Some(if write_project(&project_file, &path) {
+                Done::ProjectSaved(path)
+            } else {
+                Done::ProjectSaveFailed(path)
+            })
+        });
+    }
+
+    fn current_project_file(&self) -> ProjectFile {
+        if let Some(ws) = &self.ui.project.workspace {
+            return ws.to_project_file();
         }
+        let root = self.workspace_root().unwrap_or_else(|| PathBuf::from("."));
+        let mut ws = Workspace::new();
+        ws.add_root(root, None);
+        ws.to_project_file()
     }
 
     /// Saves the current workspace configuration to the given path.
+    #[cfg(test)]
     pub(crate) fn save_project_as(&mut self, path: &Path) -> bool {
-        let root = self.workspace_root().unwrap_or_else(|| PathBuf::from("."));
-        let project_file = if let Some(ws) = &self.ui.project.workspace {
-            ws.to_project_file()
-        } else {
-            let mut ws = Workspace::new();
-            ws.add_root(root, None);
-            ws.to_project_file()
-        };
-
-        if project_file.save(path).is_ok() {
-            self.ui.project.active_project_path = Some(path.to_path_buf());
-            let mut recents = RecentProjects::load();
-            recents.record(path.to_path_buf());
-            recents.save();
-            self.ui.announcement = Some(format!("Project saved to {}", path.display()));
-            self.scheduler.invalidate_all();
-            true
+        let saved = write_project(&self.current_project_file(), path);
+        if saved {
+            self.note_project_saved(path);
         } else {
             self.ui.announcement = Some(format!("Failed to save project to {}", path.display()));
             self.scheduler.invalidate_all();
-            false
         }
+        saved
+    }
+
+    /// Records a project file that `write_project` wrote. No disk access.
+    pub(crate) fn note_project_saved(&mut self, path: &Path) {
+        self.ui.project.active_project_path = Some(path.to_path_buf());
+        self.ui.announcement = Some(format!("Project saved to {}", path.display()));
+        self.scheduler.invalidate_all();
     }
 
     /// Opens the Quick Switch Project modal picker (`Cmd+Ctrl+P`).
@@ -348,4 +366,24 @@ impl App {
         self.update_viewport_dimensions();
         self.scheduler.invalidate_all();
     }
+}
+
+/// Reads and parses a project file and records it as recent. Disk I/O.
+fn load_project(path: &Path) -> std::io::Result<Workspace> {
+    let workspace = Workspace::open_project_file(path)?;
+    let mut recents = RecentProjects::load();
+    recents.record(path.to_path_buf());
+    recents.save();
+    Ok(workspace)
+}
+
+/// Writes a project file and records it as recent. Disk I/O.
+fn write_project(project_file: &ProjectFile, path: &Path) -> bool {
+    if project_file.save(path).is_err() {
+        return false;
+    }
+    let mut recents = RecentProjects::load();
+    recents.record(path.to_path_buf());
+    recents.save();
+    true
 }

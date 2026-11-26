@@ -109,9 +109,10 @@ impl SettingsState {
         }
     }
 
-    pub(crate) fn poll_watcher(&mut self, app: &mut App) {
+    /// Drains the settings-file watcher. True when it reloaded a layer.
+    fn watcher_reloaded(&self) -> bool {
         let Some(watcher) = &self.watcher else {
-            return;
+            return false;
         };
         let mut reloaded = false;
         while let Some(event) = watcher.try_recv() {
@@ -120,13 +121,18 @@ impl SettingsState {
                 ReloadEvent::Failed(_, _) => {}
             }
         }
-        if reloaded {
-            self.apply_to_app(app);
-        }
+        reloaded
     }
 
     pub(crate) fn apply_to_app(&self, app: &mut App) {
-        let config = self.config.lock().unwrap();
+        Self::apply_config(&self.config, app);
+    }
+
+    /// Applies the resolved configuration. Takes the shared handle rather
+    /// than `&self`, so callers need not swap `app.ui.settings` out: the
+    /// `Default` used by `mem::take` builds a full state with disk I/O.
+    fn apply_config(config: &Mutex<LayeredConfig>, app: &mut App) {
+        let config = config.lock().unwrap();
         let resolved = config.resolved();
 
         let font_size = resolved["editor.fontSize"].as_f64().unwrap_or(13.0);
@@ -249,29 +255,6 @@ impl SettingsState {
         true
     }
 
-    pub(crate) fn open_settings_json(&self, app: &mut App, ctx: &dyn PlatformContext) {
-        if !self.settings_path.exists() {
-            let _ = fs::write(&self.settings_path, DEFAULT_SETTINGS_JSON);
-        }
-        app.request_document(
-            ctx,
-            crate::document::Request::Open(Some(self.settings_path.clone())),
-        );
-    }
-
-    pub(crate) fn set_string_setting(&mut self, key: &str, value: &str) {
-        let content = fs::read_to_string(&self.settings_path).unwrap_or_default();
-        let mut map = match serde_json::from_str::<Value>(&content) {
-            Ok(Value::Object(m)) => m,
-            _ => serde_json::Map::new(),
-        };
-        map.insert(key.to_string(), Value::String(value.to_string()));
-        if let Ok(json_str) = serde_json::to_string_pretty(&Value::Object(map)) {
-            let _ = fs::write(&self.settings_path, json_str);
-        }
-        let _ = self.config.lock().unwrap().reload_layer(Layer::User);
-    }
-
     pub(crate) fn import_vscode(&mut self, app: &mut App) -> String {
         importers::import_vscode(self, app)
     }
@@ -311,11 +294,53 @@ pub(crate) fn physical_text_metrics(font_size: f64, line_height: f64, scale: f32
     (size * scale, logical_line * scale)
 }
 
+/// Opens the user settings file, creating it with defaults first. The
+/// create runs on a worker; the document worker then reads the file.
+pub(crate) fn open_settings_json(app: &mut App, ctx: &dyn PlatformContext) {
+    let path = app.ui.settings.settings_path.clone();
+    crate::ui_io::spawn(app, Some(ctx), move || {
+        if !path.exists() {
+            let _ = fs::write(&path, DEFAULT_SETTINGS_JSON);
+        }
+        Some(crate::ui_io::Done::Open(path))
+    });
+}
+
+/// Writes `key` into the user settings file and reloads the user layer on a
+/// worker. Writes run in call order. The app applies the new value when the
+/// worker reports back.
+pub(crate) fn set_string_setting(app: &mut App, key: &str, value: &str) {
+    let path = app.ui.settings.settings_path.clone();
+    let config = app.ui.settings.config.clone();
+    let (key, value) = (key.to_string(), value.to_string());
+    crate::ui_io::spawn_serial(app, None, move || {
+        let content = fs::read_to_string(&path).unwrap_or_default();
+        let mut map = match serde_json::from_str::<Value>(&content) {
+            Ok(Value::Object(m)) => m,
+            _ => serde_json::Map::new(),
+        };
+        map.insert(key, Value::String(value));
+        if let Ok(json_str) = serde_json::to_string_pretty(&Value::Object(map)) {
+            let _ = fs::write(&path, json_str);
+        }
+        // Reads outside the lock: `apply_config` on the UI thread takes
+        // the same mutex and must never wait on the disk.
+        let _ = LayeredConfig::reload_layer_shared(&config, Layer::User);
+        Some(crate::ui_io::Done::SettingsSaved)
+    });
+}
+
 impl App {
     pub(crate) fn apply_user_settings(&mut self) {
-        let settings = std::mem::take(&mut self.ui.settings);
-        settings.apply_to_app(self);
-        self.ui.settings = settings;
+        let config = self.ui.settings.config.clone();
+        SettingsState::apply_config(&config, self);
+    }
+
+    /// Applies the user layer when the settings-file watcher reloaded it.
+    pub(crate) fn poll_settings_watcher(&mut self) {
+        if self.ui.settings.watcher_reloaded() {
+            self.apply_user_settings();
+        }
     }
 }
 

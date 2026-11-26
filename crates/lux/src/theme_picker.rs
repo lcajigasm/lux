@@ -196,10 +196,8 @@ impl App {
 
     pub(crate) fn confirm_theme(&mut self, name: &str) {
         self.apply_color_theme_setting(name);
-        let mut settings = std::mem::take(&mut self.ui.settings);
-        settings.set_string_setting("workbench.colorTheme", name);
-        settings.apply_to_app(self);
-        self.ui.settings = settings;
+        // The settings worker re-applies the user layer once the file is written.
+        crate::settings::set_string_setting(self, "workbench.colorTheme", name);
 
         let display_name = self.chrome.theme.name;
         crate::accessibility::announce(self, format!("Color theme set to {display_name}"));

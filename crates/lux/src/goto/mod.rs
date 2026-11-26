@@ -2,7 +2,6 @@
 
 use std::path::PathBuf;
 
-use lux_core::buffer::Buffer;
 use lux_core::position::Position;
 use lux_core::selection::Selection;
 use lux_platform::event::KeyEvent;
@@ -376,33 +375,12 @@ pub(crate) fn execute_goto(
     if let Some(entry) = existing_tab {
         let tab_id = entry.tab_id;
         app.switch_to_tab(tab_id);
-    } else if full_path.exists() {
-        if let Ok(buffer) = Buffer::open(&full_path) {
-            let file_name = full_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("file");
-            let tab_id = app.documents.tabs.open(file_name);
-            let entry = crate::document::DocumentEntry::new(tab_id, Some(full_path), buffer);
-            app.documents.entries.push(entry);
-            app.switch_to_tab(tab_id);
-        } else {
-            app.request_document(ctx, crate::document::Request::Open(Some(full_path)));
+        if let Some(line_num) = line {
+            jump_to_line_and_col(app, line_num, col);
         }
-    } else if path.exists() {
-        if let Ok(buffer) = Buffer::open(&path) {
-            let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-            let tab_id = app.documents.tabs.open(file_name);
-            let entry = crate::document::DocumentEntry::new(tab_id, Some(path), buffer);
-            app.documents.entries.push(entry);
-            app.switch_to_tab(tab_id);
-        } else {
-            app.request_document(ctx, crate::document::Request::Open(Some(path)));
-        }
-    }
-
-    if let Some(line_num) = line {
-        jump_to_line_and_col(app, line_num, col);
+    } else {
+        // The document worker reads the file; the cursor moves when it lands.
+        crate::document::open_queue::open_at(app, Some(ctx), full_path, line, col);
     }
 }
 

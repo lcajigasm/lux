@@ -59,6 +59,7 @@ mod tab_strip;
 mod term;
 mod theme_picker;
 mod ui;
+mod ui_io;
 
 #[cfg(test)]
 mod desktop_pass;

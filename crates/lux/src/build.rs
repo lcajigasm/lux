@@ -532,18 +532,10 @@ impl App {
         if let Some(entry) = existing_tab {
             let tab_id = entry.tab_id;
             self.switch_to_tab(tab_id);
-        } else if path.exists() {
-            if let Ok(buffer) = lux_core::buffer::Buffer::open(&path) {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("File");
-                let tab_id = self.documents.tabs.open(name);
-                let entry = crate::document::DocumentEntry::new(tab_id, Some(path), buffer);
-                self.documents.entries.push(entry);
-                self.switch_to_tab(tab_id);
-            } else if let Some(ctx) = ctx {
-                self.request_document(ctx, crate::document::Request::Open(Some(path)));
-            }
+            crate::goto::jump_to_line_and_col(self, loc.line, loc.column);
+        } else {
+            // The document worker reads the file; the cursor moves when it lands.
+            crate::document::open_queue::open_at(self, ctx, path, Some(loc.line), loc.column);
         }
-
-        crate::goto::jump_to_line_and_col(self, loc.line, loc.column);
     }
 }
