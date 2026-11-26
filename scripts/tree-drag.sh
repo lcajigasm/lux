@@ -42,13 +42,19 @@ if [[ "$opened" != 1 ]]; then
   exit 1
 fi
 
-read -r origin_x origin_y _origin_w _origin_h <<<"$(swift /tmp/lux-find-window.swift "$DRIVE_OWNER")"
+# Offsets are from the content view's top-left (probe), not the window
+# frame, so they hold with and without the unified title bar.
+drive_geometry
+origin_x="$DRIVE_CONTENT_X"
+origin_y="$DRIVE_CONTENT_Y"
 # The file row is below the folder row. A miss stays a no-op: the folder
 # dropped on the file lands back on the workspace root.
 sx=$((origin_x + 80))
 found=0
-for sy in $(seq 64 18 240); do
-  for dy in $(seq 48 18 $((sy - 12))); do
+for oy in $(seq 39 18 215); do
+  for ody in $(seq 23 18 $((oy - 12))); do
+    sy=$((origin_y + oy))
+    dy=$((origin_y + ody))
     drive_key drag "$sx" "$sy" "$sx" "$dy"
     sleep 0.15
     if [[ -f "$moved" && ! -f "$fixture/move-me.txt" ]]; then

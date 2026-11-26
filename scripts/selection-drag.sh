@@ -57,13 +57,6 @@ capture() {
   exit 1
 }
 
-window_origin() {
-  local line x y w h
-  line="$(swift /tmp/lux-find-window.swift "$DRIVE_OWNER")"
-  read -r x y w h <<<"$line"
-  echo "$x $y $w"
-}
-
 decode_text() {
   python3 - "$1" << 'PY'
 import sys
@@ -100,14 +93,17 @@ raise SystemExit(1)
 PY
 }
 
-read -r origin_x origin_y origin_w <<<"$(window_origin)"
+# Click offsets are measured from the editor's top-left (content origin
+# plus the tab row, from the probe), not the window frame: under the
+# unified title bar the content view starts at the frame's top edge.
+drive_geometry
 picked=""
 click_x=""
 click_y=""
-for dy in 70 88 106 124 142; do
+for dy in 10 28 46 64 82; do
   for dx in 70 100 130 160 190 220 260; do
-    click_x=$((origin_x + dx))
-    click_y=$((origin_y + dy))
+    click_x=$((DRIVE_CONTENT_X + dx))
+    click_y=$((DRIVE_EDITOR_Y + dy))
     drive_key double "$click_x" "$click_y"
     sleep 0.25
     drive_dump || true
@@ -127,7 +123,7 @@ echo "selected beta at $beta_start:$beta_end via $click_x $click_y"
 # triple click and select the line instead of dragging the word.
 sleep 0.5
 
-drop_x=$((origin_x + origin_w - 40))
+drop_x=$((DRIVE_CONTENT_X + DRIVE_CONTENT_W - 40))
 drive_key drag "$click_x" "$click_y" "$drop_x" "$click_y"
 sleep 0.4
 drive_dump

@@ -51,9 +51,12 @@ if [[ "$(drive_field tree)" != *keep.txt* || "$(drive_field tree)" != *gone.txt*
   exit 1
 fi
 
-line="$(swift /tmp/lux-find-window.swift "$DRIVE_OWNER")"
-read -r x y w h <<<"$line"
-echo "window $x $y $w $h"
+# Offsets below are from the content view's top-left (probe), not the
+# window frame, so they hold with and without the unified title bar.
+drive_geometry
+x="$DRIVE_CONTENT_X"
+y="$DRIVE_CONTENT_Y"
+echo "content $x $y $DRIVE_CONTENT_W $DRIVE_CONTENT_H"
 
 capture() {
   rm -f "$out/closed.png"
@@ -95,9 +98,8 @@ if [[ "$opened_file" != 1 ]]; then
   exit 1
 fi
 
-# The window-list rect includes the title bar, so a point measured from
-# the content origin (tab 32 + header 28 + one row) misses the ×. Walk
-# the close strip from the lower rows upward and stop when beta leaves.
+# Row heights are not in the probe, so walk the close strip from the
+# lower rows upward (below tab 32 + header 28) and stop when beta leaves.
 closed=0
 click_x=""
 click_y=""

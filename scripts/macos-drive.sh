@@ -388,6 +388,33 @@ drive_field() {
   sed -n "s/^${key}=//p" "$DRIVE_PROBE" | head -1
 }
 
+# Window geometry in screen points, read from the app's probe rather than
+# assumed. DRIVE_CONTENT_X/Y/W/H is the content view: under the unified
+# title bar it starts at the window's top edge, with a classic title bar it
+# starts below it. DRIVE_EDITOR_Y is where the editor text area begins,
+# under the tab row. Offsets measured from these hit the same text either
+# way. Returns 1 when the probe lacks a field.
+drive_geometry() {
+  drive_dump || return 1
+  local content scale row geom
+  content="$(drive_field content)"
+  scale="$(drive_field scale)"
+  row="$(drive_field tab_row_height_pt)"
+  if [[ -z "$content" || -z "$scale" || -z "$row" ]]; then
+    echo "probe lacks content=, scale= or tab_row_height_pt=" >&2
+    cat "$DRIVE_PROBE" >&2 || true
+    return 1
+  fi
+  geom="$(python3 - "$content" "$scale" "$row" << 'PY'
+import sys
+x, y, w, h = (float(v) for v in sys.argv[1].split(","))
+scale, row = float(sys.argv[2]), float(sys.argv[3])
+print(*(round(v / scale) for v in (x, y, w, h)), round(y / scale + row))
+PY
+)" || return 1
+  read -r DRIVE_CONTENT_X DRIVE_CONTENT_Y DRIVE_CONTENT_W DRIVE_CONTENT_H DRIVE_EDITOR_Y <<<"$geom"
+}
+
 drive_save() {
   drive_key tap 1 cmd
   sleep 0.6
