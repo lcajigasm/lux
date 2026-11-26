@@ -227,8 +227,8 @@ fn test_snippet_picker_click_and_outside() {
         },
     ]));
 
-    // Hover row 1
-    let hovered = handle_modal_hover(&mut app, 500.0, 119.0);
+    // Shared card: rows start at 88 and are 36 tall. Row 1 midpoint is 142.
+    let hovered = handle_modal_hover(&mut app, 500.0, 142.0);
     assert!(hovered);
     assert_eq!(app.ui.snippets.picker.as_ref().unwrap().selected_index, 1);
 
@@ -245,7 +245,7 @@ fn test_snippet_picker_click_and_outside() {
         description: "A test function".into(),
         scope: None,
     }]));
-    let clicked = handle_modal_click(&mut app, &ctx, 500.0, 93.0);
+    let clicked = handle_modal_click(&mut app, &ctx, 500.0, 106.0);
     assert!(clicked);
     assert!(app.ui.snippets.picker.is_none());
 }
@@ -304,4 +304,57 @@ fn test_project_search_field_click_and_outside() {
     let consumed = handle_modal_click(&mut app, &ctx, 10.0, 10.0);
     assert!(consumed);
     assert!(app.ui.project_search.is_none());
+}
+
+/// Clicks the painted row at scale 2, with and without the status bar. The
+/// painter sizes the card from `status_bar_height()`; so must hit-testing.
+#[test]
+fn a_click_lands_on_the_painted_language_row() {
+    let ctx = DummyContext;
+    for distraction_free in [false, true] {
+        let mut app = create_test_app();
+        app.scale_factor = 2.0;
+        if distraction_free {
+            app.toggle_distraction_free();
+        }
+        for vh in (200..=1200).step_by(50) {
+            app.viewport.height = vh as f32;
+            app.open_language_picker();
+            let filtered: Vec<_> = app
+                .ui
+                .language_picker
+                .as_ref()
+                .unwrap()
+                .filtered()
+                .into_iter()
+                .map(|(id, _)| *id)
+                .collect();
+            let total = filtered.len();
+            app.ui.language_picker.as_mut().unwrap().selected_index = total - 1;
+
+            let tab = app.tab_bar_height();
+            let status = app.status_bar_height();
+            let painted = crate::overlay_list::centered_frame(
+                modal_viewport_width(&app),
+                app.viewport.height + tab + status,
+                tab,
+                status,
+                app.scale_factor,
+                total,
+                total - 1,
+            );
+            let row = painted.visible.saturating_sub(2);
+            let x = painted.left + painted.width / 2.0;
+            let y = painted.rows_top + (row as f32 + 0.5) * painted.row_height;
+            let want = filtered[painted.origin + row];
+
+            assert!(handle_modal_click(&mut app, &ctx, x, y));
+            assert!(app.ui.language_picker.is_none());
+            assert_eq!(
+                app.documents.language(),
+                want,
+                "distraction_free={distraction_free} vh={vh}"
+            );
+        }
+    }
 }

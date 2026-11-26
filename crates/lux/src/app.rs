@@ -265,7 +265,11 @@ impl App {
             }
             return;
         }
-        if self.ui.settings.panel.is_some() && matches!(key_event.key, Key::Named(NamedKey::Escape))
+        // A popup opened over Settings owns Escape; it falls to the modal
+        // handlers below and Settings stays open.
+        if self.ui.settings.panel.is_some()
+            && matches!(key_event.key, Key::Named(NamedKey::Escape))
+            && !crate::modal::is_any_modal_open(self)
         {
             let menu_open = self
                 .ui

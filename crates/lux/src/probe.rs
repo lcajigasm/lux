@@ -342,6 +342,13 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     out.push_str("announcement=");
     out.push_str(&escape(app.ui.announcement.as_deref().unwrap_or("")));
     out.push('\n');
+    let (picker, picker_index, picker_count, picker_label) = crate::probe_picker::open_picker(app);
+    out.push_str(&format!(
+        "picker={picker}\npicker_index={picker_index}\npicker_count={picker_count}\n"
+    ));
+    out.push_str("picker_label=");
+    out.push_str(&escape(&picker_label));
+    out.push('\n');
     let (find, replace) = match &app.ui.search_bar {
         Some(search) => (1, u8::from(search.replace_mode)),
         None => (0, 0),
@@ -380,25 +387,7 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     out.push_str("edit_menu_geom=");
     out.push_str(&crate::edit_menu::geometry_probe(app));
     out.push('\n');
-    let menu = app.ui.settings.panel.as_ref().and_then(|panel| panel.menu);
-    let menu_count = app
-        .ui
-        .settings
-        .panel
-        .as_ref()
-        .and_then(|panel| {
-            let menu = panel.menu?;
-            match &panel.items.get(menu.item)?.kind {
-                crate::settings::SettingKind::Enum { options, .. } => Some(options.len()),
-                _ => None,
-            }
-        })
-        .unwrap_or(0);
-    out.push_str(&format!(
-        "settings_menu={}\nsettings_menu_first={}\nsettings_menu_count={menu_count}\n",
-        menu.map(|menu| menu.highlight).unwrap_or(0),
-        menu.map(|menu| menu.scroll).unwrap_or(0),
-    ));
+    out.push_str(&crate::probe_picker::settings_menu_lines(app));
     let path = app
         .documents
         .active_entry()

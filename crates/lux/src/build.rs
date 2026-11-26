@@ -25,27 +25,40 @@ pub(crate) struct BuildPickerState {
 
 impl BuildPickerState {
     pub(crate) fn filtered(&self) -> Vec<&BuildVariant> {
-        let q = self.query.trim().to_lowercase();
+        let q = self.query.trim();
         if q.is_empty() {
-            self.variants.iter().collect()
-        } else {
-            self.variants
-                .iter()
-                .filter(|v| {
-                    v.name.to_lowercase().contains(&q)
-                        || v.command.to_lowercase().contains(&q)
-                        || v.args.iter().any(|a| a.to_lowercase().contains(&q))
-                })
-                .collect()
+            return self.variants.iter().collect();
         }
+        let labels: Vec<(usize, String)> = self
+            .variants
+            .iter()
+            .enumerate()
+            .map(|(index, variant)| {
+                (
+                    index,
+                    format!(
+                        "{} {} {}",
+                        variant.name,
+                        variant.command,
+                        variant.args.join(" ")
+                    ),
+                )
+            })
+            .collect();
+        lux_search::fuzzy::rank_by(q, &labels, |(_, label)| label.as_str())
+            .into_iter()
+            .map(|(item, _)| &self.variants[item.0])
+            .collect()
     }
 
+    #[cfg(test)]
     pub(crate) fn select_next(&mut self, total: usize) {
         if total > 0 && self.selected + 1 < total {
             self.selected += 1;
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn select_prev(&mut self) {
         if self.selected > 0 {
             self.selected -= 1;
@@ -283,6 +296,14 @@ pub(crate) fn handle_build_key(app: &mut App, ctx: &dyn PlatformContext, event: 
         };
         picker.filtered().len()
     };
+    let metrics = crate::modal::ModalMetrics::from_app(app);
+    let visible = crate::overlay_list::visible_rows(
+        metrics.vp_height,
+        metrics.tab_bar_height,
+        metrics.status_bar,
+        metrics.scale,
+        total,
+    );
 
     match &event.key {
         Key::Named(NamedKey::Escape) => {
@@ -290,17 +311,13 @@ pub(crate) fn handle_build_key(app: &mut App, ctx: &dyn PlatformContext, event: 
             app.scheduler.invalidate_all();
             true
         }
-        Key::Named(NamedKey::ArrowDown) => {
-            if let Some(picker) = app.ui.build.picker.as_mut() {
-                picker.select_next(total);
-            }
-            app.scheduler.invalidate_all();
-            true
-        }
-        Key::Named(NamedKey::ArrowUp) => {
-            if let Some(picker) = app.ui.build.picker.as_mut() {
-                picker.select_prev();
-            }
+        key if {
+            let Some(picker) = app.ui.build.picker.as_mut() else {
+                return false;
+            };
+            crate::overlay_list::nudge(&mut picker.selected, total, visible, key)
+        } =>
+        {
             app.scheduler.invalidate_all();
             true
         }

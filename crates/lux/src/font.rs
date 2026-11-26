@@ -177,10 +177,10 @@ pub(crate) fn install_ui_font(layout: &mut lux_render::TextLayoutContext) {
 
 /// The face selectors and settings draw with. Falls back to the editor font
 /// when the machine has none of the known UI files.
-pub(crate) fn ui_font(
-    fallback: swash::FontRef<'static>,
+pub(crate) fn ui_font<'a>(
+    fallback: swash::FontRef<'a>,
     fallback_family: &str,
-) -> (swash::FontRef<'static>, String) {
+) -> (swash::FontRef<'a>, String) {
     match ui_face() {
         Some(face) => (face.font, face.family.to_string()),
         None => (fallback, fallback_family.to_string()),
