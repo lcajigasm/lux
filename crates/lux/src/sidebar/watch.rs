@@ -56,10 +56,12 @@ fn apply_to(tree: &mut FileTree, change: &FileChange, kind: NodeKind) -> bool {
 #[cfg(test)]
 pub(crate) fn watch_and_wait(app: &mut App, root: &std::path::Path) {
     let (tx, rx) = std::sync::mpsc::channel();
-    app.ui.session.register_waker(std::sync::Arc::new(move || {
-        let _ = tx.send(());
-    }));
-    app.ui.session.init_watcher(root);
+    app.ui.session.init_watcher_waking(
+        root,
+        std::sync::Arc::new(move || {
+            let _ = tx.send(());
+        }),
+    );
     rx.recv_timeout(std::time::Duration::from_secs(5))
         .expect("the watch is in place");
 }
@@ -122,9 +124,15 @@ mod tests {
         app.ui.sidebar = SidebarState::open_folder(alpha.path().to_path_buf());
         watch_and_wait(&mut app, alpha.path());
         let (tx, rx) = std::sync::mpsc::channel();
-        app.ui.session.register_waker(std::sync::Arc::new(move || {
-            let _ = tx.send(());
-        }));
+        // Only the watcher wakes this channel; see `watch_and_wait`.
+        app.ui
+            .session
+            .watcher
+            .as_mut()
+            .expect("a watcher")
+            .set_waker(std::sync::Arc::new(move || {
+                let _ = tx.send(());
+            }));
         assert!(app.add_sidebar_folder(beta.path().to_path_buf()));
         rx.recv_timeout(Duration::from_secs(5))
             .expect("the second watch is in place");

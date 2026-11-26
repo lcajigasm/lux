@@ -54,6 +54,22 @@ impl WorkspaceSession {
         }
     }
 
+    /// `init_watcher` for tests: only the watcher wakes `wake`, so a test
+    /// that waits for "the watch is in place" is not released early by the
+    /// symbol indexer's first snapshot.
+    #[cfg(test)]
+    pub(crate) fn init_watcher_waking(&mut self, root: &Path, wake: Arc<dyn Fn() + Send + Sync>) {
+        self.symbols = Some(lux_workspace::SymbolIndexer::start(
+            Some(root.to_path_buf()),
+            None,
+        ));
+        if let Ok(mut watcher) = FileWatcher::new(Duration::from_millis(150)) {
+            watcher.set_waker(wake);
+            watcher.watch_detached(root);
+            self.watcher = Some(watcher);
+        }
+    }
+
     /// Adds or drops one more sidebar folder. Off the UI thread.
     pub(crate) fn watch_folder(&mut self, root: &Path, watch: bool) {
         match self.watcher.as_mut() {

@@ -208,6 +208,7 @@ impl SymbolIndexer {
             .map(|path| FileChange {
                 path,
                 kind: ChangeKind::Reload,
+                is_dir: false,
             })
             .collect();
         let _ = self.changes.send(batch);
@@ -403,10 +404,12 @@ mod tests {
             FileChange {
                 path: root.join("c.rs"),
                 kind: ChangeKind::Created,
+                is_dir: false,
             },
             FileChange {
                 path: root.join("b.py"),
                 kind: ChangeKind::Removed,
+                is_dir: false,
             },
         ]);
         wait_for(&mut indexer, &woke, |s| s.search("gamma", 10).len() == 1);
