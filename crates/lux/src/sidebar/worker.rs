@@ -101,6 +101,8 @@ pub(crate) struct Jobs {
     rx: Receiver<Done>,
     /// Renames in flight, and the saves waiting for them.
     pub(crate) renames: Renames,
+    /// Jobs submitted whose result `drain` has not returned yet.
+    in_flight: usize,
     /// Tests: the next job waits for one message here before it runs.
     #[cfg(test)]
     pub(crate) hold: Option<Receiver<()>>,
@@ -113,6 +115,7 @@ impl Default for Jobs {
             tx,
             rx,
             renames: Renames::default(),
+            in_flight: 0,
             #[cfg(test)]
             hold: None,
         }
@@ -136,6 +139,8 @@ impl Jobs {
             None => Done::Failed(message),
         };
         let on_panic = failed("File operation failed".into());
+        // A failed spawn still sends one result below.
+        self.in_flight += 1;
         let spawned = std::thread::Builder::new()
             .name("lux-sidebar-op".into())
             .spawn(move || {
@@ -158,8 +163,16 @@ impl Jobs {
         }
     }
 
-    pub(crate) fn drain(&self) -> Vec<Done> {
-        self.rx.try_iter().collect()
+    pub(crate) fn drain(&mut self) -> Vec<Done> {
+        let done: Vec<Done> = self.rx.try_iter().collect();
+        self.in_flight = self.in_flight.saturating_sub(done.len());
+        done
+    }
+
+    /// Jobs whose result has not been applied yet.
+    #[cfg(test)]
+    pub(crate) fn in_flight(&self) -> usize {
+        self.in_flight
     }
 }
 

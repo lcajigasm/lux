@@ -101,6 +101,7 @@ impl App {
 
     pub(crate) fn open_workspace(&mut self, path: PathBuf) {
         crate::session::leave_root(self);
+        self.ui.project.supersede();
         let restored = crate::session::readable_file(self, Some(&path))
             .is_some_and(|file| crate::session::restore_session(self, &file).unwrap_or(false));
         if !restored {

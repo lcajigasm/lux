@@ -520,7 +520,10 @@ fn a_job_started_before_the_waker_still_wakes_the_loop() {
     let ctx = Context::new(Dialogs::default());
     let mut app = app();
     super::spawn(&mut app, None, || {
-        Some(super::Done::ProjectList(Vec::new()))
+        Some(super::Done::ProjectList {
+            projects: Vec::new(),
+            generation: 0,
+        })
     });
     app.ui.dialogs.jobs.set_wake(ctx.background_waker());
     // Registering wakes the loop once; the job wakes it again if it was

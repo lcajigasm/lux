@@ -369,12 +369,7 @@ impl PlatformEventHandler for App {
         } else {
             crate::document::open_queue::pump(self, ctx);
         }
-        if !crate::document::open_queue::busy(self)
-            && self.ui.sidebar.is_none()
-            && let Some(session_file) = crate::session::readable_file(self, None)
-        {
-            let _ = crate::session::restore_session(self, &session_file);
-        }
+        crate::session::restore_at_launch(self);
     }
 
     fn window_event(&mut self, ctx: &dyn PlatformContext, window: WindowId, event: PlatformEvent) {

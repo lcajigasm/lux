@@ -23,13 +23,21 @@ pub(crate) enum Done {
     /// Open Folder picked a directory.
     Folder(PathBuf),
     /// Open Project picked and parsed a project file.
+    /// `generation` is `ProjectState::generation` when the job started.
     ProjectOpened {
         path: PathBuf,
         workspace: lux_workspace::project::Workspace,
+        generation: u64,
     },
-    ProjectFailed(PathBuf),
+    ProjectFailed {
+        path: PathBuf,
+        generation: u64,
+    },
     /// Recent projects for the Quick Switch Project picker.
-    ProjectList(Vec<PathBuf>),
+    ProjectList {
+        projects: Vec<PathBuf>,
+        generation: u64,
+    },
     /// Save Project As wrote the project file.
     ProjectSaved(PathBuf),
     ProjectSaveFailed(PathBuf),
@@ -320,11 +328,16 @@ pub(crate) fn poll(app: &mut App, ctx: &dyn PlatformContext) {
 fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
     match done {
         Done::Folder(path) => app.open_workspace(path),
-        Done::ProjectOpened { path, workspace } => app.apply_project(&path, workspace),
-        Done::ProjectFailed(path) => {
-            app.ui.announcement = Some(format!("Failed to open project: {}", path.display()));
-        }
-        Done::ProjectList(projects) => app.show_project_list(projects),
+        Done::ProjectOpened {
+            path,
+            workspace,
+            generation,
+        } => app.project_landed(&path, generation, Some(workspace)),
+        Done::ProjectFailed { path, generation } => app.project_landed(&path, generation, None),
+        Done::ProjectList {
+            projects,
+            generation,
+        } => app.show_project_list(projects, generation),
         Done::ProjectSaved(path) => app.note_project_saved(&path),
         Done::ProjectSaveFailed(path) => {
             app.ui.announcement = Some(format!("Failed to save project to {}", path.display()));

@@ -66,26 +66,42 @@ impl Context {
         }
     }
 
+    /// Waits until the document worker has finished, then applies it.
     pub(super) fn complete(&self, app: &mut crate::app::App) {
-        self.events
-            .recv_timeout(Duration::from_secs(10))
-            .expect("worker must notify completion");
-        app.finish_document_operation(self);
+        while crate::document::open_queue::busy(app) {
+            self.next_wake();
+            app.finish_document_operation(self);
+        }
     }
 
-    /// Registers this context's waker as the app's, as `resumed` does.
+    /// Registers this context's waker as the app's, as `resumed` does,
+    /// except for the process-wide session debouncer: its write wake
+    /// (from any test's edits, ~750 ms later) would reach whichever test
+    /// registered last and look like that test's job finishing.
     pub(super) fn attach(&self, app: &mut crate::app::App) {
-        app.ui.session.register_waker(self.background_waker());
+        app.ui
+            .session
+            .register_waker_except_debounce(self.background_waker());
     }
 
-    /// Waits for one wake, then runs the background event, as the
-    /// platform loop does.
+    /// Runs the background event on each wake, as the platform loop does,
+    /// until every sidebar job and the document worker have finished. A
+    /// wake from anything else (the folder watcher) does not end the wait.
     pub(super) fn wake(&self, app: &mut crate::app::App) {
+        loop {
+            self.next_wake();
+            crate::sidebar::worker::poll(app, self);
+            app.finish_document_operation(self);
+            if app.ui.session.file_ops.in_flight() == 0 && !crate::document::open_queue::busy(app) {
+                return;
+            }
+        }
+    }
+
+    fn next_wake(&self) {
         self.events
             .recv_timeout(Duration::from_secs(10))
             .expect("worker must wake the loop");
-        crate::sidebar::worker::poll(app, self);
-        app.finish_document_operation(self);
     }
 }
 

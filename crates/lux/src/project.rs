@@ -135,9 +135,23 @@ pub(crate) struct ProjectState {
     pub(crate) workspace: Option<Workspace>,
     pub(crate) active_project_path: Option<PathBuf>,
     pub(crate) picker: Option<ProjectSwitchState>,
+    /// Bumped whenever the user asks for another project or folder. A
+    /// project job that finishes under an older value is dropped.
+    pub(crate) generation: u64,
+    /// A project file is being read for the current generation.
+    pub(crate) opening: bool,
 }
 
 impl ProjectState {
+    /// Makes every project job in flight stale and returns the new
+    /// generation. Called when the user opens or closes a project or
+    /// folder.
+    pub(crate) fn supersede(&mut self) -> u64 {
+        self.generation = self.generation.wrapping_add(1);
+        self.opening = false;
+        self.generation
+    }
+
     pub(crate) fn custom_build_systems(&self) -> &[ProjectBuildSystem] {
         self.workspace
             .as_ref()
@@ -226,12 +240,38 @@ impl App {
     /// `apply_project` shows it when the worker reports back.
     pub(crate) fn open_project_file(&mut self, path: &Path, ctx: Option<&dyn PlatformContext>) {
         let path = path.to_path_buf();
+        let generation = self.ui.project.supersede();
+        self.ui.project.opening = true;
         crate::ui_io::spawn(self, ctx, move || {
             Some(match load_project(&path) {
-                Ok(workspace) => Done::ProjectOpened { path, workspace },
-                Err(_) => Done::ProjectFailed(path),
+                Ok(workspace) => Done::ProjectOpened {
+                    path,
+                    workspace,
+                    generation,
+                },
+                Err(_) => Done::ProjectFailed { path, generation },
             })
         });
+    }
+
+    /// Applies a finished project read unless the user has opened or
+    /// closed another project or folder since it started.
+    pub(crate) fn project_landed(
+        &mut self,
+        path: &Path,
+        generation: u64,
+        workspace: Option<Workspace>,
+    ) {
+        if generation != self.ui.project.generation {
+            return;
+        }
+        self.ui.project.opening = false;
+        match workspace {
+            Some(workspace) => self.apply_project(path, workspace),
+            None => {
+                self.ui.announcement = Some(format!("Failed to open project: {}", path.display()));
+            }
+        }
     }
 
     /// Shows a project that `load_project` already read and parsed.
@@ -289,11 +329,16 @@ impl App {
             )],
         };
         let dialogs = ctx.background_dialogs();
+        let generation = self.ui.project.supersede();
         crate::ui_io::spawn(self, Some(ctx), move || {
             let path = dialogs.pick_file(&opts)?;
             Some(match load_project(&path) {
-                Ok(workspace) => Done::ProjectOpened { path, workspace },
-                Err(_) => Done::ProjectFailed(path),
+                Ok(workspace) => Done::ProjectOpened {
+                    path,
+                    workspace,
+                    generation,
+                },
+                Err(_) => Done::ProjectFailed { path, generation },
             })
         });
     }
@@ -357,6 +402,7 @@ impl App {
     pub(crate) fn quick_switch_project(&mut self) {
         let active = self.ui.project.active_project_path.clone();
         let root = self.workspace_root();
+        let generation = self.ui.project.generation;
         crate::ui_io::spawn(self, None, move || {
             let mut projects = RecentProjects::load().paths;
             if projects.is_empty() {
@@ -368,12 +414,19 @@ impl App {
                     projects.push(sub);
                 }
             }
-            Some(Done::ProjectList(projects))
+            Some(Done::ProjectList {
+                projects,
+                generation,
+            })
         });
     }
 
-    /// Shows the project list a worker read. No disk access.
-    pub(crate) fn show_project_list(&mut self, projects: Vec<PathBuf>) {
+    /// Shows the project list a worker read, unless the user opened or
+    /// closed a project or folder since asking. No disk access.
+    pub(crate) fn show_project_list(&mut self, projects: Vec<PathBuf>, generation: u64) {
+        if generation != self.ui.project.generation {
+            return;
+        }
         if projects.is_empty() {
             self.ui.announcement = Some("No recent projects found".into());
             self.scheduler.invalidate_all();
@@ -390,6 +443,7 @@ impl App {
     /// Closes the current project workspace.
     pub(crate) fn close_project(&mut self) {
         crate::session::leave_root(self);
+        self.ui.project.supersede();
         self.ui.project.active_project_path = None;
         self.ui.project.workspace = None;
         self.ui.sidebar = None;

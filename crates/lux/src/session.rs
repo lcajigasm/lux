@@ -102,6 +102,12 @@ impl WorkspaceSession {
     /// the editor when a file changes. No timer: the debouncer thread calls it.
     pub(crate) fn register_waker(&mut self, waker: Arc<dyn Fn() + Send + Sync>) {
         debounce::SESSION.register_waker(Arc::clone(&waker));
+        self.register_waker_except_debounce(waker);
+    }
+
+    /// Everything `register_waker` does except the process-wide debouncer,
+    /// which a test must not take over from the other tests running.
+    pub(crate) fn register_waker_except_debounce(&mut self, waker: Arc<dyn Fn() + Send + Sync>) {
         if let Some(watcher) = &mut self.watcher {
             watcher.set_waker(Arc::clone(&waker));
         }
@@ -145,6 +151,20 @@ pub(crate) fn pane_tokens(entry: &DocumentEntry) -> Vec<lux_syntax::Token> {
     let mut doc = lux_syntax::Document::new(lang);
     doc.set_rope(entry.buffer.rope());
     doc.highlight_rope(entry.buffer.rope())
+}
+
+/// Restores the folderless session when the window first appears. Skipped
+/// when a document is opening, a folder is in the sidebar, or a project
+/// from the command line is still being read: that project owns the
+/// window, and the folderless tabs must not land in it.
+pub(crate) fn restore_at_launch(app: &mut App) {
+    if crate::document::open_queue::busy(app) || app.ui.sidebar.is_some() || app.ui.project.opening
+    {
+        return;
+    }
+    if let Some(session_file) = readable_file(app, None) {
+        let _ = restore_session(app, &session_file);
+    }
 }
 
 /// The file to restore `root`'s session from, if it has one.
