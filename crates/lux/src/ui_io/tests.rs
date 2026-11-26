@@ -138,6 +138,8 @@ fn open_folder_shows_the_panel_on_a_worker_and_loads_the_folder_after() {
     ctx.settle(&mut app, 1);
     assert_eq!(app.workspace_root(), Some(dir.path().to_path_buf()));
     assert_ne!(ctx.dialog_threads(), vec![std::thread::current().id()]);
+    // Opening the folder started its session restore on a worker.
+    super::finish_all(&mut app, &ctx);
     assert_eq!(app.ui.dialogs.jobs.in_flight(), 0);
 }
 

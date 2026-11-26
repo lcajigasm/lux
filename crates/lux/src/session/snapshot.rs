@@ -185,6 +185,12 @@ fn take(app: &mut App, clean: bool) -> Snapshot {
             history: shared,
         });
     }
+    // Tabs of a restore still in flight keep their saved state, so a write
+    // (or a quit) before they land does not drop them. They have no
+    // payload: their draft and history name are already in the state.
+    session
+        .tabs
+        .extend(super::restore_apply::pending_tabs(app).cloned());
     // Histories of closed tabs are no longer worth keeping in memory.
     app.ui.session.histories = seen_histories;
     if let Some(id) = transient {
@@ -303,6 +309,11 @@ fn write(snapshot: Snapshot) -> std::io::Result<()> {
     let mut encoded = ENCODED.lock().unwrap_or_else(|e| e.into_inner());
     let previous = encoded.take().unwrap_or_default();
     let mut current = HashMap::new();
+    // Tabs past the payloads are a restore's unlanded tabs; keep the
+    // history files they name.
+    for tab in session.tabs.iter().skip(payloads.len()) {
+        keep.extend(tab.history.clone());
+    }
     for (tab, payload) in session.tabs.iter_mut().zip(payloads) {
         if payload.draft {
             tab.draft_text = Some(payload.buffer.text());

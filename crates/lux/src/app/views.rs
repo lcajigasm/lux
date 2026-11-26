@@ -102,12 +102,11 @@ impl App {
     pub(crate) fn open_workspace(&mut self, path: PathBuf) {
         crate::session::leave_root(self);
         self.ui.project.supersede();
-        let restored = crate::session::readable_file(self, Some(&path))
-            .is_some_and(|file| crate::session::restore_session(self, &file).unwrap_or(false));
-        if !restored {
-            crate::sidebar::reads::open_root(self, path.clone());
-            self.ui.session.init_watcher(&path);
-        }
+        crate::sidebar::reads::open_root(self, path.clone());
+        self.ui.session.init_watcher(&path);
+        // The folder's session (tabs, layout) is read on workers and its
+        // tabs open as they land.
+        crate::session::restore::start(self, None, Some(path));
         self.update_viewport_dimensions();
         self.scheduler.invalidate_all();
     }

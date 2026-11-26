@@ -6,10 +6,12 @@
 mod debounce;
 pub(crate) mod disk_events;
 pub(crate) mod location;
-mod restore;
+pub(crate) mod restore;
+pub(crate) mod restore_apply;
 mod snapshot;
 
 pub(crate) use disk_events::{mark_removed, poll_file_watcher};
+#[cfg(test)]
 pub(crate) use restore::restore_session;
 
 use std::collections::HashMap;
@@ -51,6 +53,10 @@ pub(crate) struct WorkspaceSession {
     /// Bumped whenever the watched folders change, so state derived from
     /// the open folders (build systems) knows to reload.
     folder_epoch: u64,
+    /// Bumped by each restore; results of an older one are dropped.
+    pub(crate) restore_generation: u64,
+    /// The restore whose tabs are still landing.
+    pub(crate) restoring: Option<restore_apply::Restoring>,
 }
 
 impl WorkspaceSession {
@@ -153,21 +159,21 @@ pub(crate) fn pane_tokens(entry: &DocumentEntry) -> Vec<lux_syntax::Token> {
     doc.highlight_rope(entry.buffer.rope())
 }
 
-/// Restores the folderless session when the window first appears. Skipped
-/// when a document is opening, a folder is in the sidebar, or a project
-/// from the command line is still being read: that project owns the
-/// window, and the folderless tabs must not land in it.
-pub(crate) fn restore_at_launch(app: &mut App) {
+/// Restores the folderless session when the window first appears, on
+/// workers. Skipped when a document is opening, a folder is in the
+/// sidebar, or a project from the command line is still being read: that
+/// project owns the window, and the folderless tabs must not land in it.
+pub(crate) fn restore_at_launch(app: &mut App, ctx: &dyn lux_platform::PlatformContext) {
     if crate::document::open_queue::busy(app) || app.ui.sidebar.is_some() || app.ui.project.opening
     {
         return;
     }
-    if let Some(session_file) = readable_file(app, None) {
-        let _ = restore_session(app, &session_file);
-    }
+    restore::start(app, Some(ctx), None);
 }
 
-/// The file to restore `root`'s session from, if it has one.
+/// The file to restore `root`'s session from, if it has one. Stats the
+/// disk; the app finds it on the restore worker instead.
+#[cfg(test)]
 pub(crate) fn readable_file(app: &App, root: Option<&Path>) -> Option<PathBuf> {
     match &app.ui.session.data_dir {
         Some(dir) => location::readable_session_file_in(dir, root),

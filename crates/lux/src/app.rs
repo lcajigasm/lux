@@ -369,7 +369,7 @@ impl PlatformEventHandler for App {
         } else {
             crate::document::open_queue::pump(self, ctx);
         }
-        crate::session::restore_at_launch(self);
+        crate::session::restore_at_launch(self, ctx);
     }
 
     fn window_event(&mut self, ctx: &dyn PlatformContext, window: WindowId, event: PlatformEvent) {
