@@ -10,6 +10,7 @@ use lux_ui::file_tree::{FileTree, NodeId, NodeKind, Row};
 
 pub(crate) mod drag;
 pub(crate) mod folders;
+pub(crate) mod follow;
 pub(crate) mod inline;
 pub(crate) mod menu;
 pub(crate) mod ops;
@@ -40,6 +41,8 @@ pub(crate) struct SidebarState {
     /// delete it.
     pub(crate) extra: Vec<folders::ExtraFolder>,
     pub(crate) resizing: bool,
+    /// Tab whose file the selection was last moved to.
+    pub(crate) followed_tab: Option<lux_ui::tabs::TabId>,
 }
 
 impl Default for SidebarState {
@@ -58,6 +61,7 @@ impl Default for SidebarState {
             drag: None,
             extra: Vec::new(),
             resizing: false,
+            followed_tab: None,
         }
     }
 }
@@ -79,6 +83,7 @@ impl SidebarState {
             drag: None,
             extra: Vec::new(),
             resizing: false,
+            followed_tab: None,
         })
     }
 

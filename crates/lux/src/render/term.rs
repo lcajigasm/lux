@@ -43,179 +43,87 @@ pub(crate) fn render_term(
         color(active_theme().background),
     ));
 
-    // 2. Header background & border
+    // 2. Header: the tab well, a hairline under it, and flat labels. The
+    // active tab is foreground with a 2 pt accent underline; the others
+    // are muted. There are no per-tab fills.
+    let theme = active_theme();
+    let well = color(theme.chrome.tab_bar);
     quad_instances.push(QuadInstance::solid(
         [dock_x, dock_y, window_width, header_h],
-        color(active_theme().chrome.tab_bar),
+        well,
     ));
-    let top_border_color = if term.focused {
-        color(active_theme().accent)
-    } else {
-        color(active_theme().chrome.border)
-    };
+    let rule = color(theme.chrome.border);
     quad_instances.push(QuadInstance::solid(
         [dock_x, dock_y, window_width, stroke],
-        top_border_color,
+        rule,
     ));
     quad_instances.push(QuadInstance::solid(
         [dock_x, grid_y - stroke, window_width, stroke],
-        color(active_theme().chrome.border),
+        rule,
     ));
-
-    let font_size = 12.0 * scale_factor;
-    let family = editor_view.family().to_string();
-    let style = lux_render::LineStyle {
-        family: &family,
-        font_size,
-        ligatures: false,
-    };
-
-    // 3. Header tabs
-    let mut tab_x = dock_x + 8.0 * scale_factor;
-    let tab_w = 90.0 * scale_factor;
-    let active_color = color(active_theme().chrome.panel_row);
-    let inactive_color = color(active_theme().chrome.tab_inactive);
-    let text_fg = [0.85, 0.85, 0.90, 1.0];
-    let muted_fg = [0.55, 0.55, 0.60, 1.0];
-
-    for (i, name) in term.session_names.iter().enumerate() {
-        let is_active = !term.show_tasks && term.active_tab == i;
-        let tab_bg = if is_active {
-            active_color
+    let slots = dock::header_slots(rect, term.session_names.len(), scale_factor);
+    let active_ink = super::panel::label_ink(&theme, well);
+    let muted_ink = super::panel::hint_ink(&theme, well);
+    let size = super::panel::chrome_text::PANEL_TAB_PT * scale_factor;
+    let mid = dock_y + header_h * 0.5;
+    let label_x = |slot: [f32; 4]| slot[0] + 8.0 * scale_factor;
+    let mut underline = None;
+    {
+        let mut pen = super::panel::chrome_text::ChromePen::new(
+            editor_view,
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            font,
+            glyph_instances,
+        );
+        for (i, name) in term.session_names.iter().enumerate() {
+            let slot = slots.tabs[i];
+            let active = !term.show_tasks && term.active_tab == i;
+            let ink = if active { active_ink } else { muted_ink };
+            let width = pen.draw(size, name, label_x(slot), mid, ink);
+            if active {
+                underline = Some((label_x(slot), width));
+            }
+            pen.draw(
+                size,
+                "×",
+                slot[0] + slot[2] - 14.0 * scale_factor,
+                mid,
+                muted_ink,
+            );
+        }
+        let plus_w = pen.width(size, 0.0, "+");
+        pen.draw(
+            size,
+            "+",
+            slots.plus[0] + (slots.plus[2] - plus_w) * 0.5,
+            mid,
+            muted_ink,
+        );
+        let tasks_ink = if term.show_tasks {
+            active_ink
         } else {
-            inactive_color
+            muted_ink
         };
-
+        let width = pen.draw(size, "Tasks", label_x(slots.tasks), mid, tasks_ink);
+        if term.show_tasks {
+            underline = Some((label_x(slots.tasks), width));
+        }
+        let close_w = pen.width(size, 0.0, "×");
+        pen.draw(
+            size,
+            "×",
+            slots.close[0] + (slots.close[2] - close_w) * 0.5,
+            mid,
+            muted_ink,
+        );
+    }
+    if let Some((x, width)) = underline {
         quad_instances.push(QuadInstance::solid(
-            [tab_x, dock_y + stroke, tab_w, header_h - stroke],
-            tab_bg,
+            [x, grid_y - 2.0 * stroke, width, 2.0 * stroke],
+            color(theme.accent),
         ));
-
-        if is_active {
-            quad_instances.push(QuadInstance::solid(
-                [tab_x, dock_y, tab_w, 2.0 * stroke],
-                color(active_theme().accent),
-            ));
-        }
-
-        // Title text
-        let title_line = editor_view.text_layout_mut().layout_line(&style, name, &[]);
-        let title_base = title_line.baseline();
-        for cluster in title_line.clusters() {
-            push_glyph(
-                atlas,
-                atlas_dirty,
-                scale_cx,
-                font,
-                font_size,
-                &cluster,
-                tab_x + 8.0 * scale_factor,
-                dock_y + (header_h - font_size) * 0.5 + title_base,
-                if is_active { text_fg } else { muted_fg },
-                glyph_instances,
-            );
-        }
-
-        // Close '×' button
-        let x_line = editor_view.text_layout_mut().layout_line(&style, "×", &[]);
-        let x_base = x_line.baseline();
-        for cluster in x_line.clusters() {
-            push_glyph(
-                atlas,
-                atlas_dirty,
-                scale_cx,
-                font,
-                font_size,
-                &cluster,
-                tab_x + tab_w - 14.0 * scale_factor,
-                dock_y + (header_h - font_size) * 0.5 + x_base,
-                muted_fg,
-                glyph_instances,
-            );
-        }
-
-        tab_x += tab_w + 4.0 * scale_factor;
-    }
-
-    // '+' New tab button
-    quad_instances.push(QuadInstance::solid(
-        [
-            tab_x,
-            dock_y + 2.0 * stroke,
-            24.0 * scale_factor,
-            header_h - 4.0 * stroke,
-        ],
-        color(active_theme().chrome.panel_input),
-    ));
-    let plus_line = editor_view.text_layout_mut().layout_line(&style, "+", &[]);
-    let plus_base = plus_line.baseline();
-    for cluster in plus_line.clusters() {
-        push_glyph(
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            font,
-            font_size,
-            &cluster,
-            tab_x + 8.0 * scale_factor,
-            dock_y + (header_h - font_size) * 0.5 + plus_base,
-            text_fg,
-            glyph_instances,
-        );
-    }
-    tab_x += 28.0 * scale_factor;
-
-    // 'Tasks' button
-    let tasks_bg = if term.show_tasks {
-        active_color
-    } else {
-        inactive_color
-    };
-    quad_instances.push(QuadInstance::solid(
-        [
-            tab_x,
-            dock_y + stroke,
-            55.0 * scale_factor,
-            header_h - stroke,
-        ],
-        tasks_bg,
-    ));
-    let tasks_line = editor_view
-        .text_layout_mut()
-        .layout_line(&style, "Tasks", &[]);
-    let tasks_base = tasks_line.baseline();
-    for cluster in tasks_line.clusters() {
-        push_glyph(
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            font,
-            font_size,
-            &cluster,
-            tab_x + 8.0 * scale_factor,
-            dock_y + (header_h - font_size) * 0.5 + tasks_base,
-            if term.show_tasks { text_fg } else { muted_fg },
-            glyph_instances,
-        );
-    }
-
-    // Close panel button on far right
-    let close_x = dock_x + window_width - 24.0 * scale_factor;
-    let close_line = editor_view.text_layout_mut().layout_line(&style, "✕", &[]);
-    let close_base = close_line.baseline();
-    for cluster in close_line.clusters() {
-        push_glyph(
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            font,
-            font_size,
-            &cluster,
-            close_x,
-            dock_y + (header_h - font_size) * 0.5 + close_base,
-            muted_fg,
-            glyph_instances,
-        );
     }
 
     // 4. Content: the shell grid, the active task's output, or the

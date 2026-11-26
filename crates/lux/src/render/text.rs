@@ -45,6 +45,8 @@ pub(crate) fn guide_quad(
     ([x.round(), y, 1.0, height], [ink[0], ink[1], ink[2], alpha])
 }
 
+pub(crate) mod find_decor;
+
 /// The text area quads are clipped to: right of the gutter, inside the
 /// editor viewport.
 pub(crate) fn text_bounds(
@@ -83,6 +85,7 @@ pub(crate) fn render_text_lines(
     frame: &EditorViewFrame,
     buffer: &Buffer,
     syntax: Option<&SyntaxState>,
+    find_decor: Option<&find_decor::FindDecor>,
     viewport: &Viewport,
     editor_top: f32,
     line_height: f32,
@@ -194,6 +197,17 @@ pub(crate) fn render_text_lines(
             &[]
         };
 
+        let decor = find_decor.map(|decor| (decor, decor.line(buffer, line.index)));
+        if let Some((decor, line_decor)) = &decor {
+            for rect in decor.hit_rects(frame, buffer, line.index, line_decor, line_height) {
+                push_quad(
+                    quad_instances,
+                    selection_quad(&rect, viewport, editor_top, text_left, line_height),
+                    decor.hit,
+                    text_bounds,
+                );
+            }
+        }
         let line_pad_y = (line_height - font_size) * 0.5;
         let mut cached_face: Option<(u64, FontRef<'_>)> = None;
         for cluster in line.layout.clusters() {
@@ -206,7 +220,12 @@ pub(crate) fn render_text_lines(
                 }
             };
             let abs_byte = line_start + cluster.byte_range.start;
-            let glyph_color = if let Some(syntax) = syntax
+            let decor_ink = decor.as_ref().and_then(|(decor, line_decor)| {
+                decor.ink(line_decor.role_at(cluster.byte_range.start))
+            });
+            let glyph_color = if let Some(ink) = decor_ink {
+                ink
+            } else if let Some(syntax) = syntax
                 && let Some(token) = line_tokens
                     .iter()
                     .find(|t| t.start_byte <= abs_byte && abs_byte < t.end_byte)

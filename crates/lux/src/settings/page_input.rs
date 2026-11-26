@@ -93,7 +93,7 @@ pub(crate) fn handle_click(app: &mut App, mouse_x: f32, mouse_y: f32) -> bool {
     };
     let hit = layout_settings(panel, bounds).hit(mouse_x, mouse_y);
     match hit {
-        SettingsHit::Outside => {
+        SettingsHit::Outside | SettingsHit::Close => {
             app.ui.settings.panel = None;
             crate::focus::focus_editor(app);
         }

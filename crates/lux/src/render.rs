@@ -51,7 +51,7 @@ impl App {
     pub(crate) fn redraw(&mut self, ctx: &dyn PlatformContext) {
         crate::overlay_motion::begin_frame(self.chrome.motion.reduced);
         crate::goto::preview::settle(self);
-        crate::tab_strip::follow_active(self);
+        crate::sidebar::follow::follow_tabs(self);
         if !self.presentation.ready(Instant::now()) {
             return;
         }
@@ -72,6 +72,7 @@ impl App {
         let minimap_document = self.minimap_document();
         let minimap_w = self.minimap_width();
         let sidebar_width = layout.editor[0];
+        let find_decor = text::find_decor::for_app(self);
         let App {
             gpu_window,
             editor_view,
@@ -195,6 +196,7 @@ impl App {
                 frame: &frame,
                 buffer,
                 syntax: syntax.as_ref(),
+                find_decor: find_decor.as_ref(),
                 viewport,
                 bookmarks,
                 documents,
@@ -289,7 +291,6 @@ impl App {
                 window_height - tab_bar_height - status_bar_height,
                 *scale_factor,
                 stroke,
-                font_size,
                 font,
                 editor_view,
                 &mut atlas_state.atlas,
@@ -307,7 +308,6 @@ impl App {
                 window_height,
                 *scale_factor,
                 stroke,
-                font_size,
                 font,
                 editor_view,
                 &mut atlas_state.atlas,

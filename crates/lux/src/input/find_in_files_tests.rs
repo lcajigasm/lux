@@ -220,8 +220,17 @@ fn thousands_of_files_all_land_in_find_results() {
     assert_eq!(app.ui.find_results_nav.matches.len(), expected);
     let content = find_results_text(&app);
     let buffer = lux_core::buffer::Buffer::from_bytes(content.as_bytes()).unwrap();
-    let parsed = crate::find_results::parse_matches_from_buffer(&buffer);
+    let results_root = app.ui.find_results_nav.root.clone().expect("run root");
+    let parsed = crate::find_results::parse_matches_from_buffer(&buffer, &results_root);
     assert_eq!(parsed.len(), expected);
+    assert!(
+        parsed.iter().all(|m| m.path.is_file()),
+        "relative headers resolve to the searched files"
+    );
+    assert!(
+        !content.contains(&results_root.display().to_string()),
+        "headers are relative to the searched folder"
+    );
     let distinct: std::collections::HashSet<_> = parsed.iter().map(|m| &m.path).collect();
     assert_eq!(distinct.len(), matching_files, "each file has one block");
     assert!(

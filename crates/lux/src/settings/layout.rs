@@ -14,7 +14,10 @@ const ROW: f32 = 72.0;
 const GAP: f32 = 8.0;
 const CONTROL_H: f32 = 30.0;
 const TOGGLE_H: f32 = 24.0;
-const SEL_INSET: f32 = 12.0;
+/// Inset of a row's label and control from the row's edges.
+pub(crate) const ROW_PAD: f32 = 16.0;
+/// Side of the close button in the title row.
+pub(crate) const CLOSE: f32 = 28.0;
 const LABEL_GAP: f32 = 20.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -144,6 +147,8 @@ pub(crate) struct SettingsLayout {
     pub title_y: f32,
     pub hint_x: f32,
     pub hint_y: f32,
+    /// Close button at the right end of the title row.
+    pub close: Rect,
     pub rows: Vec<RowGeom>,
     pub menu: Option<MenuGeom>,
 }
@@ -160,6 +165,7 @@ pub(crate) enum SettingsHit {
     MenuOption { item: usize, option: usize },
     Category(usize),
     Search,
+    Close,
 }
 
 pub(crate) fn layout_settings(
@@ -252,10 +258,10 @@ pub(crate) fn layout_settings(
             w: body.w,
             h: row_h,
         };
-        let (control, kind) = control_geom(&item.kind, row, body, scale);
-        let label_w = (control.x - s(LABEL_GAP) - row.x).max(s(40.0));
+        let (control, kind) = control_geom(&item.kind, row, scale);
+        let label_w = (control.x - s(LABEL_GAP) - row.x - s(ROW_PAD)).max(s(40.0));
         let label = Rect {
-            x: row.x,
+            x: row.x + s(ROW_PAD),
             y: row.y + s(12.0),
             w: label_w,
             h: s(18.0),
@@ -266,12 +272,9 @@ pub(crate) fn layout_settings(
             w: label.w,
             h: s(18.0),
         };
-        let selection = Rect {
-            x: page.x + s(SEL_INSET),
-            y: row.y + s(4.0),
-            w: (page.w - s(SEL_INSET) * 2.0).max(1.0),
-            h: (row.h - s(8.0)).max(1.0),
-        };
+        // The selection is the row itself; label and control sit
+        // `ROW_PAD` inside it.
+        let selection = row;
         rows.push(RowGeom {
             index,
             row,
@@ -303,18 +306,25 @@ pub(crate) fn layout_settings(
         title_y: page.y + s(18.0),
         hint_x: search.x,
         hint_y: page.y + s(18.0),
+        close: Rect {
+            x: page.right() - s(PAD) - s(CLOSE) + s(8.0),
+            y: page.y + s(12.0),
+            w: s(CLOSE),
+            h: s(CLOSE),
+        },
         rows,
         menu,
     }
 }
 
-fn control_geom(kind: &SettingKind, row: Rect, body: Rect, scale: f32) -> (Rect, ControlGeom) {
+fn control_geom(kind: &SettingKind, row: Rect, scale: f32) -> (Rect, ControlGeom) {
     let s = |logical: f32| logical * scale;
+    let right = row.right() - s(ROW_PAD);
     if matches!(kind, SettingKind::Info) {
         let height = s(CONTROL_H);
         return (
             Rect {
-                x: body.right(),
+                x: right,
                 y: row.y + (row.h - height) * 0.5,
                 w: 0.0,
                 h: height,
@@ -333,7 +343,7 @@ fn control_geom(kind: &SettingKind, row: Rect, body: Rect, scale: f32) -> (Rect,
         SettingKind::Info => 0.0,
     };
     let control = Rect {
-        x: body.right() - width,
+        x: right - width,
         y: row.y + (row.h - height) * 0.5,
         w: width,
         h: height,
@@ -464,6 +474,9 @@ impl SettingsLayout {
             if menu.panel.contains(x, y) {
                 return SettingsHit::Page;
             }
+        }
+        if self.close.contains(x, y) {
+            return SettingsHit::Close;
         }
         if self.search.contains(x, y) {
             return SettingsHit::Search;

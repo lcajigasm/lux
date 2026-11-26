@@ -179,6 +179,32 @@ pub(crate) fn render_settings_panel(
         ));
     }
 
+    // 1 pt separators centered in the gap between rows.
+    let line = scale.max(1.0);
+    for pair in layout.rows.windows(2) {
+        let y = (pair[0].row.bottom() + pair[1].row.y - line) * 0.5;
+        if y >= layout.body.y && y + line <= layout.body.bottom() {
+            quad_instances.push(QuadInstance::solid(
+                [pair[0].row.x, y, pair[0].row.w, line],
+                border,
+            ));
+        }
+    }
+    let close_ink = hint_on_page;
+    centered(
+        editor_view,
+        atlas,
+        atlas_dirty,
+        scale_cx,
+        font,
+        &family,
+        16.0 * scale,
+        "×",
+        layout.close,
+        close_ink,
+        glyph_instances,
+    );
+
     for row in &layout.rows {
         if row.index == panel.selected_index
             && let Some(selection) = layout.painted_selection(row)
@@ -186,7 +212,7 @@ pub(crate) fn render_settings_panel(
             quad_instances.push(QuadInstance::rounded(
                 [selection.x, selection.y, selection.w, selection.h],
                 row_fill,
-                8.0 * scale,
+                6.0 * scale,
             ));
         }
         if !layout.row_is_visible(row) {

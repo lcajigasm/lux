@@ -532,3 +532,13 @@ impl PlatformContext for Ctx {
     fn request_wakeup(&self, _: std::time::Instant) {}
     fn exit(&self) {}
 }
+
+#[test]
+fn the_close_button_in_the_title_row_closes_the_page() {
+    let mut app = app();
+    app.ui.settings.open_settings_ui();
+    let layout = layout_settings(app.ui.settings.panel.as_ref().unwrap(), bounds(&app));
+    let close = layout.close;
+    click(&mut app, close.x + close.w * 0.5, close.y + close.h * 0.5);
+    assert!(app.ui.settings.panel.is_none());
+}
