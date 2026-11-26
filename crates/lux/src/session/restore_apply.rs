@@ -6,7 +6,8 @@
 //! tabs or edited since the restore began. The split layout is restored
 //! once every tab has landed, since its panes name tabs by index.
 
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use lux_ui::tabs::TabId;
 use lux_workspace::session::TabState;
@@ -25,6 +26,8 @@ pub(crate) struct Restoring {
     tab_ids: Vec<Option<TabId>>,
     /// The saved state of each tab that has not landed yet.
     pending: Vec<Option<TabState>>,
+    /// Where the history files named by `pending` live.
+    history_dir: PathBuf,
     landed: usize,
     active: Option<usize>,
     layout: Option<LayoutState>,
@@ -49,6 +52,49 @@ pub(crate) fn pending_tabs(app: &App) -> impl Iterator<Item = &TabState> {
         .flat_map(|restoring| restoring.pending.iter().flatten())
 }
 
+/// The history directory of the restore in flight, which the unlanded
+/// tabs' history names refer to.
+pub(crate) fn pending_history_dir(app: &App) -> Option<&Path> {
+    let restoring = app.ui.session.restoring.as_ref()?;
+    restoring
+        .pending
+        .iter()
+        .any(Option::is_some)
+        .then_some(restoring.history_dir.as_path())
+}
+
+/// The session's own split layout and active tab, for a session write
+/// while its tabs are still landing, with tab indices remapped to the
+/// snapshot's order: `index_of_tab` for landed tabs, then the unlanded
+/// tabs from `landed` on. `None` once the restore is over or the user
+/// declined it by moving to or typing in another tab. A layout or active
+/// tab naming a tab whose file is gone comes back `None`.
+pub(crate) fn saved_view(
+    app: &App,
+    index_of_tab: &HashMap<TabId, usize>,
+    landed: usize,
+) -> Option<(Option<LayoutState>, Option<usize>)> {
+    let restoring = app.ui.session.restoring.as_ref()?;
+    if restoring.declined {
+        return None;
+    }
+    let map = |index: usize| -> Option<usize> {
+        if let Some(tab_id) = restoring.tab_ids.get(index).copied().flatten() {
+            return index_of_tab.get(&tab_id).copied();
+        }
+        restoring.pending.get(index)?.as_ref()?;
+        let before = restoring.pending[..index].iter().flatten().count();
+        Some(landed + before)
+    };
+    let layout = restoring.layout.clone().and_then(|mut layout| {
+        for pane in &mut layout.panes {
+            pane.tab = map(pane.tab)?;
+        }
+        Some(layout)
+    });
+    Some((layout, restoring.active.and_then(map)))
+}
+
 /// A new restore generation; results of older restores are dropped.
 pub(crate) fn next_generation(app: &mut App) -> u64 {
     app.ui.session.restore_generation += 1;
@@ -63,7 +109,7 @@ pub(crate) fn apply(app: &mut App, ctx: &dyn lux_platform::PlatformContext, land
             let Some(plan) = plan else {
                 return;
             };
-            if let Some((tabs, history_dir)) = begin(app, generation, *plan) {
+            if let Some((generation, tabs, history_dir)) = begin(app, generation, *plan) {
                 read_tabs(app, ctx, generation, tabs, history_dir);
             }
         }
@@ -103,19 +149,26 @@ fn read_tabs(
     crate::ui_io::spawn_each(app, Some(ctx), jobs);
 }
 
-/// Opens the session's folder and records the restore. Returns the tabs
-/// to read, or `None` when there is nothing to restore.
+/// Opens the session's folder and records the restore. Returns the
+/// restore's generation (opening the folder starts a new one), and the
+/// tabs to read, or `None` when there is nothing to restore.
 pub(crate) fn begin(
     app: &mut App,
     generation: u64,
     plan: Plan,
-) -> Option<(Vec<TabState>, PathBuf)> {
+) -> Option<(u64, Vec<TabState>, PathBuf)> {
     if generation != app.ui.session.restore_generation {
         return None;
     }
+    let mut generation = generation;
     if let Some(folder) = plan.root
         && app.workspace_root().as_ref() != Some(&folder)
     {
+        // The restore moves the window to its own folder; anything tied
+        // to the previous root ends, and this restore carries on under
+        // the generation that change started.
+        super::root_changing(app);
+        generation = app.ui.session.restore_generation;
         crate::sidebar::reads::open_root(app, folder.clone());
         app.ui.session.init_watcher(&folder);
         app.update_viewport_dimensions();
@@ -134,6 +187,7 @@ pub(crate) fn begin(
         generation,
         tab_ids: vec![None; session.tabs.len()],
         pending: session.tabs.iter().cloned().map(Some).collect(),
+        history_dir: plan.history_dir.clone(),
         landed: 0,
         active: session.active_tab,
         layout: session.layout,
@@ -143,7 +197,7 @@ pub(crate) fn begin(
         shown: false,
         declined: false,
     });
-    Some((session.tabs, plan.history_dir))
+    Some((generation, session.tabs, plan.history_dir))
 }
 
 /// Adds one landed tab. Returns `Some(any tab restored)` once the last
@@ -162,7 +216,16 @@ pub(crate) fn apply_tab(
     restoring.landed += 1;
     restoring.pending[index] = None;
     if let Some(tab) = tab {
-        let tab_id = add_tab(app, *tab);
+        // A file the user already has open keeps the user's tab and text;
+        // the session's copy is not added beside it. The session's carets
+        // and split describe the other text, so its view is not applied.
+        let tab_id = match tab.state.path.as_deref().and_then(|p| open_tab(app, p)) {
+            Some(open) => {
+                restoring.declined = true;
+                open
+            }
+            None => add_tab(app, *tab),
+        };
         restoring.tab_ids[index] = Some(tab_id);
         if restoring.active == Some(index) {
             show(app, &mut restoring, tab_id);
@@ -186,6 +249,7 @@ pub(crate) fn apply_tab(
         show(app, &mut restoring, first);
     }
     if restoring.shown
+        && !restoring.declined
         && let Some(layout) = &restoring.layout
     {
         let line_height = app.editor_view.metrics().line_height.max(1.0);
@@ -193,6 +257,18 @@ pub(crate) fn apply_tab(
     }
     app.scheduler.invalidate_all();
     Some(any)
+}
+
+/// The tab already showing `path`, if any.
+fn open_tab(app: &App, path: &Path) -> Option<TabId> {
+    if app.documents.path.as_deref() == Some(path) {
+        return app.documents.active_tab;
+    }
+    app.documents
+        .entries
+        .iter()
+        .find(|e| e.path.as_deref() == Some(path))
+        .map(|e| e.tab_id)
 }
 
 fn add_tab(app: &mut App, tab: RestoredTab) -> TabId {
@@ -239,7 +315,8 @@ fn add_tab(app: &mut App, tab: RestoredTab) -> TabId {
 /// the user has moved to another tab or typed since the restore began.
 /// The split layout follows only a shown tab.
 fn show(app: &mut App, restoring: &mut Restoring, tab_id: TabId) {
-    if app.documents.active_tab != restoring.active_at_start
+    if restoring.declined
+        || app.documents.active_tab != restoring.active_at_start
         || app.history.state_id() != restoring.state_at_start
     {
         restoring.declined = true;

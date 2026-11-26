@@ -100,7 +100,7 @@ impl App {
     }
 
     pub(crate) fn open_workspace(&mut self, path: PathBuf) {
-        crate::session::leave_root(self);
+        crate::session::root_changing(self);
         self.ui.project.supersede();
         crate::sidebar::reads::open_root(self, path.clone());
         self.ui.session.init_watcher(&path);
@@ -151,7 +151,7 @@ impl App {
         if let Some(sidebar) = &mut self.ui.sidebar {
             sidebar.visible = !sidebar.visible;
         } else {
-            crate::session::leave_root(self);
+            crate::session::root_changing(self);
             let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
             crate::sidebar::reads::open_root(self, cwd);
         }

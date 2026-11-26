@@ -127,7 +127,8 @@ pub(crate) fn restore_session(app: &mut App, read_from: &Path) -> std::io::Resul
         return Ok(false);
     };
     let generation = super::restore_apply::next_generation(app);
-    let Some((tabs, history_dir)) = super::restore_apply::begin(app, generation, plan) else {
+    let Some((generation, tabs, history_dir)) = super::restore_apply::begin(app, generation, plan)
+    else {
         return Ok(false);
     };
     let mut restored = false;

@@ -159,6 +159,24 @@ pub(crate) fn pane_tokens(entry: &DocumentEntry) -> Vec<lux_syntax::Token> {
     doc.highlight_rope(entry.buffer.rope())
 }
 
+/// The folder that keys the session is about to change: a folder or
+/// project opens, the project or the header folder closes, the sidebar
+/// opens on the working directory, or a restore opens its own folder.
+/// Every root change goes through here, before the new root is set, so
+/// everything tied to the old root ends in one place, in this order:
+///
+/// 1. The old root's pending session write is flushed (`leave_root`). It
+///    runs first, while a restore still in flight can still add its
+///    unlanded tabs and saved layout to that snapshot.
+/// 2. A session restore still landing is dropped: its tabs, layout and
+///    later writes belong to the old root, not the new one.
+/// 3. Per-folder state keyed by an epoch (such as the build system's
+///    `folder_epoch`, once it exists) is bumped here, after the restore.
+pub(crate) fn root_changing(app: &mut App) {
+    leave_root(app);
+    restore_apply::next_generation(app);
+}
+
 /// Restores the folderless session when the window first appears, on
 /// workers. Skipped when a document is opening, a folder is in the
 /// sidebar, or a project from the command line is still being read: that
@@ -196,12 +214,13 @@ pub(crate) fn note_change(app: &mut App) {
     debounce::SESSION.note_change();
 }
 
-/// Called before the folder that keys the session changes: another folder
-/// or project opens, or the last folder closes. A change still inside the
-/// quiet period belongs to the project being left, so its snapshot is
-/// queued now, for that project's file. The session writer keeps one job
-/// per file, so the next project's writes cannot replace it.
-pub(crate) fn leave_root(app: &mut App) {
+/// Step 1 of [`root_changing`]: the folder that keys the session is about
+/// to change (another folder or project opens, or the last folder
+/// closes). A change still inside the quiet period belongs to the project
+/// being left, so its snapshot is queued now, for that project's file.
+/// The session writer keeps one job per file, so the next project's
+/// writes cannot replace it.
+fn leave_root(app: &mut App) {
     if std::mem::take(&mut app.ui.session.unsaved) {
         snapshot::submit(app);
     }
