@@ -107,14 +107,7 @@ pub(crate) fn open_match_in_editor(
         app.switch_to_tab(tab_id);
         crate::goto::jump_to_line(app, line_num);
     } else if let Some(ctx) = ctx {
-        crate::cli::register_locations(&[crate::cli::Location {
-            path: path.clone(),
-            line: Some(line_num),
-            column: None,
-            scratch: false,
-            wait_token: 0,
-        }]);
-        crate::document::open_queue::enqueue(app, ctx, path);
+        crate::document::open_queue::open_at(app, Some(ctx), path, Some(line_num), None);
     }
 }
 
