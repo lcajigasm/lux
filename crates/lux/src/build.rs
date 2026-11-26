@@ -279,6 +279,7 @@ impl App {
         let wake = ctx
             .map(|ctx| ctx.background_waker())
             .or_else(|| self.ui.dialogs.jobs.waker());
+        self.retire_previous_build();
         let notify = self.ui.build.events.notify(wake);
         match self.ui.term.run_task_with(&task_name, cmd, notify) {
             Ok(task_id) => {

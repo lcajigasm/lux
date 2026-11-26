@@ -88,6 +88,21 @@ impl TaskPanel {
         self.tasks.values().map(|t| &t.pty)
     }
 
+    /// Takes a task out of the panel without stopping it, so the caller
+    /// can stop and reap it off its own thread.
+    pub fn remove(&mut self, id: TaskId) -> Option<Pty> {
+        self.tasks.remove(&id).map(|t| t.pty)
+    }
+
+    /// Number of tasks in the panel, running or finished.
+    pub fn len(&self) -> usize {
+        self.tasks.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tasks.is_empty()
+    }
+
     /// Kill the child and drop it from the panel. Real cancellation.
     pub fn cancel(&mut self, id: TaskId) -> Result<ExitStatus, PtyError> {
         let task = self.tasks.remove(&id).ok_or_else(|| {
@@ -187,11 +202,28 @@ mod tests {
     }
 
     #[test]
-    fn request_kill_returns_at_once_and_keeps_the_task() {
+    fn request_kill_returns_at_once_and_ends_the_whole_process_group() {
         let mut panel = TaskPanel::new();
-        // Ignores the hangup, so only the forced kill ends it.
-        let (id, rx) = notified(&mut panel, "trap '' HUP; echo started; sleep 30");
+        // The shell and its `sleep` ignore the hangup, so only the forced
+        // kill of the group ends them.
+        let (id, rx) = notified(
+            &mut panel,
+            "trap '' HUP; sleep 30 & echo grandchild:$!; wait",
+        );
         let pid = panel.get(id).and_then(Pty::pid).expect("pid");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let grandchild = loop {
+            let text = panel.get(id).unwrap().snapshot();
+            if let Some(pid) = text
+                .lines()
+                .find_map(|l| l.trim().strip_prefix("grandchild:"))
+                .and_then(|p| p.parse::<i32>().ok())
+            {
+                break pid;
+            }
+            assert!(std::time::Instant::now() < deadline, "{text}");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
         let asked = std::time::Instant::now();
         panel.get_mut(id).unwrap().request_kill();
         assert!(asked.elapsed() < std::time::Duration::from_millis(100));
@@ -202,5 +234,15 @@ mod tests {
         assert!(panel.get(id).is_some(), "output kept");
         let rc = unsafe { libc::kill(pid as libc::pid_t, 0) };
         assert_eq!(rc, -1, "child still alive");
+        // The orphaned grandchild is reaped by init once killed; until then
+        // `kill(pid, 0)` still finds its zombie.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while unsafe { libc::kill(grandchild, 0) } == 0 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "grandchild {grandchild} survived the cancel"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 }

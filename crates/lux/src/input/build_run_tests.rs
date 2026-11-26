@@ -150,3 +150,59 @@ fn cmd_alt_c_stops_the_child_keeps_the_output_and_prints_cancelled() {
     assert!(!alive, "the build child is gone");
     assert!(!app.cancel_build(), "nothing left to cancel");
 }
+
+fn pid_alive(pid: u32) -> bool {
+    std::process::Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap()
+        .success()
+}
+
+#[test]
+fn a_new_build_stops_the_running_one_and_frees_its_output() {
+    let (mut app, wakes) = app_with_wake();
+    start(&mut app, "trap '' HUP; echo first; sleep 30");
+    let first = app.ui.build.task_id.unwrap();
+    let pid = app
+        .ui
+        .term
+        .tasks
+        .get(first)
+        .and_then(lux_term::Pty::pid)
+        .unwrap();
+    while !output(&app).iter().any(|l| l == "first") {
+        next_wake(&mut app, &wakes);
+    }
+
+    start(&mut app, "echo second");
+    let second = app.ui.build.task_id.unwrap();
+    assert_ne!(first, second);
+    assert!(app.ui.term.tasks.get(first).is_none(), "old output freed");
+    assert_eq!(app.ui.term.tasks.len(), 1);
+
+    // The old build's exit does not end the new one; the new one's does.
+    run_to_exit(&mut app, &wakes);
+    let lines = output(&app);
+    assert_eq!(lines[0], "second");
+    assert!(finished(&lines[1], "]"), "{lines:?}");
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while pid_alive(pid) {
+        assert!(std::time::Instant::now() < deadline, "old build survived");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn only_the_latest_build_keeps_a_terminal() {
+    let (mut app, wakes) = app_with_wake();
+    for n in 0..3 {
+        start(&mut app, &format!("echo run{n}"));
+        run_to_exit(&mut app, &wakes);
+    }
+    assert_eq!(app.ui.term.tasks.len(), 1);
+    assert_eq!(app.ui.term.task_ids.len(), 1);
+    assert_eq!(output(&app)[0], "run2");
+}

@@ -157,6 +157,22 @@ impl App {
         true
     }
 
+    /// A new build replaces the previous one, as in Sublime: a build that
+    /// is still running is stopped (its whole process group, killed and
+    /// reaped on a worker), and its task and output are freed, so only
+    /// the latest build's output is kept. Its exit, if it lands later, is
+    /// for a task that no longer exists and is ignored.
+    pub(crate) fn retire_previous_build(&mut self) {
+        let build = &mut self.ui.build;
+        let Some(task) = build.task_id.take() else {
+            return;
+        };
+        build.is_running = false;
+        build.cancelling = false;
+        build.started = None;
+        self.ui.term.cancel_task(task);
+    }
+
     /// Marks a build task as started now.
     pub(crate) fn note_build_started(&mut self, task: TaskId) {
         let build = &mut self.ui.build;

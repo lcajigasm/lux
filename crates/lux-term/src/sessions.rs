@@ -130,6 +130,12 @@ impl Terminals {
         self.sessions.keys().copied()
     }
 
+    /// Takes a session out without stopping it, so the caller can stop
+    /// and reap it off its own thread.
+    pub fn remove(&mut self, id: TerminalId) -> Option<Pty> {
+        self.sessions.remove(&id).map(|s| s.pty)
+    }
+
     /// Kill and reap one session. Other sessions keep running.
     pub fn kill(&mut self, id: TerminalId) -> Result<ExitStatus, PtyError> {
         let session = self.sessions.remove(&id).ok_or_else(|| {

@@ -25,6 +25,11 @@ const DRAIN: Duration = Duration::from_millis(500);
 /// Grace period between the polite hangup and the forced kill.
 const GRACE: Duration = Duration::from_millis(250);
 
+/// How long `kill_and_wait` waits for the reap after the forced kill. A
+/// child that is still not reaped by then is reported as an error rather
+/// than waited for forever.
+const REAP: Duration = Duration::from_secs(2);
+
 /// Tells the waiter the PTY reader has stopped, however the reader ends.
 pub(crate) struct DropSignal(pub(crate) std::sync::mpsc::Sender<()>);
 
@@ -86,34 +91,25 @@ impl ChildWatch {
         self.exit.status.lock().ok().and_then(|slot| slot.clone())
     }
 
-    fn wait_timeout(&self, timeout: Option<Duration>) -> Option<ExitStatus> {
-        let mut slot = self.exit.status.lock().ok()?;
-        match timeout {
-            Some(timeout) => {
-                let (guard, _) = self
-                    .exit
-                    .done
-                    .wait_timeout_while(slot, timeout, |s| s.is_none())
-                    .ok()?;
-                guard.clone()
-            }
-            None => {
-                while slot.is_none() {
-                    slot = self.exit.done.wait(slot).ok()?;
-                }
-                slot.clone()
-            }
-        }
+    fn wait_timeout(&self, timeout: Duration) -> Option<ExitStatus> {
+        let slot = self.exit.status.lock().ok()?;
+        let (guard, _) = self
+            .exit
+            .done
+            .wait_timeout_while(slot, timeout, |s| s.is_none())
+            .ok()?;
+        guard.clone()
     }
 
-    /// Asks the child to stop and returns at once; the waiter thread
-    /// reports the exit. A child that ignores the hangup is killed after a
-    /// short grace period by a helper thread.
+    /// Asks the child's process group to stop and returns at once; the
+    /// waiter thread reports the exit. After a short grace period a helper
+    /// thread kills whatever is left of the group, so a grandchild that
+    /// ignores the hangup does not outlive the build.
     pub(crate) fn request_kill(&mut self) {
         if self.try_wait().is_some() {
             return;
         }
-        let _ = self.killer.kill();
+        hangup(self.pid, self.killer.as_mut());
         let exit = Arc::clone(&self.exit);
         let pid = self.pid;
         let mut killer = self.killer.clone_killer();
@@ -127,40 +123,59 @@ impl ChildWatch {
                 else {
                     return;
                 };
-                if slot.is_none() {
-                    drop(slot);
-                    force_kill(pid, killer.as_mut());
-                }
+                drop(slot);
+                // Even when the leader is gone, members of its group that
+                // ignored the hangup are still running.
+                force_kill(pid, killer.as_mut());
             });
     }
 
-    /// Kills the child and blocks until it is reaped.
+    /// Kills the child's process group and waits, bounded, for the reap.
     pub(crate) fn kill_and_wait(&mut self) -> Result<ExitStatus, PtyError> {
         if let Some(status) = self.try_wait() {
             return Ok(status);
         }
-        let _ = self.killer.kill();
-        if let Some(status) = self.wait_timeout(Some(GRACE)) {
-            return Ok(status);
-        }
+        hangup(self.pid, self.killer.as_mut());
+        let early = self.wait_timeout(GRACE);
         force_kill(self.pid, self.killer.as_mut());
-        self.wait_timeout(None)
+        early
+            .or_else(|| self.wait_timeout(REAP))
             .ok_or_else(|| PtyError::Io(std::io::Error::other("child exit status unavailable")))
     }
 }
 
-/// `SIGKILL` on Unix (the killer only sends `SIGHUP` there); on Windows the
-/// killer already calls `TerminateProcess`.
-fn force_kill(pid: Option<u32>, killer: &mut (dyn ChildKiller + Send + Sync)) {
+/// `SIGHUP` to the child's whole process group on Unix: the child leads
+/// its own group (portable-pty runs it in a new session), so its
+/// grandchildren get the hangup too. On Windows the killer calls
+/// `TerminateProcess` on the direct child only; grandchildren are not
+/// reached there (no job object yet).
+fn hangup(pid: Option<u32>, killer: &mut (dyn ChildKiller + Send + Sync)) {
     #[cfg(unix)]
     if let Some(pid) = pid {
-        // SAFETY: `kill` with a pid we spawned and SIGKILL has no memory
-        // effects; a stale pid just yields ESRCH.
-        unsafe {
-            libc::kill(pid as libc::pid_t, libc::SIGKILL);
-        }
+        signal_group(pid, libc::SIGHUP);
         return;
     }
     let _ = pid;
     let _ = killer.kill();
+}
+
+/// `SIGKILL` to the child's process group on Unix; on Windows the killer
+/// already calls `TerminateProcess`.
+fn force_kill(pid: Option<u32>, killer: &mut (dyn ChildKiller + Send + Sync)) {
+    #[cfg(unix)]
+    if let Some(pid) = pid {
+        signal_group(pid, libc::SIGKILL);
+        return;
+    }
+    let _ = pid;
+    let _ = killer.kill();
+}
+
+#[cfg(unix)]
+fn signal_group(pid: u32, signal: libc::c_int) {
+    // SAFETY: `killpg` on the group our child leads has no memory effects;
+    // a group that is gone just yields ESRCH.
+    unsafe {
+        libc::killpg(pid as libc::pid_t, signal);
+    }
 }
