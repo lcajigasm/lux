@@ -22,6 +22,9 @@ pub(super) struct Dialogs {
     folder: Option<PathBuf>,
     save: Option<PathBuf>,
     threads: Mutex<Vec<ThreadId>>,
+    /// When set, the folder panel stays up until a value arrives, like a
+    /// sheet the user has not answered.
+    folder_answer: Option<Mutex<Receiver<()>>>,
 }
 
 impl Dialogs {
@@ -42,6 +45,9 @@ impl FileDialogs for Dialogs {
         Vec::new()
     }
     fn pick_folder(&self, _: &FileDialogOptions) -> Option<PathBuf> {
+        if let Some(answer) = &self.folder_answer {
+            let _ = answer.lock().unwrap().recv();
+        }
         self.shown().or_else(|| self.folder.clone())
     }
     fn save_file(&self, _: &FileDialogOptions) -> Option<PathBuf> {
@@ -250,6 +256,32 @@ fn confirming_a_theme_writes_settings_on_a_worker_in_order() {
     let resolved = app.ui.settings.config.lock().unwrap().resolved().clone();
     assert_eq!(resolved["workbench.colorTheme"], "Mariana");
     assert_eq!(app.chrome.theme.name, mariana);
+}
+
+#[test]
+fn an_open_folder_sheet_does_not_hold_back_settings_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    let (answer, folder_answer) = mpsc::channel();
+    let ctx = Context::new(Dialogs {
+        folder: Some(dir.path().to_path_buf()),
+        folder_answer: Some(Mutex::new(folder_answer)),
+        ..Default::default()
+    });
+    let mut app = app();
+    app.ui.settings = crate::settings::SettingsState::new(path.clone());
+    app.open_folder_dialog(&ctx);
+    app.confirm_theme("Mariana");
+
+    // The panel is still up; the settings write lands anyway.
+    ctx.settle(&mut app, 1);
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(written.contains("Mariana"), "{written}");
+    assert_ne!(app.workspace_root(), Some(dir.path().to_path_buf()));
+
+    answer.send(()).unwrap();
+    ctx.settle(&mut app, 1);
+    assert_eq!(app.workspace_root(), Some(dir.path().to_path_buf()));
 }
 
 /// Points the macro folders of this test thread at an empty temporary

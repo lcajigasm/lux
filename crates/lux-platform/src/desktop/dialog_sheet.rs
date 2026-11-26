@@ -4,30 +4,160 @@
 //! `-[NSAlert runModal]`) on the main thread, a nested modal run loop that
 //! holds the main thread until the panel closes. The async variants with a
 //! parent window instead call `beginSheetModalForWindow:completionHandler:`
-//! on the main thread and return at once, so winit's `[NSApp run]` keeps
-//! dispatching events, timers and redraws while the sheet is up. The worker
-//! that asked for the dialog parks until the completion handler wakes it.
+//! and return at once, so winit's `[NSApp run]` keeps dispatching events,
+//! timers and redraws while the sheet is up. The worker that asked for the
+//! dialog parks until the completion handler wakes it.
 //!
-//! Nothing here runs on the main thread: a sheet requested from the main
-//! thread would park the thread its completion handler needs. Those calls
-//! return `None` and the caller falls back to the blocking dialog.
+//! No AppKit call happens on the worker. The editor window's content view
+//! is retained on the main thread when the dialog is requested
+//! (`ctx.background_dialogs()`), so the handle cannot dangle if the window
+//! closes meanwhile. The worker then runs the whole `rfd` setup, which
+//! resolves `[view window]`, builds the panel and begins the sheet, on the
+//! main thread with `dispatch_sync_f`, and only parks on the returned
+//! future itself. The view is released on the main thread too.
+//!
+//! A sheet requested from the main thread would park the thread its
+//! completion handler needs. Those calls return `None` and the caller
+//! falls back to the blocking dialog.
 
+use std::ffi::{c_char, c_void};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::pin;
-use std::sync::{Arc, Mutex};
+use std::ptr::NonNull;
+use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
 use std::thread::Thread;
 
+use raw_window_handle::{
+    AppKitWindowHandle, DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle,
+    RawWindowHandle, WindowHandle,
+};
+
 use crate::dialog::{FileDialogOptions, SaveDecision};
+
+#[repr(C)]
+struct DispatchQueue {
+    _private: [u8; 0],
+}
+
+type Work = unsafe extern "C" fn(*mut c_void);
 
 unsafe extern "C" {
     fn pthread_main_np() -> i32;
+    static _dispatch_main_q: DispatchQueue;
+    fn dispatch_sync_f(queue: *const DispatchQueue, context: *mut c_void, work: Work);
+    fn dispatch_async_f(queue: *const DispatchQueue, context: *mut c_void, work: Work);
+}
+
+#[link(name = "objc")]
+unsafe extern "C" {
+    fn objc_retain(object: *mut c_void) -> *mut c_void;
+    fn objc_release(object: *mut c_void);
+    fn sel_registerName(name: *const c_char) -> *const c_void;
+    /// Called only with this exact signature (an object-returning,
+    /// argument-less selector), as arm64 requires.
+    fn objc_msgSend(receiver: *mut c_void, selector: *const c_void) -> *mut c_void;
 }
 
 fn on_main_thread() -> bool {
     // SAFETY: no arguments, no preconditions; returns 1 on the main thread.
     unsafe { pthread_main_np() == 1 }
+}
+
+/// Runs `work` on the main thread and waits for it. The main thread never
+/// waits on a worker (CLAUDE.md rule 6), so this cannot deadlock while the
+/// event loop runs. A panic inside `work` is resumed here, on the worker.
+fn on_main<R: Send, F: FnOnce() -> R + Send>(work: F) -> R {
+    struct Call<F, R> {
+        work: Option<F>,
+        out: Option<std::thread::Result<R>>,
+    }
+    unsafe extern "C" fn trampoline<F: FnOnce() -> R, R>(context: *mut c_void) {
+        // SAFETY: `context` is the `Call` below, alive and exclusively ours
+        // for the duration of the synchronous dispatch.
+        let call = unsafe { &mut *context.cast::<Call<F, R>>() };
+        if let Some(work) = call.work.take() {
+            call.out = Some(std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)));
+        }
+    }
+    let mut call = Call {
+        work: Some(work),
+        out: None,
+    };
+    // SAFETY: `_dispatch_main_q` is the process's main queue; `call` lives
+    // until `dispatch_sync_f` returns, which is after `trampoline` ran.
+    unsafe {
+        dispatch_sync_f(
+            &raw const _dispatch_main_q,
+            (&raw mut call).cast(),
+            trampoline::<F, R>,
+        );
+    }
+    match call.out.expect("the main queue ran the dialog setup") {
+        Ok(value) => value,
+        Err(panic) => std::panic::resume_unwind(panic),
+    }
+}
+
+/// The editor window's content view, retained on the main thread.
+struct Parent(NonNull<c_void>);
+
+// SAFETY: the view is only messaged on the main thread (`on_main`), and it
+// is released there (`Drop`). Retain counts are thread-safe.
+unsafe impl Send for Parent {}
+// SAFETY: as above; `&Parent` only exposes the pointer to main-thread code.
+unsafe impl Sync for Parent {}
+
+impl Parent {
+    /// Main thread only, which is where `ctx.background_dialogs()` runs.
+    fn of(window: &winit::window::Window) -> Option<Self> {
+        if !on_main_thread() {
+            return None;
+        }
+        let RawWindowHandle::AppKit(handle) = window.window_handle().ok()?.as_raw() else {
+            return None;
+        };
+        // SAFETY: winit's live content view; the +1 is balanced in `Drop`.
+        let view = unsafe { objc_retain(handle.ns_view.as_ptr()) };
+        NonNull::new(view).map(Self)
+    }
+
+    /// Main thread only: whether the view still sits in a window. `rfd`
+    /// panics on a view without one.
+    fn in_window(&self) -> bool {
+        debug_assert!(on_main_thread());
+        // SAFETY: a retained NSView, messaged on the main thread with the
+        // argument-less, object-returning `window` selector.
+        let window = unsafe { objc_msgSend(self.0.as_ptr(), sel_registerName(c"window".as_ptr())) };
+        !window.is_null()
+    }
+}
+
+impl Drop for Parent {
+    fn drop(&mut self) {
+        unsafe extern "C" fn release(view: *mut c_void) {
+            // SAFETY: the +1 taken in `Parent::of`, released once.
+            unsafe { objc_release(view) }
+        }
+        // SAFETY: the main queue outlives the process's windows; the
+        // pointer stays valid until `release` balances the retain.
+        unsafe { dispatch_async_f(&raw const _dispatch_main_q, self.0.as_ptr(), release) }
+    }
+}
+
+impl HasWindowHandle for Parent {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        let raw = RawWindowHandle::AppKit(AppKitWindowHandle::new(self.0));
+        // SAFETY: the view is retained for as long as `self` lives.
+        Ok(unsafe { WindowHandle::borrow_raw(raw) })
+    }
+}
+
+impl HasDisplayHandle for Parent {
+    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
+        Ok(DisplayHandle::appkit())
+    }
 }
 
 struct Unpark(Thread);
@@ -52,78 +182,96 @@ fn block_on<F: Future>(future: F) -> F::Output {
     }
 }
 
-/// Window-attached panel and alert templates. Empty when there is no
-/// window to attach to.
+/// The window sheets attach to. Empty when there is no window to attach to.
 #[derive(Default)]
 pub(super) struct Sheets {
-    files: Mutex<Option<rfd::AsyncFileDialog>>,
-    alert: Mutex<Option<rfd::AsyncMessageDialog>>,
+    parent: Option<Parent>,
+}
+
+/// Main thread only (inside `on_main`).
+fn files(parent: &Parent, options: &FileDialogOptions) -> rfd::AsyncFileDialog {
+    let mut dialog = rfd::AsyncFileDialog::new();
+    if parent.in_window() {
+        dialog = dialog.set_parent(parent);
+    }
+    if let Some(title) = &options.title {
+        dialog = dialog.set_title(title.as_str());
+    }
+    if let Some(dir) = &options.starting_directory {
+        dialog = dialog.set_directory(dir);
+    }
+    for (name, extensions) in &options.filters {
+        dialog = dialog.add_filter(name.as_str(), extensions);
+    }
+    dialog
+}
+
+/// Main thread only (inside `on_main`).
+fn alert(parent: &Parent) -> rfd::AsyncMessageDialog {
+    let dialog = rfd::AsyncMessageDialog::new();
+    if parent.in_window() {
+        dialog.set_parent(parent)
+    } else {
+        dialog
+    }
 }
 
 impl Sheets {
+    /// Retains the window's view. Call on the main thread.
     pub(super) fn with_parent(window: &winit::window::Window) -> Self {
         Self {
-            files: Mutex::new(Some(rfd::AsyncFileDialog::new().set_parent(window))),
-            alert: Mutex::new(Some(rfd::AsyncMessageDialog::new().set_parent(window))),
+            parent: Parent::of(window),
         }
     }
 
-    fn files(&self, options: &FileDialogOptions) -> Option<rfd::AsyncFileDialog> {
+    /// The parent, when this call may show a sheet: from a worker only.
+    fn parent(&self) -> Option<&Parent> {
         if on_main_thread() {
             return None;
         }
-        let mut dialog = self
-            .files
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()?;
-        if let Some(title) = &options.title {
-            dialog = dialog.set_title(title.as_str());
-        }
-        if let Some(dir) = &options.starting_directory {
-            dialog = dialog.set_directory(dir);
-        }
-        for (name, extensions) in &options.filters {
-            dialog = dialog.add_filter(name.as_str(), extensions);
-        }
-        Some(dialog)
-    }
-
-    fn alert(&self) -> Option<rfd::AsyncMessageDialog> {
-        if on_main_thread() {
-            return None;
-        }
-        self.alert.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.parent.as_ref()
     }
 
     pub(super) fn pick_file(&self, options: &FileDialogOptions) -> Option<Option<PathBuf>> {
-        let dialog = self.files(options)?;
-        Some(block_on(dialog.pick_file()).map(|file| file.path().to_path_buf()))
+        let parent = self.parent()?;
+        let picked = on_main(|| files(parent, options).pick_file());
+        Some(block_on(picked).map(|file| file.path().to_path_buf()))
     }
 
     pub(super) fn pick_files(&self, options: &FileDialogOptions) -> Option<Vec<PathBuf>> {
-        let dialog = self.files(options)?;
-        let picked = block_on(dialog.pick_files()).unwrap_or_default();
-        Some(picked.iter().map(|f| f.path().to_path_buf()).collect())
+        let parent = self.parent()?;
+        let picked = block_on(on_main(|| files(parent, options).pick_files()));
+        Some(
+            picked
+                .unwrap_or_default()
+                .iter()
+                .map(|f| f.path().to_path_buf())
+                .collect(),
+        )
     }
 
     pub(super) fn pick_folder(&self, options: &FileDialogOptions) -> Option<Option<PathBuf>> {
-        let dialog = self.files(options)?;
-        Some(block_on(dialog.pick_folder()).map(|file| file.path().to_path_buf()))
+        let parent = self.parent()?;
+        let picked = on_main(|| files(parent, options).pick_folder());
+        Some(block_on(picked).map(|file| file.path().to_path_buf()))
     }
 
     pub(super) fn save_file(&self, options: &FileDialogOptions) -> Option<Option<PathBuf>> {
-        let dialog = self.files(options)?;
-        Some(block_on(dialog.save_file()).map(|file| file.path().to_path_buf()))
+        let parent = self.parent()?;
+        let picked = on_main(|| files(parent, options).save_file());
+        Some(block_on(picked).map(|file| file.path().to_path_buf()))
     }
 
     pub(super) fn confirm_save(&self, document: &str) -> Option<SaveDecision> {
-        let dialog = self
-            .alert()?
-            .set_title("Unsaved changes")
-            .set_description(format!("Save changes to {document} before continuing?"))
-            .set_buttons(rfd::MessageButtons::YesNoCancel);
-        Some(match block_on(dialog.show()) {
+        let parent = self.parent()?;
+        let shown = on_main(|| {
+            alert(parent)
+                .set_title("Unsaved changes")
+                .set_description(format!("Save changes to {document} before continuing?"))
+                .set_buttons(rfd::MessageButtons::YesNoCancel)
+                .show()
+        });
+        Some(match block_on(shown) {
             rfd::MessageDialogResult::Yes => SaveDecision::Save,
             rfd::MessageDialogResult::No => SaveDecision::Discard,
             _ => SaveDecision::Cancel,
@@ -131,14 +279,17 @@ impl Sheets {
     }
 
     pub(super) fn confirm_trash(&self, item: &str) -> Option<bool> {
-        let dialog = self
-            .alert()?
-            .set_level(rfd::MessageLevel::Warning)
-            .set_title("Move to Trash")
-            .set_description(format!("Move \"{item}\" to the Trash?"))
-            .set_buttons(rfd::MessageButtons::OkCancel);
+        let parent = self.parent()?;
+        let shown = on_main(|| {
+            alert(parent)
+                .set_level(rfd::MessageLevel::Warning)
+                .set_title("Move to Trash")
+                .set_description(format!("Move \"{item}\" to the Trash?"))
+                .set_buttons(rfd::MessageButtons::OkCancel)
+                .show()
+        });
         Some(matches!(
-            block_on(dialog.show()),
+            block_on(shown),
             rfd::MessageDialogResult::Ok | rfd::MessageDialogResult::Yes
         ))
     }
@@ -147,6 +298,7 @@ impl Sheets {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
     #[test]
     fn block_on_parks_until_another_thread_wakes_it() {

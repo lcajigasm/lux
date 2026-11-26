@@ -328,6 +328,9 @@ impl App {
     /// Closes a clean tab immediately. A dirty tab stays. The last tab
     /// becomes a new untitled document so the window still has one.
     pub(crate) fn close_clean_tab_now(&mut self, target_id: TabId) -> bool {
+        if self.tab_has_pending_request(target_id) {
+            return false;
+        }
         let Some(pos) = self
             .documents
             .entries
@@ -381,6 +384,10 @@ impl App {
     pub(crate) fn close_tab(&mut self, ctx: &dyn PlatformContext, target_id: TabId) {
         if self.documents.active_tab == Some(target_id) {
             self.request_document(ctx, crate::document::Request::Close);
+            return;
+        }
+        // Its dialog (a sheet on macOS) is still up; the answer needs the tab.
+        if self.tab_has_pending_request(target_id) {
             return;
         }
         let is_dirty = self
