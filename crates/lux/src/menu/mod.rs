@@ -474,7 +474,7 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
             crate::macros::dispatch::playback_macro(app);
         }
         MenuAction::SaveMacro => {
-            crate::macros::dispatch::save_macro_as(app, "macro");
+            crate::macros::dispatch::prompt_save_macro(app);
         }
     }
     app.scheduler.invalidate_all();

@@ -33,7 +33,18 @@ pub fn playback_macro(app: &mut App) {
     }
 }
 
-/// Saves the last recorded macro as a `.sublime-macro` file under
+/// Tools: Save Macro… — asks for a name in the command palette's prompt.
+/// Enter calls `save_macro_as` with what was typed.
+pub fn prompt_save_macro(app: &mut App) {
+    let macros = &app.ui.macros;
+    if macros.last_macro.is_none() && macros.current_recording.is_empty() {
+        app.documents.message = Some("No macro recorded to save".to_string());
+        return;
+    }
+    app.open_palette_prompt(crate::palette::PalettePrompt::SaveMacro);
+}
+
+/// Saves the last recorded macro as `<name>.sublime-macro` under
 /// `~/.lux/macros/`. The write runs on a worker; `note_macro_saved` reports
 /// it when the worker finishes.
 pub fn save_macro_as(app: &mut App, name: &str) {
@@ -58,6 +69,7 @@ pub(crate) fn save_macro_to(app: &mut App, name: &str, dir: Option<&std::path::P
 
 pub(crate) fn note_macro_saved(app: &mut App, path: &std::path::Path, saved: super::Macro) {
     app.ui.macros.note_saved(saved);
+    super::library::start_loading(app, path.parent().map(std::path::Path::to_path_buf));
     let filename = path
         .file_name()
         .and_then(|f| f.to_str())
@@ -187,13 +199,16 @@ pub fn record_command_if_recording(app: &mut App, cmd: &str) {
         return;
     }
 
-    // Do not record macro meta commands
+    // Do not record macro meta commands. A paste records what it inserted
+    // (`insert` or `insert_pieces`), so the clipboard at playback time does
+    // not matter.
     if matches!(
         cmd,
         "toggle_record_macro"
             | "playback_macro"
             | "save_macro"
             | "save_macro_as"
+            | "paste"
             | "command_palette"
             | "quick_open"
     ) {

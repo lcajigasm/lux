@@ -428,7 +428,7 @@ pub(crate) fn execute_keymap_command(
             }
         }
         "save_macro" | "save_macro_as" | "macro.save_as" => {
-            crate::macros::dispatch::save_macro_as(app, "macro");
+            crate::macros::dispatch::prompt_save_macro(app);
             return;
         }
         _ => {}

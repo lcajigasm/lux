@@ -27,6 +27,9 @@ pub enum MoveTo {
 pub enum MacroCommand {
     /// Inserts text at each cursor.
     InsertText { text: String },
+    /// A distributed paste: piece i at caret i when the caret count matches,
+    /// otherwise every piece, one per line, at each caret.
+    InsertPieces { pieces: Vec<String> },
     /// Inserts a newline at each cursor.
     InsertNewline,
     /// Backspace at each cursor.
@@ -65,6 +68,10 @@ impl MacroCommand {
             Self::InsertText { text } => RawMacroStep {
                 command: "insert".to_string(),
                 args: Some(serde_json::json!({ "characters": text })),
+            },
+            Self::InsertPieces { pieces } => RawMacroStep {
+                command: "insert_pieces".to_string(),
+                args: Some(serde_json::json!({ "pieces": pieces })),
             },
             Self::InsertNewline => RawMacroStep {
                 command: "insert".to_string(),
@@ -142,6 +149,20 @@ impl MacroCommand {
                         text: chars.to_string(),
                     }
                 }
+            }
+            "insert_pieces" => {
+                let pieces = raw
+                    .args
+                    .as_ref()
+                    .and_then(|a| a.get("pieces"))
+                    .and_then(|p| p.as_array())
+                    .map(|list| {
+                        list.iter()
+                            .filter_map(|p| p.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                Self::InsertPieces { pieces }
             }
             "left_delete" => Self::DeleteBackward,
             "right_delete" => Self::DeleteForward,
@@ -223,6 +244,9 @@ mod tests {
         let commands = vec![
             MacroCommand::InsertText {
                 text: "let x = 42;".to_string(),
+            },
+            MacroCommand::InsertPieces {
+                pieces: vec!["a".into(), "b\nc".into()],
             },
             MacroCommand::InsertNewline,
             MacroCommand::DeleteBackward,

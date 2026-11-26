@@ -12,6 +12,8 @@ pub(crate) struct CommandPaletteState {
     pub(crate) registry: CommandRegistry,
     pub(crate) shortcuts: HashMap<String, String>,
     pub(crate) motion: crate::overlay_motion::OverlayMotion,
+    /// Set while the palette asks for text instead of a command.
+    pub(crate) prompt: Option<PalettePrompt>,
 }
 
 impl Default for CommandPaletteState {
@@ -30,11 +32,22 @@ impl CommandPaletteState {
             registry,
             shortcuts: HashMap::new(),
             motion: crate::overlay_motion::OverlayMotion::open(),
+            prompt: None,
         }
     }
 
+    /// Matching commands; none while the palette is a text prompt.
     pub(crate) fn results<'a>(&'a self, ctx: &Context) -> Vec<PaletteEntry<'a>> {
+        if self.prompt.is_some() {
+            return Vec::new();
+        }
         self.registry.search(&self.query, ctx)
+    }
+
+    /// The hint shown in the empty query field.
+    pub(crate) fn placeholder(&self) -> &'static str {
+        self.prompt
+            .map_or("Execute a command…", PalettePrompt::placeholder)
     }
 
     #[cfg(test)]
@@ -53,8 +66,11 @@ impl CommandPaletteState {
 }
 
 pub(crate) mod commands;
+mod prompt;
 mod registry;
 mod shortcuts;
+
+pub(crate) use prompt::PalettePrompt;
 
 pub(crate) use shortcuts::shortcut_labels;
 
@@ -119,6 +135,18 @@ pub(crate) fn handle_palette_key(
         Key::Named(NamedKey::Backspace) => {
             palette.query.pop();
             palette.selected_index = 0;
+            app.scheduler.invalidate_all();
+            true
+        }
+        Key::Named(NamedKey::Enter) if palette.prompt.is_some() => {
+            let Some(prompt) = palette.prompt else {
+                return true;
+            };
+            let text = palette.query.as_str().to_string();
+            if prompt.submit(app, &text) {
+                app.ui.command_palette = None;
+                crate::focus::focus_editor(app);
+            }
             app.scheduler.invalidate_all();
             true
         }

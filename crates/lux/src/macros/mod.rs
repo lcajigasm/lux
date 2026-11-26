@@ -2,6 +2,7 @@
 
 pub mod command;
 pub mod dispatch;
+pub mod library;
 pub mod macro_def;
 pub mod playback;
 pub mod recording;

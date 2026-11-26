@@ -19,6 +19,10 @@ pub fn execute_macro(app: &mut App, m: &Macro) {
     app.ui.macros.is_recording = false;
 
     for command in &m.commands {
+        // Each recorded step was its own key press, and every key press
+        // settles the soft-undo history; do the same so a recorded Soft
+        // Undo steps back over the previous replayed step.
+        app.settle_selection_history();
         execute_macro_command(app, command);
     }
 
@@ -43,6 +47,9 @@ fn execute_macro_command(app: &mut App, command: &MacroCommand) {
     match command {
         MacroCommand::InsertText { text } => {
             app.insert_at_cursor(text);
+        }
+        MacroCommand::InsertPieces { pieces } => {
+            app.insert_pieces(pieces);
         }
         MacroCommand::InsertNewline => {
             app.insert_newline();

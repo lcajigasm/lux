@@ -45,6 +45,10 @@ impl App {
         );
         state.query = crate::field::QueryField::from_text(query);
         state.shortcuts = crate::palette::shortcut_labels(&self.keymap);
+        crate::macros::library::register_palette_entries(
+            &mut state.registry,
+            &self.ui.macros.saved_macros,
+        );
         self.ui.command_palette = Some(state);
         self.chrome
             .focus

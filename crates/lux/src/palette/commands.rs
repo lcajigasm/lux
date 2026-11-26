@@ -495,10 +495,14 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
             crate::macros::dispatch::playback_macro(app);
         }
         "macro.save_as" | "save_macro" => {
-            crate::macros::dispatch::save_macro_as(app, "macro");
+            crate::macros::dispatch::prompt_save_macro(app);
         }
         "help.about" => {
             app.open_about_dialog();
+        }
+        id if id.starts_with(crate::macros::library::RUN_PREFIX) => {
+            let name = &id[crate::macros::library::RUN_PREFIX.len()..];
+            crate::macros::library::play_saved(app, name);
         }
         _ => {}
     }

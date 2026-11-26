@@ -272,11 +272,36 @@ fn saving_a_macro_writes_on_a_worker() {
     hold.release();
     ctx.settle(&mut app, 1);
     assert!(file.exists());
-    assert_eq!(app.ui.macros.saved_macros.len(), 1);
+    assert!(app.ui.macros.saved("demo").is_some());
     assert_eq!(
         app.documents.message.as_deref(),
         Some("Saved macro to demo.sublime-macro")
     );
+    // The save also re-reads the macro folders on a worker.
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 1, "reload after save");
+    app.ui.macros.set_saved(Vec::new());
+    ctx.settle(&mut app, 1);
+    assert!(
+        app.ui.macros.saved("demo").is_some(),
+        "reload found the file"
+    );
+}
+
+#[test]
+fn saved_macros_are_read_on_a_worker_at_startup() {
+    let ctx = Context::new(Dialogs::default());
+    let mut app = app();
+    app.ui.dialogs.jobs.set_wake(ctx.background_waker());
+    let hold = app.ui.dialogs.jobs.hold();
+    crate::macros::library::start_loading(&mut app, None);
+    assert_eq!(
+        app.ui.dialogs.jobs.in_flight(),
+        1,
+        "macro folders read inline"
+    );
+    hold.release();
+    ctx.settle(&mut app, 1);
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 0);
 }
 
 #[test]
@@ -286,9 +311,9 @@ fn coverage_fonts_and_recovery_scan_load_after_the_call_returns() {
     app.ui.dialogs.jobs.set_wake(ctx.background_waker());
     let hold = app.ui.dialogs.jobs.hold();
     app.start_deferred_loads();
-    assert_eq!(app.ui.dialogs.jobs.in_flight(), 3, "reads ran inline");
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 4, "reads ran inline");
 
     hold.release();
-    ctx.settle(&mut app, 3);
+    ctx.settle(&mut app, 4);
     assert_eq!(app.ui.dialogs.jobs.in_flight(), 0);
 }
