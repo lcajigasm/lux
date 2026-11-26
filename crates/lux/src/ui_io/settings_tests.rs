@@ -97,6 +97,9 @@ fn saving_the_settings_tab_reloads_the_layer_on_a_worker() {
     let dir = tempfile::tempdir().unwrap();
     let ctx = Context::new(Dialogs::default());
     let (mut app, path) = with_settings(&dir, &ctx);
+    // The settings-file watcher reloads the layer on its own thread when
+    // the file changes; this test is about the save path, not the watcher.
+    app.ui.settings.watcher = None;
     std::fs::write(&path, r#"{"editor.wordWrap": true}"#).unwrap();
 
     let hold = app.ui.dialogs.jobs.hold();
