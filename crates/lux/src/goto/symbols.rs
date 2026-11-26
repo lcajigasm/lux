@@ -111,6 +111,8 @@ pub(crate) fn items(app: &App, query: &str) -> (Vec<GotoItem>, Option<&'static s
         .map(|s| {
             let path = s.path.to_string_lossy().to_string();
             GotoItem {
+                subtitle: String::new(),
+                subtitle_hits: Vec::new(),
                 hits: lux_search::fuzzy::substring_span(&s.name, sym_part)
                     .into_iter()
                     .collect(),

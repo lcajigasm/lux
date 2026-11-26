@@ -57,8 +57,9 @@ pub(crate) fn render_project_picker(
                 None
             },
             detail: Some(detail.as_str()),
-            icon: Some(super::icons::Icon::Folder),
+            icon: None,
             swatches: None,
+            ..Default::default()
         })
         .collect();
     let frame = centered_frame(

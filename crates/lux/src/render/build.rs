@@ -35,8 +35,9 @@ pub(crate) fn render_build_picker(
             hits,
             badge: None,
             detail: Some(variant.command.as_str()),
-            icon: Some(super::icons::Icon::Build),
+            icon: None,
             swatches: None,
+            ..Default::default()
         })
         .collect();
     let frame = centered_frame(

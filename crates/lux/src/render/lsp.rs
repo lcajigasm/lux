@@ -181,6 +181,7 @@ fn render_completion_popup(
             detail: *detail,
             icon: Some(completion_icon(item.kind)),
             swatches: None,
+            ..Default::default()
         })
         .collect();
     let cap = (window_height * 0.40).max(36.0 * scale_factor * 4.0);

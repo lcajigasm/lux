@@ -4,7 +4,7 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 
 use crate::goto::{GotoItemKind, GotoState};
-use crate::overlay_list::centered_frame;
+use crate::overlay_list::centered_frame_rows;
 use crate::render::overlay_list::{OverlayItem, paint_overlay};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
@@ -39,29 +39,20 @@ pub(crate) fn render_goto(
     let items: Vec<OverlayItem<'_>> = goto
         .items
         .iter()
-        .map(|item| {
-            let (icon, badge) = match &item.kind {
-                GotoItemKind::File { .. } => (super::icons::Icon::File, None),
-                GotoItemKind::Symbol { kind_badge, .. } => {
-                    (super::icons::Icon::Symbol, Some(*kind_badge))
-                }
-                GotoItemKind::Term { .. } => (super::icons::Icon::Find, None),
-            };
-            OverlayItem {
-                title: item.label.as_str(),
-                hits: item.hits.clone(),
-                badge,
-                detail: if item.detail.is_empty() {
-                    None
-                } else {
-                    Some(item.detail.as_str())
-                },
-                icon: Some(icon),
-                swatches: None,
-            }
+        .map(|item| OverlayItem {
+            title: item.label.as_str(),
+            hits: item.hits.clone(),
+            subtitle: (!item.subtitle.is_empty()).then_some(item.subtitle.as_str()),
+            subtitle_hits: item.subtitle_hits.clone(),
+            badge: match &item.kind {
+                GotoItemKind::Symbol { kind_badge, .. } => Some(*kind_badge),
+                _ => None,
+            },
+            detail: (!item.detail.is_empty()).then_some(item.detail.as_str()),
+            ..Default::default()
         })
         .collect();
-    let frame = centered_frame(
+    let frame = centered_frame_rows(
         viewport_width,
         window_height,
         tab_bar_height,
@@ -69,6 +60,7 @@ pub(crate) fn render_goto(
         scale_factor,
         items.len(),
         goto.selected_index,
+        goto.two_line(),
     );
     paint_overlay(
         &frame,

@@ -24,7 +24,7 @@ pub(crate) fn selector_box(viewport_width: f32, tab_bar_height: f32, scale: f32)
         top: tab_bar_height + 8.0 * scale,
         width,
         input_height: 46.0 * scale,
-        row_height: 36.0 * scale,
+        row_height: crate::overlay_list::ROW_PT * scale,
         radius: 12.0 * scale,
     }
 }
@@ -76,13 +76,18 @@ fn approach(from: [f32; 4], to: [f32; 4], against: [f32; 4], min_ratio: f32) -> 
 }
 
 pub(crate) fn contrasting_fill(fill: [f32; 4], against: [f32; 4]) -> [f32; 4] {
+    visible_fill(fill, against, 3.05)
+}
+
+/// `fill`, moved away from `against` only as far as `min_ratio` needs.
+pub(crate) fn visible_fill(fill: [f32; 4], against: [f32; 4], min_ratio: f32) -> [f32; 4] {
     let sum = against[0] + against[1] + against[2];
     let target = if sum >= 1.5 {
         [0.0, 0.0, 0.0, 1.0]
     } else {
         [1.0, 1.0, 1.0, 1.0]
     };
-    approach(fill, target, against, 3.05)
+    approach(fill, target, against, min_ratio)
 }
 
 /// Chip on a selected row. One step from the selection toward its
@@ -500,7 +505,7 @@ mod tests {
         assert!(box_.width / 1000.0 >= 0.40 && box_.width / 1000.0 <= 0.50);
         assert!((box_.top - 40.0).abs() < 0.1);
         assert!((box_.input_height - 46.0).abs() < 0.1);
-        assert!((box_.row_height - 36.0).abs() < 0.1);
+        assert!((box_.row_height - 28.0).abs() < 0.1);
         let wide = selector_box(2000.0, 64.0, 2.0);
         assert!((wide.width / 2000.0 - 0.46).abs() < 0.001);
         assert!((wide.top - 80.0).abs() < 0.1);

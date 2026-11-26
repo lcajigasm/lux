@@ -40,6 +40,7 @@ pub(crate) fn render_tab_list(
             icon: None,
             swatches: None,
             hits: row.hits.clone(),
+            ..Default::default()
         })
         .collect();
     let frame = centered_frame(

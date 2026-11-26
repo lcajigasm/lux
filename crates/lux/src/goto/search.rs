@@ -1,17 +1,25 @@
 //! Candidate collection and query search logic for Goto Anything.
 
+use super::display::{candidate, file_row, home};
 use super::{GotoItem, GotoItemKind};
 use lux_search::fuzzy::{char_spans, substring_span};
 use lux_ui::goto_anything::{self, RecentFiles};
 
 pub(super) fn collect_candidates(app: &crate::app::App) -> Vec<String> {
     let mut list = Vec::new();
+    // An open tab under the folder is listed by its folder-relative path,
+    // the same string the folder index yields, so the file appears once.
+    let root = app
+        .ui
+        .sidebar
+        .as_ref()
+        .and_then(|sidebar| sidebar.workspace_root.as_deref());
 
     // 1. Open tabs
     for tab in app.documents.tabs.tabs() {
         if let Some(entry) = app.documents.entries.iter().find(|e| e.tab_id == tab.id) {
             if let Some(path) = &entry.path {
-                let s = path.to_string_lossy().to_string();
+                let s = candidate(path, root);
                 if !list.contains(&s) {
                     list.push(s);
                 }
@@ -30,7 +38,7 @@ pub(super) fn collect_candidates(app: &crate::app::App) -> Vec<String> {
         .as_ref()
         .or(app.documents.initial_path.as_ref())
     {
-        let s = path.to_string_lossy().to_string();
+        let s = candidate(path, root);
         if !list.contains(&s) {
             list.push(s);
         }
@@ -79,21 +87,37 @@ pub(super) fn compute_items(
     // 4. File search mode
     let candidate_strs = cached_candidates.iter().map(String::as_str);
     let matches = goto_anything::search_with_recency(raw_query, candidate_strs, recent_files);
+    let home = home();
     matches
         .into_iter()
-        .map(|m| GotoItem {
-            label: m.path.to_string(),
-            hits: char_spans(m.path, &m.indices),
-            detail: String::new(),
-            path: m.path.to_string(),
-            line: m.line,
-            col: m.col,
-            kind: GotoItemKind::File {
-                line: m.line,
-                col: m.col,
-            },
+        .map(|m| {
+            let hits = char_spans(m.path, &m.indices);
+            file_item(m.path, &hits, home.as_deref(), String::new(), m.line, m.col)
         })
         .collect()
+}
+
+/// A file result: its name over its folder-relative or `~` path.
+fn file_item(
+    path: &str,
+    hits: &[std::ops::Range<usize>],
+    home: Option<&str>,
+    detail: String,
+    line: Option<u32>,
+    col: Option<u32>,
+) -> GotoItem {
+    let row = file_row(path, hits, home);
+    GotoItem {
+        label: row.name,
+        hits: row.name_hits,
+        detail,
+        subtitle: row.path,
+        subtitle_hits: row.path_hits,
+        path: path.to_string(),
+        line,
+        col,
+        kind: GotoItemKind::File { line, col },
+    }
 }
 
 fn compute_symbol_results(
@@ -152,6 +176,8 @@ fn compute_symbol_results(
             }
         })
         .map(|s| GotoItem {
+            subtitle: String::new(),
+            subtitle_hits: Vec::new(),
             hits: substring_span(&s.name, sym_query).into_iter().collect(),
             label: s.name,
             detail: format!("{} :{}", s.kind.badge(), s.line),
@@ -207,6 +233,8 @@ fn compute_term_results(
         }
         if term_query.is_empty() || trimmed.to_lowercase().contains(&term_lower) {
             items.push(GotoItem {
+                subtitle: String::new(),
+                subtitle_hits: Vec::new(),
                 label: trimmed.to_string(),
                 hits: substring_span(trimmed, term_query).into_iter().collect(),
                 detail: format!(":{}", line_num),
@@ -245,18 +273,14 @@ fn compute_line_results(
             (Some(l), None) => format!(":line {l}"),
             _ => ":line".to_string(),
         };
-        vec![GotoItem {
-            label: path.clone(),
-            hits: Vec::new(),
+        vec![file_item(
+            &path,
+            &[],
+            home().as_deref(),
             detail,
-            path,
-            line: query.line,
-            col: query.col,
-            kind: GotoItemKind::File {
-                line: query.line,
-                col: query.col,
-            },
-        }]
+            query.line,
+            query.col,
+        )]
     } else {
         let candidate_strs = cached_candidates.iter().map(String::as_str);
         let matches = goto_anything::search_with_recency(&query.text, candidate_strs, recent_files);
@@ -265,19 +289,19 @@ fn compute_line_results(
             (Some(l), None) => format!(":line {l}"),
             _ => ":line".to_string(),
         };
+        let home = home();
         matches
             .into_iter()
-            .map(|m| GotoItem {
-                label: m.path.to_string(),
-                hits: char_spans(m.path, &m.indices),
-                detail: detail.clone(),
-                path: m.path.to_string(),
-                line: query.line,
-                col: query.col,
-                kind: GotoItemKind::File {
-                    line: query.line,
-                    col: query.col,
-                },
+            .map(|m| {
+                let hits = char_spans(m.path, &m.indices);
+                file_item(
+                    m.path,
+                    &hits,
+                    home.as_deref(),
+                    detail.clone(),
+                    query.line,
+                    query.col,
+                )
             })
             .collect()
     }

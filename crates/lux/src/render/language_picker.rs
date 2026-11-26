@@ -37,6 +37,7 @@ pub(crate) fn render_language_picker(
             detail: None,
             icon: None,
             swatches: None,
+            ..Default::default()
         })
         .collect();
     let frame = centered_frame(
