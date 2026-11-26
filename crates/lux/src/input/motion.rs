@@ -1,9 +1,15 @@
+use std::collections::HashMap;
+
 use lux_core::movement;
 use lux_core::multicursor::MultiCursor;
 use lux_core::position::Position;
 use lux_platform::NamedKey;
 
 use crate::app::App;
+
+mod visual_rows;
+#[cfg(test)]
+mod visual_rows_tests;
 
 impl App {
     pub(super) fn move_cursors(&mut self, key: NamedKey) -> bool {
@@ -26,9 +32,11 @@ impl App {
         let pages = (self.viewport.height / self.editor_view.metrics().line_height.max(1.0))
             .max(1.0) as usize;
         let mut selections = Vec::new();
-        for (index, &selection) in self.cursors.cursors().iter().enumerate() {
+        let mut goals = HashMap::new();
+        let current = self.cursors.cursors().to_vec();
+        for (index, &selection) in current.iter().enumerate() {
             let pos = selection.head;
-            let goal = self
+            let mut goal = self
                 .carets
                 .goal_columns
                 .get(index)
@@ -37,12 +45,8 @@ impl App {
             let to = match key {
                 Home if command => Position::document_start(),
                 End if command => Position::document_end(&self.buffer),
-                ArrowLeft if command && cfg!(target_os = "macos") => {
-                    movement::line_start(&self.buffer, pos)
-                }
-                ArrowRight if command && cfg!(target_os = "macos") => {
-                    movement::line_end(&self.buffer, pos)
-                }
+                ArrowLeft if command && cfg!(target_os = "macos") => self.row_start_target(pos),
+                ArrowRight if command && cfg!(target_os = "macos") => self.row_end_target(pos),
                 ArrowUp if command => Position::document_start(),
                 ArrowDown if command => Position::document_end(&self.buffer),
                 ArrowLeft if word => movement::move_word_left(&self.buffer, pos),
@@ -55,33 +59,19 @@ impl App {
                 }
                 ArrowLeft => movement::move_char_left(&self.buffer, pos),
                 ArrowRight => movement::move_char_right(&self.buffer, pos),
-                ArrowUp => {
-                    let target = movement::move_line_up(&self.buffer, pos, goal);
-                    if self.fold_state.is_line_hidden(target.line) {
-                        let visible = self.fold_state.prev_visible_line(pos.line);
-                        movement::position_at_line_column(&self.buffer, visible, goal)
-                    } else {
-                        target
-                    }
-                }
-                ArrowDown => {
-                    let target = movement::move_line_down(&self.buffer, pos, goal);
-                    if self.fold_state.is_line_hidden(target.line) {
-                        let visible = self
-                            .fold_state
-                            .next_visible_line(pos.line, self.buffer.len_lines());
-                        movement::position_at_line_column(&self.buffer, visible, goal)
-                    } else {
-                        target
-                    }
+                ArrowUp | ArrowDown => {
+                    let (target, next_goal) = self.vertical_target(pos, goal, key == ArrowDown);
+                    goal = next_goal;
+                    target
                 }
                 PageUp => movement::move_page_up(&self.buffer, pos, pages, goal),
                 PageDown => movement::move_page_down(&self.buffer, pos, pages, goal),
-                Home => movement::line_start(&self.buffer, pos),
-                End => movement::line_end(&self.buffer, pos),
+                Home => self.row_start_target(pos),
+                End => self.row_end_target(pos),
                 _ => unreachable!(),
             };
             let moved = movement::extend_or_move(selection, to, self.modifiers.shift);
+            goals.insert(moved.head.char, goal);
             if selection == primary {
                 primary_after = Some(moved);
             } else {
@@ -93,6 +83,13 @@ impl App {
         self.cursors = MultiCursor::from_cursors(selections);
         if !vertical || count != self.cursors.count() {
             self.reset_goal_columns();
+        } else {
+            self.carets.goal_columns = self
+                .cursors
+                .cursors()
+                .iter()
+                .map(|s| goals.get(&s.head.char).copied().unwrap_or(s.head.column))
+                .collect();
         }
         self.reveal_primary_cursor();
         true

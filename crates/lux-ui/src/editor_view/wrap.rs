@@ -8,7 +8,54 @@ use lux_core::buffer::Buffer;
 use lux_core::folding::FoldState;
 use lux_render::LineLayout;
 
-use super::Viewport;
+use super::{EditorView, Viewport};
+
+/// Width a wrapped row may fill. The frame and caret motion share it so
+/// a caret moves between the rows that are drawn.
+pub(super) fn text_width(viewport_width: f32, gutter_width: f32, font_size: f32) -> f32 {
+    (viewport_width - gutter_width - font_size * (22.0 / 16.0)).max(50.0)
+}
+
+impl EditorView {
+    /// Byte offsets inside `line` where its soft-wrap rows start, wrapped
+    /// as `build_frame` wraps it in a viewport `viewport_width` wide. Only
+    /// this line is shaped, so it works before any frame is drawn. `[0]`
+    /// when word wrap is off.
+    pub fn wrap_row_starts(
+        &mut self,
+        buffer: &Buffer,
+        line: usize,
+        viewport_width: f32,
+    ) -> Vec<usize> {
+        if !self.metrics.word_wrap {
+            return vec![0];
+        }
+        let Some(content) = buffer.line_content(line) else {
+            return vec![0];
+        };
+        let digits = buffer.len_lines().max(1).to_string().len();
+        let gutter_width = self.reference_width(&"0".repeat(digits));
+        let width = text_width(viewport_width, gutter_width, self.metrics.font_size);
+        let style = Self::line_style(&self.family, self.metrics.font_size, self.metrics.ligatures);
+        let layout = self
+            .text_layout
+            .layout_line_wrapped(&style, &content, Some(width), &[]);
+        row_starts(&layout)
+    }
+}
+
+/// The first byte of every row of `layout`, in row order.
+fn row_starts(layout: &LineLayout) -> Vec<usize> {
+    let mut starts = vec![0];
+    for cluster in layout.clusters() {
+        let row = cluster.row as usize;
+        while starts.len() <= row {
+            starts.push(cluster.byte_range.start);
+        }
+        starts[row] = starts[row].min(cluster.byte_range.start);
+    }
+    starts
+}
 
 /// Horizontal position and soft-wrap row of `byte_in_line`.
 ///

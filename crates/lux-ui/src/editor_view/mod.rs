@@ -184,8 +184,7 @@ impl EditorView {
         let gutter_width = self.reference_width("0".repeat(gutter_digits).as_str());
         let column_ruler_x = self.column_ruler_x();
         let blink_visible = cursor_blink_visible(elapsed, self.metrics.blink_interval);
-        let text_width =
-            (viewport.width - gutter_width - self.metrics.font_size * (22.0 / 16.0)).max(50.0);
+        let text_width = wrap::text_width(viewport.width, gutter_width, self.metrics.font_size);
         let placed: Vec<(usize, f32)> = if self.metrics.word_wrap {
             let char_w = self.reference_width("0").max(1.0);
             let chars = (text_width / char_w).floor().max(1.0) as usize;
