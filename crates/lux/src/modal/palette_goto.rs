@@ -74,8 +74,10 @@ pub(super) fn hover_command_palette(app: &mut App, mx: f32, my: f32) -> bool {
     false
 }
 
-fn geom_goto(m: ModalMetrics, total_items: usize, selected: usize) -> ModalGeometry {
-    super::list_geometry(m, total_items, selected)
+/// File results paint as two-line rows (`render::goto`), so the hit
+/// rows come from the same frame, sized by `GotoState::two_line`.
+fn geom_goto(m: ModalMetrics, goto: &crate::goto::GotoState) -> ModalGeometry {
+    super::list_geometry_rows(m, goto.items.len(), goto.selected_index, goto.two_line())
 }
 
 pub(super) fn click_goto_anything(
@@ -88,7 +90,7 @@ pub(super) fn click_goto_anything(
     let Some(goto) = app.ui.goto_anything.as_ref() else {
         return false;
     };
-    let geom = geom_goto(m, goto.items.len(), goto.selected_index);
+    let geom = geom_goto(m, goto);
 
     if !geom.contains(mx, my) {
         if let Some(mut g) = app.ui.goto_anything.take()
@@ -127,13 +129,12 @@ pub(super) fn click_goto_anything(
 
 pub(super) fn hover_goto_anything(app: &mut App, mx: f32, my: f32) -> bool {
     let m = ModalMetrics::from_app(app);
-    let (total, sel_idx) = {
+    let (total, sel_idx, geom) = {
         let Some(goto) = app.ui.goto_anything.as_ref() else {
             return false;
         };
-        (goto.items.len(), goto.selected_index)
+        (goto.items.len(), goto.selected_index, geom_goto(m, goto))
     };
-    let geom = geom_goto(m, total, sel_idx);
 
     if geom.contains(mx, my)
         && let Some(idx) = geom.row_index_at(my)

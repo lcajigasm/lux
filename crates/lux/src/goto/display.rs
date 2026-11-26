@@ -61,28 +61,45 @@ pub(crate) fn home() -> Option<String> {
         })
 }
 
+/// Top-level directories macOS links into `/private`: `/tmp` and
+/// `/private/tmp` name one folder, so a file opened through either
+/// spelling is inside a folder opened through the other.
+const PRIVATE_ALIASES: [&str; 3] = ["tmp", "var", "etc"];
+
+/// The other spelling of `root` when it is one of the `/private`
+/// aliases. Pure path arithmetic: no file system call.
+fn private_alias(root: &Path) -> Option<PathBuf> {
+    let mut parts = root.components();
+    if parts.next() != Some(Component::RootDir) {
+        return None;
+    }
+    let first = parts.next()?;
+    let is_alias = |part: Option<Component<'_>>| {
+        matches!(part, Some(Component::Normal(name))
+            if PRIVATE_ALIASES.iter().any(|alias| name == *alias))
+    };
+    if first == Component::Normal("private".as_ref()) {
+        let rest = parts.as_path();
+        is_alias(rest.components().next()).then(|| Path::new("/").join(rest))
+    } else if is_alias(Some(first)) {
+        Some(Path::new("/private").join(root.strip_prefix("/").ok()?))
+    } else {
+        None
+    }
+}
+
 /// `path` relative to the open folder `root`, so an open tab and the
-/// same file from the folder index are one candidate. A path that reaches
-/// the folder through another spelling of it (`/private/tmp/x` for a
-/// `/tmp/x` folder on macOS) counts when an ancestor ends with the
-/// folder's whole name chain. Pure path arithmetic: no file system call.
+/// same file from the folder index are one candidate. Besides the folder
+/// itself, only its macOS `/private` spelling counts (`/private/tmp/x`
+/// for a `/tmp/x` folder and back): any other folder that merely ends
+/// with the same names is a different folder.
 pub(crate) fn folder_relative(path: &Path, root: &Path) -> Option<PathBuf> {
     let keep = |rel: &Path| (!rel.as_os_str().is_empty()).then(|| rel.to_path_buf());
     if let Ok(rel) = path.strip_prefix(root) {
         return keep(rel);
     }
-    let chain: PathBuf = root
-        .components()
-        .filter(|part| matches!(part, Component::Normal(_)))
-        .collect();
-    if !path.is_absolute() || chain.as_os_str().is_empty() {
-        return None;
-    }
-    path.ancestors()
-        .skip(1)
-        .find(|ancestor| ancestor.ends_with(&chain))
-        .and_then(|ancestor| path.strip_prefix(ancestor).ok())
-        .and_then(keep)
+    let alias = private_alias(root)?;
+    path.strip_prefix(&alias).ok().and_then(keep)
 }
 
 /// The candidate text for `path`: folder-relative when it is inside the
@@ -175,7 +192,61 @@ mod tests {
             candidate(Path::new("/home/fixture/src/main.rs"), root),
             "/home/fixture/src/main.rs"
         );
+        // A copy of the folder elsewhere ends with the same names but is
+        // another file: it must not take the folder file's candidate.
+        assert_eq!(
+            candidate(Path::new("/Volumes/backup/tmp/fixture/src/main.rs"), root),
+            "/Volumes/backup/tmp/fixture/src/main.rs"
+        );
+        assert_eq!(
+            candidate(Path::new("/private/var/tmp/fixture/src/main.rs"), root),
+            "/private/var/tmp/fixture/src/main.rs"
+        );
         assert_eq!(candidate(Path::new("/tmp/fixture"), root), "/tmp/fixture");
         assert_eq!(candidate(Path::new("/a/b.rs"), None), "/a/b.rs");
+    }
+
+    #[test]
+    fn the_private_alias_works_both_ways_and_only_for_known_roots() {
+        let var = Path::new("/var/folders/x/T/proj");
+        let private = Path::new("/private/var/folders/x/T/proj");
+        let rel = Some(PathBuf::from("src/a.rs"));
+        assert_eq!(folder_relative(&private.join("src/a.rs"), var), rel);
+        assert_eq!(folder_relative(&var.join("src/a.rs"), private), rel);
+        assert_eq!(
+            folder_relative(Path::new("/private/etc/app/a.rs"), Path::new("/etc/app")),
+            Some(PathBuf::from("a.rs"))
+        );
+        // `/private/Users` is not an alias of `/Users`.
+        assert_eq!(
+            folder_relative(
+                Path::new("/private/Users/me/p/a.rs"),
+                Path::new("/Users/me/p")
+            ),
+            None
+        );
+        assert_eq!(
+            folder_relative(
+                Path::new("/Users/me/p/a.rs"),
+                Path::new("/private/Users/me/p")
+            ),
+            None
+        );
+        // A backup that ends with the folder's names is another folder.
+        assert_eq!(
+            folder_relative(
+                Path::new("/Volumes/backup/tmp/fixture/src/main.rs"),
+                Path::new("/tmp/fixture")
+            ),
+            None
+        );
+        assert_eq!(
+            folder_relative(Path::new("/private/tmp/fixture"), Path::new("/tmp/fixture")),
+            None
+        );
+        assert_eq!(
+            folder_relative(Path::new("src/a.rs"), Path::new("tmp/x")),
+            None
+        );
     }
 }

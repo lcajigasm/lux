@@ -364,3 +364,124 @@ fn a_click_lands_on_the_painted_language_row() {
         }
     }
 }
+
+/// Goto with `count` two-line file rows, each the title of its own open
+/// tab so a click shows which row it opened.
+fn goto_with_file_rows(count: usize) -> (App, Vec<lux_ui::tabs::TabId>) {
+    let mut app = create_test_app();
+    let mut tabs = Vec::new();
+    for index in 0..count {
+        let title = format!("src/file_{index:02}.rs");
+        let tab = app.documents.tabs.open(&title);
+        let buf = lux_core::buffer::Buffer::from_bytes(b"x").unwrap();
+        app.documents
+            .entries
+            .push(crate::document::DocumentEntry::new(tab, None, buf));
+        tabs.push(tab);
+    }
+    app.open_goto_anything("");
+    let goto = app.ui.goto_anything.as_mut().unwrap();
+    goto.items = (0..count)
+        .map(|index| GotoItem {
+            label: format!("file_{index:02}.rs"),
+            hits: Vec::new(),
+            detail: String::new(),
+            subtitle: format!("src/file_{index:02}.rs"),
+            subtitle_hits: Vec::new(),
+            path: format!("src/file_{index:02}.rs"),
+            line: None,
+            col: None,
+            kind: GotoItemKind::File {
+                line: None,
+                col: None,
+            },
+        })
+        .collect();
+    assert!(goto.two_line());
+    (app, tabs)
+}
+
+/// The frame `render::goto` paints for the current goto state.
+fn painted_goto_frame(app: &App) -> crate::overlay_list::ListFrame {
+    let goto = app.ui.goto_anything.as_ref().unwrap();
+    let m = ModalMetrics::from_app(app);
+    crate::overlay_list::centered_frame_rows(
+        m.vp_width,
+        m.vp_height,
+        m.tab_bar_height,
+        m.status_bar,
+        m.scale,
+        goto.items.len(),
+        goto.selected_index,
+        goto.two_line(),
+    )
+}
+
+#[test]
+fn a_click_opens_the_painted_two_line_goto_row_even_when_scrolled() {
+    let ctx = DummyContext;
+    let total = 30;
+    for scale in [1.0, 2.0] {
+        for selected in [0, total - 3] {
+            let probe = {
+                let (mut app, _) = goto_with_file_rows(total);
+                app.scale_factor = scale;
+                app.ui.goto_anything.as_mut().unwrap().selected_index = selected;
+                painted_goto_frame(&app)
+            };
+            assert!((probe.row_height - 44.0 * scale).abs() < 0.01);
+            if selected > 0 {
+                assert!(probe.origin > 0, "the list scrolled");
+            }
+            for offset in 0..probe.visible {
+                let (mut app, tabs) = goto_with_file_rows(total);
+                app.scale_factor = scale;
+                app.ui.goto_anything.as_mut().unwrap().selected_index = selected;
+                let frame = painted_goto_frame(&app);
+                assert_eq!(frame, probe);
+                let x = frame.left + frame.width / 2.0;
+                let slots = frame.row_slots(frame.rows_top, offset, scale);
+                // Click on the path line, the lower half of the row.
+                let y = slots.subtitle_top.unwrap() + 2.0 * scale;
+                let want = frame.origin + offset;
+                assert_eq!(frame.row_at(total, x, y), Some(want));
+                assert!(handle_modal_click(&mut app, &ctx, x, y));
+                assert!(app.ui.goto_anything.is_none());
+                assert_eq!(
+                    app.documents.active_tab,
+                    Some(tabs[want]),
+                    "scale {scale} selected {selected} offset {offset}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn hover_selects_the_painted_two_line_goto_row_even_when_scrolled() {
+    let total = 30;
+    for scale in [1.0, 2.0] {
+        for selected in [0, total - 3] {
+            let (mut app, _) = goto_with_file_rows(total);
+            app.scale_factor = scale;
+            app.ui.goto_anything.as_mut().unwrap().selected_index = selected;
+            let frame = painted_goto_frame(&app);
+            let x = frame.left + frame.width / 2.0;
+            for offset in 0..frame.visible {
+                let want = frame.origin + offset;
+                if want == selected {
+                    continue;
+                }
+                app.ui.goto_anything.as_mut().unwrap().selected_index = selected;
+                let slots = frame.row_slots(frame.rows_top, offset, scale);
+                let y = slots.title_top + 1.0;
+                assert!(handle_modal_hover(&mut app, x, y));
+                assert_eq!(
+                    app.ui.goto_anything.as_ref().unwrap().selected_index,
+                    want,
+                    "scale {scale} selected {selected} offset {offset}"
+                );
+            }
+        }
+    }
+}

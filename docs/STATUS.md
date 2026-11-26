@@ -883,10 +883,15 @@ the file name in 13 pt with its matched characters lit, over its path in
 it, elided from the left with "…" so the file end stays visible
 (`crates/lux/src/goto/display.rs`). An open tab under the folder is listed
 by the same folder-relative path as the folder index, so a file appears
-once, including a `/tmp` folder whose tabs read `/private/tmp`.
+once, including a `/tmp` or `/var` folder whose tabs read `/private/tmp`
+or `/private/var`. Only those macOS `/private` spellings count: a copy of
+the folder elsewhere that ends with the same names is a different file
+and keeps its own result and tab. Clicks and hover hit-test the same
+two-line rows paint draws, scrolled or not.
 Gate: `cargo test -p lux goto::`, `cargo test -p lux-search fuzzy`,
 `cargo test -p lux-ui goto_anything`, `cargo test -p lux list_hits`,
-`cargo test -p lux overlay_list`.
+`cargo test -p lux overlay_list`, `cargo test -p lux two_line_goto_row`,
+`cargo test -p lux goto_a_folder_file`.
 
 **Command palette** is `implemented` on macOS (`crates/lux/src/palette.rs`,
 `crates/lux/src/render/palette.rs`). Toggled with `Cmd+Shift+P`, it renders a floating

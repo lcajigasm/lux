@@ -66,7 +66,19 @@ impl ModalMetrics {
 }
 
 pub(super) fn list_geometry(m: ModalMetrics, total: usize, selected: usize) -> ModalGeometry {
-    let frame = crate::overlay_list::centered_frame(
+    list_geometry_rows(m, total, selected, false)
+}
+
+/// The card exactly as the renderer lays it out, with one- or two-line
+/// rows. Hit-testing must use the row height paint used, or a click lands
+/// on a different row than the one under the pointer.
+pub(super) fn list_geometry_rows(
+    m: ModalMetrics,
+    total: usize,
+    selected: usize,
+    two_line: bool,
+) -> ModalGeometry {
+    let frame = crate::overlay_list::centered_frame_rows(
         m.vp_width,
         m.vp_height,
         m.tab_bar_height,
@@ -74,6 +86,7 @@ pub(super) fn list_geometry(m: ModalMetrics, total: usize, selected: usize) -> M
         m.scale,
         total,
         selected,
+        two_line,
     );
     ModalGeometry {
         left: frame.left,
