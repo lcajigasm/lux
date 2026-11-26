@@ -16,6 +16,39 @@ use super::clip::{self, clip_rect};
 use super::paint::{color, faint_rule, push_glyph, syntax_color};
 use crate::app::{AtlasState, SyntaxState};
 
+/// The text area quads are clipped to: right of the gutter, inside the
+/// editor viewport.
+pub(crate) fn text_bounds(
+    viewport: &Viewport,
+    editor_top: f32,
+    sidebar_width: f32,
+    text_left: f32,
+) -> [f32; 4] {
+    [
+        text_left,
+        editor_top,
+        (sidebar_width + viewport.width - text_left).max(0.0),
+        viewport.height,
+    ]
+}
+
+/// Window rectangle of one highlight row. Selections and find matches both
+/// go through here, so they line up pixel for pixel.
+pub(crate) fn selection_quad(
+    rect: &lux_ui::SelectionRect,
+    viewport: &Viewport,
+    editor_top: f32,
+    text_left: f32,
+    line_height: f32,
+) -> [f32; 4] {
+    [
+        text_left + rect.x_start - viewport.scroll_x,
+        editor_top + rect.y - viewport.scroll_y,
+        (rect.x_end - rect.x_start).max(1.0),
+        line_height,
+    ]
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_text_lines(
     frame: &EditorViewFrame,
@@ -37,12 +70,7 @@ pub(crate) fn render_text_lines(
     let foreground = color(theme.foreground);
     let muted = color(theme.muted);
     let selection_color = color(theme.selection);
-    let text_bounds = [
-        text_left,
-        editor_top,
-        (sidebar_width + viewport.width - text_left).max(0.0),
-        viewport.height,
-    ];
+    let text_bounds = text_bounds(viewport, editor_top, sidebar_width, text_left);
 
     for ruler_x in &frame.column_ruler_x {
         push_quad(
@@ -75,16 +103,9 @@ pub(crate) fn render_text_lines(
         }
     }
     for selection in &frame.selections {
-        let y = editor_top + selection.y - viewport.scroll_y;
-        let width = (selection.x_end - selection.x_start).max(1.0);
         push_quad(
             quad_instances,
-            [
-                text_left + selection.x_start - viewport.scroll_x,
-                y,
-                width,
-                line_height,
-            ],
+            selection_quad(selection, viewport, editor_top, text_left, line_height),
             selection_color,
             text_bounds,
         );

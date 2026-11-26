@@ -20,6 +20,7 @@ mod find_results;
 mod find_stream;
 mod focus;
 mod font;
+mod frame_layout;
 mod git;
 mod goto;
 mod ime_hold;

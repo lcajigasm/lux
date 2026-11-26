@@ -318,6 +318,7 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
             } else {
                 app.ui.term.focused = false;
             }
+            app.update_viewport_dimensions();
             app.scheduler.invalidate_all();
             #[cfg(target_os = "macos")]
             macos::update_view_checkmarks(app);

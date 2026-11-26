@@ -91,14 +91,7 @@ pub(crate) fn handle_search_click(app: &mut crate::app::App, mouse_x: f32, mouse
         return true;
     }
 
-    if replace_mode && rect_contains(layout.find_btn_rect, mouse_x, mouse_y) {
-        if let Some(sel) = app.ui.search_bar.as_mut().and_then(|s| s.next_match()) {
-            select_match(app, sel);
-        }
-        return true;
-    }
-
-    if replace_mode && rect_contains(layout.find_all_btn_rect, mouse_x, mouse_y) {
+    if rect_contains(layout.find_all_btn_rect, mouse_x, mouse_y) {
         find_all(app);
         return true;
     }

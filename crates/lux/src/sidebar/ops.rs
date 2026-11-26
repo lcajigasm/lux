@@ -157,6 +157,7 @@ pub(crate) fn open_sidebar_node_in_terminal(app: &mut App, root: usize, node_id:
     app.ui.term.visible = true;
     app.ui.term.focused = true;
     let _ = app.ui.term.spawn_session(None, None, Some(&dir));
+    app.update_viewport_dimensions();
     app.scheduler.invalidate_all();
 }
 

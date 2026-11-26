@@ -6,8 +6,10 @@ use swash::scale::ScaleContext;
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
 
+use crate::render::clip::{clip_glyphs, clip_quads};
 use crate::render::paint::{active_theme, color, push_glyph};
 use crate::term::TerminalState;
+use crate::term::dock;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_term(
@@ -19,31 +21,30 @@ pub(crate) fn render_term(
     atlas_dirty: &mut bool,
     scale_cx: &mut ScaleContext,
     font: FontRef<'static>,
-    window_width: f32,
-    window_height: f32,
-    status_bar_height: f32,
+    dock_rect: Option<[f32; 4]>,
     scale_factor: f32,
     stroke: f32,
 ) {
-    if !term.visible {
+    let Some(rect) = dock_rect.filter(|_| term.visible) else {
         return;
-    }
-
-    let dock_h = term.height * scale_factor;
-    let dock_y = (window_height - status_bar_height - dock_h).max(0.0);
-    let header_h = 26.0 * scale_factor;
-    let grid_y = dock_y + header_h;
+    };
+    // Everything below is drawn in the dock's own column and then cut to
+    // it, so nothing spills into the sidebar or past the window.
+    let (first_quad, first_glyph) = (quad_instances.len(), glyph_instances.len());
+    let [dock_x, dock_y, window_width, dock_h] = rect;
+    let header_h = dock::HEADER_HEIGHT * scale_factor;
+    let grid_y = dock::grid_top(rect, scale_factor);
     let grid_h = (dock_h - header_h).max(1.0);
 
     // 1. Panel background
     quad_instances.push(QuadInstance::solid(
-        [0.0, grid_y, window_width, grid_h],
+        [dock_x, grid_y, window_width, grid_h],
         color(active_theme().background),
     ));
 
     // 2. Header background & border
     quad_instances.push(QuadInstance::solid(
-        [0.0, dock_y, window_width, header_h],
+        [dock_x, dock_y, window_width, header_h],
         color(active_theme().chrome.tab_bar),
     ));
     let top_border_color = if term.focused {
@@ -52,11 +53,11 @@ pub(crate) fn render_term(
         color(active_theme().chrome.border)
     };
     quad_instances.push(QuadInstance::solid(
-        [0.0, dock_y, window_width, stroke],
+        [dock_x, dock_y, window_width, stroke],
         top_border_color,
     ));
     quad_instances.push(QuadInstance::solid(
-        [0.0, grid_y - stroke, window_width, stroke],
+        [dock_x, grid_y - stroke, window_width, stroke],
         color(active_theme().chrome.border),
     ));
 
@@ -69,7 +70,7 @@ pub(crate) fn render_term(
     };
 
     // 3. Header tabs
-    let mut tab_x = 8.0 * scale_factor;
+    let mut tab_x = dock_x + 8.0 * scale_factor;
     let tab_w = 90.0 * scale_factor;
     let active_color = color(active_theme().chrome.panel_row);
     let inactive_color = color(active_theme().chrome.tab_inactive);
@@ -198,7 +199,7 @@ pub(crate) fn render_term(
     }
 
     // Close panel button on far right
-    let close_x = window_width - 24.0 * scale_factor;
+    let close_x = dock_x + window_width - 24.0 * scale_factor;
     let close_line = editor_view.text_layout_mut().layout_line(&style, "✕", &[]);
     let close_base = close_line.baseline();
     for cluster in close_line.clusters() {
@@ -227,9 +228,8 @@ pub(crate) fn render_term(
             atlas_dirty,
             scale_cx,
             font,
-            grid_y,
+            rect,
             scale_factor,
-            stroke,
         );
     } else {
         render_pty_grid(
@@ -241,13 +241,13 @@ pub(crate) fn render_term(
             atlas_dirty,
             scale_cx,
             font,
-            window_width,
-            grid_y,
-            grid_h,
+            [dock_x, grid_y, window_width, grid_h],
             scale_factor,
             stroke,
         );
     }
+    clip_quads(quad_instances, first_quad, rect);
+    clip_glyphs(glyph_instances, first_glyph, rect);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -260,9 +260,8 @@ fn render_tasks_view(
     atlas_dirty: &mut bool,
     scale_cx: &mut ScaleContext,
     font: FontRef<'static>,
-    grid_y: f32,
+    rect: [f32; 4],
     scale_factor: f32,
-    _stroke: f32,
 ) {
     let font_size = 12.0 * scale_factor;
     let family = editor_view.family().to_string();
@@ -271,30 +270,19 @@ fn render_tasks_view(
         font_size,
         ligatures: false,
     };
-
-    let title = "Background Project Tasks:";
-    let line = editor_view
-        .text_layout_mut()
-        .layout_line(&style, title, &[]);
-    let base = line.baseline();
-    for cluster in line.clusters() {
-        push_glyph(
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            font,
-            font_size,
-            &cluster,
-            16.0 * scale_factor,
-            grid_y + 16.0 * scale_factor + base,
-            [0.90, 0.90, 0.95, 1.0],
-            glyph_instances,
-        );
-    }
-
-    if term.task_ids.is_empty() {
-        let msg = "No project tasks running. Start a task with 'Terminal: Run Project Task'.";
-        let line = editor_view.text_layout_mut().layout_line(&style, msg, &[]);
+    let grid_y = dock::grid_top(rect, scale_factor);
+    let text_x = rect[0] + 16.0 * scale_factor;
+    let theme = &active_theme();
+    let page = color(theme.background);
+    let ink = super::panel::label_ink(theme, page);
+    let hint = super::panel::hint_ink(theme, page);
+    let mut text = |ev: &mut EditorView,
+                    text: &str,
+                    x: f32,
+                    y: f32,
+                    ink: [f32; 4],
+                    glyphs: &mut Vec<GlyphInstance>| {
+        let line = ev.text_layout_mut().layout_line(&style, text, &[]);
         let base = line.baseline();
         for cluster in line.clusters() {
             push_glyph(
@@ -304,67 +292,81 @@ fn render_tasks_view(
                 font,
                 font_size,
                 &cluster,
-                16.0 * scale_factor,
-                grid_y + 40.0 * scale_factor + base,
-                [0.55, 0.55, 0.60, 1.0],
-                glyph_instances,
+                x,
+                y + base,
+                ink,
+                glyphs,
             );
         }
-    } else {
-        let mut row_y = grid_y + 40.0 * scale_factor;
-        for id in &term.task_ids {
-            let name = term.tasks.name(*id).unwrap_or("Task");
-            let label = format!("{name}  [RUNNING]");
-            let line = editor_view
-                .text_layout_mut()
-                .layout_line(&style, &label, &[]);
-            let base = line.baseline();
-            for cluster in line.clusters() {
-                push_glyph(
-                    atlas,
-                    atlas_dirty,
-                    scale_cx,
-                    font,
-                    font_size,
-                    &cluster,
-                    16.0 * scale_factor,
-                    row_y + base,
-                    [0.30, 0.85, 0.45, 1.0],
-                    glyph_instances,
-                );
-            }
+        x + line.width()
+    };
 
-            // Cancel button
-            quad_instances.push(QuadInstance::solid(
-                [
-                    180.0 * scale_factor,
-                    row_y - 2.0 * scale_factor,
-                    60.0 * scale_factor,
-                    18.0 * scale_factor,
-                ],
-                [0.75, 0.20, 0.20, 1.0],
-            ));
-            let cancel_line = editor_view
-                .text_layout_mut()
-                .layout_line(&style, "Cancel", &[]);
-            let c_base = cancel_line.baseline();
-            for cluster in cancel_line.clusters() {
-                push_glyph(
-                    atlas,
-                    atlas_dirty,
-                    scale_cx,
-                    font,
-                    font_size * 0.9,
-                    &cluster,
-                    190.0 * scale_factor,
-                    row_y + c_base,
-                    [1.0, 1.0, 1.0, 1.0],
-                    glyph_instances,
-                );
-            }
+    text(
+        editor_view,
+        "Background Project Tasks:",
+        text_x,
+        grid_y + 16.0 * scale_factor,
+        ink,
+        glyph_instances,
+    );
+    if term.task_ids.is_empty() {
+        let msg = "No project tasks running. Start a task with 'Terminal: Run Project Task'.";
+        text(
+            editor_view,
+            msg,
+            text_x,
+            grid_y + 40.0 * scale_factor,
+            hint,
+            glyph_instances,
+        );
+        return;
+    }
+    let pad = 8.0 * scale_factor;
+    for (index, id) in term.task_ids.iter().enumerate() {
+        // Label left, status pill after it, Cancel flush right.
+        let row_y = dock::task_row_top(rect, index, scale_factor);
+        let name = term.tasks.name(*id).unwrap_or("Task");
+        let label_right = text(editor_view, name, text_x, row_y, ink, glyph_instances);
+        let status = "RUNNING";
+        let status_w = editor_view
+            .text_layout_mut()
+            .layout_line(&style, status, &[])
+            .width();
+        let pill =
+            dock::status_pill_rect(rect, index, label_right, status_w + 2.0 * pad, scale_factor);
+        let pill_fill = color(theme.chrome.panel_row);
+        quad_instances.push(QuadInstance::rounded(pill, pill_fill, pill[3] * 0.5));
+        let pill_ink = super::panel::label_ink(theme, pill_fill);
+        text(
+            editor_view,
+            status,
+            pill[0] + pad,
+            pill[1] + scale_factor,
+            pill_ink,
+            glyph_instances,
+        );
 
-            row_y += 24.0 * scale_factor;
-        }
+        let cancel = dock::cancel_rect(rect, index, scale_factor);
+        let cancel_fill = color(theme.chrome.panel_input);
+        quad_instances.push(QuadInstance::rounded(
+            cancel,
+            cancel_fill,
+            3.0 * scale_factor,
+        ));
+        let cancel_ink = super::panel::label_ink(theme, cancel_fill);
+        let cancel_w = editor_view
+            .text_layout_mut()
+            .layout_line(&style, "Cancel", &[])
+            .width();
+        let cancel_x = cancel[0] + (cancel[2] - cancel_w) * 0.5;
+        text(
+            editor_view,
+            "Cancel",
+            cancel_x,
+            cancel[1] + scale_factor,
+            cancel_ink,
+            glyph_instances,
+        );
     }
 }
 
@@ -378,12 +380,11 @@ fn render_pty_grid(
     atlas_dirty: &mut bool,
     scale_cx: &mut ScaleContext,
     font: FontRef<'static>,
-    window_width: f32,
-    grid_y: f32,
-    grid_h: f32,
+    grid: [f32; 4],
     scale_factor: f32,
     stroke: f32,
 ) {
+    let [grid_x, grid_y, window_width, grid_h] = grid;
     let font_size = 12.0 * scale_factor;
     let char_w = 7.2 * scale_factor;
     let row_h = 16.0 * scale_factor;
@@ -406,7 +407,7 @@ fn render_pty_grid(
         ligatures: false,
     };
 
-    let start_x = 8.0 * scale_factor;
+    let start_x = grid_x + 8.0 * scale_factor;
     let start_y = grid_y + 4.0 * scale_factor;
 
     // Render cells

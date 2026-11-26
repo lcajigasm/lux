@@ -255,27 +255,28 @@ pub(crate) fn capture_settled(app: &mut App, ctx: &dyn PlatformContext) {
     render_capture(app, ctx, &path, scale);
 }
 
+/// The window's logical size at `scale`: the same frame, more pixels.
+pub(crate) fn capture_size(width: u32, height: u32, current: f32, scale: f32) -> (u32, u32) {
+    let current = current.max(0.01);
+    let at = |physical: u32| ((physical as f32 / current) * scale).round().max(1.0) as u32;
+    (at(width), at(height))
+}
+
 fn render_capture(app: &mut App, ctx: &dyn PlatformContext, path: &std::path::Path, scale: f32) {
     let Some(gpu) = app.gpu_window.as_ref() else {
         return;
     };
     let physical = gpu.window.inner_size();
-    let current = app.scale_factor.max(0.01);
-    let logical_w = physical.width as f32 / current;
-    let logical_h = physical.height as f32 / current;
-    let width = (logical_w * scale).round().max(1.0) as u32;
-    let height = (logical_h * scale).round().max(1.0) as u32;
+    let (width, height) = capture_size(physical.width, physical.height, app.scale_factor, scale);
 
     let saved_scale = app.scale_factor;
     let saved_width = app.viewport.width;
     let saved_height = app.viewport.height;
     let saved_scroll_x = app.viewport.scroll_x;
     let saved_scroll_y = app.viewport.scroll_y;
+    // `redraw` sizes the viewport from the capture extent with the same
+    // layout the window uses, so the PNG shows the presented frame.
     app.set_display_scale(f64::from(scale));
-    let tab = app.tab_bar_height();
-    let status = app.status_bar_height();
-    app.viewport.width = width as f32;
-    app.viewport.height = (height as f32 - tab - status).max(1.0);
     PENDING.with(|slot| {
         *slot.borrow_mut() = Some(Capture {
             width,

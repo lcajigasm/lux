@@ -11,6 +11,7 @@
 // The accessibility tree still uses this historical snapshot index; frame
 // construction now uses Buffer's indexed line access directly.
 pub(crate) mod line_index;
+mod ranges;
 mod wrap;
 
 use std::ops::Range;
@@ -272,30 +273,14 @@ impl EditorView {
                 continue;
             }
             let (start, end) = selection.ordered();
-            for line in &lines {
-                if line.index >= start.line && line.index <= end.line {
-                    let line_start = buffer
-                        .line_start_byte(line.index)
-                        .expect("visible line is in range");
-                    let (x_start, row) = if line.index == start.line {
-                        wrap::place_byte(&line.layout, start.byte - line_start)
-                    } else {
-                        (0.0, 0)
-                    };
-                    let x_end = if line.index == end.line {
-                        x_for_byte(&line.layout, end.byte - line_start)
-                    } else {
-                        line.layout.width()
-                    };
-                    selection_rects.push(SelectionRect {
-                        line: line.index,
-                        visual_row: line.visual_index,
-                        x_start,
-                        x_end,
-                        y: line.top + row as f32 * line_height,
-                    });
-                }
-            }
+            ranges::push_range_rects(
+                &lines,
+                buffer,
+                start,
+                end,
+                line_height,
+                &mut selection_rects,
+            );
         }
 
         let mut matching_brackets = Vec::new();

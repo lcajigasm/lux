@@ -237,19 +237,7 @@ impl App {
     pub(crate) fn update_viewport_dimensions(&mut self) {
         if let Some(gpu_window) = &self.gpu_window {
             let size = gpu_window.window.inner_size();
-            let tab_bar_height = self.tab_bar_height();
-            let status_bar_height = self.status_bar_height();
-            let search_bar_height = self.search_bar_height();
-            let term_dock_height = self.term_dock_height();
-            let sidebar_width = self.sidebar_width();
-            let minimap_width = self.minimap_width();
-            self.viewport.width = (size.width as f32 - sidebar_width - minimap_width).max(1.0);
-            self.viewport.height = (size.height as f32
-                - tab_bar_height
-                - status_bar_height
-                - search_bar_height
-                - term_dock_height)
-                .max(1.0);
+            self.fit_viewport(size.width as f32, size.height as f32);
         }
     }
 

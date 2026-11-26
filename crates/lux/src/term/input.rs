@@ -30,6 +30,7 @@ pub(crate) fn handle_term_key(app: &mut App, _ctx: &dyn PlatformContext, event: 
         } else {
             app.ui.term.focused = false;
         }
+        app.update_viewport_dimensions();
         app.scheduler.invalidate_all();
         if let Some(gpu) = &app.gpu_window {
             gpu.window.request_redraw();
@@ -105,25 +106,20 @@ pub(crate) fn handle_term_key(app: &mut App, _ctx: &dyn PlatformContext, event: 
 
 /// Handles mouse clicks in the bottom terminal panel.
 pub(crate) fn handle_term_click(app: &mut App, x: f32, y: f32) -> bool {
-    if !app.ui.term.visible {
+    // The painter draws the dock in this same rectangle.
+    let Some(dock_rect) = app.frame_layout().dock.filter(|_| app.ui.term.visible) else {
+        return false;
+    };
+    let [dock_x, term_top, dock_w, term_h] = dock_rect;
+    if y < term_top || y >= term_top + term_h || x < dock_x || x >= dock_x + dock_w {
         return false;
     }
 
     let scale = app.scale_factor;
-    let window_h = app.viewport.height + app.tab_bar_height() + app.status_bar_height();
-    let term_h = app.ui.term.height * scale;
-    let status_h = app.status_bar_height();
-    let term_top = (window_h - status_h - term_h).max(0.0);
-    let term_bottom = window_h - status_h;
-
-    if y < term_top || y >= term_bottom {
-        return false;
-    }
-
-    let header_h = 26.0 * scale;
+    let header_h = super::dock::HEADER_HEIGHT * scale;
     if y < term_top + header_h {
         // Click on header bar: tabs, +, Tasks, Close
-        let mut tab_x = 8.0 * scale;
+        let mut tab_x = dock_x + 8.0 * scale;
         let tab_w = 90.0 * scale;
 
         for (i, _) in app.ui.term.session_ids.iter().enumerate() {
@@ -160,10 +156,11 @@ pub(crate) fn handle_term_click(app: &mut App, x: f32, y: f32) -> bool {
         }
 
         // Close panel 'x' button (top right)
-        let close_x = app.viewport.width - 28.0 * scale;
+        let close_x = dock_x + dock_w - 28.0 * scale;
         if x >= close_x {
             app.ui.term.visible = false;
             app.ui.term.focused = false;
+            app.update_viewport_dimensions();
             app.scheduler.invalidate_all();
             return true;
         }
@@ -175,8 +172,10 @@ pub(crate) fn handle_term_click(app: &mut App, x: f32, y: f32) -> bool {
     app.ui.term.focused = true;
 
     if app.ui.term.show_tasks {
-        // In tasks view, check if Cancel button was clicked
-        if let Some(task_id) = app.ui.term.active_task {
+        // Only a row's own Cancel button cancels that task.
+        let rows = app.ui.term.task_ids.len();
+        if let Some(row) = super::dock::cancel_hit(dock_rect, rows, scale, x, y) {
+            let task_id = app.ui.term.task_ids[row];
             app.ui.term.cancel_task(task_id);
             app.scheduler.invalidate_all();
         }

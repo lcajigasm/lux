@@ -351,6 +351,7 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
             } else {
                 app.ui.term.focused = false;
             }
+            app.update_viewport_dimensions();
             app.scheduler.invalidate_all();
         }
         "terminal.new" => {
@@ -358,6 +359,7 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
             app.ui.term.focused = true;
             let root = app.workspace_root();
             let _ = app.ui.term.spawn_session(None, None, root.as_deref());
+            app.update_viewport_dimensions();
             app.scheduler.invalidate_all();
         }
         "terminal.close" => {

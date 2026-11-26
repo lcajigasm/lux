@@ -20,18 +20,11 @@ pub(crate) struct Geometry {
     pub(crate) rows: usize,
 }
 
-fn window_size(app: &App) -> (f32, f32) {
+fn window_width(app: &App) -> f32 {
     if let Some(gpu) = &app.gpu_window {
-        let size = gpu.window.inner_size();
-        return (size.width as f32, size.height as f32);
+        return gpu.window.inner_size().width as f32;
     }
-    let width = app.sidebar_width() + app.viewport.width + app.minimap_width();
-    let height = app.tab_bar_height()
-        + app.viewport.height
-        + app.search_bar_height()
-        + app.term_dock_height()
-        + app.status_bar_height();
-    (width, height)
+    app.sidebar_width() + app.viewport.width + app.minimap_width()
 }
 
 pub(crate) fn geometry(app: &App) -> Option<Geometry> {
@@ -39,9 +32,11 @@ pub(crate) fn geometry(app: &App) -> Option<Geometry> {
     if width <= 0.0 {
         return None;
     }
-    let (window_w, window_h) = window_size(app);
+    let window_w = window_width(app);
     let top = app.tab_bar_height();
-    let bottom = window_h - app.status_bar_height();
+    // Painted the same way: the minimap ends where the editor does, above
+    // the find bar and the dock.
+    let bottom = top + app.viewport.height;
     let row_h = MINIMAP_ROW_HEIGHT * app.scale_factor;
     let rows = ((bottom - top) / row_h).floor().max(0.0) as usize;
     (rows > 0).then_some(Geometry {

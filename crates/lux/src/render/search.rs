@@ -1,66 +1,177 @@
-//! Rendering logic for the In-Buffer Find & Replace Bar (G10).
+//! The docked find bar and the find-match highlights in the text.
+//!
+//! The bar's geometry comes from [`crate::search::geometry::layout`], the
+//! same function the click handler reads, and it spans the editor column
+//! that [`crate::frame_layout`] gives it. Match boxes use the selection
+//! geometry of the current frame.
 
 use swash::FontRef;
 use swash::scale::ScaleContext;
 
-use crate::render::paint::{color, push_glyph};
-use crate::search::{SearchBarLayout, SearchBarState, SearchField};
+use super::clip::{clip_glyphs, clip_rect};
+use super::icons::{Icon, push_icon};
+use super::paint::{color, push_glyph};
+use super::panel::{distinct_fill, hint_ink, label_ink};
+use super::text::{selection_quad, text_bounds};
+use crate::search::geometry::{self, TEXT_INSET};
+use crate::search::{SearchBarState, SearchField};
 use lux_core::buffer::Buffer;
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
-use lux_ui::editor_view::EditorView;
+use lux_ui::editor_view::{EditorView, EditorViewFrame, Viewport};
 
-#[allow(clippy::too_many_arguments)]
+/// Fill of a find match. Lux themes carry no find-highlight color yet, so
+/// this is the documented fallback: the accent at 30% alpha.
+pub(crate) fn match_fill(theme: &lux_ui::Theme) -> [f32; 4] {
+    let accent = color(theme.accent);
+    [accent[0], accent[1], accent[2], 0.30]
+}
+
+/// Where the text of the editor sits, as `render_text_lines` uses it.
+pub(crate) struct TextOrigin<'a> {
+    pub viewport: &'a Viewport,
+    pub editor_top: f32,
+    pub sidebar_width: f32,
+    pub text_left: f32,
+    pub line_height: f32,
+}
+
+/// Window rectangles of every match on the visible lines, computed the way
+/// selections are. Matches are in document order, so only the visible
+/// slice is walked.
+pub(crate) fn match_quads(
+    search: &SearchBarState,
+    buffer: &Buffer,
+    frame: &EditorViewFrame,
+    origin: &TextOrigin<'_>,
+) -> Vec<(usize, [f32; 4])> {
+    let (Some(first), Some(last)) = (frame.lines.first(), frame.lines.last()) else {
+        return Vec::new();
+    };
+    let matches = search.search_bar.matches();
+    let start = matches.partition_point(|m| m.ordered().1.line < first.index);
+    let mut out = Vec::new();
+    for (index, m) in matches.iter().enumerate().skip(start) {
+        let (from, to) = m.ordered();
+        if from.line > last.index {
+            break;
+        }
+        for rect in frame.range_rects(buffer, from, to, origin.line_height) {
+            let quad = selection_quad(
+                &rect,
+                origin.viewport,
+                origin.editor_top,
+                origin.text_left,
+                origin.line_height,
+            );
+            out.push((index, quad));
+        }
+    }
+    out
+}
+
 pub(crate) fn render_search_matches(
     search: &SearchBarState,
     buffer: &Buffer,
-    editor_view: &mut EditorView,
-    viewport: &lux_ui::editor_view::Viewport,
-    editor_top: f32,
-    line_height: f32,
-    left_padding: f32,
-    quad_instances: &mut Vec<QuadInstance>,
+    frame: &EditorViewFrame,
+    origin: &TextOrigin<'_>,
+    stroke: f32,
+    theme: &lux_ui::Theme,
+    quads: &mut Vec<QuadInstance>,
 ) {
-    let current_index = search.search_bar.current_index();
-    for (i, m) in search.search_bar.matches().iter().enumerate() {
-        let line = m.head.line;
-        let y = editor_top + line as f32 * line_height - viewport.scroll_y;
-        if y + line_height < editor_top || y > editor_top + viewport.height {
-            continue;
+    let bounds = text_bounds(
+        origin.viewport,
+        origin.editor_top,
+        origin.sidebar_width,
+        origin.text_left,
+    );
+    let fill = match_fill(theme);
+    let outline = color(theme.accent);
+    let current = search.search_bar.current_index();
+    let mut push = |rect: [f32; 4], ink: [f32; 4]| {
+        if let Some(rect) = clip_rect(rect, bounds) {
+            quads.push(QuadInstance::solid(rect, ink));
         }
+    };
+    for (index, [x, y, w, h]) in match_quads(search, buffer, frame, origin) {
+        push([x, y, w, h], fill);
+        if current == Some(index) {
+            push([x, y, w, stroke], outline);
+            push([x, y + h - stroke, w, stroke], outline);
+            push([x, y, stroke, h], outline);
+            push([x + w - stroke, y, stroke, h], outline);
+        }
+    }
+}
 
-        let x_start = editor_view.x_for_position(buffer, m.anchor, left_padding);
-        let x_end = editor_view.x_for_position(buffer, m.head, left_padding);
-        let min_x = x_start.min(x_end) - viewport.scroll_x;
-        let max_x = x_start.max(x_end) - viewport.scroll_x;
-        let width = (max_x - min_x).max(2.0);
+/// Shapes and places the bar's short labels.
+struct Labels<'a> {
+    editor_view: &'a mut EditorView,
+    atlas: &'a mut GlyphAtlas,
+    atlas_dirty: &'a mut bool,
+    scale_cx: &'a mut ScaleContext,
+    font: FontRef<'static>,
+    font_size: f32,
+    glyphs: &'a mut Vec<GlyphInstance>,
+}
 
-        let is_current = current_index == Some(i);
-        let bg_color = if is_current {
-            [0.72, 0.52, 0.12, 0.55]
-        } else {
-            [0.45, 0.45, 0.15, 0.35]
+impl Labels<'_> {
+    fn width(&mut self, text: &str) -> f32 {
+        let family = self.editor_view.family().to_string();
+        let style = lux_render::LineStyle {
+            family: &family,
+            font_size: self.font_size,
+            ligatures: false,
         };
+        self.editor_view
+            .text_layout_mut()
+            .layout_line(&style, text, &[])
+            .width()
+    }
 
-        quad_instances.push(QuadInstance::solid(
-            [min_x, y, width, line_height],
-            bg_color,
-        ));
-
-        if is_current {
-            // Outline border for active match
-            quad_instances.push(QuadInstance::solid(
-                [min_x, y + line_height - 2.0, width, 2.0],
-                [0.95, 0.80, 0.20, 1.0],
-            ));
+    /// Draws `text` from `x`, vertically centered in `row` (`[y, h]`), and
+    /// returns its width.
+    fn draw(&mut self, text: &str, x: f32, row: [f32; 2], ink: [f32; 4]) -> f32 {
+        let family = self.editor_view.family().to_string();
+        let style = lux_render::LineStyle {
+            family: &family,
+            font_size: self.font_size,
+            ligatures: false,
+        };
+        let line = self
+            .editor_view
+            .text_layout_mut()
+            .layout_line(&style, text, &[]);
+        let y = row[0] + (row[1] - self.font_size) * 0.5 + line.baseline();
+        for cluster in line.clusters() {
+            push_glyph(
+                self.atlas,
+                self.atlas_dirty,
+                self.scale_cx,
+                self.font,
+                self.font_size,
+                &cluster,
+                x,
+                y,
+                ink,
+                self.glyphs,
+            );
         }
+        line.width()
+    }
+
+    /// Draws `text` centered in `rect`, cut to it.
+    fn centered(&mut self, text: &str, rect: [f32; 4], ink: [f32; 4]) {
+        let start = self.glyphs.len();
+        let x = rect[0] + (rect[2] - self.width(text)) * 0.5;
+        self.draw(text, x, [rect[1], rect[3]], ink);
+        clip_glyphs(self.glyphs, start, rect);
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_search_bar(
     search: &mut SearchBarState,
-    viewport_width: f32,
-    search_bar_top: f32,
+    bar: [f32; 4],
     scale_factor: f32,
     stroke: f32,
     font_size: f32,
@@ -70,436 +181,192 @@ pub(crate) fn render_search_bar(
     atlas_dirty: &mut bool,
     scale_cx: &mut ScaleContext,
     theme: &lux_ui::Theme,
-    quad_instances: &mut Vec<QuadInstance>,
-    glyph_instances: &mut Vec<GlyphInstance>,
+    quads: &mut Vec<QuadInstance>,
+    glyphs: &mut Vec<GlyphInstance>,
 ) {
-    let bar_height = search.height(scale_factor);
-    let bar_width = viewport_width;
-    let bar_top = search_bar_top;
-
-    search.layout = SearchBarLayout {
-        bar_rect: [0.0, bar_top, bar_width, bar_height],
-        ..Default::default()
-    };
-
-    let bar_font_size = font_size * 0.78;
-    let family = editor_view.family().to_string();
-    let style = lux_render::LineStyle {
-        family: &family,
-        font_size: bar_font_size,
-        ligatures: false,
-    };
-
-    let foreground = color(theme.foreground);
-    let muted = color(theme.muted);
+    let layout = geometry::layout(bar, scale_factor, search.replace_mode);
+    search.layout = layout.clone();
+    let page = color(theme.chrome.panel);
+    let control = distinct_fill(color(theme.chrome.panel_input), page);
     let accent = color(theme.accent);
+    let mut labels = Labels {
+        editor_view,
+        atlas,
+        atlas_dirty,
+        scale_cx,
+        font,
+        font_size: font_size * 0.78,
+        glyphs,
+    };
 
-    // 1. Dock Bar Background
-    quad_instances.push(QuadInstance::solid(
-        [0.0, bar_top, bar_width, bar_height],
-        color(theme.chrome.panel),
-    ));
-
-    // 2. Top Border
-    quad_instances.push(QuadInstance::solid(
-        [0.0, bar_top, bar_width, stroke],
+    quads.push(QuadInstance::solid(bar, page));
+    quads.push(QuadInstance::solid(
+        [bar[0], bar[1], bar[2], stroke],
         color(theme.chrome.border),
     ));
 
-    let input_h = 24.0 * scale_factor;
-    let input_w = (viewport_width * 0.35).clamp(180.0 * scale_factor, 320.0 * scale_factor);
-    let mut cur_x = 12.0 * scale_factor;
-    let row1_y = bar_top + 5.0 * scale_factor;
-
-    // --- ROW 1: FIND ---
-    search.layout.find_input_rect = [cur_x, row1_y, input_w, input_h];
-    let find_focused = search.focused_field == SearchField::Find;
-
-    // Find input box background & border
-    quad_instances.push(QuadInstance::solid(
-        [cur_x, row1_y, input_w, input_h],
-        color(theme.chrome.panel_input),
-    ));
-    let find_border_color = if find_focused {
-        accent
-    } else {
-        color(theme.chrome.border)
-    };
-    quad_instances.push(QuadInstance::solid(
-        [cur_x, row1_y, input_w, stroke],
-        find_border_color,
-    ));
-    quad_instances.push(QuadInstance::solid(
-        [cur_x, row1_y + input_h - stroke, input_w, stroke],
-        find_border_color,
-    ));
-    quad_instances.push(QuadInstance::solid(
-        [cur_x, row1_y, stroke, input_h],
-        find_border_color,
-    ));
-    quad_instances.push(QuadInstance::solid(
-        [cur_x + input_w - stroke, row1_y, stroke, input_h],
-        find_border_color,
-    ));
-
-    // Find text & caret
-    let text_x = cur_x + 6.0 * scale_factor;
-    let baseline = (input_h - bar_font_size) * 0.5;
-    let (disp_text, txt_col) = if search.find_query.is_empty() {
-        ("Find", muted)
-    } else {
-        (search.find_query.as_str(), foreground)
-    };
-    let line = editor_view
-        .text_layout_mut()
-        .layout_line(&style, disp_text, &[]);
-    for c in line.clusters() {
-        push_glyph(
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            font,
-            bar_font_size,
-            &c,
-            text_x,
-            row1_y + baseline + line.baseline(),
-            txt_col,
-            glyph_instances,
-        );
-    }
-
-    if find_focused {
-        let caret_x = if search.find_query.is_empty() {
-            text_x
+    let toggles = [
+        (layout.regex_btn_rect, ".*", search.regex),
+        (layout.case_btn_rect, "Aa", search.case_sensitive),
+        (layout.word_btn_rect, "\"w\"", search.whole_word),
+        (layout.selection_btn_rect, "", search.in_selection),
+        (
+            layout.preserve_case_btn_rect,
+            "AB",
+            search.replace_mode && search.preserve_case,
+        ),
+    ];
+    for (rect, label, active) in toggles {
+        if rect[2] <= 0.0 {
+            continue;
+        }
+        let fill = if active { accent } else { control };
+        let ink = label_ink(theme, fill);
+        quads.push(QuadInstance::rounded(rect, fill, 3.0 * scale_factor));
+        if label.is_empty() {
+            let size = 14.0 * scale_factor;
+            let (x, y) = (
+                rect[0] + (rect[2] - size) * 0.5,
+                rect[1] + (rect[3] - size) * 0.5,
+            );
+            push_icon(Icon::Selection, quads, x, y, size, ink, fill);
         } else {
-            text_x + line.width() + 2.0 * stroke
-        };
-        quad_instances.push(QuadInstance::solid(
-            [
-                caret_x,
-                row1_y + 3.0 * scale_factor,
-                2.0 * stroke,
-                input_h - 6.0 * scale_factor,
-            ],
-            accent,
-        ));
+            labels.centered(label, rect, ink);
+        }
     }
 
-    cur_x += input_w + 10.0 * scale_factor;
-
-    let counter_text = match_counter_label(
+    let counter = match_counter_label(
         search.find_query.is_empty(),
         search.search_bar.matches().len(),
         search.search_bar.current_index(),
         search.in_selection,
     );
-    if !counter_text.is_empty() {
-        let count_line = editor_view
-            .text_layout_mut()
-            .layout_line(&style, &counter_text, &[]);
-        for c in count_line.clusters() {
-            push_glyph(
-                atlas,
-                atlas_dirty,
-                scale_cx,
-                font,
-                bar_font_size,
-                &c,
-                cur_x,
-                row1_y + baseline + count_line.baseline(),
-                muted,
-                glyph_instances,
-            );
-        }
-        cur_x += count_line.width() + 12.0 * scale_factor;
+    let find_focused = search.focused_field == SearchField::Find;
+    paint_field(
+        &mut labels,
+        quads,
+        theme,
+        control,
+        layout.find_input_rect,
+        (search.find_query.as_str(), "Find"),
+        &counter,
+        find_focused,
+        stroke,
+        scale_factor,
+    );
+    if search.replace_mode {
+        paint_field(
+            &mut labels,
+            quads,
+            theme,
+            control,
+            layout.replace_input_rect,
+            (search.replace_text.as_str(), "Replace"),
+            "",
+            !find_focused,
+            stroke,
+            scale_factor,
+        );
     }
 
-    // Toggle Buttons (Aa, Word, Regex, In Selection)
-    let btn_w = 26.0 * scale_factor;
-    let draw_toggle = |quads: &mut Vec<QuadInstance>,
-                       glyphs: &mut Vec<GlyphInstance>,
-                       ed_view: &mut EditorView,
-                       atl: &mut GlyphAtlas,
-                       atl_dirty: &mut bool,
-                       sc_cx: &mut ScaleContext,
-                       label: &str,
-                       active: bool,
-                       rect: [f32; 4]| {
-        let [rx, ry, rw, rh] = rect;
-        let bg = if active {
-            color(theme.chrome.panel_row)
-        } else {
-            color(theme.chrome.panel_input)
-        };
-        quads.push(QuadInstance::solid(rect, bg));
-        let txt_color = if active { accent } else { muted };
-        let l = ed_view.text_layout_mut().layout_line(&style, label, &[]);
-        let tx = rx + (rw - l.width()) * 0.5;
-        let ty = ry + (rh - bar_font_size) * 0.5 + l.baseline();
-        for c in l.clusters() {
-            push_glyph(
-                atl,
-                atl_dirty,
-                sc_cx,
-                font,
-                bar_font_size,
-                &c,
-                tx,
-                ty,
-                txt_color,
-                glyphs,
-            );
+    let buttons = [
+        (layout.next_btn_rect, "Find"),
+        (layout.prev_btn_rect, "Prev"),
+        (layout.find_all_btn_rect, "Find All"),
+        (layout.replace_btn_rect, "Replace"),
+        (layout.replace_all_btn_rect, "Replace All"),
+    ];
+    let button_ink = label_ink(theme, control);
+    for (rect, label) in buttons {
+        if rect[2] > 0.0 {
+            quads.push(QuadInstance::rounded(rect, control, 3.0 * scale_factor));
+            labels.centered(label, rect, button_ink);
         }
+    }
+
+    push_cross(
+        quads,
+        layout.close_btn_rect,
+        8.0 * scale_factor,
+        1.5 * stroke,
+        label_ink(theme, page),
+    );
+}
+
+/// One text field: fill, border (accent when focused), the text or its
+/// placeholder inset `TEXT_INSET`, the caret, and an optional muted note
+/// right-aligned inside (the match counter).
+#[allow(clippy::too_many_arguments)]
+fn paint_field(
+    labels: &mut Labels<'_>,
+    quads: &mut Vec<QuadInstance>,
+    theme: &lux_ui::Theme,
+    fill: [f32; 4],
+    rect: [f32; 4],
+    (text, placeholder): (&str, &str),
+    note: &str,
+    focused: bool,
+    stroke: f32,
+    scale: f32,
+) {
+    let [x, y, w, h] = rect;
+    quads.push(QuadInstance::solid(rect, fill));
+    let border = if focused {
+        color(theme.accent)
+    } else {
+        color(theme.chrome.border)
     };
-
-    search.layout.case_btn_rect = [cur_x, row1_y, btn_w, input_h];
-    draw_toggle(
-        quad_instances,
-        glyph_instances,
-        editor_view,
-        atlas,
-        atlas_dirty,
-        scale_cx,
-        "Aa",
-        search.case_sensitive,
-        search.layout.case_btn_rect,
+    for edge in [
+        [x, y, w, stroke],
+        [x, y + h - stroke, w, stroke],
+        [x, y, stroke, h],
+        [x + w - stroke, y, stroke, h],
+    ] {
+        quads.push(QuadInstance::solid(edge, border));
+    }
+    let inset = TEXT_INSET * scale;
+    let mut text_right = x + w - inset;
+    if !note.is_empty() {
+        let note_w = labels.width(note);
+        text_right -= note_w + inset;
+        labels.draw(note, x + w - inset - note_w, [y, h], hint_ink(theme, fill));
+    }
+    let start = labels.glyphs.len();
+    let (shown, ink) = if text.is_empty() {
+        (placeholder, hint_ink(theme, fill))
+    } else {
+        (text, label_ink(theme, fill))
+    };
+    let width = labels.draw(shown, x + inset, [y, h], ink);
+    clip_glyphs(
+        labels.glyphs,
+        start,
+        [x + inset, y, (text_right - x - inset).max(0.0), h],
     );
-    cur_x += btn_w + 4.0 * scale_factor;
-
-    search.layout.word_btn_rect = [cur_x, row1_y, btn_w, input_h];
-    draw_toggle(
-        quad_instances,
-        glyph_instances,
-        editor_view,
-        atlas,
-        atlas_dirty,
-        scale_cx,
-        "\"w\"",
-        search.whole_word,
-        search.layout.word_btn_rect,
-    );
-    cur_x += btn_w + 4.0 * scale_factor;
-
-    search.layout.regex_btn_rect = [cur_x, row1_y, btn_w, input_h];
-    draw_toggle(
-        quad_instances,
-        glyph_instances,
-        editor_view,
-        atlas,
-        atlas_dirty,
-        scale_cx,
-        ".*",
-        search.regex,
-        search.layout.regex_btn_rect,
-    );
-    cur_x += btn_w + 4.0 * scale_factor;
-
-    let sel_btn_w = 46.0 * scale_factor;
-    search.layout.selection_btn_rect = [cur_x, row1_y, sel_btn_w, input_h];
-    draw_toggle(
-        quad_instances,
-        glyph_instances,
-        editor_view,
-        atlas,
-        atlas_dirty,
-        scale_cx,
-        "In Sel",
-        search.in_selection,
-        search.layout.selection_btn_rect,
-    );
-    cur_x += sel_btn_w + 10.0 * scale_factor;
-
-    // Prev & Next Buttons
-    search.layout.prev_btn_rect = [cur_x, row1_y, btn_w, input_h];
-    draw_toggle(
-        quad_instances,
-        glyph_instances,
-        editor_view,
-        atlas,
-        atlas_dirty,
-        scale_cx,
-        "<",
-        false,
-        search.layout.prev_btn_rect,
-    );
-    cur_x += btn_w + 4.0 * scale_factor;
-
-    search.layout.next_btn_rect = [cur_x, row1_y, btn_w, input_h];
-    draw_toggle(
-        quad_instances,
-        glyph_instances,
-        editor_view,
-        atlas,
-        atlas_dirty,
-        scale_cx,
-        ">",
-        false,
-        search.layout.next_btn_rect,
-    );
-
-    // Close button (X) on far right
-    let close_x = bar_width - btn_w - 12.0 * scale_factor;
-    search.layout.close_btn_rect = [close_x, row1_y, btn_w, input_h];
-    draw_toggle(
-        quad_instances,
-        glyph_instances,
-        editor_view,
-        atlas,
-        atlas_dirty,
-        scale_cx,
-        "X",
-        false,
-        search.layout.close_btn_rect,
-    );
-
-    // --- ROW 2: REPLACE (if replace_mode) ---
-    if search.replace_mode {
-        let row2_y = bar_top + 34.0 * scale_factor;
-        let mut rep_x = 12.0 * scale_factor;
-        search.layout.replace_input_rect = [rep_x, row2_y, input_w, input_h];
-        let rep_focused = search.focused_field == SearchField::Replace;
-
-        quad_instances.push(QuadInstance::solid(
-            [rep_x, row2_y, input_w, input_h],
-            color(theme.chrome.panel_input),
-        ));
-        let rep_border_color = if rep_focused {
-            accent
+    if focused {
+        let caret_x = if text.is_empty() {
+            x + inset
         } else {
-            color(theme.chrome.border)
+            (x + inset + width + stroke).min(text_right)
         };
-        quad_instances.push(QuadInstance::solid(
-            [rep_x, row2_y, input_w, stroke],
-            rep_border_color,
+        quads.push(QuadInstance::solid(
+            [caret_x, y + 3.0 * scale, 2.0 * stroke, h - 6.0 * scale],
+            color(theme.accent),
         ));
-        quad_instances.push(QuadInstance::solid(
-            [rep_x, row2_y + input_h - stroke, input_w, stroke],
-            rep_border_color,
-        ));
-        quad_instances.push(QuadInstance::solid(
-            [rep_x, row2_y, stroke, input_h],
-            rep_border_color,
-        ));
-        quad_instances.push(QuadInstance::solid(
-            [rep_x + input_w - stroke, row2_y, stroke, input_h],
-            rep_border_color,
-        ));
+    }
+}
 
-        let rep_text_x = rep_x + 6.0 * scale_factor;
-        let (rep_disp, rep_col) = if search.replace_text.is_empty() {
-            ("Replace", muted)
-        } else {
-            (search.replace_text.as_str(), foreground)
-        };
-        let rep_line = editor_view
-            .text_layout_mut()
-            .layout_line(&style, rep_disp, &[]);
-        for c in rep_line.clusters() {
-            push_glyph(
-                atlas,
-                atlas_dirty,
-                scale_cx,
-                font,
-                bar_font_size,
-                &c,
-                rep_text_x,
-                row2_y + baseline + rep_line.baseline(),
-                rep_col,
-                glyph_instances,
-            );
+/// A × drawn as two diagonals of small squares, centered in `rect`.
+fn push_cross(quads: &mut Vec<QuadInstance>, rect: [f32; 4], size: f32, dot: f32, ink: [f32; 4]) {
+    let (cx, cy) = (rect[0] + rect[2] * 0.5, rect[1] + rect[3] * 0.5);
+    let half = size * 0.5;
+    let steps = ((size / (dot * 0.5)).ceil() as usize).max(2);
+    for step in 0..=steps {
+        let t = step as f32 / steps as f32;
+        let x = cx - half + size * t - dot * 0.5;
+        for y in [cy - half + size * t, cy + half - size * t] {
+            quads.push(QuadInstance::solid([x, y - dot * 0.5, dot, dot], ink));
         }
-
-        if rep_focused {
-            let caret_x = if search.replace_text.is_empty() {
-                rep_text_x
-            } else {
-                rep_text_x + rep_line.width() + 2.0 * stroke
-            };
-            quad_instances.push(QuadInstance::solid(
-                [
-                    caret_x,
-                    row2_y + 3.0 * scale_factor,
-                    2.0 * stroke,
-                    input_h - 6.0 * scale_factor,
-                ],
-                accent,
-            ));
-        }
-
-        rep_x += input_w + 10.0 * scale_factor;
-        search.layout.preserve_case_btn_rect = [rep_x, row2_y, btn_w, input_h];
-        draw_toggle(
-            quad_instances,
-            glyph_instances,
-            editor_view,
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            "AB",
-            search.preserve_case,
-            search.layout.preserve_case_btn_rect,
-        );
-        rep_x += btn_w + 10.0 * scale_factor;
-
-        let find_btn_w = 46.0 * scale_factor;
-
-        search.layout.find_btn_rect = [rep_x, row2_y, find_btn_w, input_h];
-        draw_toggle(
-            quad_instances,
-            glyph_instances,
-            editor_view,
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            "Find",
-            false,
-            search.layout.find_btn_rect,
-        );
-        rep_x += find_btn_w + 6.0 * scale_factor;
-
-        let find_all_btn_w = 64.0 * scale_factor;
-        search.layout.find_all_btn_rect = [rep_x, row2_y, find_all_btn_w, input_h];
-        draw_toggle(
-            quad_instances,
-            glyph_instances,
-            editor_view,
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            "Find All",
-            false,
-            search.layout.find_all_btn_rect,
-        );
-        rep_x += find_all_btn_w + 6.0 * scale_factor;
-
-        let action_btn_w = 64.0 * scale_factor;
-        search.layout.replace_btn_rect = [rep_x, row2_y, action_btn_w, input_h];
-        draw_toggle(
-            quad_instances,
-            glyph_instances,
-            editor_view,
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            "Replace",
-            false,
-            search.layout.replace_btn_rect,
-        );
-        rep_x += action_btn_w + 6.0 * scale_factor;
-
-        let all_btn_w = 78.0 * scale_factor;
-        search.layout.replace_all_btn_rect = [rep_x, row2_y, all_btn_w, input_h];
-        draw_toggle(
-            quad_instances,
-            glyph_instances,
-            editor_view,
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            "Replace All",
-            false,
-            search.layout.replace_all_btn_rect,
-        );
     }
 }
 
@@ -512,10 +379,14 @@ pub(crate) fn match_counter_label(
     if query_empty {
         String::new()
     } else if total == 0 {
-        "No matches".to_string()
+        "No results".to_string()
     } else {
         let cur = current.map_or(1, |i| i + 1);
         let in_sel = if in_selection { " in sel" } else { "" };
-        format!("{cur} of {total} matches{in_sel}")
+        format!("{cur} of {total}{in_sel}")
     }
 }
+
+#[cfg(test)]
+#[path = "search_tests.rs"]
+mod tests;

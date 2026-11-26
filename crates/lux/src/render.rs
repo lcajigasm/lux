@@ -42,7 +42,7 @@ use lux_platform::PlatformContext;
 use lux_render::QuadInstance;
 use paint::{DrawList, color, set_active_theme, set_hidpi_grayscale};
 
-use crate::app::{App, BLINK_INTERVAL, TEXT_LEFT_PADDING};
+use crate::app::{App, BLINK_INTERVAL};
 
 impl App {
     /// Paints one frame: the editor or the Markdown preview, then chrome.
@@ -53,6 +53,13 @@ impl App {
         if !self.presentation.ready(Instant::now()) {
             return;
         }
+        let Some(win_size) = self.gpu_window.as_ref().map(|g| g.window.inner_size()) else {
+            return;
+        };
+        // The snapshot and the window share this layout: panels that opened
+        // since the last frame shrink the editor before anything is drawn.
+        let extent = crate::snapshot::frame_extent(win_size.width, win_size.height);
+        let layout = self.fit_viewport(extent.width, extent.height);
         let tab_bar_height = self.tab_bar_height();
         let status_bar_height = self.status_bar_height();
         let tab_width = self.tab_width();
@@ -94,17 +101,7 @@ impl App {
         let elapsed = Instant::now().duration_since(*start);
         let frame = editor_view.build_frame(buffer, cursors, viewport, elapsed, Some(fold_state));
         let is_df = ui.distraction_free.is_some();
-        let sidebar_width = if !is_df
-            && let Some(sidebar) = &ui.sidebar
-            && sidebar.visible
-            && sidebar.tree.is_some()
-        {
-            sidebar.width * *scale_factor
-        } else {
-            0.0
-        };
-        let win_size = gpu_window.window.inner_size();
-        let extent = crate::snapshot::frame_extent(win_size.width, win_size.height);
+        let sidebar_width = layout.editor[0];
         let window_width = extent.width;
         let window_height = extent.height;
         let gutter_total_width = if is_df {
@@ -234,14 +231,20 @@ impl App {
                     &mut glyph_instances,
                 );
                 if let Some(search_state) = &ui.search_bar {
+                    let origin = search::TextOrigin {
+                        viewport: &editor_viewport,
+                        editor_top,
+                        sidebar_width,
+                        text_left,
+                        line_height,
+                    };
                     search::render_search_matches(
                         search_state,
                         buffer,
-                        editor_view,
-                        &editor_viewport,
-                        editor_top,
-                        line_height,
-                        TEXT_LEFT_PADDING * *scale_factor,
+                        &frame,
+                        &origin,
+                        stroke,
+                        &chrome.theme,
                         &mut quad_instances,
                     );
                 }
@@ -338,12 +341,10 @@ impl App {
             &mut glyph_instances,
         );
         let language_id = documents.language();
-        if let Some(search_state) = &mut ui.search_bar {
-            let search_bar_top = editor_top + viewport.height;
+        if let (Some(search_state), Some(bar)) = (&mut ui.search_bar, layout.search_bar) {
             search::render_search_bar(
                 search_state,
-                viewport.width,
-                search_bar_top,
+                bar,
                 *scale_factor,
                 stroke,
                 font_size,
@@ -359,15 +360,11 @@ impl App {
         }
 
         if let Some(sidebar_state) = &mut ui.sidebar {
-            let search_bar_h = ui
-                .search_bar
-                .as_ref()
-                .map_or(0.0, |s| s.height(*scale_factor));
             sidebar::render_sidebar(
                 sidebar_state,
                 sidebar_width,
                 tab_bar_height,
-                viewport.height + search_bar_h,
+                window_height - tab_bar_height - status_bar_height,
                 *scale_factor,
                 stroke,
                 font_size,
@@ -419,9 +416,9 @@ impl App {
                 ui,
                 &doc,
                 viewport,
-                (window_width, window_height),
+                window_width,
                 tab_bar_height,
-                status_bar_height,
+                editor_top + viewport.height,
                 *scale_factor,
                 line_height,
                 &chrome.theme,
@@ -506,9 +503,7 @@ impl App {
             &mut atlas_state.dirty,
             &mut atlas_state.scale_cx,
             font,
-            window_width,
-            gpu_window.window.inner_size().height as f32,
-            status_bar_height,
+            layout.dock,
             *scale_factor,
             stroke,
         );
