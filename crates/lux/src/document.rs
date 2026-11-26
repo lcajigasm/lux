@@ -269,7 +269,9 @@ impl App {
                 save_as: self.modifiers.shift,
             },
             "n" if !self.modifiers.shift => Request::New,
-            "w" | "q" if !self.modifiers.shift => Request::Close,
+            "w" if !self.modifiers.shift => Request::Close,
+            // Elsewhere Ctrl+Q is Sublime's Toggle Record Macro.
+            "q" if cfg!(target_os = "macos") && !self.modifiers.shift => Request::Close,
             _ => return false,
         };
         if !crate::menu::claim_document_request(&request) {
