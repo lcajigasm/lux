@@ -64,7 +64,7 @@ impl App {
     }
 
     pub(crate) fn reset_goal_columns(&mut self) {
-        self.goal_columns = self
+        self.carets.goal_columns = self
             .cursors
             .cursors()
             .iter()
@@ -107,21 +107,6 @@ impl App {
             return;
         }
         crate::macros::dispatch::record_text_input(self, text);
-
-        let lines: Vec<&str> = text
-            .split('\n')
-            .map(|l| l.strip_suffix('\r').unwrap_or(l))
-            .collect();
-        if self.cursors.count() > 1 && lines.len() == self.cursors.count() {
-            let mut line_idx = lines.len();
-            self.apply_edit_operation(self.cursors.clone(), |buffer, selection| {
-                line_idx = line_idx.saturating_sub(1);
-                let piece = lines.get(line_idx).copied().unwrap_or("");
-                edit_ops::insert_text(buffer, selection, piece)
-            });
-            self.ui.minimap.edit = None;
-            return;
-        }
 
         let before = self.buffer.revision();
         let chain = self.cursors.count() == 1 && text.chars().count() == 1;
@@ -312,19 +297,8 @@ impl App {
                 "c" => {
                     self.copy_to_clipboard(clipboard);
                 }
-                "x" if !self.editing_blocked() && !self.buffer.is_huge_file_mode() => {
-                    if self.copy_to_clipboard(clipboard) {
-                        self.replace_selections(self.cursors.clone(), "");
-                    }
-                }
-                "v" if !self.editing_blocked() && !self.buffer.is_huge_file_mode() => {
-                    if let Some(clipboard) = clipboard {
-                        match clipboard.read_text() {
-                            Ok(text) => self.insert_at_cursor(&text),
-                            Err(error) => self.documents.message = Some(error.to_string()),
-                        }
-                    }
-                }
+                "x" => self.cut_to_clipboard(clipboard),
+                "v" => self.paste_from_clipboard(clipboard),
                 "z" if !self.buffer.is_huge_file_mode() => {
                     let restored = if self.modifiers.shift {
                         self.history.redo(&mut self.buffer)
@@ -547,6 +521,7 @@ impl App {
 }
 
 mod autopair;
+pub(crate) mod clipboard;
 pub(crate) mod comment;
 pub(crate) mod dispatch;
 mod indent;
@@ -564,6 +539,8 @@ mod build_tests;
 mod caret_tests;
 #[cfg(test)]
 mod chrome_tests;
+#[cfg(test)]
+mod clipboard_tests;
 #[cfg(test)]
 mod distraction_free_tests;
 #[cfg(test)]

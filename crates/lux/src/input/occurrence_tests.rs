@@ -245,7 +245,7 @@ fn parallel_multi_cursor_paste_distributes_lines_to_cursors() {
     assert_eq!(a.cursors.count(), 3);
 
     // Paste 3 lines -> distributed 1 line per cursor
-    a.insert_at_cursor(":A\n:B\n:C");
+    a.paste_text(":A\n:B\n:C");
     assert_eq!(a.buffer.text(), "line1:A\nline2:B\nline3:C");
 }
 

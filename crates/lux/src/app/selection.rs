@@ -123,34 +123,4 @@ impl App {
         self.reset_goal_columns();
         self.reveal_primary_cursor();
     }
-
-    /// Copies every non-empty selection in document order. Multiple
-    /// selections use the document's own line ending so pasting into a
-    /// single cursor remains lossless and platform-consistent.
-    pub(crate) fn copy_to_clipboard(
-        &mut self,
-        clipboard: Option<&dyn lux_platform::Clipboard>,
-    ) -> bool {
-        let Some(clipboard) = clipboard else {
-            return false;
-        };
-        let pieces: Vec<_> = self
-            .cursors
-            .cursors()
-            .iter()
-            .filter(|selection| !selection.is_empty())
-            .map(|selection| self.buffer.text_range(selection.char_range()))
-            .collect();
-        if pieces.is_empty() {
-            return false;
-        }
-        let text = pieces.join(self.buffer.eol().as_str());
-        match clipboard.write_text(&text) {
-            Ok(()) => true,
-            Err(error) => {
-                self.documents.message = Some(error.to_string());
-                false
-            }
-        }
-    }
 }

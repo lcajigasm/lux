@@ -84,7 +84,12 @@ fn execute_move(app: &mut App, by: MoveBy, forward: bool, extend: bool) {
 
     for (index, &selection) in app.cursors.cursors().iter().enumerate() {
         let pos = selection.head;
-        let goal = app.goal_columns.get(index).copied().unwrap_or(pos.column);
+        let goal = app
+            .carets
+            .goal_columns
+            .get(index)
+            .copied()
+            .unwrap_or(pos.column);
         let to = match by {
             MoveBy::Characters => {
                 if forward {

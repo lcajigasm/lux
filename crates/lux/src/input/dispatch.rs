@@ -100,19 +100,8 @@ pub(crate) fn execute_keymap_command(
         "copy" => {
             app.copy_to_clipboard(clipboard);
         }
-        "cut" if !app.editing_blocked() && !app.buffer.is_huge_file_mode() => {
-            if app.copy_to_clipboard(clipboard) {
-                app.replace_selections(app.cursors.clone(), "");
-            }
-        }
-        "paste" if !app.editing_blocked() && !app.buffer.is_huge_file_mode() => {
-            if let Some(clipboard) = clipboard {
-                match clipboard.read_text() {
-                    Ok(text) => app.insert_at_cursor(&text),
-                    Err(error) => app.documents.message = Some(error.to_string()),
-                }
-            }
-        }
+        "cut" => app.cut_to_clipboard(clipboard),
+        "paste" => app.paste_from_clipboard(clipboard),
         "undo" if !app.buffer.is_huge_file_mode() => {
             let restored = app.history.undo(&mut app.buffer);
             if let Some(selections) = restored {

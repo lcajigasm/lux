@@ -36,6 +36,7 @@ pub(crate) const TAB_MAX_WIDTH: f32 = 200.0;
 pub(crate) const TAB_CLOSE_BTN_WIDTH: f32 = 24.0;
 
 mod bookmarks;
+pub(crate) mod carets;
 mod folding;
 mod selection;
 pub(crate) mod startup;
@@ -63,7 +64,7 @@ pub(crate) struct App {
     pub(crate) font: FontRef<'static>,
     pub(crate) buffer: Buffer,
     pub(crate) cursors: MultiCursor,
-    pub(crate) goal_columns: Vec<usize>,
+    pub(crate) carets: carets::CaretMemory,
     pub(crate) history: History,
     pub(crate) modifiers: Modifiers,
     pub(crate) mouse: MouseState,
@@ -119,7 +120,7 @@ impl App {
             font,
             buffer,
             cursors,
-            goal_columns: vec![0],
+            carets: carets::CaretMemory::default(),
             history: History::new(),
             modifiers: Modifiers::default(),
             mouse: MouseState::default(),
