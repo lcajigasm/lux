@@ -391,6 +391,54 @@ fn paint_swatches(
     }
 }
 
+/// A short status at the right end of the input field, such as
+/// "Indexing…" while the project symbol index is still being built.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn paint_input_notice(
+    frame: &ListFrame,
+    notice: &str,
+    open_offset: f32,
+    scale: f32,
+    font: FontRef<'_>,
+    editor_view: &mut EditorView,
+    atlas: &mut GlyphAtlas,
+    atlas_dirty: &mut bool,
+    scale_cx: &mut ScaleContext,
+    theme: &lux_ui::Theme,
+    glyphs: &mut Vec<GlyphInstance>,
+) {
+    let colors = overlay_colors(theme);
+    let top = frame.top + open_offset;
+    let font_size = 13.0 * scale;
+    let (font, family) = crate::font::ui_font(font, editor_view.family());
+    let style = lux_render::LineStyle {
+        family: &family,
+        font_size,
+        ligatures: false,
+    };
+    let field_h = (frame.input_height - 14.0 * scale).max(font_size + 8.0 * scale);
+    let line = editor_view
+        .text_layout_mut()
+        .layout_line(&style, notice, &[]);
+    let x = frame.left + frame.width - 22.0 * scale - line.width();
+    let y = top + 8.0 * scale + (field_h - font_size) * 0.5;
+    let ink = super::panel::readable_ink(super::panel::placeholder_ink(theme), colors.card);
+    for cluster in line.clusters() {
+        push_glyph(
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            font,
+            font_size,
+            &cluster,
+            x,
+            y + line.baseline(),
+            ink,
+            glyphs,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,53 +505,5 @@ mod tests {
                 );
             }
         }
-    }
-}
-
-/// A short status at the right end of the input field, such as
-/// "Indexing…" while the project symbol index is still being built.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn paint_input_notice(
-    frame: &ListFrame,
-    notice: &str,
-    open_offset: f32,
-    scale: f32,
-    font: FontRef<'_>,
-    editor_view: &mut EditorView,
-    atlas: &mut GlyphAtlas,
-    atlas_dirty: &mut bool,
-    scale_cx: &mut ScaleContext,
-    theme: &lux_ui::Theme,
-    glyphs: &mut Vec<GlyphInstance>,
-) {
-    let colors = overlay_colors(theme);
-    let top = frame.top + open_offset;
-    let font_size = 13.0 * scale;
-    let (font, family) = crate::font::ui_font(font, editor_view.family());
-    let style = lux_render::LineStyle {
-        family: &family,
-        font_size,
-        ligatures: false,
-    };
-    let field_h = (frame.input_height - 14.0 * scale).max(font_size + 8.0 * scale);
-    let line = editor_view
-        .text_layout_mut()
-        .layout_line(&style, notice, &[]);
-    let x = frame.left + frame.width - 22.0 * scale - line.width();
-    let y = top + 8.0 * scale + (field_h - font_size) * 0.5;
-    let ink = super::panel::readable_ink(super::panel::placeholder_ink(theme), colors.card);
-    for cluster in line.clusters() {
-        push_glyph(
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            font,
-            font_size,
-            &cluster,
-            x,
-            y + line.baseline(),
-            ink,
-            glyphs,
-        );
     }
 }
