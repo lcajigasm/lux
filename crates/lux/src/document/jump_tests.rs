@@ -103,3 +103,18 @@ fn goto_a_folder_file_does_not_switch_to_a_copy_that_ends_with_the_folder_name()
     );
     assert_eq!(app.documents.tabs.tabs().len(), tabs);
 }
+
+#[test]
+fn an_lsp_jump_to_a_closed_file_opens_it_on_the_worker() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = three_lines(&dir);
+    let ctx = Context::new(None, None, SaveDecision::Discard);
+    let mut app = app();
+    crate::lsp::jump_to_location(&mut app, Some(&ctx), &path, 2);
+    assert!(app.documents.path.is_none(), "opened on the UI thread");
+    assert!(super::busy(&app));
+
+    ctx.complete(&mut app);
+    assert_eq!(app.documents.path.as_ref(), Some(&path));
+    assert_eq!(app.cursors.primary().head.line, 2);
+}

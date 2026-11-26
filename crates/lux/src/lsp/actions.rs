@@ -8,7 +8,6 @@ use lux_platform::PlatformContext;
 
 use super::LspEvent;
 use crate::app::App;
-use crate::document::DocumentEntry;
 
 pub(crate) fn request_completion(app: &mut App, ctx: &dyn PlatformContext) {
     let primary_head = app.cursors.primary().head;
@@ -182,7 +181,14 @@ pub(crate) fn format_document(app: &mut App, ctx: &dyn PlatformContext) {
         .ok();
 }
 
-pub(crate) fn jump_to_location(app: &mut App, target_path: &Path, target_line: usize) {
+/// Moves to `target_line` of `target_path`. A file that is not open yet is
+/// read on the document worker; the cursor moves when it lands.
+pub(crate) fn jump_to_location(
+    app: &mut App,
+    ctx: Option<&dyn PlatformContext>,
+    target_path: &Path,
+    target_line: usize,
+) {
     if app.documents.path.as_deref() == Some(target_path) {
         crate::goto::jump_to_line(app, target_line as u32 + 1);
         return;
@@ -197,16 +203,14 @@ pub(crate) fn jump_to_location(app: &mut App, target_path: &Path, target_line: u
         let tab_id = entry.tab_id;
         app.switch_to_tab(tab_id);
         crate::goto::jump_to_line(app, target_line as u32 + 1);
-    } else if let Ok(buf) = Buffer::open(target_path) {
-        let title = target_path
-            .file_name()
-            .and_then(|f| f.to_str())
-            .unwrap_or("Untitled");
-        let tab_id = app.documents.tabs.open(title);
-        let entry = DocumentEntry::new(tab_id, Some(target_path.to_path_buf()), buf);
-        app.documents.entries.push(entry);
-        app.switch_to_tab(tab_id);
-        crate::goto::jump_to_line(app, target_line as u32 + 1);
+    } else {
+        crate::document::open_queue::open_at(
+            app,
+            ctx,
+            target_path.to_path_buf(),
+            Some(target_line as u32 + 1),
+            None,
+        );
     }
 }
 

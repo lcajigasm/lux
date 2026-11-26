@@ -33,6 +33,8 @@ pub(crate) enum Done {
         path: PathBuf,
         generation: u64,
     },
+    /// A conflict-bar action finished its disk read or write.
+    Conflict(crate::conflict::Resolved),
     /// Recent projects for the Quick Switch Project picker.
     ProjectList {
         projects: Vec<PathBuf>,
@@ -338,6 +340,7 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
             projects,
             generation,
         } => app.show_project_list(projects, generation),
+        Done::Conflict(resolved) => crate::conflict::apply_resolved(app, resolved),
         Done::ProjectSaved(path) => app.note_project_saved(&path),
         Done::ProjectSaveFailed(path) => {
             app.ui.announcement = Some(format!("Failed to save project to {}", path.display()));

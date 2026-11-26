@@ -177,7 +177,9 @@ pub(crate) fn handle_mouse_click_on_chrome(
     let (_, window_h) = app.window_extent();
     let status_bar_top = window_h - app.status_bar_height();
 
-    if button == MouseButton::Left && crate::term::input::handle_term_click(app, mouse_x, mouse_y) {
+    if button == MouseButton::Left
+        && crate::term::input::handle_term_click(app, ctx, mouse_x, mouse_y)
+    {
         return true;
     }
 
