@@ -165,7 +165,9 @@ fn a_new_untracked_file_appears_in_the_tree_after_a_watcher_event() {
     let mut app = app();
     app.ui.sidebar = crate::sidebar::SidebarState::open_folder(root.clone());
     app.ui.git.repo_root = Some(root.clone());
-    app.ui.session.init_watcher(&root);
+    // Wait until the watch is in place, or the new file can be seeded as
+    // known before its create event arrives.
+    crate::sidebar::watch::watch_and_wait(&mut app, &root);
 
     let fresh = root.join("fresh.txt");
     std::fs::write(&fresh, "new\n").unwrap();
