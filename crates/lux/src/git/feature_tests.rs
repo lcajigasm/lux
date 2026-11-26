@@ -174,7 +174,7 @@ fn a_modified_file_marks_itself_and_its_parent() {
         path: Path::new("src/note.txt").into(),
         status: lux_git::diff_panel::ChangeStatus::Modified,
     }];
-    let marks = super::marks::git_mark_map(Path::new("/repo"), &files, &[]);
+    let marks = super::marks::tree_marks(Path::new("/repo"), &files, &[], &[]).marks;
     assert_eq!(
         marks.get(Path::new("/repo/src/note.txt")),
         Some(&super::marks::GitMark::Modified)
@@ -200,8 +200,8 @@ fn status_copies_the_mark_onto_the_sidebar() {
     super::publish_git_marks(&mut app);
     let marks = &app.ui.sidebar.as_ref().unwrap().git_marks;
     assert_eq!(
-        marks.get(file.as_path()),
-        Some(&super::marks::GitMark::Modified)
+        marks.mark_for(file.as_path()),
+        Some(super::marks::GitMark::Modified)
     );
 }
 

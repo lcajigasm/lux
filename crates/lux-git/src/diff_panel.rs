@@ -29,6 +29,10 @@ pub enum ChangeStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WorktreeStatus {
     pub changes: Vec<ChangedFile>,
+    /// Untracked directories reported whole, like `git status` shows
+    /// `?? dir/`. Each also appears in `changes` as one `Untracked` entry;
+    /// everything below one is untracked or ignored.
+    pub untracked_dirs: Vec<PathBuf>,
     pub ignored: Vec<PathBuf>,
 }
 
@@ -94,49 +98,21 @@ pub fn worktree_status(repo: &gix::Repository) -> Result<WorktreeStatus, DiffPan
         .map(|entry| (PathBuf::from(entry.filepath.to_string()), entry.oid))
         .collect();
 
-    let mut changed = Vec::new();
-
     // Every tracked path, checked directly on disk rather than through the
     // gitignore-aware walk below: a `.gitignore` rule never hides a path git
     // already tracks (the rule only ever governs *untracked*-file discovery),
     // so a tracked file that also happens to match one — e.g. a project's
     // own `.vscode/settings.json` committed before a later-added ignore rule
     // — must still be compared, not treated as silently deleted just because
-    // the walk skipped it.
-    for (rel, oid) in &head_blobs {
-        let absolute = work_dir.join(rel);
-        match std::fs::read(&absolute) {
-            Ok(disk_bytes) => {
-                let blob = repo
-                    .find_blob(*oid)
-                    .map_err(|e| DiffPanelError::ReadBlob(Box::new(e)))?;
-                if blob.data != disk_bytes {
-                    changed.push(ChangedFile {
-                        path: rel.clone(),
-                        status: ChangeStatus::Modified,
-                    });
-                }
-            }
-            Err(e)
-                if e.kind() == std::io::ErrorKind::NotFound
-                    || e.kind() == std::io::ErrorKind::IsADirectory =>
-            {
-                // A directory standing where a tracked file was is the same
-                // fact as a missing file: the blob is gone. `git status`
-                // reports that path deleted and lists the files inside.
-                changed.push(ChangedFile {
-                    path: rel.clone(),
-                    status: ChangeStatus::Deleted,
-                });
-            }
-            Err(e) => return Err(DiffPanelError::Io(e)),
-        }
-    }
+    // the walk skipped it. The index's stat cache answers for every file
+    // that has not been touched since it was staged (see `tracked`).
+    let (index, facts) = crate::worktree::index_facts(repo)?;
+    let mut changed = Vec::new();
+    crate::tracked::compare(repo, work_dir, &head_blobs, &index, &mut changed)?;
 
     // Everything `HEAD` does not track: staged new files, untracked files,
     // and ignored paths. A path git tracks in `HEAD` or the index is never
     // ignored, and neither is a directory holding one.
-    let (index, facts) = crate::worktree::index_facts(repo)?;
     let tracked: std::collections::BTreeSet<PathBuf> = head_blobs.keys().cloned().collect();
     let keep = crate::worktree::with_parents(tracked.iter().chain(facts.staged.iter()));
     let untracked = crate::worktree::walk(repo, &index, &tracked, &keep)?;
@@ -147,6 +123,12 @@ pub fn worktree_status(repo: &gix::Repository) -> Result<WorktreeStatus, DiffPan
             ChangeStatus::Untracked
         };
         changed.push(ChangedFile { path: rel, status });
+    }
+    for rel in &untracked.dirs {
+        changed.push(ChangedFile {
+            path: rel.clone(),
+            status: ChangeStatus::Untracked,
+        });
     }
 
     // A conflicted path wins over whatever the content comparison said:
@@ -164,6 +146,7 @@ pub fn worktree_status(repo: &gix::Repository) -> Result<WorktreeStatus, DiffPan
     changed.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(WorktreeStatus {
         changes: changed,
+        untracked_dirs: untracked.dirs,
         ignored: untracked.ignored,
     })
 }

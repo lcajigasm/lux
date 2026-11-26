@@ -98,6 +98,10 @@ fn drive(app: &mut App, ctx: &DummyContext, done: impl Fn(&App) -> bool) {
             .unwrap()
             .recv_timeout(Duration::from_secs(30))
             .expect("a background worker wakes the loop");
+        // `background_event` also drains the process-wide git mailbox.
+        let _mailbox = crate::git::MAILBOX_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         app.background_event(ctx);
     }
 }

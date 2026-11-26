@@ -3,7 +3,6 @@
 //! Owns the sidebar panel state, directory expansion, file selection,
 //! and tab opening logic for project file navigation.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use lux_platform::PlatformContext;
@@ -33,7 +32,7 @@ pub(crate) struct SidebarState {
     pub(crate) context_menu: Option<menu::SidebarContextMenu>,
     pub(crate) inline_input: Option<inline::InlineInputState>,
     /// Git state of changed files, their parent directories, and ignored paths.
-    pub(crate) git_marks: HashMap<PathBuf, crate::git::marks::GitMark>,
+    pub(crate) git_marks: crate::git::marks::TreeMarks,
     /// Row press that becomes a move once the pointer travels, or a click
     /// if it does not.
     pub(crate) drag: Option<drag::TreeDrag>,
@@ -55,7 +54,7 @@ impl Default for SidebarState {
             focused: false,
             context_menu: None,
             inline_input: None,
-            git_marks: HashMap::new(),
+            git_marks: Default::default(),
             drag: None,
             extra: Vec::new(),
             resizing: false,
@@ -76,7 +75,7 @@ impl SidebarState {
             focused: false,
             context_menu: None,
             inline_input: None,
-            git_marks: HashMap::new(),
+            git_marks: Default::default(),
             drag: None,
             extra: Vec::new(),
             resizing: false,

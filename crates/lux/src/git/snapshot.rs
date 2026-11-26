@@ -22,6 +22,8 @@ pub(crate) struct StatusShot {
     pub(crate) root: PathBuf,
     pub(crate) branch: Option<String>,
     pub(crate) files: Vec<ChangedFile>,
+    /// Untracked directories reported whole, relative to `root`.
+    pub(crate) untracked_dirs: Vec<PathBuf>,
     /// Ignored paths relative to `root`, collapsed to the outermost one.
     pub(crate) ignored: Vec<PathBuf>,
 }
@@ -83,6 +85,7 @@ pub(crate) fn status_of(start: &Path) -> Result<StatusShot, String> {
         root,
         branch,
         files: status.changes,
+        untracked_dirs: status.untracked_dirs,
         ignored: status.ignored,
     })
 }

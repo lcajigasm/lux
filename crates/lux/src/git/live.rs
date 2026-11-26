@@ -28,7 +28,12 @@ use crate::app::App;
 /// Quiet time after the last edit before the gutter is recomputed.
 pub(crate) const GUTTER_DEBOUNCE: Duration = Duration::from_millis(250);
 /// Longest a stream of edits can hold the gutter back.
-const GUTTER_MAX_WAIT: Duration = Duration::from_secs(1);
+pub(crate) const GUTTER_MAX_WAIT: Duration = Duration::from_secs(1);
+
+/// Extra time each gutter diff takes, to test a diff slower than typing.
+#[cfg(test)]
+pub(crate) static GUTTER_TEST_DELAY_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 
 struct GutterJob {
     generation: u64,
@@ -61,21 +66,33 @@ fn start_worker<T: Send + 'static>(name: &str, run: fn(Receiver<T>)) -> Sender<T
 
 fn gutter_worker(rx: Receiver<GutterJob>) {
     while let Ok(mut job) = rx.recv() {
-        let first = Instant::now();
+        let mut first = Instant::now();
         loop {
             let now = Instant::now();
             let deadline = (now + GUTTER_DEBOUNCE).min(first + GUTTER_MAX_WAIT);
             match rx.recv_timeout(deadline.saturating_duration_since(now)) {
-                Ok(newer) => job = newer,
+                Ok(newer) => {
+                    // The max wait bounds a stream of edits to one file;
+                    // another file's first edit starts its own.
+                    if newer.path != job.path {
+                        first = Instant::now();
+                    }
+                    job = newer;
+                }
                 Err(RecvTimeoutError::Timeout) => break,
                 Err(RecvTimeoutError::Disconnected) => return,
             }
         }
+        #[cfg(test)]
+        std::thread::sleep(Duration::from_millis(
+            GUTTER_TEST_DELAY_MS.load(std::sync::atomic::Ordering::Relaxed),
+        ));
         let text = job.buffer.text();
         let shot = std::panic::catch_unwind(|| snapshot::file_shot(Some(&job.path), &text));
         if let Ok(shot) = shot {
             job::deliver(Event::File {
                 generation: job.generation,
+                path: Some(job.path),
                 shot,
             });
         }
@@ -101,10 +118,16 @@ fn status_worker(rx: Receiver<StatusJob>) {
 /// content changed since the last request. The comparison is two integers.
 pub(crate) fn note_edit(app: &mut App) {
     let key = (app.documents.active_tab, app.history.state_id());
-    if app.ui.git.edit_key == Some(key) {
+    let previous = app.ui.git.edit_key.replace(key);
+    if previous == Some(key) {
         return;
     }
-    app.ui.git.edit_key = Some(key);
+    // Another tab's diff, still in flight, must not land on this one.
+    let generation = if previous.map(|(tab, _)| tab) == Some(key.0) {
+        job::next_generation()
+    } else {
+        job::new_gutter_context(app)
+    };
     let (Some(path), Some(root)) = (&app.documents.path, &app.ui.git.repo_root) else {
         return;
     };
@@ -115,7 +138,7 @@ pub(crate) fn note_edit(app: &mut App) {
     }
     let path = path.clone();
     let job = GutterJob {
-        generation: job::next_generation(app),
+        generation,
         path,
         buffer: app.buffer.clone(),
     };
@@ -167,29 +190,25 @@ pub(crate) fn refresh_status(app: &mut App) {
     }
 }
 
-/// A watcher batch touched these paths. Paths inside an ignored directory
-/// (build output, mostly) cannot change what the tree shows.
+/// A watcher batch touched these paths. Paths outside the repository
+/// (another open folder) or inside an ignored directory (build output,
+/// mostly) cannot change what the tree shows. Before the repository is
+/// known, every path counts.
 pub(crate) fn note_disk_changes<'a>(app: &mut App, paths: impl Iterator<Item = &'a PathBuf>) {
-    if app.ui.sidebar.is_none() {
-        return;
+    if app.ui.sidebar.is_some() && touches_repo(app, paths) {
+        refresh_status(app);
     }
-    let ignored = |path: &PathBuf| {
+}
+
+pub(super) fn touches_repo<'a>(app: &App, mut paths: impl Iterator<Item = &'a PathBuf>) -> bool {
+    let relevant = |path: &PathBuf| {
         let Some(root) = &app.ui.git.repo_root else {
-            return false;
+            return true;
         };
         let Ok(rel) = path.strip_prefix(root) else {
             return false;
         };
-        app.ui.git.ignored.iter().any(|dir| rel.starts_with(dir))
+        !app.ui.git.ignored.iter().any(|dir| rel.starts_with(dir))
     };
-    let mut relevant = false;
-    for path in paths {
-        if !ignored(path) {
-            relevant = true;
-            break;
-        }
-    }
-    if relevant {
-        refresh_status(app);
-    }
+    paths.any(relevant)
 }

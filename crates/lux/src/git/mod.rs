@@ -22,6 +22,7 @@ pub(crate) mod marks;
 mod snapshot;
 
 pub(crate) use branch_picker::handle_branch_picker_key;
+pub(crate) use job::new_gutter_context;
 pub(crate) use job::{
     poll, register_waker, request_blame, request_branch_list, request_commit, request_diff,
     request_history, request_stage_cursor_hunk, request_stage_file, request_status,
@@ -60,6 +61,8 @@ pub(crate) struct GitState {
     pub(crate) hunks: Vec<Hunk>,
     pub(crate) markers: Vec<GutterMarker>,
     pub(crate) changed_files: Vec<ChangedFile>,
+    /// Untracked directories reported whole, relative to `repo_root`.
+    pub(crate) untracked_dirs: Vec<PathBuf>,
     /// Ignored paths relative to `repo_root`, outermost first.
     pub(crate) ignored: Vec<PathBuf>,
     /// Active tab and history state the gutter was last requested for.
@@ -72,8 +75,12 @@ pub(crate) struct GitState {
     pub(crate) commit_message: String,
     pub(crate) source_control_visible: bool,
     pub(crate) branch_picker: Option<branch_picker::BranchPicker>,
-    /// Ignores a snapshot from an older refresh.
-    pub(crate) generation: u64,
+    /// First gutter generation of the current document. Results from an
+    /// older one belong to another tab or a discarded refresh.
+    pub(crate) generation: job::GutterFloor,
+    /// Newest gutter generation applied. A result older than it is stale;
+    /// a newer one is applied even while newer edits are still queued.
+    pub(crate) gutter_applied: u64,
     /// Ignores a status shot that started before the folder was closed.
     pub(crate) folder_epoch: u64,
 }

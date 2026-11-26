@@ -3243,9 +3243,11 @@ version = "1.5.12"
 dependencies = [
  "criterion",
  "lux-core",
+ "lux-git",
  "lux-search",
  "lux-syntax",
  "lux-workspace",
+ "tempfile",
  "tree-sitter",
 ]
 

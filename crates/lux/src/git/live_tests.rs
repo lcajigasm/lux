@@ -33,6 +33,9 @@ impl FileDialogs for Dialogs {
     fn confirm_save(&self, _: &str) -> lux_platform::dialog::SaveDecision {
         lux_platform::dialog::SaveDecision::Discard
     }
+    fn confirm_trash(&self, _: &str) -> bool {
+        false
+    }
 }
 
 struct Ctx;
@@ -132,8 +135,10 @@ fn typing_in_a_tracked_file_updates_the_gutter_after_the_debounce_without_saving
     // The file matches HEAD: nothing to mark yet.
     assert!(app.ui.git.markers.is_empty());
 
+    // A result may land while later keys are still queued (a slow first
+    // key in a debug build is enough), so time from the first key.
+    let first_key = Instant::now();
     type_str(&mut app, "beta\n");
-    let last_key = Instant::now();
     assert_eq!(app.buffer.text(), "beta\nalpha\n");
 
     let marked = pump_until(&mut app, |app| {
@@ -141,7 +146,7 @@ fn typing_in_a_tracked_file_updates_the_gutter_after_the_debounce_without_saving
     });
     assert!(marked, "markers {:?}", app.ui.git.markers);
     assert!(
-        last_key.elapsed() >= GUTTER_DEBOUNCE,
+        first_key.elapsed() >= GUTTER_DEBOUNCE,
         "the diff ran before edits paused for {GUTTER_DEBOUNCE:?}"
     );
     assert_eq!(
@@ -169,7 +174,7 @@ fn a_new_untracked_file_appears_in_the_tree_after_a_watcher_event() {
         app.ui
             .sidebar
             .as_ref()
-            .is_some_and(|sidebar| sidebar.git_marks.get(&fresh) == Some(&GitMark::Untracked))
+            .is_some_and(|sidebar| sidebar.git_marks.mark_for(&fresh) == Some(GitMark::Untracked))
     });
     assert!(
         marked,
@@ -209,7 +214,70 @@ fn opening_a_folder_reads_its_status_once_without_a_command() {
     );
     let marks = &app.ui.sidebar.as_ref().unwrap().git_marks;
     assert_eq!(
-        super::marks::mark_for(marks, &root.join("build/out.o")),
+        marks.mark_for(&root.join("build/out.o")),
         Some(GitMark::Ignored)
     );
+}
+
+#[test]
+fn continuous_typing_shows_marks_even_when_the_diff_is_slower_than_the_keys() {
+    use std::sync::atomic::Ordering;
+
+    struct ResetDelay;
+    impl Drop for ResetDelay {
+        fn drop(&mut self) {
+            super::live::GUTTER_TEST_DELAY_MS.store(0, Ordering::Relaxed);
+        }
+    }
+
+    let _mailbox = super::MAILBOX_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let (_dir, root) = clean_repo();
+    let mut app = app();
+    app.documents.path = Some(root.join("note.txt"));
+    app.buffer = Buffer::from_bytes(b"alpha\n").unwrap();
+    app.ui.git.repo_root = Some(root.clone());
+    // Each diff outlasts several keystrokes, so every result arrives after
+    // newer edits were queued.
+    super::live::GUTTER_TEST_DELAY_MS.store(600, Ordering::Relaxed);
+    let _reset = ResetDelay;
+
+    let start = Instant::now();
+    let mut first_marks = None;
+    while start.elapsed() < Duration::from_secs(4) {
+        type_str(&mut app, "x");
+        std::thread::sleep(Duration::from_millis(100));
+        super::poll(&mut app);
+        if first_marks.is_none() && !app.ui.git.markers.is_empty() {
+            first_marks = Some(start.elapsed());
+        }
+    }
+    let first = first_marks.expect("no gutter marks during four seconds of typing");
+    assert!(
+        first < super::live::GUTTER_MAX_WAIT + Duration::from_millis(600 + 1000),
+        "marks took {first:?}"
+    );
+}
+
+#[test]
+fn watcher_paths_outside_the_repository_do_not_refresh_its_status() {
+    let mut app = app();
+    let root = PathBuf::from("/work/repo");
+    app.ui.git.repo_root = Some(root.clone());
+    app.ui.git.ignored = vec![PathBuf::from("target")];
+    let other = PathBuf::from("/work/other-folder/a.rs");
+    let built = root.join("target/debug/lux");
+    let source = root.join("src/main.rs");
+
+    assert!(!super::live::touches_repo(
+        &app,
+        [&other, &built].into_iter()
+    ));
+    assert!(super::live::touches_repo(
+        &app,
+        [&other, &source].into_iter()
+    ));
+    app.ui.git.repo_root = None;
+    assert!(super::live::touches_repo(&app, [&other].into_iter()));
 }

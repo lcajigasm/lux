@@ -223,10 +223,14 @@ the worktree is clean. Creating a branch points `HEAD` at the current
 commit and leaves the files alone. The gutter follows the buffer while
 typing: 250 ms after edits pause (at most 1 s during continuous typing)
 a worker diffs the unsaved text against `HEAD`, one diff in flight at a
-time. Added lines get a green bar, modified lines an orange bar, removed
+time. When a diff is slower than the typing, its result is still shown
+and may trail the text by the keys typed while it ran. Added lines get a green bar, modified lines an orange bar, removed
 lines a red triangle. The file tree reads its git state when a folder
-opens, after each file-watcher batch outside ignored directories, after
-a save, and after a Lux git operation; the walk runs on one worker and
+opens, after each file-watcher batch inside the repository and outside
+ignored directories, after a save, and after a Lux git operation; like
+`git status` it reads only tracked files whose stat no longer matches the
+index, and reports an untracked directory as one entry whose rows are all
+`U`; the walk runs on one worker and
 requests that arrive meanwhile collapse into one more walk. Each row
 shows `M` (modified), `A` (staged new), `D` (deleted), `U` (untracked)
 or `C` (conflicted), and its name takes that state's color; a directory

@@ -398,5 +398,5 @@ fn git_mark(
     id: lux_ui::file_tree::NodeId,
 ) -> Option<crate::git::marks::GitMark> {
     let path = sidebar.tree.as_ref()?.node_path(id)?;
-    crate::git::marks::mark_for(&sidebar.git_marks, path)
+    sidebar.git_marks.mark_for(path)
 }
