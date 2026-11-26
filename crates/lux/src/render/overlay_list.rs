@@ -486,7 +486,9 @@ pub(crate) fn paint_input_notice(
         ligatures: false,
     };
     let field_h = (frame.input_height - 14.0 * scale).max(font_size + 8.0 * scale);
-    let line = editor_view.text_layout_mut().layout_line(&style, notice, &[]);
+    let line = editor_view
+        .text_layout_mut()
+        .layout_line(&style, notice, &[]);
     let x = frame.left + frame.width - 22.0 * scale - line.width();
     let y = top + 8.0 * scale + (field_h - font_size) * 0.5;
     let ink = super::panel::readable_ink(super::panel::placeholder_ink(theme), colors.card);
