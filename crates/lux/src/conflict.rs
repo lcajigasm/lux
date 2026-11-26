@@ -10,6 +10,7 @@ use lux_platform::{Key, NamedKey, PlatformContext};
 
 use crate::app::App;
 use crate::document::DocumentEntry;
+use crate::session::disk_events::{Loaded, live_buffer, reload_tabs};
 use crate::ui_io::Done;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,15 +54,16 @@ impl ConflictPrompt {
 pub(crate) enum Resolved {
     /// The diff of the disk text against the buffer, ready for its tab.
     Diff { title: String, content: String },
-    /// The buffer as written over the disk file, and its history state then.
+    /// The buffer as written over the disk file, and its history state
+    /// then, or why the write failed.
     Overwritten {
         path: PathBuf,
-        written: Option<(Buffer, u64)>,
+        written: Result<(Buffer, u64), String>,
     },
-    /// The file as read back from disk.
+    /// The file as read back from disk, or why the read failed.
     Reloaded {
         path: PathBuf,
-        buffer: Option<Buffer>,
+        loaded: Result<Loaded, String>,
     },
 }
 
@@ -79,41 +81,84 @@ pub(crate) fn handle_conflict_action(
     let path = prompt.path;
     match action {
         ConflictAction::CompareDiff => {
-            let buffer = app.buffer.clone();
+            // The conflicting tab's text, which is `app.buffer` only when
+            // that tab is the active one.
+            let Some(buffer) = live_buffer(app, &path).cloned() else {
+                return;
+            };
             crate::ui_io::spawn(app, Some(ctx), move || {
                 let disk_text = std::fs::read_to_string(&path).unwrap_or_default();
                 Some(Done::Conflict(diff(&path, &disk_text, &buffer.text())))
             });
         }
         ConflictAction::OverwriteDisk => {
-            // The active tab's live text is `app.buffer`; its entry holds
-            // the text from when the tab was last switched away from.
-            let active = app.documents.active_tab;
-            let entry = app
-                .documents
-                .entries
-                .iter()
-                .find(|e| e.path.as_ref() == Some(&path))
-                .map(|entry| {
-                    if Some(entry.tab_id) == active {
-                        (app.buffer.clone(), app.history.state_id())
-                    } else {
-                        (entry.buffer.clone(), entry.history.state_id())
-                    }
-                });
+            let Some(version) = live_version(app, &path) else {
+                return;
+            };
+            let Some(buffer) = live_buffer(app, &path).cloned() else {
+                return;
+            };
             crate::ui_io::spawn(app, Some(ctx), move || {
-                let written = entry.filter(|(buffer, _)| buffer.save(&path).is_ok());
+                let written = match buffer.save(&path) {
+                    Ok(()) => Ok((buffer, version)),
+                    Err(error) => Err(error.to_string()),
+                };
                 Some(Done::Conflict(Resolved::Overwritten { path, written }))
             });
         }
         ConflictAction::ReloadDisk => {
+            let Some(old) = live_buffer(app, &path).cloned() else {
+                return;
+            };
             crate::ui_io::spawn(app, Some(ctx), move || {
-                let buffer = Buffer::open(&path).ok();
-                Some(Done::Conflict(Resolved::Reloaded { path, buffer }))
+                let loaded = Loaded::read(path.clone(), &old).map_err(|error| error.to_string());
+                Some(Done::Conflict(Resolved::Reloaded { path, loaded }))
             });
         }
         ConflictAction::Dismiss => {}
     }
+}
+
+/// The history state of the tab on `path`.
+fn live_version(app: &App, path: &Path) -> Option<u64> {
+    let entry = app
+        .documents
+        .entries
+        .iter()
+        .find(|e| e.path.as_deref() == Some(path))?;
+    Some(if app.documents.active_tab == Some(entry.tab_id) {
+        app.history.state_id()
+    } else {
+        entry.history.state_id()
+    })
+}
+
+/// Records that the disk now holds `buffer`, the tab's text at history
+/// state `version`. The tab reads as saved only if it is still at that
+/// state: text typed while the write ran stays modified.
+fn note_overwritten(app: &mut App, path: &Path, buffer: Buffer, version: u64) {
+    let active = app.documents.active_tab;
+    let Some(entry) = app
+        .documents
+        .entries
+        .iter_mut()
+        .find(|e| e.path.as_deref() == Some(path))
+    else {
+        return;
+    };
+    entry.saved_version = version;
+    entry.disk_snapshot = Some(buffer.clone());
+    let current = if active == Some(entry.tab_id) {
+        app.documents.saved_version = version;
+        app.documents.disk_snapshot = Some(buffer);
+        app.history.state_id()
+    } else {
+        entry.history.state_id()
+    };
+    if current == version {
+        app.ui.session.mark_clean(path);
+    }
+    app.update_document_title();
 }
 
 /// Builds the diff tab's text. No disk access.
@@ -150,40 +195,35 @@ pub(crate) fn apply_resolved(app: &mut App, resolved: Resolved) {
                 app.switch_to_tab(tab_id);
             }
         }
-        Resolved::Overwritten { path, written } => {
-            if let Some((buffer, version)) = written
-                && let Some(entry) = app
-                    .documents
-                    .entries
-                    .iter_mut()
-                    .find(|e| e.path.as_ref() == Some(&path))
-            {
-                entry.saved_version = version;
-                entry.disk_snapshot = Some(buffer);
-                if app.documents.active_tab == Some(entry.tab_id) {
-                    app.documents.saved_version = version;
+        Resolved::Overwritten { path, written } => match written {
+            Ok((buffer, version)) => note_overwritten(app, &path, buffer, version),
+            Err(error) => {
+                app.documents.message =
+                    Some(format!("Cannot overwrite {}: {error}", path.display()));
+            }
+        },
+        Resolved::Reloaded { path, loaded } => match loaded {
+            Ok(loaded) if loaded.still_matches(app) => {
+                reload_tabs(app, &loaded);
+                app.ui.session.mark_clean(&path);
+                app.update_document_title();
+            }
+            Ok(_) if live_buffer(app, &path).is_some() => {
+                // Typed into while the file was being read: replacing the
+                // text now would drop those keystrokes. Ask again.
+                app.documents.message = Some(format!(
+                    "{} changed while it was reloading; choose again",
+                    path.display()
+                ));
+                if app.ui.dialogs.conflict_prompt.is_none() {
+                    app.ui.dialogs.conflict_prompt = Some(ConflictPrompt::new(path));
                 }
             }
-            app.ui.session.mark_clean(&path);
-        }
-        Resolved::Reloaded { path, buffer } => {
-            if let Some(new_buf) = buffer
-                && let Some(entry) = app
-                    .documents
-                    .entries
-                    .iter_mut()
-                    .find(|e| e.path.as_ref() == Some(&path))
-            {
-                entry.buffer = new_buf.clone();
-                entry.saved_version = entry.history.state_id();
-                entry.disk_snapshot = Some(new_buf.clone());
-                if app.documents.active_tab == Some(entry.tab_id) {
-                    app.buffer = new_buf;
-                    app.update_syntax_on_open();
-                }
+            Ok(_) => {}
+            Err(error) => {
+                app.documents.message = Some(format!("Cannot reload {}: {error}", path.display()));
             }
-            app.ui.session.mark_clean(&path);
-        }
+        },
     }
     app.scheduler.invalidate_all();
 }

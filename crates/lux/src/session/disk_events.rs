@@ -26,13 +26,52 @@ use crate::conflict::ConflictPrompt;
 /// until it is saved.
 const NOT_ON_DISK: u64 = u64::MAX;
 
-struct Loaded {
+/// A file read back from disk, ready to replace a tab's text.
+pub(crate) struct Loaded {
     path: PathBuf,
     buffer: Buffer,
     /// Revision of the text the reload replaces, and the edits from that
     /// text to the new one, worked out on the reader thread.
     base: u64,
     edits: Vec<Edit>,
+}
+
+impl Loaded {
+    /// Reads `path` and works out the edits from `old` to it. Disk I/O
+    /// and a diff: worker threads only.
+    pub(crate) fn read(path: PathBuf, old: &Buffer) -> std::io::Result<Self> {
+        let buffer = Buffer::open(&path)?;
+        let edits = if old.is_huge_file_mode() {
+            Vec::new()
+        } else {
+            replace_edits(old, &buffer)
+        };
+        Ok(Self {
+            path,
+            buffer,
+            base: old.revision(),
+            edits,
+        })
+    }
+
+    /// Whether the tab's text is still the text this read was diffed
+    /// against, so applying it replaces exactly what the user saw.
+    pub(crate) fn still_matches(&self, app: &App) -> bool {
+        live_buffer(app, &self.path).is_some_and(|buffer| buffer.revision() == self.base)
+    }
+}
+
+/// The text of the tab on `path`: the editor's live buffer when it is the
+/// active tab, otherwise its entry's copy.
+pub(crate) fn live_buffer<'a>(app: &'a App, path: &Path) -> Option<&'a Buffer> {
+    if is_active(app, path) {
+        return Some(&app.buffer);
+    }
+    app.documents
+        .entries
+        .iter()
+        .find(|entry| entry.path.as_deref() == Some(path))
+        .map(|entry| &entry.buffer)
 }
 
 pub(crate) struct Reloads {
@@ -142,18 +181,8 @@ fn start_reload(app: &mut App, path: PathBuf) {
     }
     // A rope clone shares structure, so handing the current text to the
     // reader is cheap; the diff against it runs there, not here.
-    let old = if is_active(app, &path) {
-        app.buffer.clone()
-    } else {
-        match app
-            .documents
-            .entries
-            .iter()
-            .find(|entry| entry.path.as_deref() == Some(path.as_path()))
-        {
-            Some(entry) => entry.buffer.clone(),
-            None => return,
-        }
+    let Some(old) = live_buffer(app, &path).cloned() else {
+        return;
     };
     let reloads = &mut app.ui.session.reloads;
     let tx = reloads.tx.clone();
@@ -167,19 +196,8 @@ fn start_reload(app: &mut App, path: PathBuf) {
             if let Some(hold) = hold {
                 let _ = hold.recv();
             }
-            let Ok(buffer) = Buffer::open(&path) else {
+            let Ok(loaded) = Loaded::read(path, &old) else {
                 return;
-            };
-            let edits = if old.is_huge_file_mode() {
-                Vec::new()
-            } else {
-                replace_edits(&old, &buffer)
-            };
-            let loaded = Loaded {
-                path,
-                buffer,
-                base: old.revision(),
-                edits,
             };
             if tx.send(loaded).is_ok()
                 && let Some(wake) = wake
@@ -198,41 +216,48 @@ fn apply_reloads(app: &mut App) -> bool {
         if !is_clean(app, path) {
             continue;
         }
-        let active = is_active(app, path);
-        if active {
-            record_reload(&mut app.buffer, &mut app.history, &mut app.cursors, &loaded);
-            app.reset_goal_columns();
-            app.documents.saved_version = app.history.state_id();
-            app.documents.disk_snapshot = Some(loaded.buffer.clone());
-        }
-        let active_tab = app.documents.active_tab.filter(|_| active);
-        for entry in app.documents.entries.iter_mut() {
-            if entry.path.as_deref() != Some(path) {
-                continue;
-            }
-            if Some(entry.tab_id) == active_tab {
-                // The editor holds the live copy; keep the entry in step.
-                entry.buffer = app.buffer.clone();
-                entry.history = app.history.clone();
-                entry.cursors = app.cursors.clone();
-            } else {
-                record_reload(
-                    &mut entry.buffer,
-                    &mut entry.history,
-                    &mut entry.cursors,
-                    &loaded,
-                );
-            }
-            entry.saved_version = entry.history.state_id();
-            entry.disk_snapshot = Some(loaded.buffer.clone());
-        }
-        if active {
-            app.update_syntax_on_open();
-        }
-        crate::goto::preview::note_reload(app, path);
+        reload_tabs(app, &loaded);
         changed = true;
     }
     changed
+}
+
+/// Replaces the text of every tab on the loaded path, as one undo step on
+/// each, and marks them saved at the new text. Memory only.
+pub(crate) fn reload_tabs(app: &mut App, loaded: &Loaded) {
+    let path = loaded.path.as_path();
+    let active = is_active(app, path);
+    if active {
+        record_reload(&mut app.buffer, &mut app.history, &mut app.cursors, loaded);
+        app.reset_goal_columns();
+        app.documents.saved_version = app.history.state_id();
+        app.documents.disk_snapshot = Some(loaded.buffer.clone());
+    }
+    let active_tab = app.documents.active_tab.filter(|_| active);
+    for entry in app.documents.entries.iter_mut() {
+        if entry.path.as_deref() != Some(path) {
+            continue;
+        }
+        if Some(entry.tab_id) == active_tab {
+            // The editor holds the live copy; keep the entry in step.
+            entry.buffer = app.buffer.clone();
+            entry.history = app.history.clone();
+            entry.cursors = app.cursors.clone();
+        } else {
+            record_reload(
+                &mut entry.buffer,
+                &mut entry.history,
+                &mut entry.cursors,
+                loaded,
+            );
+        }
+        entry.saved_version = entry.history.state_id();
+        entry.disk_snapshot = Some(loaded.buffer.clone());
+    }
+    if active {
+        app.update_syntax_on_open();
+    }
+    crate::goto::preview::note_reload(app, path);
 }
 
 /// Swaps in the reloaded text and records the swap as one undo step, so
