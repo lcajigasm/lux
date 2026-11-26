@@ -70,6 +70,23 @@ The package was already in the workspace lockfile; core isolation is retained.
 | Config (settings importers, JetBrains XML) | `quick-xml` | 0.41.0 | Picked landing Phase 5's "Importadores de ajustes externos" deliverable (`lux-config::import::jetbrains`). Not cited in the master prompt. JetBrains' code-style settings (e.g. `.idea/codeStyles/Project.xml`'s `<indentOptions>` block) are XML, the one source format none of this crate's existing dependencies (`jsonc-parser`, `ec4rs`, `gix-attributes`) parse — a real streaming XML reader rather than hand-rolling attribute/quoting/escaping parsing for even this narrow a slice of XML. MIT, already in `deny.toml`'s allow list. Sublime's and VS Code's importers (`import::sublime`, `import::vscode`) needed no new dependency: both source formats are JSON-with-comments, reusing `layering::jsonc::parse`. |
 | File tree delete (`lux-ui`) | `trash` | 5.2.6 | Wired for real in Phase 4 (virtualized file tree explorer's delete-to-system-trash operation). Not cited in the master prompt. The only actively-maintained cross-platform (Windows/macOS/Linux, freedesktop trash spec) "move to trash" crate with real adoption — no live alternative to weigh it against, so no dedicated ADR, just this entry. Pulls in `objc2`/`objc2-foundation` (Cocoa's `NSWorkspace` trash API) on macOS, already permissive-licensed; `cargo deny check` needed no new `deny.toml` entries. |
 
+## Bundled assets (not crates)
+
+`cargo deny` checks crates only. These files ship inside the packages and
+are tracked here instead.
+
+| Asset | Version | License | Where | Note |
+|---|---|---|---|---|
+| JetBrains Mono Regular | 2.304 | SIL OFL 1.1 | `fonts/JetBrainsMono/` | ADR 0020. Ligatures via `calt`. |
+| Fira Code Regular | 6.2 (6.002) | SIL OFL 1.1 | `fonts/FiraCode/` | ADR 0020. Ligatures via `calt`. |
+| IBM Plex Mono Regular | 2.5.0 (2.005) | SIL OFL 1.1, RFN "Plex" | `fonts/IBMPlexMono/` | ADR 0020. |
+| Source Code Pro Regular | 2.042 | SIL OFL 1.1, RFN "Source" | `fonts/SourceCodePro/` | ADR 0020. |
+| Cascadia Code Regular | 2407.24 | SIL OFL 1.1, RFN "Cascadia Code" | `fonts/CascadiaCode/` | ADR 0020. Ligatures via `calt`. |
+| Color schemes | — | MIT | `themes/` | `themes/NOTICE.md`, `docs/THEMES.md`. |
+
+Sources, archive checksums, and copyright lines: `fonts/NOTICE.md`.
+Shipped-file checksums: `fonts/SHA256SUMS`.
+
 ## Discarded, re-checked for a change of mind
 
 | Crate | Verdict at 2026-07-25 | Re-verified 2026-07-26 |

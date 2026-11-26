@@ -40,9 +40,10 @@ fn settings_importers_and_panel_options() {
 
     {
         let panel = state.panel.as_ref().unwrap();
-        assert_eq!(panel.items.len(), 15);
-        assert_eq!(panel.items[0].key, "editor.fontSize");
-        assert_eq!(panel.items[1].key, "editor.lineHeight");
+        assert_eq!(panel.items.len(), 16);
+        assert_eq!(panel.items[0].key, "editor.fontFamily");
+        assert_eq!(panel.items[1].key, "editor.fontSize");
+        assert_eq!(panel.items[2].key, "editor.lineHeight");
         assert_eq!(
             panel.categories(),
             vec!["All", "Editor", "Appearance", "Keys", "Files", "Git", "CLI"]
@@ -184,4 +185,29 @@ fn the_default_line_height_is_a_multiplier_not_a_pixel_height() {
     assert!((line - 36.4).abs() < 0.01, "{line}");
     let (_size, line) = physical_text_metrics(16.0, 22.0, 1.0);
     assert_eq!(line, 22.0);
+}
+
+#[test]
+fn the_font_family_row_lists_the_system_face_and_every_bundled_family() {
+    let items = catalog::page_items(&serde_json::json!({"editor.fontFamily": "fira code"}));
+    let row = items
+        .iter()
+        .find(|item| item.key == "editor.fontFamily")
+        .expect("Font Family row");
+    let SettingKind::Enum { value, options } = &row.kind else {
+        panic!("Font Family is a menu");
+    };
+    assert_eq!(options[0], "system");
+    // The Windows MSI does not install the bundled fonts, so Windows does
+    // not offer them.
+    let offered = !cfg!(windows);
+    assert_eq!(value, if offered { "Fira Code" } else { "system" });
+    for font in crate::font::bundled::BUNDLED_FONTS {
+        assert_eq!(options.contains(&font.family), offered, "{}", font.family);
+    }
+    assert_eq!(row.description, catalog::FONT_PREVIEW);
+
+    let items = catalog::page_items(&serde_json::json!({}));
+    let row = items.iter().find(|i| i.key == "editor.fontFamily").unwrap();
+    assert!(matches!(&row.kind, SettingKind::Enum { value, .. } if value == "system"));
 }

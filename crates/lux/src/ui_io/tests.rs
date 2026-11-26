@@ -424,3 +424,50 @@ fn coverage_fonts_and_recovery_scan_load_after_the_call_returns() {
     ctx.settle(&mut app, 4);
     assert_eq!(app.ui.dialogs.jobs.in_flight(), 0);
 }
+
+#[test]
+fn a_new_editor_font_is_read_on_a_worker_and_swapped_in_after() {
+    use lux_config::layering::{Layer, LayeredConfig};
+
+    let ctx = Context::new(Dialogs::default());
+    let mut app = app();
+    app.ui.dialogs.jobs.set_wake(ctx.background_waker());
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("settings.json");
+    app.ui.settings = crate::settings::SettingsState::new(path.clone());
+    let startup = app.editor_view.family().to_string();
+    let startup_key = app.font.key.value();
+    let set_family = |app: &mut App, json: &str| {
+        std::fs::write(&path, json).unwrap();
+        LayeredConfig::reload_layer_shared(&app.ui.settings.config, Layer::User).unwrap();
+        app.apply_user_settings();
+    };
+
+    let hold = app.ui.dialogs.jobs.hold();
+    set_family(&mut app, r#"{"editor.fontFamily": "JetBrains Mono"}"#);
+    // The worker is parked before it reads anything; the UI thread returned.
+    assert_eq!(app.editor_view.family(), startup);
+    assert_eq!(app.font.key.value(), startup_key);
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 1);
+    // Applying again while the read runs does not start a second one.
+    app.apply_user_settings();
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 1);
+
+    hold.release();
+    ctx.settle(&mut app, 1);
+    assert_eq!(app.editor_view.family(), "JetBrains Mono");
+    assert_eq!(app.atlas_state.fonts.applied(), "JetBrains Mono");
+    assert_ne!(app.font.key.value(), startup_key);
+    assert_ne!(app.font.charmap().map('a'), 0);
+
+    // Back to the startup face: already registered, no worker.
+    set_family(&mut app, r#"{"editor.fontFamily": "system"}"#);
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 0);
+    assert_eq!(app.editor_view.family(), startup);
+    assert_eq!(app.font.key.value(), startup_key);
+
+    // An unknown family keeps the system face and reads nothing.
+    set_family(&mut app, r#"{"editor.fontFamily": "No Such Mono"}"#);
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 0);
+    assert_eq!(app.editor_view.family(), startup);
+}

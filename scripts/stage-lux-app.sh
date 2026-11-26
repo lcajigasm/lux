@@ -45,5 +45,6 @@ cp "$bin" "$app/Contents/SharedSupport/bin/lux"
 cp "$root/packaging/macos/Info.plist" "$app/Contents/Info.plist"
 cp "$root/packaging/macos/lux.icns" "$app/Contents/Resources/lux.icns"
 cp "$root/packaging/macos/lux-classic.icns" "$app/Contents/Resources/lux-classic.icns"
+"$root/scripts/install-fonts.sh" "$app/Contents/Resources/fonts" >/dev/null
 chmod +x "$app/Contents/MacOS/lux" "$app/Contents/SharedSupport/bin/lux"
 echo "$app"

@@ -4,7 +4,13 @@ use serde_json::Value;
 
 use super::panel::{SettingItem, SettingKind};
 
+/// The Font Family row's description. The settings page draws it in the
+/// editor face with the editor's ligature setting, so it is a live preview.
+pub(crate) const FONT_PREVIEW: &str = "fn eq(a: u8) -> bool { a != 0 } // => 0O 1lI";
+
 pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
+    let font_family =
+        crate::font::bundled::canonical(resolved["editor.fontFamily"].as_str()).unwrap_or("system");
     let font_size = resolved["editor.fontSize"].as_f64().unwrap_or(13.0);
     let line_height = resolved["editor.lineHeight"].as_f64().unwrap_or(1.4);
     let font_ligatures = resolved["editor.fontLigatures"].as_bool().unwrap_or(true);
@@ -37,6 +43,14 @@ pub(crate) fn page_items(resolved: &Value) -> Vec<SettingItem> {
     let icon = crate::app_icon::canonical(resolved["workbench.icon"].as_str()).to_string();
 
     vec![
+        enumeration(
+            "Editor",
+            "editor.fontFamily",
+            "Font Family",
+            FONT_PREVIEW,
+            font_family.to_string(),
+            crate::font::bundled::FAMILY_OPTIONS,
+        ),
         number(
             "Editor",
             "editor.fontSize",

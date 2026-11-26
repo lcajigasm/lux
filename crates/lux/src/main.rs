@@ -84,13 +84,15 @@ fn main() {
         println!("lux {}", env!("CARGO_PKG_VERSION"));
         return;
     }
-    let (path, font_bytes) = font::load_system_monospace_font().expect(
+    let family = settings::startup_font_family();
+    let (font_name, path, font_bytes) = font::editor::startup_face(family.as_deref()).expect(
         "no known system monospace font was found — see \
          crates/lux/src/font.rs's candidate list",
     );
-    println!("Lux: using system font {path}");
+    println!("Lux: using font {path}");
     probe::phase("font");
     let mut app = app::App::new(font_bytes);
+    app.atlas_state.fonts.started_with(font_name);
     probe::phase("app");
     let mut open_palette = false;
     let mut open_goto = false;

@@ -47,6 +47,10 @@ for license in "$root"/LICENSE*; do
   install -m 0644 "$license" "$stage/usr/share/doc/lux/$(basename "$license")"
 done
 
+# Bundled fonts and their OFL licenses (ADR 0020). The binary looks in
+# ../share/lux/fonts relative to /usr/bin/lux.
+"$root/scripts/install-fonts.sh" "$stage/usr/share/lux/fonts" >/dev/null
+
 cat > "$stage/DEBIAN/control" << EOF
 Package: lux
 Version: ${version}

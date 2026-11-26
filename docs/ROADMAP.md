@@ -71,8 +71,10 @@ is 1×, so Sublime is not in the scale-2 file. Block 0 is closed.
    platform wakeup the caret blink already uses. Reduced motion settles
    on the first frame. Fuzzy match highlighting stays.
 
-No font is bundled. The macOS loader tries `SFNSMono.ttf`, then the Xcode
-SF Mono files, then `Menlo.ttc` face 0. Editor ASCII in the capture is a
+Five OFL developer fonts are bundled and selectable with
+`editor.fontFamily` (ADR 0020); the default is still the system face. The
+macOS loader tries `SFNSMono.ttf`, then the Xcode SF Mono files, then
+`Menlo.ttc` face 0. Editor ASCII in the capture is a
 real monospace face. Ligatures default on for the buffer and off for every
 chrome string.
 

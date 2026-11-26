@@ -20,7 +20,6 @@ use lux_render::{GlyphAtlas, RepaintScheduler};
 use lux_ui::Chrome;
 use lux_ui::editor_view::{EditorView, EditorViewMetrics, Viewport};
 use swash::FontRef;
-use swash::scale::ScaleContext;
 
 pub(crate) const FONT_SIZE: f32 = 16.0;
 pub(crate) const LINE_HEIGHT: f32 = FONT_SIZE * 1.4;
@@ -134,11 +133,7 @@ impl App {
             scheduler: RepaintScheduler::new(),
             ime: ImeComposition::new(),
             start: Instant::now(),
-            atlas_state: AtlasState {
-                atlas: GlyphAtlas::new(ATLAS_SIDE),
-                dirty: true,
-                scale_cx: ScaleContext::new(),
-            },
+            atlas_state: AtlasState::new(GlyphAtlas::new(ATLAS_SIDE)),
             gpu_window: None,
             chrome: Chrome::default(),
             keymap: lux_config::keymap::presets::sublime(),

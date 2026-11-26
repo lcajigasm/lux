@@ -61,6 +61,17 @@ pub(crate) fn default_settings_path() -> PathBuf {
     default_settings_dir().join("settings.json")
 }
 
+/// `editor.fontFamily` from the user settings file, read once before the
+/// event loop so the first frame already uses that face (ADR 0020).
+pub(crate) fn startup_font_family() -> Option<String> {
+    let text = fs::read_to_string(default_settings_path()).ok()?;
+    let value = lux_config::layering::jsonc::parse(&text).ok()?;
+    value
+        .get(lux_config::font_settings::FONT_FAMILY_KEY)?
+        .as_str()
+        .map(str::to_string)
+}
+
 pub(crate) struct SettingsState {
     pub(crate) config: Arc<Mutex<LayeredConfig>>,
     pub(crate) watcher: Option<ConfigWatcher>,
@@ -139,6 +150,7 @@ impl SettingsState {
         let line_height = resolved["editor.lineHeight"].as_f64().unwrap_or(1.4);
         let (size, line) = physical_text_metrics(font_size, line_height, app.scale_factor);
         app.editor_view.set_text_dimensions(size, line);
+        app.apply_editor_font(resolved["editor.fontFamily"].as_str());
         if let Some(lig) = resolved["editor.fontLigatures"].as_bool() {
             app.editor_view.metrics_mut().ligatures = lig;
         }

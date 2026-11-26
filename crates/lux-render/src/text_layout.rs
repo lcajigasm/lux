@@ -107,8 +107,7 @@ impl LineLayout {
                 if font.data.id() != font_id {
                     continue;
                 }
-                let bytes = leaked_font_bytes(&font.data);
-                return swash::FontRef::from_index(bytes, font.index as usize);
+                return cached_face(&font.data, font.index);
             }
         }
         None
@@ -272,6 +271,24 @@ impl Default for TextLayoutContext {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// One [`swash::FontRef`] per (blob, face index), made once. swash mints a
+/// new cache key every time a `FontRef` is built, and the glyph atlas keys
+/// on it, so building a fresh one per line would miss the atlas on every
+/// frame. Matters most after the editor family changes: the new face is
+/// only reachable through this path.
+fn cached_face(blob: &Blob<u8>, index: u32) -> Option<swash::FontRef<'static>> {
+    use std::sync::Mutex;
+    static FACES: Mutex<Vec<(u64, u32, swash::FontRef<'static>)>> = Mutex::new(Vec::new());
+    let id = blob.id();
+    let mut faces = FACES.lock().expect("font face cache");
+    if let Some((_, _, face)) = faces.iter().find(|(i, x, _)| *i == id && *x == index) {
+        return Some(*face);
+    }
+    let face = swash::FontRef::from_index(leaked_font_bytes(blob), index as usize)?;
+    faces.push((id, index, face));
+    Some(face)
 }
 
 /// Keeps one process-lifetime copy of a shaped font's bytes so
@@ -533,6 +550,22 @@ mod tests {
         let mapped = face.charmap().map('中');
         assert_ne!(mapped, 0, "fallback face must contain U+4E2D");
         assert!(cluster.glyph_id.unwrap() <= u32::from(u16::MAX));
+    }
+
+    #[test]
+    fn the_same_font_keeps_one_atlas_key_across_lines() {
+        let (mut cx, family) = context_with_ahem();
+        let style = LineStyle {
+            family: &family,
+            font_size: 16.0,
+            ligatures: false,
+        };
+        let key = |cx: &mut TextLayoutContext, text: &str| {
+            let layout = cx.layout_line(&style, text, &[]);
+            let id = layout.clusters()[0].font_id;
+            layout.face(id).expect("primary face").key.value()
+        };
+        assert_eq!(key(&mut cx, "abc"), key(&mut cx, "xyz"));
     }
 
     #[test]
