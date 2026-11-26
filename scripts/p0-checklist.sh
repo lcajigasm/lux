@@ -34,7 +34,7 @@ second="$DRIVE_WORK/other.rs"
 printf 'second\n' > "$second"
 drive_launch "$file" "$second"
 sleep 0.6
-font="$(grep 'Lux: using system font' "$DRIVE_LOG" | head -1 || true)"
+font="$(grep -E 'Lux: using (system )?font' "$DRIVE_LOG" | head -1 || true)"
 drive_dump
 tabs="$(drive_field tabs)"
 if [[ "$tabs" -ge 2 ]]; then
