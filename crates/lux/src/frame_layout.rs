@@ -93,11 +93,32 @@ impl App {
     }
 
     /// Sizes the editor viewport for a `width` × `height` frame.
+    ///
+    /// When a panel opens from any path (a build start opens the dock
+    /// without a reveal) the editor gets shorter; a caret that was on screen
+    /// stays on screen. Frames that keep the height change nothing.
     pub(crate) fn fit_viewport(&mut self, width: f32, height: f32) -> FrameLayout {
         let layout = compute(&self.chrome_sizes(width, height));
+        let old_height = self.viewport.height;
         self.viewport.width = layout.editor[2];
         self.viewport.height = layout.editor[3];
+        if layout.editor[3] < old_height {
+            self.keep_caret_on_screen(old_height);
+        }
         layout
+    }
+
+    /// Scrolls the least that keeps the primary caret's line inside the
+    /// viewport, if it was inside a viewport `old_height` tall.
+    fn keep_caret_on_screen(&mut self, old_height: f32) {
+        let line_height = self.editor_view.metrics().line_height.max(1.0);
+        let y = self.cursors.primary().head.line as f32 * line_height;
+        let top = self.viewport.scroll_y;
+        let was_visible = y >= top && y + line_height <= top + old_height;
+        let bottom = top + self.viewport.height;
+        if was_visible && y + line_height > bottom {
+            self.viewport.scroll_y = (y + line_height - self.viewport.height).max(0.0);
+        }
     }
 }
 

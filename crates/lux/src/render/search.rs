@@ -224,7 +224,7 @@ pub(crate) fn render_search_bar(
         let ink = label_ink(theme, fill);
         quads.push(QuadInstance::rounded(rect, fill, 3.0 * scale_factor));
         if label.is_empty() {
-            let size = 14.0 * scale_factor;
+            let size = (14.0 * scale_factor).min(rect[2] - 4.0 * scale_factor);
             let (x, y) = (
                 rect[0] + (rect[2] - size) * 0.5,
                 rect[1] + (rect[3] - size) * 0.5,
@@ -310,6 +310,9 @@ fn paint_field(
     scale: f32,
 ) {
     let [x, y, w, h] = rect;
+    if w <= 0.0 {
+        return;
+    }
     quads.push(QuadInstance::solid(rect, fill));
     let border = if focused {
         color(theme.accent)
@@ -358,6 +361,9 @@ fn paint_field(
 
 /// A × drawn as two diagonals of small squares, centered in `rect`.
 fn push_cross(quads: &mut Vec<QuadInstance>, rect: [f32; 4], size: f32, dot: f32, ink: [f32; 4]) {
+    if rect[2] <= 0.0 {
+        return;
+    }
     let (cx, cy) = (rect[0] + rect[2] * 0.5, rect[1] + rect[3] * 0.5);
     let half = size * 0.5;
     let steps = ((size / (dot * 0.5)).ceil() as usize).max(2);

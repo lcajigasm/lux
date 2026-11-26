@@ -17,6 +17,7 @@ mod modals;
 pub(crate) mod overlay_list;
 pub(crate) mod paint;
 mod palette;
+mod pane;
 pub(crate) mod panel;
 mod plugin;
 mod project_picker;
@@ -173,134 +174,38 @@ impl App {
                 &mut gutter_glyphs,
             );
         } else {
-            quad_instances.push(QuadInstance::solid(
-                [sidebar_width, editor_top, viewport.width, viewport.height],
-                color(chrome.theme.background),
-            ));
-
-            let html_preview = documents.active_entry().is_some_and(|entry| {
-                entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Html)
-            });
-            let show_preview = documents.active_entry().is_some_and(|entry| {
-                entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Markdown)
-            });
-            let content_width = (viewport.width - sidebar_width).max(1.0);
-            let pane_cap = (content_width * 0.62).max(1.0);
-            let preview_width = if html_preview || show_preview {
-                (content_width * 0.46).clamp(180.0_f32.min(pane_cap), pane_cap)
-            } else {
-                0.0
-            };
-            let mut editor_viewport = *viewport;
-            if html_preview || show_preview {
-                editor_viewport.width = (content_width - preview_width).max(1.0);
-            }
-            {
-                for cursor in &frame.cursors {
-                    if cursor.primary {
-                        let cur_y = editor_top + cursor.y - viewport.scroll_y;
-                        if cur_y >= editor_top && cur_y < editor_top + viewport.height {
-                            let h_x = if is_df { 0.0 } else { text_left };
-                            let h_w = if is_df {
-                                window_width
-                            } else {
-                                (sidebar_width + editor_viewport.width - text_left).max(0.0)
-                            };
-                            quad_instances.push(QuadInstance::solid(
-                                [h_x, cur_y, h_w, line_height],
-                                color(chrome.theme.chrome.line_highlight),
-                            ));
-                        }
-                    }
-                }
-                text::render_text_lines(
-                    &frame,
-                    buffer,
-                    syntax.as_ref(),
-                    &editor_viewport,
-                    editor_top,
-                    line_height,
-                    sidebar_width,
-                    text_left,
-                    stroke,
-                    &chrome.theme,
-                    atlas_state,
-                    font,
-                    font_size,
-                    &mut quad_instances,
-                    &mut glyph_instances,
-                );
-                if let Some(search_state) = &ui.search_bar {
-                    let origin = search::TextOrigin {
-                        viewport: &editor_viewport,
-                        editor_top,
-                        sidebar_width,
-                        text_left,
-                        line_height,
-                    };
-                    search::render_search_matches(
-                        search_state,
-                        buffer,
-                        &frame,
-                        &origin,
-                        stroke,
-                        &chrome.theme,
-                        &mut quad_instances,
-                    );
-                }
-                let line_pad_y = (line_height - font_size) * 0.5;
-                let caret_h = font_size + 2.0 * stroke;
-                cursor_screen = text::render_carets(
-                    &frame,
-                    &editor_viewport,
-                    editor_top,
-                    text_left,
-                    sidebar_width,
-                    line_pad_y,
-                    stroke,
-                    caret_h,
-                    color(chrome.theme.accent),
-                    &mut quad_instances,
-                );
-                if gutter_total_width > 0.0 {
-                    text::render_gutter(
-                        &frame,
-                        Some(bookmarks),
-                        &editor_viewport,
-                        editor_top,
-                        line_height,
-                        sidebar_width,
-                        gutter_total_width,
-                        stroke,
-                        &chrome.theme,
-                        atlas_state,
-                        font,
-                        font_size,
-                        &mut gutter_quads,
-                        &mut gutter_glyphs,
-                    );
-                }
-            }
-            html_view::paint_open(
-                show_preview,
-                html_preview,
+            let pane = pane::SinglePane {
+                frame: &frame,
                 buffer,
-                editor_view,
-                atlas_state,
+                syntax: syntax.as_ref(),
+                viewport,
+                bookmarks,
+                documents,
+                search: ui.search_bar.as_ref(),
+                syntax_theme: crate::color_scheme::syntax_theme(
+                    &ui.settings.schemes,
+                    chrome.theme.name,
+                ),
+                theme: &chrome.theme,
                 font,
                 font_size,
                 line_height,
-                sidebar_width + editor_viewport.width,
-                preview_width,
-                editor_top,
-                viewport.height,
-                16.0 * *scale_factor,
                 stroke,
-                &chrome.theme,
-                crate::color_scheme::syntax_theme(&ui.settings.schemes, chrome.theme.name),
-                &mut quad_instances,
-                &mut glyph_instances,
-            );
+                scale_factor: *scale_factor,
+                editor_top,
+                sidebar_width,
+                text_left,
+                gutter_total_width,
+                window_width,
+                distraction_free: is_df,
+            };
+            let mut out = pane::PaneOutput {
+                quads: &mut quad_instances,
+                glyphs: &mut glyph_instances,
+                gutter_quads: &mut gutter_quads,
+                gutter_glyphs: &mut gutter_glyphs,
+            };
+            cursor_screen = pane.paint(editor_view, atlas_state, &mut out);
         }
 
         if tab_bar_height > 0.0 {

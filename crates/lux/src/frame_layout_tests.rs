@@ -94,3 +94,49 @@ fn the_snapshot_frame_has_the_presented_layout_at_its_scale() {
     assert_eq!(app.viewport.width, presented_viewport.width * 2.0);
     assert_eq!(app.viewport.height, presented_viewport.height * 2.0);
 }
+
+fn caret_on_line(app: &mut App, line: usize) {
+    let text = "line\n".repeat(200);
+    app.buffer = lux_core::buffer::Buffer::from_bytes(text.as_bytes()).expect("buffer");
+    // Every line is "line\n": 5 chars.
+    let at = lux_core::position::Position::from_char(&app.buffer, line * 5);
+    let caret = lux_core::selection::Selection::cursor(at);
+    app.cursors = lux_core::multicursor::MultiCursor::new(caret);
+}
+
+fn caret_visible(app: &App) -> bool {
+    let lh = app.editor_view.metrics().line_height;
+    let y = app.cursors.primary().head.line as f32 * lh;
+    y >= app.viewport.scroll_y && y + lh <= app.viewport.scroll_y + app.viewport.height
+}
+
+#[test]
+fn a_dock_opened_without_a_reveal_keeps_the_caret_on_screen() {
+    let mut app = app();
+    app.fit_viewport(1000.0, 700.0);
+    let lh = app.editor_view.metrics().line_height;
+    // The caret on the last fully visible line of the editor.
+    let line = (app.viewport.height / lh) as usize - 1;
+    caret_on_line(&mut app, line);
+    assert!(caret_visible(&app));
+    // A build start opens the dock; the next frame sizes the viewport.
+    app.ui.term.visible = true;
+    app.fit_viewport(1000.0, 700.0);
+    assert!(caret_visible(&app), "the caret is not under the dock");
+    let scrolled = app.viewport.scroll_y;
+    assert!(scrolled > 0.0);
+    // Later frames with the same layout do not scroll again.
+    app.fit_viewport(1000.0, 700.0);
+    assert_eq!(app.viewport.scroll_y, scrolled);
+}
+
+#[test]
+fn a_shrink_does_not_pull_back_a_caret_scrolled_out_of_view() {
+    let mut app = app();
+    app.fit_viewport(1000.0, 700.0);
+    caret_on_line(&mut app, 150);
+    assert!(!caret_visible(&app));
+    app.ui.term.visible = true;
+    app.fit_viewport(1000.0, 700.0);
+    assert_eq!(app.viewport.scroll_y, 0.0, "the reading position stays");
+}

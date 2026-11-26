@@ -132,7 +132,8 @@ pub(crate) fn handle_search_click(app: &mut crate::app::App, mouse_x: f32, mouse
     true
 }
 
-fn rect_contains(rect: [f32; 4], x: f32, y: f32) -> bool {
+/// A hidden control has an empty rectangle and is never hit.
+pub(crate) fn rect_contains(rect: [f32; 4], x: f32, y: f32) -> bool {
     let [rx, ry, rw, rh] = rect;
-    x >= rx && x <= rx + rw && y >= ry && y <= ry + rh
+    rw > 0.0 && rh > 0.0 && x >= rx && x <= rx + rw && y >= ry && y <= ry + rh
 }
