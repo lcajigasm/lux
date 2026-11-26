@@ -335,7 +335,9 @@ pub(crate) fn set_settings(app: &mut App, pairs: Vec<(String, Value)>) {
     let path = app.ui.settings.settings_path.clone();
     let config = app.ui.settings.config.clone();
     crate::ui_io::spawn_serial(app, None, move || {
-        write_user_values(&path, pairs);
+        if let Err(error) = write_user_values(&path, &pairs) {
+            return Some(crate::ui_io::Done::SettingsFailed(error));
+        }
         // Reads outside the lock: `apply_config` on the UI thread takes
         // the same mutex and must never wait on the disk.
         let _ = LayeredConfig::reload_layer_shared(&config, Layer::User);
@@ -354,18 +356,20 @@ pub(crate) fn reload_user_settings(app: &mut App) {
 }
 
 /// Read-modify-write of the user settings file. Worker threads only.
-fn write_user_values(path: &Path, pairs: Vec<(String, Value)>) {
-    let mut map = fs::read_to_string(path)
-        .ok()
-        .and_then(|text| lux_config::layering::jsonc::parse(&text).ok())
-        .and_then(|value| value.as_object().cloned())
-        .unwrap_or_default();
-    for (key, value) in pairs {
-        map.insert(key, value);
-    }
-    if let Ok(json_str) = serde_json::to_string_pretty(&Value::Object(map)) {
-        let _ = fs::write(path, json_str);
-    }
+///
+/// Edits the JSONC text in place, so comments and formatting survive. A
+/// file that cannot be read or does not parse is left untouched and the
+/// error is returned for the user: replacing it would lose every other
+/// setting. A missing file starts from an empty object.
+pub(crate) fn write_user_values(path: &Path, pairs: &[(String, Value)]) -> Result<(), String> {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(format!("cannot read {}: {error}", path.display())),
+    };
+    let edited = lux_config::layering::jsonc::set_top_level(&text, pairs)
+        .map_err(|error| format!("{} was not changed: {error}", path.display()))?;
+    fs::write(path, edited).map_err(|error| format!("cannot write {}: {error}", path.display()))
 }
 
 impl App {

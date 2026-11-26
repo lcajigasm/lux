@@ -163,3 +163,93 @@ fn a_missing_import_source_writes_nothing() {
         "{report}"
     );
 }
+
+#[test]
+fn a_broken_settings_file_is_never_replaced() {
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = Context::new(Dialogs::default());
+    let (mut app, path) = with_settings(&dir, &ctx);
+    let broken = "{\n  \"editor.fontSize\": 15,\n  \"editor.tabWidth\": \n}";
+    std::fs::write(&path, broken).unwrap();
+
+    crate::settings::set_setting(&mut app, "editor.wordWrap", serde_json::json!(true));
+    ctx.settle(&mut app, 1);
+
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+    let message = app.documents.message.clone().unwrap();
+    assert!(message.starts_with("Settings not saved:"), "{message}");
+    assert!(message.contains("line"), "{message}");
+}
+
+#[test]
+fn a_settings_write_keeps_comments() {
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = Context::new(Dialogs::default());
+    let (mut app, path) = with_settings(&dir, &ctx);
+    std::fs::write(
+        &path,
+        "{\n  // my font\n  \"editor.fontSize\": 15,\n  \"editor.wordWrap\": false, // wrap\n}",
+    )
+    .unwrap();
+
+    crate::settings::set_setting(&mut app, "editor.wordWrap", serde_json::json!(true));
+    ctx.settle(&mut app, 1);
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(written.contains("// my font"), "{written}");
+    assert!(written.contains("// wrap"), "{written}");
+    assert!(written.contains(r#""editor.wordWrap": true"#), "{written}");
+    assert_eq!(resolved(&app, "editor.fontSize").as_f64(), Some(15.0));
+    assert_eq!(resolved(&app, "editor.wordWrap"), true);
+    assert!(app.documents.message.is_none());
+}
+
+#[test]
+fn an_import_into_a_broken_settings_file_reports_the_error() {
+    use crate::settings::importers::{Source, import_from};
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = Context::new(Dialogs::default());
+    let (mut app, path) = with_settings(&dir, &ctx);
+    std::fs::write(&path, "{ \"editor.fontSize\": ").unwrap();
+    let source = dir.path().join("vscode.json");
+    std::fs::write(&source, r#"{ "editor.fontSize": 17 }"#).unwrap();
+
+    import_from(&mut app, Some(&ctx), Source::VsCode, source);
+    ctx.settle(&mut app, 1);
+
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "{ \"editor.fontSize\": "
+    );
+    let report = app.ui.announcement.clone().unwrap();
+    assert!(
+        report.starts_with("No VS Code settings imported:"),
+        "{report}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_settings_write_is_reported() {
+    use crate::settings::importers::{Source, import_from};
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = Context::new(Dialogs::default());
+    let (mut app, path) = with_settings(&dir, &ctx);
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+    if std::fs::OpenOptions::new().write(true).open(&path).is_ok() {
+        return; // Running as a user that ignores file permissions.
+    }
+    let source = dir.path().join("vscode.json");
+    std::fs::write(&source, r#"{ "editor.fontSize": 17 }"#).unwrap();
+
+    import_from(&mut app, Some(&ctx), Source::VsCode, source);
+    ctx.settle(&mut app, 1);
+    let report = app.ui.announcement.clone().unwrap();
+    assert!(report.contains("cannot write"), "{report}");
+
+    crate::settings::set_setting(&mut app, "editor.wordWrap", serde_json::json!(true));
+    ctx.settle(&mut app, 1);
+    let message = app.documents.message.clone().unwrap();
+    assert!(message.contains("cannot write"), "{message}");
+}

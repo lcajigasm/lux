@@ -104,7 +104,11 @@ pub(crate) fn import_from(
             .map(|item| (item.lux_key.to_string(), item.value.clone()))
             .collect::<Vec<_>>();
         if !pairs.is_empty() {
-            super::write_user_values(&settings_path, pairs);
+            if let Err(error) = super::write_user_values(&settings_path, &pairs) {
+                return Some(Done::Imported(format!(
+                    "No {label} settings imported: {error}"
+                )));
+            }
             let _ = LayeredConfig::reload_layer_shared(&config, Layer::User);
         }
         Some(Done::Imported(format!(
