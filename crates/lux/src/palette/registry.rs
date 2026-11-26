@@ -61,6 +61,7 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
         ("edit.swap_line_up", "Edit: Swap Line Up", "Edit"),
         ("edit.swap_line_down", "Edit: Swap Line Down", "Edit"),
         ("edit.join_lines", "Edit: Join Lines", "Edit"),
+        ("edit.transpose", "Edit: Transpose", "Edit"),
         ("edit.indent", "Edit: Indent Line", "Edit"),
         ("edit.dedent", "Edit: Outdent Line", "Edit"),
         ("edit.reindent", "Edit: Reindent Lines", "Edit"),

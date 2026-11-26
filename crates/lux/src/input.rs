@@ -572,6 +572,10 @@ mod syntax_tests;
 #[cfg(test)]
 mod syntax_typing_tests;
 #[cfg(test)]
+mod test_ctx;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod theme_tests;
+#[cfg(test)]
+mod transpose_tests;

@@ -130,6 +130,10 @@ pub(crate) fn execute_keymap_command(
         "duplicate_line" => {
             app.apply_edit_operation(app.cursors.clone(), edit_ops::duplicate_line);
         }
+        "transpose" if !app.editing_blocked() => {
+            let op = edit_ops::transpose_op(&app.buffer, &app.cursors);
+            app.apply_edit_operation(app.cursors.clone(), op);
+        }
         "insert_line_after" => {
             app.apply_edit_operation(app.cursors.clone(), edit_ops::insert_line_after);
         }

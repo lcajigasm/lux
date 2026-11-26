@@ -300,7 +300,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-EDIT-05 — Transposición de Caracteres, Palabras y Líneas (`Ctrl+T`)
 - Prioridad: `P2 (Sublime Parity)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: —
 - Objetivo: Atajo nativo de edición rápida de Sublime Text y macOS.
 - Alcance detallado:

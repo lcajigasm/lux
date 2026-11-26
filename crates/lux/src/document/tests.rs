@@ -575,3 +575,23 @@ fn tab_strip_2_quick_selection_and_context_menu_ops() {
     assert_eq!(app.documents.tabs.tabs().len(), 1);
     assert_eq!(app.documents.tabs.tabs()[0].id, tab2_id);
 }
+
+#[test]
+fn transpose_waits_while_a_document_request_is_pending() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("other.txt");
+    std::fs::write(&path, "other").unwrap();
+    let ctx = Context::new(Some(path), None, SaveDecision::Save);
+    let mut app = app();
+    app.request_document(&ctx, Request::Open(None));
+    assert!(app.editing_blocked());
+    app.buffer = lux_core::buffer::Buffer::from_bytes(b"ab").unwrap();
+    let caret = lux_core::position::Position::from_char(&app.buffer, 1);
+    let caret = lux_core::selection::Selection::cursor(caret);
+    app.cursors = lux_core::multicursor::MultiCursor::new(caret);
+    crate::input::dispatch::execute_keymap_command(&mut app, "transpose", None, None);
+    assert_eq!(app.buffer.text(), "ab");
+    crate::palette::commands::execute_command(&mut app, &ctx, "edit.transpose");
+    assert_eq!(app.buffer.text(), "ab");
+    ctx.complete(&mut app);
+}
