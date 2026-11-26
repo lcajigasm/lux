@@ -25,6 +25,7 @@ mod goto;
 mod ime_hold;
 mod input;
 mod language_picker;
+mod latest_worker;
 mod lsp;
 mod macros;
 mod markdown_preview;

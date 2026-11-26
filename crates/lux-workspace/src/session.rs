@@ -29,9 +29,23 @@ use crate::project::Workspace;
 pub const SESSION_FILE_NAME: &str = ".lux-session";
 const RECOVERY_DIR_NAME: &str = ".lux-recovery";
 
+/// One caret: `char_offset` is the head (where the caret blinks) and
+/// `anchor` the other end of its selection. Sessions written before
+/// selections were stored have no anchor and restore as plain carets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CursorState {
     pub char_offset: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<usize>,
+}
+
+impl CursorState {
+    pub fn caret(char_offset: usize) -> Self {
+        CursorState {
+            char_offset,
+            anchor: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,6 +66,10 @@ pub struct TabState {
     pub draft_text: Option<String>,
     #[serde(default)]
     pub is_dirty: bool,
+    /// File name of the tab's encoded undo history inside the session's
+    /// history directory (see `session_store`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history: Option<String>,
 }
 
 /// Where you left off: open folders, open tabs (each with its cursors and
@@ -74,6 +92,9 @@ pub struct Session {
     /// has a single window today, so the list holds that one frame.
     #[serde(default)]
     pub windows: Vec<WindowFrame>,
+    /// Split editor layout, when more than one pane was open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<crate::session_store::LayoutState>,
 }
 
 impl Session {
@@ -84,6 +105,7 @@ impl Session {
             active_tab: None,
             clean_shutdown: false,
             windows: Vec::new(),
+            layout: None,
         }
     }
 
@@ -236,7 +258,7 @@ impl RecoveryStore {
 /// from, leaving a half-written, unparseable file behind — defeating the
 /// recovery story `Session::needs_recovery`/`RecoveryStore::recoverable`
 /// exist to serve.
-fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let dir = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -295,11 +317,12 @@ mod tests {
                 path: Some(dir.join("a.rs")),
                 title: "a.rs".to_string(),
                 pinned: true,
-                cursors: vec![CursorState { char_offset: 42 }],
+                cursors: vec![CursorState::caret(42)],
                 scroll_line: 10,
                 language: Some("Rust".to_string()),
                 draft_text: None,
                 is_dirty: false,
+                history: None,
             },
             TabState {
                 path: None,
@@ -310,6 +333,7 @@ mod tests {
                 language: None,
                 draft_text: Some("unsaved draft".to_string()),
                 is_dirty: true,
+                history: Some("h1.luxh".to_string()),
             },
         ];
         session.active_tab = Some(1);

@@ -270,6 +270,7 @@ impl App {
     }
 
     pub(crate) fn set_layout(&mut self, preset: LayoutPreset) {
+        crate::session::note_change();
         let active_tab = self
             .documents
             .active_tab

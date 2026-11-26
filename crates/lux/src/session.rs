@@ -1,29 +1,36 @@
 //! Workspace session persistence and native file watcher management (Phase 4 deliverable 3 & 7, Goal G14).
-//! Persists open tabs, active tab, cursors, scroll offsets, and folders across restarts.
+//! Persists open tabs, drafts, undo history, carets and selections, scroll,
+//! split layout and folders across restarts (hot exit, ADR 0019).
 //! Watches opened folders/files and classifies external disk changes into clean auto-reloads vs. dirty conflicts.
 
+mod debounce;
+mod disk_events;
+pub(crate) mod location;
+mod restore;
+mod snapshot;
+
+pub(crate) use disk_events::{mark_removed, poll_file_watcher};
+pub(crate) use restore::restore_session;
+
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use lux_core::buffer::Buffer;
-use lux_core::multicursor::MultiCursor;
-use lux_core::position::Position;
-use lux_core::selection::Selection;
-use lux_workspace::session::{CursorState, SESSION_FILE_NAME, Session, TabState};
+use lux_core::history::History;
 use lux_workspace::watcher::FileWatcher;
 
 use crate::app::App;
 use crate::document::DocumentEntry;
 
-mod disk_events;
-
-pub(crate) use disk_events::{mark_removed, poll_file_watcher};
-
 #[derive(Default)]
 pub(crate) struct WorkspaceSession {
     pub(crate) watcher: Option<FileWatcher>,
-    pub(crate) session_path: Option<PathBuf>,
+    /// Where session files live; `None` is the platform data directory.
+    /// The file itself is never stored: it is derived from the workspace
+    /// root at each write, so a write always lands in the session of the
+    /// project that is open (ADR 0019).
+    pub(crate) data_dir: Option<PathBuf>,
     /// Background project symbol index for `Cmd+Shift+R`.
     pub(crate) symbols: Option<lux_workspace::SymbolIndexer>,
     waker: Option<Arc<dyn Fn() + Send + Sync>>,
@@ -35,6 +42,9 @@ pub(crate) struct WorkspaceSession {
     /// Last measured frame. Written on move and resize, and used at quit
     /// if the window has already closed.
     pub(crate) frame: Option<lux_workspace::WindowFrame>,
+    /// Each open buffer's history as last handed to the session writer,
+    /// so an unchanged history is shared rather than cloned again.
+    pub(crate) histories: HashMap<u64, Arc<History>>,
 }
 
 impl WorkspaceSession {
@@ -82,6 +92,7 @@ impl WorkspaceSession {
     /// Keeps the platform loop's waker so a later `init_watcher` still wakes
     /// the editor when a file changes. No timer: the debouncer thread calls it.
     pub(crate) fn register_waker(&mut self, waker: Arc<dyn Fn() + Send + Sync>) {
+        debounce::SESSION.register_waker(Arc::clone(&waker));
         if let Some(watcher) = &mut self.watcher {
             watcher.set_waker(Arc::clone(&waker));
         }
@@ -109,442 +120,46 @@ impl WorkspaceSession {
     }
 }
 
-pub(crate) fn default_session_path(root: Option<&Path>) -> PathBuf {
-    if let Some(root) = root {
-        let dot_project = root.join(".lux-project");
-        if dot_project.exists() {
-            return dot_project;
-        }
-        root.join(SESSION_FILE_NAME)
-    } else {
-        std::env::var_os("XDG_CACHE_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
-            .unwrap_or_else(std::env::temp_dir)
-            .join("lux")
-            .join("last-session.json")
+/// Syntax tokens for a pane showing `entry` while it is not the active
+/// document.
+pub(crate) fn pane_tokens(entry: &DocumentEntry) -> Vec<lux_syntax::Token> {
+    let lang = entry
+        .language
+        .or_else(|| crate::document::detect_language(entry.path.as_deref(), &entry.buffer));
+    let Some(lang) = lang else {
+        return Vec::new();
+    };
+    let mut doc = lux_syntax::Document::new(lang);
+    doc.set_rope(entry.buffer.rope());
+    doc.highlight_rope(entry.buffer.rope())
+}
+
+/// The file to restore `root`'s session from, if it has one.
+pub(crate) fn readable_file(app: &App, root: Option<&Path>) -> Option<PathBuf> {
+    match &app.ui.session.data_dir {
+        Some(dir) => location::readable_session_file_in(dir, root),
+        None => location::readable_session_file(root),
     }
 }
 
-pub(crate) fn save_session(app: &App, clean: bool) -> std::io::Result<()> {
-    let root = app
-        .ui
-        .sidebar
-        .as_ref()
-        .and_then(|s| s.workspace_root.as_deref());
-
-    let session_path = app
-        .ui
-        .session
-        .session_path
-        .clone()
-        .unwrap_or_else(|| default_session_path(root));
-
-    let mut session = Session::new();
-    if let Some(root) = root {
-        session.folders.push(root.to_path_buf());
-    }
-
-    for (idx, entry) in app.documents.entries.iter().enumerate() {
-        let is_empty_untitled =
-            entry.path.is_none() && entry.buffer.len_chars() == 0 && !entry.is_dirty();
-        if is_empty_untitled && app.documents.entries.len() > 1 {
-            continue;
-        }
-
-        let cursors = entry
-            .cursors
-            .cursors()
-            .iter()
-            .map(|s| CursorState {
-                char_offset: s.head.char,
-            })
-            .collect();
-        let scroll_line =
-            (entry.scroll_y / app.editor_view.metrics().line_height.max(1.0)).floor() as usize;
-        let title = app
-            .documents
-            .tabs
-            .tabs()
-            .iter()
-            .find(|t| t.id == entry.tab_id)
-            .map(|t| t.title.clone())
-            .unwrap_or_else(|| "Untitled".to_string());
-        let language = entry
-            .language
-            .map(|l| crate::status_bar::language_name(Some(l)).to_string());
-        let is_dirty = entry.is_dirty() || (entry.path.is_none() && entry.buffer.len_chars() > 0);
-        let draft_text = if is_dirty || entry.path.is_none() {
-            Some(entry.buffer.text())
-        } else {
-            None
-        };
-
-        session.tabs.push(TabState {
-            path: entry.path.clone(),
-            title,
-            pinned: false,
-            cursors,
-            scroll_line,
-            language,
-            draft_text,
-            is_dirty,
-        });
-        if app.documents.active_tab == Some(entry.tab_id) {
-            session.active_tab = Some(idx);
-        }
-    }
-
-    if let Some(frame) = app.ui.session.frame.clone() {
-        session.windows.push(frame.clone());
-        crate::place::mirror_global(&frame, &session_path);
-    } else if let Ok(previous) = Session::load(&session_path) {
-        session.windows = previous.windows;
-    }
-
-    if let Some(parent) = session_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-
-    if clean {
-        session.end_cleanly(&session_path)
-    } else {
-        session.save(&session_path)
-    }
+/// Writes the session now, on this thread. Only for the quit path.
+pub(crate) fn save_session(app: &mut App, clean: bool) -> std::io::Result<()> {
+    snapshot::write_now(app, clean)
 }
 
-pub(crate) fn restore_session(app: &mut App, session_path: &Path) -> std::io::Result<bool> {
-    let session = Session::load(session_path)?;
-    if session.folders.is_empty() && session.tabs.is_empty() {
-        return Ok(false);
+/// Records a change worth persisting; the write follows once changes go
+/// quiet (see `debounce`).
+pub(crate) fn note_change() {
+    debounce::SESSION.note_change();
+}
+
+/// Called from `background_event`: writes the session on the worker when
+/// the quiet period after the last change has passed.
+pub(crate) fn write_if_due(app: &mut App) {
+    if debounce::SESSION.take_due() {
+        snapshot::submit(app);
     }
-
-    app.ui.session.session_path = Some(session_path.to_path_buf());
-
-    // Restore folders
-    if let Some(folder) = session.folders.first()
-        && folder.exists()
-    {
-        app.ui.sidebar = crate::sidebar::SidebarState::open_folder(folder.clone());
-        app.ui.session.init_watcher(folder);
-    }
-
-    // Restore tabs
-    let mut restored_any = false;
-    let had_initial_empty = app.documents.entries.len() == 1
-        && app.documents.entries[0].path.is_none()
-        && !app.documents.entries[0].is_dirty()
-        && app.documents.entries[0].buffer.len_chars() == 0;
-
-    for tab_state in &session.tabs {
-        let buffer = if let Some(draft) = &tab_state.draft_text {
-            Buffer::from_bytes(draft.as_bytes()).ok()
-        } else if let Some(path) = &tab_state.path {
-            if path.exists() {
-                Buffer::open(path).ok()
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let Some(buffer) = buffer else {
-            continue;
-        };
-
-        let file_name = if !tab_state.title.is_empty() {
-            tab_state.title.clone()
-        } else if let Some(path) = &tab_state.path {
-            path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("file")
-                .to_string()
-        } else {
-            "Untitled".to_string()
-        };
-
-        let tab_id = app.documents.tabs.open(&file_name);
-        let mut entry = DocumentEntry::new(tab_id, tab_state.path.clone(), buffer);
-
-        // A pathless tab stays Plain Text until the user picks a language.
-        if tab_state.path.is_some()
-            && let Some(lang_name) = &tab_state.language
-        {
-            for (id, name) in crate::language_picker::all_languages() {
-                if name == lang_name {
-                    entry.language = id;
-                    break;
-                }
-            }
-        }
-
-        // Restore dirty state
-        if tab_state.is_dirty || (tab_state.path.is_none() && entry.buffer.len_chars() > 0) {
-            entry.saved_version = u64::MAX;
-        }
-
-        // Restore cursors
-        if !tab_state.cursors.is_empty() {
-            let sels: Vec<_> = tab_state
-                .cursors
-                .iter()
-                .map(|c| {
-                    let pos = Position::from_char(&entry.buffer, c.char_offset);
-                    Selection::cursor(pos)
-                })
-                .collect();
-            entry.cursors = MultiCursor::from_cursors(sels);
-        }
-        entry.scroll_y =
-            tab_state.scroll_line as f32 * app.editor_view.metrics().line_height.max(1.0);
-        app.documents.entries.push(entry);
-        restored_any = true;
-    }
-
-    if restored_any {
-        if had_initial_empty {
-            let first_tab = app.documents.entries[0].tab_id;
-            app.documents.entries.remove(0);
-            app.documents.tabs.close(first_tab);
-        }
-
-        let target_idx = session.active_tab.unwrap_or(0);
-        if let Some(entry) = app.documents.entries.get(target_idx).cloned() {
-            app.switch_to_tab(entry.tab_id);
-        }
-    }
-
-    app.scheduler.invalidate_all();
-    Ok(restored_any)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn session_path_resolution() {
-        let p = default_session_path(None);
-        assert!(p.to_string_lossy().contains("last-session.json"));
-
-        let dir = tempfile::tempdir().unwrap();
-        let ws_p = default_session_path(Some(dir.path()));
-        assert_eq!(ws_p, dir.path().join(SESSION_FILE_NAME));
-    }
-
-    #[test]
-    fn session_round_trip() {
-        let dir = tempfile::tempdir().unwrap();
-        let file_path = dir.path().join("code.rs");
-        std::fs::write(&file_path, "fn main() {}\n").unwrap();
-
-        let mut session = Session::new();
-        session.folders.push(dir.path().to_path_buf());
-        session.tabs.push(TabState {
-            path: Some(file_path.clone()),
-            title: "code.rs".to_string(),
-            pinned: false,
-            cursors: vec![CursorState { char_offset: 3 }],
-            scroll_line: 0,
-            language: None,
-            draft_text: None,
-            is_dirty: false,
-        });
-        session.active_tab = Some(0);
-
-        let session_file = dir.path().join(SESSION_FILE_NAME);
-        session.save(&session_file).unwrap();
-
-        let loaded = Session::load(&session_file).unwrap();
-        assert_eq!(loaded.folders.len(), 1);
-        assert_eq!(loaded.tabs.len(), 1);
-        assert_eq!(loaded.tabs[0].path, Some(file_path));
-        assert_eq!(loaded.tabs[0].cursors[0].char_offset, 3);
-        assert_eq!(loaded.active_tab, Some(0));
-    }
-
-    #[test]
-    fn app_session_save_and_restore() {
-        let dir = tempfile::tempdir().unwrap();
-        let file_path = dir.path().join("main.rs");
-        std::fs::write(&file_path, "fn main() {\n    println!(\"hello\");\n}\n").unwrap();
-
-        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-        app.ui.sidebar = crate::sidebar::SidebarState::open_folder(dir.path().to_path_buf());
-        let buf = Buffer::open(&file_path).unwrap();
-        let tab_id = app.documents.tabs.open("main.rs");
-        let entry = DocumentEntry::new(tab_id, Some(file_path.clone()), buf);
-        app.documents.entries.push(entry);
-        app.switch_to_tab(tab_id);
-
-        let session_file = dir.path().join(SESSION_FILE_NAME);
-        app.ui.session.session_path = Some(session_file.clone());
-
-        save_session(&app, true).unwrap();
-        assert!(session_file.exists());
-
-        // Now create a fresh app and restore session
-        let mut app2 =
-            App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-        let restored = restore_session(&mut app2, &session_file).unwrap();
-        assert!(restored);
-        assert_eq!(app2.documents.entries.len(), 1);
-        assert_eq!(app2.documents.entries[0].path, Some(file_path));
-        assert!(app2.ui.sidebar.is_some());
-    }
-
-    #[test]
-    fn app_session_hot_exit_restores_unsaved_untitled_and_draft_files() {
-        let dir = tempfile::tempdir().unwrap();
-        let session_file = dir.path().join(SESSION_FILE_NAME);
-
-        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-        app.ui.session.session_path = Some(session_file.clone());
-
-        // Edit the default untitled tab with some unsaved notes
-        app.buffer = Buffer::from_bytes(b"# My Scratchpad\nDraft notes here").unwrap();
-        app.cursors = MultiCursor::new(Selection::cursor(Position::from_char(&app.buffer, 4)));
-        app.sync_active_document_to_entry();
-
-        save_session(&app, true).unwrap();
-
-        // Restore in a fresh app instance
-        let mut app2 =
-            App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-        let restored = restore_session(&mut app2, &session_file).unwrap();
-        assert!(restored);
-        assert_eq!(app2.documents.entries.len(), 1);
-        assert!(app2.documents.entries[0].path.is_none());
-        assert_eq!(
-            app2.documents.entries[0].buffer.text(),
-            "# My Scratchpad\nDraft notes here"
-        );
-        assert!(app2.document_dirty());
-        assert_eq!(app2.cursors.cursors()[0].head.char, 4);
-    }
-
-    #[test]
-    fn hot_exit_restores_a_dirty_named_file_beside_a_clean_tab() {
-        let dir = tempfile::tempdir().unwrap();
-        let session_file = dir.path().join(SESSION_FILE_NAME);
-        let named = dir.path().join("saved.txt");
-        std::fs::write(&named, "on disk\n").unwrap();
-        let other = dir.path().join("other.txt");
-        std::fs::write(&other, "clean\n").unwrap();
-
-        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-        app.ui.session.session_path = Some(session_file.clone());
-        app.documents.entries[0].path = Some(named.clone());
-        app.documents.entries[0].buffer = Buffer::from_bytes(b"draft text\n").unwrap();
-        app.documents.entries[0].saved_version = 1;
-        app.buffer = app.documents.entries[0].buffer.clone();
-        let tab = app.documents.tabs.open("other.txt");
-        app.documents.entries.push(DocumentEntry::new(
-            tab,
-            Some(other.clone()),
-            Buffer::from_bytes(b"clean\n").unwrap(),
-        ));
-
-        save_session(&app, true).unwrap();
-
-        let mut app2 =
-            App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-        assert!(restore_session(&mut app2, &session_file).unwrap());
-        assert_eq!(app2.documents.entries.len(), 2);
-        let dirty = app2
-            .documents
-            .entries
-            .iter()
-            .find(|entry| entry.path.as_ref() == Some(&named))
-            .unwrap();
-        assert_eq!(dirty.buffer.text(), "draft text\n");
-        assert!(dirty.is_dirty());
-        assert_eq!(app2.buffer.text(), "draft text\n");
-        let clean = app2
-            .documents
-            .entries
-            .iter()
-            .find(|entry| entry.path.as_ref() == Some(&other))
-            .unwrap();
-        assert_eq!(clean.buffer.text(), "clean\n");
-        assert!(!clean.is_dirty());
-    }
-
-    #[test]
-    fn save_session_records_the_window_frame() {
-        let dir = tempfile::tempdir().unwrap();
-        let session_file = dir.path().join(SESSION_FILE_NAME);
-        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-        app.ui.session.session_path = Some(session_file.clone());
-        app.ui.session.frame = Some(lux_workspace::WindowFrame {
-            x: 12,
-            y: 34,
-            width: 640,
-            height: 480,
-            monitor_name: "Built-in".to_string(),
-            monitor_x: 0,
-            monitor_y: 0,
-            scale_millis: 2000,
-            fullscreen: false,
-            maximized: true,
-        });
-        save_session(&app, true).unwrap();
-        let loaded = Session::load(&session_file).unwrap();
-        assert_eq!(loaded.windows.len(), 1);
-        assert_eq!(loaded.windows[0].x, 12);
-        assert_eq!(loaded.windows[0].width, 640);
-        assert!(loaded.windows[0].maximized);
-        assert!(!loaded.windows[0].fullscreen);
-    }
-
-    #[test]
-    fn an_external_edit_reloads_a_clean_file_and_asks_when_dirty() {
-        let dir = tempfile::tempdir().unwrap();
-        let raw = dir.path().join("note.txt");
-        std::fs::write(&raw, "disk\n").unwrap();
-        let file = std::fs::canonicalize(&raw).unwrap();
-
-        let mut app = App::new(include_bytes!("../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-        let buf = Buffer::from_bytes(b"disk\n").unwrap();
-        app.documents.entries[0].path = Some(file.clone());
-        app.documents.entries[0].buffer = buf.clone();
-        app.buffer = buf;
-        crate::sidebar::watch::watch_and_wait(&mut app, dir.path());
-
-        std::fs::write(&file, "fresh\n").unwrap();
-        let deadline = std::time::Instant::now() + Duration::from_secs(4);
-        loop {
-            poll_file_watcher(&mut app);
-            if app.buffer.text() == "fresh\n" {
-                break;
-            }
-            assert!(
-                std::time::Instant::now() < deadline,
-                "clean buffer was not reloaded"
-            );
-            std::thread::sleep(Duration::from_millis(40));
-        }
-        assert!(app.ui.dialogs.conflict_prompt.is_none());
-
-        app.buffer = Buffer::from_bytes(b"local\n").unwrap();
-        app.documents.entries[0].buffer = app.buffer.clone();
-        app.documents.entries[0].saved_version =
-            app.documents.entries[0].history.state_id().wrapping_add(1);
-        app.ui.session.mark_dirty(&file);
-        std::fs::write(&file, "other\n").unwrap();
-        let deadline = std::time::Instant::now() + Duration::from_secs(4);
-        loop {
-            poll_file_watcher(&mut app);
-            if app.ui.dialogs.conflict_prompt.is_some() {
-                break;
-            }
-            assert!(
-                std::time::Instant::now() < deadline,
-                "dirty buffer did not ask before reload"
-            );
-            std::thread::sleep(Duration::from_millis(40));
-        }
-        assert_eq!(app.buffer.text(), "local\n");
-    }
-}
+mod tests;

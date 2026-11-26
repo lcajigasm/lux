@@ -18,7 +18,7 @@ report="$out/window-restore.txt"
 app="$(bash "$root/scripts/stage-lux-app.sh")"
 export HOME
 HOME="$(mktemp -d)"
-unset XDG_CACHE_HOME || true
+unset XDG_CACHE_HOME XDG_DATA_HOME || true
 drive_init "$app"
 trap drive_stop EXIT
 
@@ -138,7 +138,9 @@ read -r bx by bw bh <<<"$before"
 if ! quit_app; then
   fail "quit did not exit"
 fi
-session="$HOME/.cache/lux/last-session.json"
+# ADR 0019: a session with no folder open is global.json under the
+# platform data directory.
+session="$HOME/Library/Application Support/lux/sessions/global.json"
 if [[ ! -s "$session" ]]; then
   fail "no session at $session"
 fi

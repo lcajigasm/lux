@@ -6,7 +6,7 @@ use lux_platform::{PlatformContext, Screen};
 use lux_workspace::{MonitorRect, PlacedWindow, Session, WindowFrame, restore_window};
 
 use crate::app::App;
-use crate::session::default_session_path;
+use crate::session::location;
 
 pub(crate) fn remember(app: &mut App) {
     if let Some(frame) = capture(app) {
@@ -31,7 +31,7 @@ pub(crate) fn note_moved(app: &mut App, x: i32, y: i32) {
 }
 
 pub(crate) fn restored(ctx: &dyn PlatformContext) -> Option<PlacedWindow> {
-    let path = default_session_path(None);
+    let path = location::readable_session_file(None)?;
     let session = Session::load(&path).ok()?;
     let saved = session.windows.first()?.clone();
     let monitors: Vec<MonitorRect> = ctx.monitors().into_iter().map(monitor_rect).collect();
@@ -42,13 +42,16 @@ pub(crate) fn restored(ctx: &dyn PlatformContext) -> Option<PlacedWindow> {
 /// project session instead. A later launch creates the window before it
 /// knows which project it will open, so the frame has to be in the
 /// global file.
-pub(crate) fn mirror_global(frame: &WindowFrame, written_to: &std::path::Path) {
-    let global = default_session_path(None);
+pub(crate) fn mirror_global(
+    frame: &WindowFrame,
+    written_to: &std::path::Path,
+    global: &std::path::Path,
+) {
     if global == written_to {
         return;
     }
     let existed = global.exists();
-    let mut session = Session::load(&global).unwrap_or_default();
+    let mut session = Session::load(global).unwrap_or_default();
     let clean = existed && !session.needs_recovery();
     session.windows.clear();
     session.windows.push(frame.clone());
@@ -56,9 +59,9 @@ pub(crate) fn mirror_global(frame: &WindowFrame, written_to: &std::path::Path) {
         let _ = std::fs::create_dir_all(parent);
     }
     if clean {
-        let _ = session.end_cleanly(&global);
+        let _ = session.end_cleanly(global);
     } else {
-        let _ = session.save(&global);
+        let _ = session.save(global);
     }
 }
 

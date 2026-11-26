@@ -233,8 +233,9 @@ Quitting writes the window's position, size, fullscreen or maximized state,
 and monitor into the session (`lux_workspace::WindowFrame`). The next launch
 creates the window there. If that monitor is no longer connected,
 `restore_window` moves it onto a visible one. The same quit writes open
-tabs, cursor offsets, and unsaved buffer text; a launch with no path
-restores them. The editor has one window, stored as the single entry of
+tabs, every caret with its selection, scroll, unsaved buffer text, each
+tab's undo history, and the split layout; a launch with no path restores
+them (ST-TAB-03). The editor has one window, stored as the single entry of
 `Session.windows`.
 
 `lux file:line:col` opens that file and places the cursor. `lux -` reads
@@ -987,7 +988,8 @@ so a folder closed right after it was added stays unwatched; closing one
 folder keeps the others watched and keeps unsaved-file marks. A clean
 open file edited elsewhere is read again on a worker thread
 (`crates/lux/src/session/disk_events.rs`); the new text replaces the
-tab's when the read arrives, unless the tab was edited meanwhile. A file
+tab's when the read arrives, unless the tab was edited meanwhile, and the
+replacement is one undo step, so Cmd+Z brings back the previous text. A file
 removed from disk keeps its tab, marked modified with no disk baseline,
 so Save writes it again instead of failing its on-disk check. The `stat` that classifies each event (does the
 path exist, is it a directory) runs on the debouncer thread, so draining
@@ -2700,6 +2702,11 @@ _Nothing is behind an `experimental.*` flag yet._
   - **Document text:** the editor's AccessKit value is the buffer. The macOS probe reads that value (and `AXStringForRange`) after Command+/, Option+Command+[, Option+Command+], Option+Command+F, Command+Option+S, and Command+Option+C. A pass needs a value that trims to `alpha` and no grave.
   - **Headless checks:** `input::panel_input_tests` and `desktop_pass::configured_shortcut_runs_through_the_real_keyboard_pipeline` (new tab, palette focus returns to the editor). These do not press keys through macOS.
   - **Compare panes:** `scripts/compare-captures.sh` types Command+Shift+P, Command+P, and the theme command into the Lux window. `retina-palette.png` stays an offscreen scale-2 frame.
+
+### ST-TAB-03: Hot exit with undo history and transactional sessions
+
+- **Status:** Quitting asks nothing. The session keeps untitled and dirty text, every caret with its anchor and head, the scroll line, pinned tabs, tab order, the split preset with its ratios, each pane's tab, carets and scroll, and the active pane. Each tab's undo and redo history is stored beside the session in a versioned binary format bound to a hash of the text it was recorded against, capped at 4 MiB per tab (oldest steps dropped first). A file changed on disk while Lux was closed reopens with its new text and no undo. Cmd+Z after a restart undoes the last edit made before quitting. A restored dirty tab stays dirty even if undo reaches the text that was on disk. Sessions live in the platform data directory, one per project keyed by a hash of its path (ADR 0019); an older `.lux-session` in the project, or `~/.cache/lux/last-session.json`, is read while no new file exists and is left in place. Besides quit, the session is written 750 ms after the last edit, key, click, or layout change: the UI thread takes rope clones and shares unchanged histories, and the worker that writes recovery snapshots encodes and writes. History files are written before the JSON that names them and pruned only after it. There is no transient (preview) tab in the editor, so none is stored. The session file is derived from the folder open at each write, so opening, adding or closing folders sends later writes to that project's session, never to the one the window was restored from. Undo histories share their steps between the editor and the snapshot, so a write does not copy edit text. A clean file reloaded from disk while open records the reload as one undo step, as Sublime Text does: Cmd+Z brings back the text from before the reload, in memory and after a restart. Restoring still reads files on the UI thread at launch.
+- **Verification:** `session::tests::hot_exit::quit_and_restore_keeps_text_selections_scroll_layout_and_undo` types through `handle_keyboard_event`, quits through `PlatformEventHandler::exiting`, restores into a fresh `App`, and presses Cmd+Z. `a_file_changed_on_disk_after_quit_restores_without_its_stale_history`, `a_legacy_project_session_is_read_and_later_written_to_the_data_dir`, `a_burst_of_changes_wakes_the_loop_once_quiet_and_writes_off_thread`, `restore_twenty_tabs_reports_its_time` (see `docs/PERFORMANCE.md`). `session::tests::switching` restores project A, opens folder B and checks each keeps its own session, and quits after a reload from disk and checks Cmd+Z after the restart. `session::disk_events::tests::undo_after_a_reload_restores_the_previous_text_not_garbage` and `a_background_tab_reload_is_one_undo_step_too` cover the reload step in memory. `lux-core` `history::codec::tests` cover round trips, stale text, damage, versions, and the size cap. `latest_worker::tests` covers coalescing and the quit write. This is not a Mac keystroke pass.
 
 ### ST-SPLIT-01: True Multi-Pane View Architecture & Bounded Split Rendering
 - **Status:** Complete & verified across macOS desktop target.
