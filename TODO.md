@@ -558,7 +558,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-MAP-01 — Renderizado de Densidad de Código Sintáctico Real en el Minimapa
 - Prioridad: `P1 (Visual Sublime)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: —
 - Problema actual:
   - El minimapa actual se dibuja con líneas toscas monocromáticas o barras uniformes, distando mucho del aspecto nítido de previsualización a escala de Sublime Text.
@@ -573,7 +573,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-MAP-02 — Viewport Interactivo y Marcas de Coincidencias en el Minimapa
 - Prioridad: `P2 (Ergonomía)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: ST-MAP-01
 - Objetivo: Navegación espacial fluida por documentos extensos.
 - Alcance detallado:

@@ -55,6 +55,9 @@ pub(crate) struct SyntaxState {
     pub(crate) tokens: Vec<lux_syntax::Token>,
     pub(crate) fold_ranges: Vec<lux_core::folding::FoldRange>,
     pub(crate) version: usize,
+    /// Bumped whenever `tokens` is replaced by a parse result, so caches
+    /// keyed on token colors (the minimap's strokes) know to refresh.
+    pub(crate) generation: u64,
 }
 
 pub(crate) struct AtlasState {

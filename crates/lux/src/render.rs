@@ -407,25 +407,23 @@ impl App {
         }
 
         if !is_df {
-            let search_info = ui
-                .search_bar
-                .as_ref()
-                .map(|s| (s.search_bar.matches(), s.search_bar.current_index()));
-            minimap::render_minimap(
-                &mut ui.minimap,
-                minimap_document,
+            let doc = minimap::MinimapDoc {
+                id: minimap_document,
                 buffer,
+                syntax: syntax.as_ref(),
+                bookmarks,
+                folds: fold_state,
+            };
+            minimap::render_minimap(
+                ui,
+                &doc,
                 viewport,
-                window_width,
-                window_height,
+                (window_width, window_height),
                 tab_bar_height,
                 status_bar_height,
                 *scale_factor,
-                stroke,
                 line_height,
                 &chrome.theme,
-                Some(fold_state),
-                search_info,
                 &mut quad_instances,
             );
         }

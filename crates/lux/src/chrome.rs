@@ -160,7 +160,7 @@ pub(crate) fn handle_mouse_click_on_chrome(
     }
 
     // Minimap click hit-testing
-    if button == MouseButton::Left && crate::minimap::handle_minimap_click(app, mouse_x, mouse_y) {
+    if button == MouseButton::Left && crate::minimap::drag::press(app, mouse_x, mouse_y) {
         return true;
     }
 

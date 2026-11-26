@@ -183,6 +183,7 @@ impl App {
                 tokens,
                 fold_ranges: fold_ranges.clone(),
                 version: 0,
+                generation: 0,
             });
             self.fold_state.set_foldable_ranges(fold_ranges);
         } else {
@@ -223,6 +224,7 @@ impl App {
                 tokens,
                 fold_ranges: fold_ranges.clone(),
                 version: 0,
+                generation: 0,
             });
             self.fold_state.set_foldable_ranges(fold_ranges);
             let name = crate::status_bar::language_name(Some(lang));
@@ -309,6 +311,7 @@ impl App {
             && res.version >= syntax.version
         {
             syntax.tokens = res.tokens;
+            syntax.generation += 1;
             let ranges: Vec<FoldRange> = res
                 .fold_ranges
                 .into_iter()

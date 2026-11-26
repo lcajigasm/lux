@@ -56,6 +56,7 @@ pub(crate) fn sync(app: &mut App) {
     if sidebar_resizing(app) {
         drag_sidebar(app);
     }
+    crate::minimap::drag::update(app);
     let shape = if !app.mouse.placed {
         CursorShape::Arrow
     } else if sidebar_resizing(app) {
@@ -94,6 +95,7 @@ pub(crate) fn press(app: &mut App, button: MouseButton) -> bool {
 }
 
 pub(crate) fn release(app: &mut App) {
+    crate::minimap::drag::release(app);
     if let Some(sidebar) = &mut app.ui.sidebar {
         sidebar.resizing = false;
     }
