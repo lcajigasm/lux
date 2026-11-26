@@ -202,7 +202,7 @@ pub(crate) fn close(app: &mut crate::app::App, index: usize) {
     if empty {
         app.ui.sidebar = None;
         app.ui.session.watcher = None;
-        app.ui.session.symbol_index = lux_workspace::SymbolIndex::default();
+        app.ui.session.symbols = None;
         if app.chrome.focus.current() == lux_ui::focus::FocusTarget::FileTree {
             app.chrome
                 .focus
@@ -215,7 +215,6 @@ pub(crate) fn close(app: &mut crate::app::App, index: usize) {
             .as_ref()
             .and_then(|sidebar| sidebar.workspace_root.clone())
     {
-        app.ui.session.symbol_index = lux_workspace::SymbolIndex::default();
         app.ui.session.init_watcher(&root);
     }
     detach_closed_repo(app, &path);

@@ -87,6 +87,7 @@ impl App {
     }
 
     pub(crate) fn open_goto_project_symbols(&mut self) {
+        crate::goto::symbols::index_open_documents(self);
         let mut state = crate::goto::GotoState::new_project_symbols(self);
         state.refresh_results(self);
         self.ui.goto_anything = Some(state);

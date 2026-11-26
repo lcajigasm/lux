@@ -355,7 +355,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-NAV-03 — Búsqueda de Símbolos en Proyecto sin Bloqueos (`Cmd+Shift+R`)
 - Prioridad: `P1 (Rendimiento)`
-- Estado: `OPEN`
+- Estado: `IN_PROGRESS` — remaining: end-to-end Cmd+Shift+R timing on a real 50k-line project on gated hardware; reduced thread priority for the indexer; unsaved buffer edits are not indexed until saved.
 - Dependencias: ST-FIX-01, ST-FIX-03
 - Objetivo: Navegación instantánea a cualquier función, struct, clase o constante del proyecto completo.
 - Alcance detallado:

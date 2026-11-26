@@ -54,15 +54,10 @@ pub(super) fn collect_candidates(app: &crate::app::App) -> Vec<String> {
 
 pub(super) fn compute_items(
     app: &crate::app::App,
-    mode: super::GotoMode,
     raw_query: &str,
     cached_candidates: &[String],
     recent_files: &RecentFiles,
 ) -> Vec<GotoItem> {
-    if mode == super::GotoMode::ProjectSymbols {
-        return compute_project_symbols(app, raw_query, cached_candidates);
-    }
-
     let query = lux_ui::goto_anything::Query::parse(raw_query);
 
     // 1. Symbol mode: "@symbol" or "file@symbol"
@@ -95,62 +90,6 @@ pub(super) fn compute_items(
                 line: m.line,
                 col: m.col,
             },
-        })
-        .collect()
-}
-
-fn compute_project_symbols(
-    app: &crate::app::App,
-    raw_query: &str,
-    cached_candidates: &[String],
-) -> Vec<GotoItem> {
-    let mut index = app.ui.session.symbol_index.clone();
-
-    // 1. Index open tabs first so newly typed buffers are immediate
-    for entry in &app.documents.entries {
-        if let Some(path) = &entry.path {
-            index.index_file_content(path, &entry.buffer.text(), None);
-        }
-    }
-    if let Some(path) = &app.documents.path {
-        index.index_file_content(path, &app.buffer.text(), None);
-    }
-
-    // 2. Index workspace candidates from disk
-    if let Some(sidebar) = &app.ui.sidebar
-        && let Some(root) = &sidebar.workspace_root
-    {
-        index.set_root(root);
-        for rel in cached_candidates {
-            let full = root.join(rel);
-            index.index_file_path(&full);
-        }
-    } else {
-        for cand in cached_candidates {
-            let path = std::path::Path::new(cand);
-            if path.exists() {
-                index.index_file_path(path);
-            }
-        }
-    }
-
-    let results = index.search(raw_query);
-    results
-        .into_iter()
-        .map(|s| {
-            let path_str = s.path.to_string_lossy().to_string();
-            GotoItem {
-                label: s.name,
-                detail: format!("{}:{}", path_str, s.line),
-                path: path_str,
-                line: Some(s.line),
-                col: Some(s.column),
-                kind: GotoItemKind::Symbol {
-                    kind_badge: s.kind.badge(),
-                    line: s.line,
-                    col: s.column,
-                },
-            }
         })
         .collect()
 }

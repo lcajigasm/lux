@@ -3245,6 +3245,7 @@ dependencies = [
  "lux-core",
  "lux-search",
  "lux-syntax",
+ "lux-workspace",
  "tree-sitter",
 ]
 

@@ -11,6 +11,7 @@ use lux_ui::goto_anything::RecentFiles;
 use lux_ui::tabs::TabId;
 
 mod search;
+pub(crate) mod symbols;
 
 /// Classification of a Goto Anything result item.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,6 +69,8 @@ pub(crate) struct GotoState {
     pub(crate) snapshot: Option<GotoSnapshot>,
     pub(crate) cached_candidates: Vec<String>,
     pub(crate) items: Vec<GotoItem>,
+    /// Index state shown in the input, e.g. while the first scan runs.
+    pub(crate) notice: Option<&'static str>,
     pub(crate) motion: crate::overlay_motion::OverlayMotion,
 }
 
@@ -82,6 +85,7 @@ impl Default for GotoState {
             snapshot: None,
             cached_candidates: Vec::new(),
             items: Vec::new(),
+            notice: None,
             motion: crate::overlay_motion::OverlayMotion::open(),
         }
     }
@@ -105,6 +109,7 @@ impl GotoState {
             snapshot: Some(snapshot),
             cached_candidates,
             items: Vec::new(),
+            notice: None,
             motion: crate::overlay_motion::OverlayMotion::open(),
         };
         state.refresh_results(app);
@@ -118,7 +123,8 @@ impl GotoState {
             scroll_x: app.viewport.scroll_x,
             scroll_y: app.viewport.scroll_y,
         };
-        let cached_candidates = search::collect_candidates(app);
+        // Symbols come from the background index; no file list is needed.
+        let cached_candidates = Vec::new();
         let mut state = Self {
             mode: GotoMode::ProjectSymbols,
             query: crate::field::QueryField::new(),
@@ -128,6 +134,7 @@ impl GotoState {
             snapshot: Some(snapshot),
             cached_candidates,
             items: Vec::new(),
+            notice: None,
             motion: crate::overlay_motion::OverlayMotion::open(),
         };
         state.refresh_results(app);
@@ -142,7 +149,7 @@ impl GotoState {
     }
 
     pub(crate) fn refresh_results(&mut self, app: &crate::app::App) {
-        self.items = search::compute_items(
+        (self.items, self.notice) = compute(
             app,
             self.mode,
             &self.query,
@@ -273,11 +280,26 @@ fn refresh_and_preview(app: &mut crate::app::App) {
         RecentFiles::new()
     };
 
-    let items = search::compute_items(app, mode, &query, &candidates, &recent_files);
+    let (items, notice) = compute(app, mode, &query, &candidates, &recent_files);
     if let Some(goto) = app.ui.goto_anything.as_mut() {
         goto.items = items;
+        goto.notice = notice;
     }
     update_live_preview(app);
+}
+
+fn compute(
+    app: &crate::app::App,
+    mode: GotoMode,
+    query: &str,
+    candidates: &[String],
+    recent_files: &RecentFiles,
+) -> (Vec<GotoItem>, Option<&'static str>) {
+    if mode == GotoMode::ProjectSymbols {
+        return symbols::items(app, query);
+    }
+    let items = search::compute_items(app, query, candidates, recent_files);
+    (items, None)
 }
 
 pub(crate) fn update_live_preview(app: &mut crate::app::App) {

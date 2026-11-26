@@ -6,10 +6,6 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, RwLock};
-use std::thread;
 use std::time::SystemTime;
 
 pub use lux_syntax::SymbolKind;
@@ -102,44 +98,54 @@ impl SymbolIndex {
         );
     }
 
+    /// The key a file is stored under: relative to the root when it lies
+    /// inside it, otherwise the path as given.
+    fn key_for(&self, path: &Path) -> PathBuf {
+        match &self.root {
+            Some(root) => path.strip_prefix(root).unwrap_or(path).to_path_buf(),
+            None => path.to_path_buf(),
+        }
+    }
+
     /// Indexes a file from disk if it exists and falls under the size cap.
-    pub fn index_file_path(&mut self, path: &Path) {
+    /// A file whose modification time matches the cached entry is not
+    /// read again. Returns `true` when the file was read and parsed.
+    pub fn index_file_path(&mut self, path: &Path) -> bool {
+        let key = self.key_for(path);
         let Ok(meta) = fs::metadata(path) else {
-            self.file_symbols.remove(path);
-            return;
+            self.file_symbols.remove(&key);
+            return false;
         };
 
         if !meta.is_file() || meta.len() > MAX_INDEX_FILE_SIZE_BYTES {
-            return;
+            self.file_symbols.remove(&key);
+            return false;
         }
 
         let mtime = meta.modified().ok();
-        if let Some(cached) = self.file_symbols.get(path)
+        if let Some(cached) = self.file_symbols.get(&key)
             && cached.mtime.is_some()
             && cached.mtime == mtime
         {
-            return;
+            return false;
         }
 
-        if let Ok(content) = fs::read_to_string(path) {
-            let rel_path = if let Some(root) = &self.root {
-                path.strip_prefix(root).unwrap_or(path)
-            } else {
-                path
-            };
-            self.index_file_content(rel_path, &content, mtime);
+        match fs::read_to_string(path) {
+            Ok(content) => {
+                self.index_file_content(&key, &content, mtime);
+                true
+            }
+            Err(_) => {
+                self.file_symbols.remove(&key);
+                false
+            }
         }
     }
 
     /// Removes a file from the index.
     pub fn remove_file(&mut self, path: &Path) {
-        let rel_path = if let Some(root) = &self.root {
-            path.strip_prefix(root).unwrap_or(path)
-        } else {
-            path
-        };
-        self.file_symbols.remove(rel_path);
-        self.file_symbols.remove(path);
+        let key = self.key_for(path);
+        self.file_symbols.remove(&key);
     }
 
     /// Updates the index according to file changes observed by a watcher.
@@ -163,6 +169,16 @@ impl SymbolIndex {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Iterates every indexed symbol without copying.
+    pub fn iter(&self) -> impl Iterator<Item = &WorkspaceSymbol> {
+        self.file_symbols.values().flat_map(|c| c.symbols.iter())
+    }
+
+    /// Number of files with a cached entry.
+    pub fn file_count(&self) -> usize {
+        self.file_symbols.len()
     }
 
     /// Returns all indexed symbols.
@@ -228,85 +244,6 @@ impl SymbolIndex {
     }
 }
 
-/// Handle to a background symbol indexing job.
-pub struct SymbolIndexWorker {
-    shared_index: Arc<RwLock<SymbolIndex>>,
-    is_done: Arc<AtomicBool>,
-    rx: Receiver<WorkspaceSymbol>,
-}
-
-impl SymbolIndexWorker {
-    /// Starts indexing the given files in a background worker thread.
-    pub fn start(root: Option<PathBuf>, files: Vec<PathBuf>) -> Self {
-        let shared_index = Arc::new(RwLock::new(SymbolIndex {
-            root: root.clone(),
-            file_symbols: HashMap::new(),
-        }));
-        let is_done = Arc::new(AtomicBool::new(false));
-        let (tx, rx): (Sender<WorkspaceSymbol>, Receiver<WorkspaceSymbol>) = mpsc::channel();
-
-        let shared_clone = Arc::clone(&shared_index);
-        let done_clone = Arc::clone(&is_done);
-
-        thread::Builder::new()
-            .name("lux-symbol-indexer".to_string())
-            .spawn(move || {
-                for path in files {
-                    if let Ok(meta) = fs::metadata(&path)
-                        && meta.is_file()
-                        && meta.len() <= MAX_INDEX_FILE_SIZE_BYTES
-                        && let Ok(content) = fs::read_to_string(&path)
-                    {
-                        let rel_path = if let Some(r) = &root {
-                            path.strip_prefix(r).unwrap_or(&path).to_path_buf()
-                        } else {
-                            path.clone()
-                        };
-                        let mtime = meta.modified().ok();
-                        let mut local_index = SymbolIndex::new();
-                        local_index.index_file_content(&rel_path, &content, mtime);
-
-                        for sym in local_index.all_symbols() {
-                            let _ = tx.send(sym);
-                        }
-
-                        if let Ok(mut idx) = shared_clone.write() {
-                            idx.index_file_content(&rel_path, &content, mtime);
-                        }
-                    }
-                }
-                done_clone.store(true, Ordering::SeqCst);
-            })
-            .expect("symbol indexing thread must spawn");
-
-        Self {
-            shared_index,
-            is_done,
-            rx,
-        }
-    }
-
-    pub fn is_finished(&self) -> bool {
-        self.is_done.load(Ordering::SeqCst)
-    }
-
-    /// Polls newly indexed symbols without blocking.
-    pub fn poll_symbols(&self) -> Vec<WorkspaceSymbol> {
-        let mut new_symbols = Vec::new();
-        while let Ok(sym) = self.rx.try_recv() {
-            new_symbols.push(sym);
-        }
-        new_symbols
-    }
-
-    pub fn snapshot(&self) -> SymbolIndex {
-        self.shared_index
-            .read()
-            .map(|i| i.clone())
-            .unwrap_or_default()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -360,24 +297,36 @@ class AccountController:
     }
 
     #[test]
-    fn background_worker_indexes_files() {
-        let dir = temp_dir();
-        let f1 = dir.join("a.rs");
-        let f2 = dir.join("b.py");
+    fn an_unchanged_file_is_served_from_the_cache() {
+        let dir = temp_dir().join("cache-key");
+        let _ = fs::create_dir_all(&dir);
+        let file = dir.join("lib.rs");
+        fs::write(&file, "fn first_name() {}\n").expect("write");
+        let mtime = fs::metadata(&file)
+            .and_then(|m| m.modified())
+            .expect("mtime");
 
-        fs::write(&f1, "fn helper_a() {}\n").expect("write a");
-        fs::write(&f2, "def helper_b():\n    pass\n").expect("write b");
+        let mut index = SymbolIndex::with_root(&dir);
+        assert!(
+            index.index_file_path(&file),
+            "the first pass reads the file"
+        );
+        assert_eq!(index.search("first_name").len(), 1);
+        assert_eq!(index.search("")[0].path, Path::new("lib.rs"));
 
-        let worker = SymbolIndexWorker::start(Some(dir.clone()), vec![f1, f2]);
-        while !worker.is_finished() {
-            thread::sleep(std::time::Duration::from_millis(10));
-        }
+        // Same mtime, different bytes: a cache hit must not read the file.
+        fs::write(&file, "fn second_name() {}\n").expect("rewrite");
+        fs::File::options()
+            .write(true)
+            .open(&file)
+            .and_then(|f| f.set_modified(mtime))
+            .expect("restore mtime");
+        assert!(!index.index_file_path(&file), "an unchanged mtime is a hit");
+        assert_eq!(index.search("first_name").len(), 1);
+        assert_eq!(index.file_count(), 1);
 
-        let snap = worker.snapshot();
-        assert_eq!(snap.len(), 2);
-        let found = snap.search("helper");
-        assert_eq!(found.len(), 2);
-
+        index.remove_file(&file);
+        assert!(index.is_empty());
         let _ = fs::remove_dir_all(&dir);
     }
 }
