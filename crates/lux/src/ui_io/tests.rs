@@ -252,19 +252,46 @@ fn confirming_a_theme_writes_settings_on_a_worker_in_order() {
     assert_eq!(app.chrome.theme.name, mariana);
 }
 
-#[test]
-fn saving_a_macro_writes_on_a_worker() {
-    let dir = tempfile::tempdir().unwrap();
-    let ctx = Context::new(Dialogs::default());
+/// Points the macro folders of this test thread at an empty temporary
+/// folder, so no test reads or writes the real `~/.lux/macros`.
+struct MacroFolder(tempfile::TempDir);
+
+impl MacroFolder {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        crate::macros::recording::set_test_dir(Some(dir.path().to_path_buf()));
+        Self(dir)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        self.0.path()
+    }
+}
+
+impl Drop for MacroFolder {
+    fn drop(&mut self) {
+        crate::macros::recording::set_test_dir(None);
+    }
+}
+
+fn recorded_app(text: &str) -> App {
     let mut app = app();
-    app.ui.dialogs.jobs.set_wake(ctx.background_waker());
     app.ui.macros.start_recording();
     app.ui
         .macros
-        .record_command(crate::macros::MacroCommand::InsertText { text: "x".into() });
+        .record_command(crate::macros::MacroCommand::InsertText { text: text.into() });
     app.ui.macros.stop_recording();
+    app
+}
+
+#[test]
+fn saving_a_macro_writes_on_a_worker() {
+    let dir = MacroFolder::new();
+    let ctx = Context::new(Dialogs::default());
+    let mut app = recorded_app("x");
+    app.ui.dialogs.jobs.set_wake(ctx.background_waker());
     let hold = app.ui.dialogs.jobs.hold();
-    crate::macros::dispatch::save_macro_to(&mut app, "demo", Some(dir.path()));
+    crate::macros::dispatch::save_macro_as(&mut app, "demo");
     let file = dir.path().join("demo.sublime-macro");
     assert!(!file.exists(), "written before the call returned");
     assert!(app.ui.macros.saved_macros.is_empty());
@@ -288,7 +315,45 @@ fn saving_a_macro_writes_on_a_worker() {
 }
 
 #[test]
+fn saving_over_an_existing_macro_asks_first() {
+    let dir = MacroFolder::new();
+    let file = dir.path().join("demo.sublime-macro");
+    std::fs::write(&file, "[]").unwrap();
+    let ctx = Context::new(Dialogs::default());
+    let mut app = recorded_app("new");
+    app.ui.dialogs.jobs.set_wake(ctx.background_waker());
+
+    crate::macros::dispatch::save_macro_as(&mut app, "demo");
+    ctx.settle(&mut app, 1);
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "[]",
+        "not replaced"
+    );
+    let palette = app.ui.command_palette.as_ref().expect("asks first");
+    assert!(matches!(
+        &palette.prompt,
+        Some(crate::palette::PalettePrompt::ReplaceMacro { name, .. }) if name == "demo"
+    ));
+    assert_eq!(palette.query.as_str(), "demo");
+    let message = app.documents.message.clone().unwrap_or_default();
+    assert!(message.contains("already exists"), "{message}");
+
+    // Enter on the same name replaces the file.
+    let prompt = palette.prompt.clone().unwrap();
+    assert!(prompt.submit(&mut app, "demo"));
+    app.ui.command_palette = None;
+    ctx.settle(&mut app, 1);
+    assert!(std::fs::read_to_string(&file).unwrap().contains("new"));
+    assert!(app.ui.command_palette.is_none());
+}
+
+#[test]
 fn saved_macros_are_read_on_a_worker_at_startup() {
+    let dir = MacroFolder::new();
+    crate::macros::Macro::from_commands(vec![crate::macros::MacroCommand::InsertNewline])
+        .save_to_file(&dir.path().join("boot.sublime-macro"))
+        .unwrap();
     let ctx = Context::new(Dialogs::default());
     let mut app = app();
     app.ui.dialogs.jobs.set_wake(ctx.background_waker());
@@ -299,13 +364,55 @@ fn saved_macros_are_read_on_a_worker_at_startup() {
         1,
         "macro folders read inline"
     );
+    assert!(app.ui.macros.saved("boot").is_none());
     hold.release();
     ctx.settle(&mut app, 1);
     assert_eq!(app.ui.dialogs.jobs.in_flight(), 0);
+    assert!(app.ui.macros.saved("boot").is_some());
+    assert_eq!(app.ui.macros.saved_macros.len(), 1, "only the test folder");
+}
+
+#[test]
+fn a_slow_macro_load_does_not_overwrite_a_newer_one() {
+    let _dir = MacroFolder::new();
+    let ctx = Context::new(Dialogs::default());
+    let mut app = app();
+    app.ui.dialogs.jobs.set_wake(ctx.background_waker());
+    let hold = app.ui.dialogs.jobs.hold();
+    // Startup load, then the reload after a save.
+    crate::macros::library::start_loading(&mut app, None);
+    crate::macros::library::start_loading(&mut app, None);
+    let named = |name: &str| {
+        let mut m = crate::macros::Macro::from_commands(Vec::new());
+        m.name = Some(name.into());
+        vec![m]
+    };
+    // The newer load lands first, then the stale startup one.
+    super::apply(
+        &mut app,
+        &ctx,
+        super::Done::MacrosLoaded {
+            generation: 2,
+            macros: named("fresh"),
+        },
+    );
+    super::apply(
+        &mut app,
+        &ctx,
+        super::Done::MacrosLoaded {
+            generation: 1,
+            macros: named("stale"),
+        },
+    );
+    assert!(app.ui.macros.saved("fresh").is_some());
+    assert!(app.ui.macros.saved("stale").is_none(), "stale load dropped");
+    hold.release();
+    ctx.settle(&mut app, 2);
 }
 
 #[test]
 fn coverage_fonts_and_recovery_scan_load_after_the_call_returns() {
+    let _macros = MacroFolder::new();
     let ctx = Context::new(Dialogs::default());
     let mut app = app();
     app.ui.dialogs.jobs.set_wake(ctx.background_waker());

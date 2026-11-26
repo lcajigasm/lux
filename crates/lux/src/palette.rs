@@ -47,6 +47,7 @@ impl CommandPaletteState {
     /// The hint shown in the empty query field.
     pub(crate) fn placeholder(&self) -> &'static str {
         self.prompt
+            .as_ref()
             .map_or("Execute a command…", PalettePrompt::placeholder)
     }
 
@@ -139,7 +140,7 @@ pub(crate) fn handle_palette_key(
             true
         }
         Key::Named(NamedKey::Enter) if palette.prompt.is_some() => {
-            let Some(prompt) = palette.prompt else {
+            let Some(prompt) = palette.prompt.clone() else {
                 return true;
             };
             let text = palette.query.as_str().to_string();

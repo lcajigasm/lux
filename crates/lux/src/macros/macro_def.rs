@@ -56,6 +56,23 @@ impl Macro {
         fs::write(path, json)
     }
 
+    /// Saves the macro to a new file at `path`; fails with `AlreadyExists`
+    /// instead of replacing a file that is already there.
+    pub fn save_to_new_file(&self, path: &Path) -> std::io::Result<()> {
+        use std::io::Write;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let json = self
+            .to_sublime_json()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)?;
+        file.write_all(json.as_bytes())
+    }
+
     /// Loads a macro from disk from a `.sublime-macro` file.
     pub fn load_from_file(path: &Path) -> std::io::Result<Self> {
         let content = fs::read_to_string(path)?;

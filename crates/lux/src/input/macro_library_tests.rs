@@ -112,6 +112,49 @@ fn save_macro_asks_for_a_name_and_two_saves_keep_two_files() {
     assert!(!dir.0.path().join("macro.sublime-macro").exists());
 }
 
+/// Waits for the save worker to report that the name is taken.
+fn finish_refused_save(app: &mut App, ctx: &TestCtx) {
+    for _ in 0..500 {
+        crate::ui_io::poll(app, ctx);
+        if let Some(palette) = app.ui.command_palette.as_ref() {
+            assert!(matches!(
+                palette.prompt,
+                Some(PalettePrompt::ReplaceMacro { .. })
+            ));
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    panic!("the save never asked before replacing");
+}
+
+#[test]
+fn saving_a_taken_name_asks_and_an_edited_name_keeps_both() {
+    let dir = MacroDir::new();
+    let ctx = TestCtx::default();
+    let mut app = app("abc\n");
+    record(&mut app, &ctx);
+    type_text(&mut app, &ctx, "x");
+    record(&mut app, &ctx);
+    let first = dir.0.path().join("wrap.sublime-macro");
+    std::fs::write(&first, "[]").unwrap();
+
+    crate::palette::execute_command(&mut app, &ctx, "macro.save_as");
+    type_text(&mut app, &ctx, "wrap");
+    key(&mut app, &ctx, NamedKey::Enter);
+    finish_refused_save(&mut app, &ctx);
+    assert_eq!(
+        app.ui.command_palette.as_ref().unwrap().query.as_str(),
+        "wrap"
+    );
+    assert_eq!(std::fs::read_to_string(&first).unwrap(), "[]");
+
+    type_text(&mut app, &ctx, "2");
+    key(&mut app, &ctx, NamedKey::Enter);
+    finish_save(&mut app, &ctx, dir.0.path(), "wrap2");
+    assert_eq!(std::fs::read_to_string(&first).unwrap(), "[]", "kept both");
+}
+
 #[test]
 fn an_unusable_name_keeps_the_prompt_open() {
     let dir = MacroDir::new();

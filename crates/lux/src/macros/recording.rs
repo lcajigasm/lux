@@ -16,6 +16,9 @@ pub struct MacroState {
     pub last_macro: Option<Macro>,
     /// Named saved macros discovered from disk.
     pub saved_macros: Vec<Macro>,
+    /// Bumped by every disk read of the saved macros; a read that finishes
+    /// after a newer one started is dropped.
+    load_generation: u64,
 }
 
 /// Starts empty. Saved macros are read from disk on a worker
@@ -27,6 +30,7 @@ impl Default for MacroState {
             current_recording: Vec::new(),
             last_macro: None,
             saved_macros: Vec::new(),
+            load_generation: 0,
         }
     }
 }
@@ -117,8 +121,19 @@ impl MacroState {
 
         let sanitized_name = super::library::valid_name(name)?;
         let filename = format!("{sanitized_name}.sublime-macro");
+        let path = target_dir.join(&filename);
+        // `valid_name` already refuses anything that could, but the file must
+        // land directly in the macro folder whatever the platform's rules.
+        if path.parent() != Some(target_dir.as_path())
+            || path.file_name() != Some(std::ffi::OsStr::new(&filename))
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "that name would leave the macro folder",
+            ));
+        }
         macro_to_save.name = Some(sanitized_name.to_string());
-        Ok((target_dir.join(filename), macro_to_save))
+        Ok((path, macro_to_save))
     }
 
     /// Lists a macro that was written to disk.
@@ -131,6 +146,22 @@ impl MacroState {
     /// Replaces the saved-macro list with what a worker read from disk.
     pub fn set_saved(&mut self, macros: Vec<Macro>) {
         self.saved_macros = macros;
+    }
+
+    /// Starts a disk read of the saved macros and returns its generation.
+    pub(crate) fn begin_load(&mut self) -> u64 {
+        self.load_generation += 1;
+        self.load_generation
+    }
+
+    /// Takes the result of the read started as `generation`, unless a newer
+    /// read has started since. Returns whether the list was replaced.
+    pub(crate) fn finish_load(&mut self, generation: u64, macros: Vec<Macro>) -> bool {
+        if generation != self.load_generation {
+            return false;
+        }
+        self.set_saved(macros);
+        true
     }
 
     /// The saved macro called `name`, if one is loaded.

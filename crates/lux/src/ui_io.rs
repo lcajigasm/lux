@@ -38,8 +38,16 @@ pub(crate) enum Done {
         saved: crate::macros::Macro,
     },
     MacroFailed(String),
-    /// Saved macros read from disk.
-    MacrosLoaded(Vec<crate::macros::Macro>),
+    /// Save Macro found a file of that name and did not replace it.
+    MacroExists {
+        name: String,
+        dir: Option<PathBuf>,
+    },
+    /// Saved macros read from disk by the load numbered `generation`.
+    MacrosLoaded {
+        generation: u64,
+        macros: Vec<crate::macros::Macro>,
+    },
     /// The UI face was read from disk and can be registered.
     UiFont,
     /// Coverage font faces read from disk.
@@ -244,7 +252,12 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
         Done::MacroFailed(error) => {
             app.documents.message = Some(format!("Failed to save macro: {error}"));
         }
-        Done::MacrosLoaded(macros) => app.ui.macros.set_saved(macros),
+        Done::MacroExists { name, dir } => {
+            crate::macros::dispatch::note_macro_exists(app, name, dir);
+        }
+        Done::MacrosLoaded { generation, macros } => {
+            app.ui.macros.finish_load(generation, macros);
+        }
         Done::Fonts(faces) => {
             let layout = app.editor_view.text_layout_mut();
             crate::font::install_coverage_faces(layout, &faces);
