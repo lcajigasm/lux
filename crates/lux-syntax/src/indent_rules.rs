@@ -81,9 +81,6 @@ fn block_kinds(language: crate::LanguageId) -> &'static [&'static str] {
 /// `source`.
 #[must_use]
 pub fn indent_level(document: &Document, source: &str, row: usize) -> usize {
-    let Some(tree) = document.tree() else {
-        return 0;
-    };
     let Some(line) = source.lines().nth(row) else {
         return 0;
     };
@@ -91,6 +88,16 @@ pub fn indent_level(document: &Document, source: &str, row: usize) -> usize {
         .char_indices()
         .find(|(_, c)| !c.is_whitespace())
         .map_or(0, |(byte, _)| byte);
+    indent_level_at(document, row, column)
+}
+
+/// [`indent_level`] for a line whose first non-blank char sits at byte
+/// `column` of `row`, for callers that parsed a rope and hold no `&str`.
+#[must_use]
+pub fn indent_level_at(document: &Document, row: usize, column: usize) -> usize {
+    let Some(tree) = document.tree() else {
+        return 0;
+    };
     let point = Point { row, column };
     let Some(anchor) = tree.root_node().descendant_for_point_range(point, point) else {
         return 0;

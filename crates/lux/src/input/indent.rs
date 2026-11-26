@@ -6,6 +6,14 @@ use lux_core::{buffer::IndentStyle, edit_ops};
 
 use crate::app::App;
 
+mod dedent;
+mod reindent;
+#[cfg(test)]
+mod tests;
+mod window;
+
+pub(crate) use dedent::handle_char_typed as dedent_on_type;
+
 /// A file with leading whitespace keeps its detected indent. A flat file
 /// takes `editor.indentStyle` and `editor.tabWidth`. An explicit choice
 /// (status bar, or a project `tab_size` on a flat buffer) wins over both.
@@ -115,28 +123,39 @@ fn insert_newline_from_tree(app: &mut App, lang: lux_syntax::LanguageId) {
         // A column-0 token after `if True:` is not inside the suite. A
         // second probe, one indent wider, is. The wider level is used only
         // when the tree actually nests it. Neither probe is inserted.
+        // An opener with no closer yet (`fn foo() {` at the end of a file)
+        // parses as an error, not a body, so the probes close it.
         let suffix_blank = suffix.trim().is_empty();
+        let close = match prefix.trim_end().chars().last() {
+            Some('{') => format!("{eol}{leading}}}"),
+            Some('(') => format!("{eol}{leading})"),
+            Some('[') => format!("{eol}{leading}]"),
+            _ => String::new(),
+        };
         let (same_probe, deep_probe) = if between {
             (
                 format!("{eol}{leading}x{eol}"),
                 format!("{eol}{leading}{unit}x{eol}"),
             )
         } else if suffix_blank {
-            (format!("{eol}{leading}x"), format!("{eol}{leading}{unit}x"))
+            (
+                format!("{eol}{leading}x{close}"),
+                format!("{eol}{leading}{unit}x{close}"),
+            )
         } else {
             (eol.clone(), eol.clone())
         };
-        let same_text = splice_range(&buffer.text(), start.char, end.char, &same_probe);
-        let deep_text = splice_range(&buffer.text(), start.char, end.char, &deep_probe);
-        let open_level = tree_level(lang, &same_text, start.line);
-        let new_level = tree_level(lang, &same_text, start.line + 1).max(tree_level(
-            lang,
-            &deep_text,
-            start.line + 1,
-        ));
+        let window = window::Window::around(buffer, start.line, end.line);
+        let (from, to) = (start.char - window.start_char, end.char - window.start_char);
+        let row = window.row(start.line);
+        let same_text = splice_range(&window.text, from, to, &same_probe);
+        let same = tree_levels(lang, &same_text, &[row, row + 1, row + 2]);
+        let deep_text = splice_range(&window.text, from, to, &deep_probe);
+        let deep = tree_levels(lang, &deep_text, &[row + 1]);
+        let (open_level, closer_level) = (same[0], same[2]);
+        let new_level = same[1].max(deep[0]);
         let mid = shift_indent(&leading, new_level - open_level, &unit);
         let inserted = if between {
-            let closer_level = tree_level(lang, &same_text, start.line + 2);
             let closer = shift_indent(&leading, closer_level - open_level, &unit);
             format!("{eol}{mid}{eol}{closer}")
         } else {
@@ -153,13 +172,25 @@ fn insert_newline_from_tree(app: &mut App, lang: lux_syntax::LanguageId) {
     });
 }
 
-fn tree_level(lang: lux_syntax::LanguageId, source: &str, row: usize) -> i32 {
+/// Parses `source` once and reads the tree's indent level at each row.
+pub(crate) fn tree_levels(lang: lux_syntax::LanguageId, source: &str, rows: &[usize]) -> Vec<i32> {
+    #[cfg(test)]
+    PARSED_BYTES.with(|bytes| bytes.set(bytes.get() + source.len()));
     let mut doc = lux_syntax::Document::new(lang);
     doc.set_text(source);
-    lux_syntax::indent_rules::indent_level(&doc, source, row) as i32
+    rows.iter()
+        .map(|&row| lux_syntax::indent_rules::indent_level(&doc, source, row) as i32)
+        .collect()
 }
 
-fn indent_unit(indent: &lux_core::buffer::Indent) -> String {
+#[cfg(test)]
+thread_local! {
+    /// Bytes handed to the parser by indent decisions on this thread, so a
+    /// test can prove Enter parses a window and not the whole buffer.
+    pub(crate) static PARSED_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+pub(crate) fn indent_unit(indent: &lux_core::buffer::Indent) -> String {
     match indent.style {
         IndentStyle::Tabs => "\t".to_string(),
         IndentStyle::Spaces => " ".repeat((indent.width as usize).max(1)),

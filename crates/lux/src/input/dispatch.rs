@@ -184,6 +184,7 @@ pub(crate) fn execute_keymap_command(
         "dedent" => {
             super::indent::dedent_selection(app);
         }
+        "reindent" => app.reindent(),
         "markdown_preview" => {
             crate::markdown_preview::toggle(app);
         }

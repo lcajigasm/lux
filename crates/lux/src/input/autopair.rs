@@ -32,7 +32,8 @@ pub(crate) fn is_closing(ch: char) -> bool {
 /// Attempts to handle delimiter typing:
 /// 1. If selections are non-empty and `ch` is an opening delimiter (or quote), wrap selections.
 /// 2. If selection is empty and char immediately after cursor matches `ch` (closing delimiter or quote), step over.
-/// 3. If selection is empty and `ch` is an opening delimiter, insert `open + close` and keep cursor inside.
+/// 3. If a closer opens an indented line, or `:` completes a Python clause keyword, dedent the line.
+/// 4. If selection is empty and `ch` is an opening delimiter, insert `open + close` and keep cursor inside.
 ///
 /// Returns `true` if handled, `false` to proceed with regular character insertion.
 pub(crate) fn handle_char_typed(app: &mut App, ch: char) -> bool {
@@ -80,7 +81,13 @@ pub(crate) fn handle_char_typed(app: &mut App, ch: char) -> bool {
         }
     }
 
-    // 3. Auto-Close: insert open + close, place cursor in between
+    // 3. Dedent: a closer opening an indented line, or a Python clause
+    // keyword's `:`, moves the line to the indentation it belongs at.
+    if super::indent::dedent_on_type(app, ch) {
+        return true;
+    }
+
+    // 4. Auto-Close: insert open + close, place cursor in between
     if !has_selection && let Some(close) = closing_for_open(ch) {
         // Special guard for single-quote: if preceded by an alphanumeric char (e.g. "don't"),
         // don't auto-close, treat as an apostrophe.

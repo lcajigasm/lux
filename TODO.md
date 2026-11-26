@@ -263,7 +263,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-EDIT-03 — Auto-Indentación Inteligente y Reglas de Dedentación por Lenguaje
 - Prioridad: `P1 (Ergonomía)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: —
 - Objetivo: Experiencia de sangrado automático impecable al escribir código.
 - Alcance detallado:

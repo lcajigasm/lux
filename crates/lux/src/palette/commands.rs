@@ -95,6 +95,7 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         "edit.indent" => {
             app.apply_edit_operation(app.cursors.clone(), lux_core::edit_ops::indent);
         }
+        "edit.reindent" => app.reindent(),
         "edit.dedent" => {
             app.apply_edit_operation(app.cursors.clone(), lux_core::edit_ops::dedent);
         }
