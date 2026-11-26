@@ -108,9 +108,6 @@ impl App {
         }
         crate::macros::dispatch::record_text_input(self, text);
 
-        // Parallel paste: when multi-cursor count matches lines count, paste 1 line per cursor.
-        // Note: apply_to_each processes cursors back-to-front (highest line/offset first),
-        // so we count down line_idx from lines.len() - 1 to distribute lines in document order.
         let lines: Vec<&str> = text
             .split('\n')
             .map(|l| l.strip_suffix('\r').unwrap_or(l))
@@ -122,15 +119,18 @@ impl App {
                 let piece = lines.get(line_idx).copied().unwrap_or("");
                 edit_ops::insert_text(buffer, selection, piece)
             });
+            self.ui.minimap.edit = None;
             return;
         }
 
+        let before = self.buffer.revision();
         let chain = self.cursors.count() == 1 && text.chars().count() == 1;
         self.record_edit(
             self.cursors.clone(),
             |buffer, selection| edit_ops::insert_text(buffer, selection, text),
             chain,
         );
+        self.note_minimap_input(text, before);
     }
 
     #[allow(dead_code)]
