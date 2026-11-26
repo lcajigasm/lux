@@ -48,6 +48,7 @@ impl App {
     /// Paints one frame: the editor or the Markdown preview, then chrome.
     pub(crate) fn redraw(&mut self, ctx: &dyn PlatformContext) {
         crate::overlay_motion::begin_frame(self.chrome.motion.reduced);
+        crate::goto::preview::settle(self);
         crate::tab_strip::follow_active(self);
         if !self.presentation.ready(Instant::now()) {
             return;

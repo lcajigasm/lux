@@ -9,6 +9,17 @@ use lux_ui::{EditorView, Theme};
 use swash::FontRef;
 use swash::scale::ScaleContext;
 
+/// How one tab is drawn besides its title.
+#[derive(Clone, Copy)]
+struct Look {
+    active: bool,
+    dirty: bool,
+    /// Goto Anything's transient preview. The tab font has no italic face
+    /// and the text pipeline cannot slant glyphs, so the title is
+    /// underlined with a dashed rule instead.
+    transient: bool,
+}
+
 /// Everything one tab, the `▼` button, or the context menu draws into.
 struct Painter<'a> {
     theme: &'a Theme,
@@ -58,7 +69,12 @@ impl Painter<'_> {
         }
     }
 
-    fn tab(&mut self, tab: &Tab, x: f32, width: f32, active: bool, dirty: bool, close_w: f32) {
+    fn tab(&mut self, tab: &Tab, x: f32, width: f32, look: Look, close_w: f32) {
+        let Look {
+            active,
+            dirty,
+            transient,
+        } = look;
         let stroke = self.stroke;
         let height = self.height;
         let theme = self.theme;
@@ -94,6 +110,9 @@ impl Painter<'_> {
             max_title_w,
             foreground,
         );
+        if transient {
+            self.dashed_rule(x + 8.0 * stroke, height - 7.0 * stroke, max_title_w);
+        }
         if tab.pinned {
             self.quads.push(QuadInstance::solid(
                 [
@@ -121,6 +140,20 @@ impl Painter<'_> {
             f32::MAX,
             foreground,
         );
+    }
+
+    /// A one-stroke dashed rule from `x`, `width` long.
+    fn dashed_rule(&mut self, x: f32, y: f32, width: f32) {
+        let unit = self.stroke.max(1.0);
+        let (dash, gap) = (4.0 * unit, 3.0 * unit);
+        let ink = color(self.theme.foreground);
+        let mut at = 0.0;
+        while at < width {
+            let w = dash.min(width - at);
+            self.quads
+                .push(QuadInstance::solid([x + at, y, w, unit], ink));
+            at += dash + gap;
+        }
     }
 
     /// The `▼` button: a well with a left rule and a triangle of bars, so
@@ -152,6 +185,15 @@ impl Painter<'_> {
                 ink,
             ));
         }
+    }
+}
+
+fn look(documents: &Documents, tab: &Tab, is_current_dirty: bool) -> Look {
+    let active = Some(tab.id) == documents.active_tab;
+    Look {
+        active,
+        dirty: tab_dirty(documents, tab, active, is_current_dirty),
+        transient: crate::goto::preview::is_transient(documents, tab.id),
     }
 }
 
@@ -224,9 +266,8 @@ pub(crate) fn render_tab_bar(
         {
             continue;
         }
-        let active = Some(tab.id) == documents.active_tab;
-        let dirty = tab_dirty(documents, tab, active, is_current_dirty);
-        painter.tab(tab, tab_x, tab_width, active, dirty, close_w);
+        let look = look(documents, tab, is_current_dirty);
+        painter.tab(tab, tab_x, tab_width, look, close_w);
     }
 
     if let Some(drag) = drag {
@@ -237,9 +278,8 @@ pub(crate) fn render_tab_bar(
         if let Some(tab) = tabs.iter().find(|t| t.id == drag.id) {
             let x = (drag.pointer_x - drag.grab_offset)
                 .clamp(sidebar_width, (strip_right - tab_width).max(sidebar_width));
-            let active = Some(tab.id) == documents.active_tab;
-            let dirty = tab_dirty(documents, tab, active, is_current_dirty);
-            painter.tab(tab, x, tab_width, active, dirty, close_w);
+            let look = look(documents, tab, is_current_dirty);
+            painter.tab(tab, x, tab_width, look, close_w);
         }
         painter.quads.push(QuadInstance::solid(
             [marker_x, 0.0, marker_w, tab_bar_height - stroke],

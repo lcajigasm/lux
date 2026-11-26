@@ -10,6 +10,7 @@ use lux_ui::goto_anything::RecentFiles;
 use lux_ui::tabs::TabId;
 
 pub(crate) mod display;
+pub(crate) mod preview;
 mod search;
 pub(crate) mod symbols;
 
@@ -57,6 +58,20 @@ pub(crate) struct GotoSnapshot {
     pub(crate) cursors: lux_core::multicursor::MultiCursor,
     pub(crate) scroll_x: f32,
     pub(crate) scroll_y: f32,
+    /// Other open tabs whose caret a preview moved.
+    pub(crate) touched: Vec<preview::TouchedTab>,
+}
+
+impl GotoSnapshot {
+    fn take(app: &crate::app::App) -> Self {
+        Self {
+            active_tab: app.documents.active_tab,
+            cursors: app.cursors.clone(),
+            scroll_x: app.viewport.scroll_x,
+            scroll_y: app.viewport.scroll_y,
+            touched: Vec::new(),
+        }
+    }
 }
 
 /// Mode of operation for Goto Anything / Goto Symbol in Project.
@@ -79,6 +94,8 @@ pub(crate) struct GotoState {
     /// Index state shown in the input, e.g. while the first scan runs.
     pub(crate) notice: Option<&'static str>,
     pub(crate) motion: crate::overlay_motion::OverlayMotion,
+    /// The preview read the panel waits for; any other result is stale.
+    pub(crate) preview: Option<preview::Ticket>,
 }
 
 impl Default for GotoState {
@@ -94,18 +111,14 @@ impl Default for GotoState {
             items: Vec::new(),
             notice: None,
             motion: crate::overlay_motion::OverlayMotion::open(),
+            preview: None,
         }
     }
 }
 
 impl GotoState {
     pub(crate) fn new(app: &crate::app::App) -> Self {
-        let snapshot = GotoSnapshot {
-            active_tab: app.documents.active_tab,
-            cursors: app.cursors.clone(),
-            scroll_x: app.viewport.scroll_x,
-            scroll_y: app.viewport.scroll_y,
-        };
+        let snapshot = GotoSnapshot::take(app);
         let cached_candidates = search::collect_candidates(app);
         let mut state = Self {
             mode: GotoMode::Anything,
@@ -118,18 +131,14 @@ impl GotoState {
             items: Vec::new(),
             notice: None,
             motion: crate::overlay_motion::OverlayMotion::open(),
+            preview: None,
         };
         state.refresh_results(app);
         state
     }
 
     pub(crate) fn new_project_symbols(app: &crate::app::App) -> Self {
-        let snapshot = GotoSnapshot {
-            active_tab: app.documents.active_tab,
-            cursors: app.cursors.clone(),
-            scroll_x: app.viewport.scroll_x,
-            scroll_y: app.viewport.scroll_y,
-        };
+        let snapshot = GotoSnapshot::take(app);
         // Symbols come from the background index; no file list is needed.
         let cached_candidates = Vec::new();
         let mut state = Self {
@@ -143,6 +152,7 @@ impl GotoState {
             items: Vec::new(),
             notice: None,
             motion: crate::overlay_motion::OverlayMotion::open(),
+            preview: None,
         };
         state.refresh_results(app);
         state
@@ -207,18 +217,8 @@ pub(crate) fn handle_goto_key(
 
     match &event.key {
         Key::Named(NamedKey::Escape) => {
-            if let Some(mut goto) = app.ui.goto_anything.take()
-                && let Some(snapshot) = goto.snapshot.take()
-            {
-                if let Some(orig_tab) = snapshot.active_tab
-                    && app.documents.active_tab != Some(orig_tab)
-                {
-                    app.switch_to_tab(orig_tab);
-                }
-                app.cursors = snapshot.cursors;
-                app.viewport.scroll_x = snapshot.scroll_x;
-                app.viewport.scroll_y = snapshot.scroll_y;
-                app.reset_goal_columns();
+            if let Some(goto) = app.ui.goto_anything.take() {
+                preview::dismiss(app, goto);
             }
             crate::focus::focus_editor(app);
             app.scheduler.invalidate_all();
@@ -331,28 +331,67 @@ pub(crate) fn update_live_preview(app: &mut crate::app::App) {
             return;
         }
     };
+    // Whatever is selected now, an earlier read is no longer wanted.
+    preview::cancel(app);
 
     if !target_path.is_empty() {
         let path = PathBuf::from(&target_path);
-        let is_current = app
-            .documents
-            .path
-            .as_ref()
-            .is_some_and(|p| p == &path || p.ends_with(&path));
-        if !is_current
-            && let Some(entry) = app.documents.entries.iter().find(|e| {
-                e.path
-                    .as_ref()
-                    .is_some_and(|p| p == &path || p.ends_with(&path))
-            })
-        {
-            let tab_id = entry.tab_id;
-            app.switch_to_tab(tab_id);
+        let matches = |p: &PathBuf| p == &path || p.ends_with(&path);
+        // An unsaved tab is listed by its title.
+        let titled = |id: TabId| {
+            let tabs = app.documents.tabs.tabs();
+            tabs.iter().any(|t| t.id == id && t.title == target_path)
+        };
+        let is_current = match &app.documents.path {
+            Some(p) => matches(p),
+            None => {
+                search::names_unsaved_current(&target_path)
+                    || app.documents.active_tab.is_some_and(titled)
+            }
+        };
+        if !is_current {
+            let open = app
+                .documents
+                .entries
+                .iter()
+                .find(|e| match &e.path {
+                    Some(p) => matches(p),
+                    None => titled(e.tab_id),
+                })
+                .map(|e| e.tab_id);
+            match open {
+                Some(tab_id) => {
+                    preview::note_touched(app, tab_id);
+                    app.switch_to_tab(tab_id);
+                    if !preview::is_transient(&app.documents, tab_id) {
+                        preview::discard(app);
+                    }
+                }
+                None => {
+                    // Read off the UI thread; the line is applied on arrival.
+                    preview::request(app, resolve(app, &path), line, col);
+                    return;
+                }
+            }
+        } else if let Some(tab_id) = app.documents.active_tab {
+            preview::note_touched(app, tab_id);
         }
     }
 
     if let Some(line_num) = line {
         jump_to_line_and_col(app, line_num, col);
+    }
+}
+
+/// `path` as given, or under the workspace root when it is relative.
+fn resolve(app: &crate::app::App, path: &std::path::Path) -> PathBuf {
+    if path.is_relative()
+        && let Some(sidebar) = &app.ui.sidebar
+        && let Some(root) = &sidebar.workspace_root
+    {
+        root.join(path)
+    } else {
+        path.to_path_buf()
     }
 }
 
@@ -364,14 +403,7 @@ pub(crate) fn execute_goto(
     col: Option<u32>,
 ) {
     let path = PathBuf::from(target_path);
-    let full_path = if path.is_relative()
-        && let Some(sidebar) = &app.ui.sidebar
-        && let Some(root) = &sidebar.workspace_root
-    {
-        root.join(&path)
-    } else {
-        path.clone()
-    };
+    let full_path = resolve(app, &path);
 
     let root = app
         .ui
@@ -399,10 +431,18 @@ pub(crate) fn execute_goto(
     if let Some(entry) = existing_tab {
         let tab_id = entry.tab_id;
         app.switch_to_tab(tab_id);
+        if preview::is_transient(&app.documents, tab_id) {
+            // Enter on the previewed file keeps it, as an ordinary tab.
+            preview::promote(app);
+            crate::lsp::sync_opened_document(app, ctx);
+        } else {
+            preview::discard(app);
+        }
         if let Some(line_num) = line {
             jump_to_line_and_col(app, line_num, col);
         }
     } else {
+        preview::discard(app);
         // The document worker reads the file; the cursor moves when it lands.
         crate::document::open_queue::open_at(app, Some(ctx), full_path, line, col);
     }

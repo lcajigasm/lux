@@ -6,7 +6,7 @@ use swash::scale::ScaleContext;
 
 use crate::overlay_list::{ListFrame, centered_frame};
 use crate::render::overlay_list::{OverlayItem, paint_overlay};
-use crate::tab_strip::list::{TabListView, badge};
+use crate::tab_strip::list::{TabListView, badge, detail};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
 
@@ -36,7 +36,7 @@ pub(crate) fn render_tab_list(
         .map(|row| OverlayItem {
             title: row.title.as_str(),
             badge: badge(row),
-            detail: None,
+            detail: detail(row),
             icon: None,
             swatches: None,
             hits: row.hits.clone(),

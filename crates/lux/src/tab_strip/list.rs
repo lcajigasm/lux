@@ -25,6 +25,8 @@ pub(crate) struct TabRow {
     pub(crate) title: String,
     pub(crate) dirty: bool,
     pub(crate) active: bool,
+    /// Goto Anything's transient preview tab.
+    pub(crate) transient: bool,
     /// Byte ranges of `title` the query matched; empty without a query.
     pub(crate) hits: crate::overlay_list::Hits,
 }
@@ -54,6 +56,7 @@ pub(crate) fn rows(documents: &Documents, current_dirty: bool) -> Option<Vec<Tab
                 title: tab.title.clone(),
                 dirty,
                 active,
+                transient: crate::goto::preview::is_transient(documents, tab.id),
                 hits: Vec::new(),
             }
         })
@@ -186,6 +189,13 @@ pub(crate) fn card(app: &App, selected: usize, total: usize) -> ListFrame {
 /// The badge a row carries on the card: `›` for the active tab and `●` for
 /// unsaved changes. The title stays the plain tab title so match
 /// highlighting lines up with the query.
+/// The detail line of a row: the transient tab says it is a preview.
+pub(crate) fn detail(row: &TabRow) -> Option<&'static str> {
+    row.transient.then_some(PREVIEW_DETAIL)
+}
+
+pub(crate) const PREVIEW_DETAIL: &str = "Preview";
+
 pub(crate) fn badge(row: &TabRow) -> Option<&'static str> {
     match (row.active, row.dirty) {
         (true, true) => Some("› ●"),

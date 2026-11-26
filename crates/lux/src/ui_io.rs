@@ -57,6 +57,8 @@ pub(crate) enum Done {
     Fonts(Vec<crate::font::CoverageFace>),
     /// First document with an unsaved recovery snapshot, if any.
     Recovery(Option<PathBuf>),
+    /// A Goto Anything preview read finished.
+    Preview(Box<crate::goto::preview::Loaded>),
 }
 
 /// Blocks workers while a test holds it, so a test can observe the UI
@@ -268,6 +270,7 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
         Done::UiFont => crate::font::install_ui_font(app.editor_view.text_layout_mut()),
         Done::EditorFont(requested, loaded) => app.install_editor_font(requested, loaded),
         Done::Recovery(first) => crate::app::startup::note_recovery(app, first),
+        Done::Preview(loaded) => crate::goto::preview::apply(app, *loaded),
     }
 }
 

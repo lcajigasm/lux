@@ -58,18 +58,8 @@ impl App {
 
     pub(crate) fn toggle_goto_anything(&mut self) {
         if self.ui.goto_anything.is_some() {
-            if let Some(mut goto) = self.ui.goto_anything.take()
-                && let Some(snapshot) = goto.snapshot.take()
-            {
-                if let Some(orig_tab) = snapshot.active_tab
-                    && self.documents.active_tab != Some(orig_tab)
-                {
-                    self.switch_to_tab(orig_tab);
-                }
-                self.cursors = snapshot.cursors;
-                self.viewport.scroll_x = snapshot.scroll_x;
-                self.viewport.scroll_y = snapshot.scroll_y;
-                self.reset_goal_columns();
+            if let Some(goto) = self.ui.goto_anything.take() {
+                crate::goto::preview::dismiss(self, goto);
             }
             crate::focus::focus_editor(self);
             self.scheduler.invalidate_all();
@@ -79,6 +69,9 @@ impl App {
     }
 
     pub(crate) fn open_goto_anything(&mut self, initial_query: &str) {
+        // Escape returns to the tab the panel opened from; a preview must
+        // never replace it, so a transient tab shown there is kept.
+        crate::goto::preview::promote_active(self);
         let mut state = crate::goto::GotoState::new(self);
         state.query = crate::field::QueryField::from_text(initial_query);
         state.refresh_results(self);
@@ -91,6 +84,7 @@ impl App {
     }
 
     pub(crate) fn open_goto_project_symbols(&mut self) {
+        crate::goto::preview::promote_active(self);
         crate::goto::symbols::index_open_documents(self);
         let mut state = crate::goto::GotoState::new_project_symbols(self);
         state.refresh_results(self);

@@ -118,8 +118,15 @@ fn take(app: &mut App, clean: bool) -> Snapshot {
     let mut index_of_tab = HashMap::new();
     let mut seen_histories = HashMap::new();
     let only_one = app.documents.entries.len() <= 1;
+    // A Goto Anything preview is not part of the session (ST-NAV-01); an
+    // edited one was already promoted by `settle`.
+    crate::goto::preview::settle(app);
+    let transient = crate::goto::preview::transient(&app.documents);
 
     for (tab_id, title, pinned) in order {
+        if Some(tab_id) == transient {
+            continue;
+        }
         let active = app.documents.active_tab == Some(tab_id);
         let Some(entry) = app.documents.entries.iter().find(|e| e.tab_id == tab_id) else {
             continue;
@@ -180,6 +187,24 @@ fn take(app: &mut App, clean: bool) -> Snapshot {
     }
     // Histories of closed tabs are no longer worth keeping in memory.
     app.ui.session.histories = seen_histories;
+    if let Some(id) = transient {
+        // Restore what the preview was opened from, or the first tab; a
+        // split pane showing the preview shows that tab too.
+        let origin = app
+            .ui
+            .goto_anything
+            .as_ref()
+            .and_then(|g| g.snapshot.as_ref())
+            .and_then(|s| s.active_tab)
+            .and_then(|t| index_of_tab.get(&t).copied());
+        let fallback = origin.or((!session.tabs.is_empty()).then_some(0));
+        if session.active_tab.is_none() {
+            session.active_tab = fallback;
+        }
+        if let Some(index) = fallback {
+            index_of_tab.insert(id, index);
+        }
+    }
     session.layout = layout_state(app, &index_of_tab, line_height);
 
     Snapshot {
