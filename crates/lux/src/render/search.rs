@@ -427,6 +427,20 @@ pub(crate) fn render_search_bar(
         }
 
         rep_x += input_w + 10.0 * scale_factor;
+        search.layout.preserve_case_btn_rect = [rep_x, row2_y, btn_w, input_h];
+        draw_toggle(
+            quad_instances,
+            glyph_instances,
+            editor_view,
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            "AB",
+            search.preserve_case,
+            search.layout.preserve_case_btn_rect,
+        );
+        rep_x += btn_w + 10.0 * scale_factor;
+
         let find_btn_w = 46.0 * scale_factor;
 
         search.layout.find_btn_rect = [rep_x, row2_y, find_btn_w, input_h];

@@ -13,6 +13,7 @@ pub mod huge_file;
 pub mod movement;
 pub mod multicursor;
 pub mod position;
+pub mod preserve_case;
 pub mod selection;
 pub mod selection_ops;
 pub mod snippets;

@@ -178,7 +178,9 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
             app.request_document(ctx, crate::document::Request::Close);
         }
         MenuAction::SaveAll => {
-            app.save_all(ctx);
+            if !crate::search::menu_save_all_toggles_in_selection(app) {
+                app.save_all(ctx);
+            }
         }
         MenuAction::ReopenClosedTab => {
             app.reopen_last_closed_tab();

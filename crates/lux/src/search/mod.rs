@@ -12,6 +12,14 @@ use lux_platform::event::KeyEvent;
 use lux_platform::{Key, NamedKey, PlatformContext};
 use lux_ui::search_bar::SearchBar;
 
+mod click;
+mod toggles;
+
+pub(crate) use click::handle_search_click;
+pub(crate) use toggles::{
+    fit_editor_to_bar, in_selection_chord, menu_save_all_toggles_in_selection,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SearchField {
     Find,
@@ -33,6 +41,7 @@ pub(crate) struct SearchBarLayout {
     pub(crate) word_btn_rect: [f32; 4],
     pub(crate) regex_btn_rect: [f32; 4],
     pub(crate) selection_btn_rect: [f32; 4],
+    pub(crate) preserve_case_btn_rect: [f32; 4],
     pub(crate) close_btn_rect: [f32; 4],
 }
 
@@ -46,6 +55,7 @@ pub(crate) struct SearchBarState {
     pub(crate) whole_word: bool,
     pub(crate) regex: bool,
     pub(crate) in_selection: bool,
+    pub(crate) preserve_case: bool,
     pub(crate) selection_range: Option<std::ops::Range<usize>>,
     pub(crate) layout: SearchBarLayout,
 }
@@ -62,6 +72,7 @@ impl SearchBarState {
             whole_word: false,
             regex: false,
             in_selection: false,
+            preserve_case: false,
             selection_range: None,
             layout: SearchBarLayout::default(),
         }
@@ -76,7 +87,8 @@ impl SearchBarState {
         let query = Query::new(self.find_query.as_str())
             .case_sensitive(self.case_sensitive)
             .whole_word(self.whole_word)
-            .regex(self.regex);
+            .regex(self.regex)
+            .preserve_case(self.preserve_case);
         let scope = if self.in_selection {
             self.selection_range.clone()
         } else {
@@ -97,6 +109,12 @@ impl SearchBarState {
 
     pub(crate) fn toggle_regex(&mut self, buffer: &Buffer) {
         self.regex = !self.regex;
+        self.sync_query(buffer);
+    }
+
+    /// Sublime's Preserve Case: replacements follow each match's case.
+    pub(crate) fn toggle_preserve_case(&mut self, buffer: &Buffer) {
+        self.preserve_case = !self.preserve_case;
         self.sync_query(buffer);
     }
 
@@ -148,6 +166,7 @@ pub(crate) fn select_match(app: &mut crate::app::App, selection: Selection) {
 }
 
 pub(crate) fn open_find(app: &mut crate::app::App, replace_mode: bool) {
+    let bar_height_before = app.search_bar_height();
     let mut initial_query = String::new();
     let mut initial_range = None;
     let mut in_sel = false;
@@ -188,8 +207,8 @@ pub(crate) fn open_find(app: &mut crate::app::App, replace_mode: bool) {
             select_match(app, first_match);
         }
         app.ui.search_bar = Some(search);
-        app.update_viewport_dimensions();
     }
+    fit_editor_to_bar(app, bar_height_before);
     app.chrome
         .focus
         .set_focus(lux_ui::focus::FocusTarget::Search);
@@ -250,12 +269,8 @@ pub(crate) fn find_all(app: &mut crate::app::App) {
         let count = matches.len();
         app.cursors = MultiCursor::from_cursors(matches);
         app.reset_goal_columns();
-        app.reveal_primary_cursor();
         crate::accessibility::announce(app, format!("Selected {count} matches"));
-        app.ui.search_bar = None;
-        crate::focus::focus_editor(app);
-        app.update_viewport_dimensions();
-        app.scheduler.invalidate_all();
+        toggles::close(app);
     }
 }
 
@@ -277,11 +292,7 @@ pub(crate) fn handle_search_key(
 
     match &event.key {
         Key::Named(NamedKey::Escape) => {
-            app.ui.search_bar = None;
-            crate::focus::focus_editor(app);
-            app.update_viewport_dimensions();
-            app.reveal_primary_cursor();
-            app.scheduler.invalidate_all();
+            toggles::close(app);
             true
         }
 
@@ -399,144 +410,6 @@ pub(crate) fn handle_search_key(
         }
         _ => false,
     }
-}
-
-pub(crate) fn handle_search_click(app: &mut crate::app::App, mouse_x: f32, mouse_y: f32) -> bool {
-    let (layout, replace_mode) = {
-        let Some(search) = app.ui.search_bar.as_ref() else {
-            return false;
-        };
-        (search.layout.clone(), search.replace_mode)
-    };
-
-    if !rect_contains(layout.bar_rect, mouse_x, mouse_y) {
-        return false;
-    }
-
-    if rect_contains(layout.close_btn_rect, mouse_x, mouse_y) {
-        app.ui.search_bar = None;
-        crate::focus::focus_editor(app);
-        app.update_viewport_dimensions();
-        app.reveal_primary_cursor();
-        app.scheduler.invalidate_all();
-        return true;
-    }
-
-    if rect_contains(layout.find_input_rect, mouse_x, mouse_y) {
-        if let Some(s) = app.ui.search_bar.as_mut() {
-            s.focused_field = SearchField::Find;
-            app.scheduler.invalidate_all();
-        }
-        return true;
-    }
-
-    if replace_mode && rect_contains(layout.replace_input_rect, mouse_x, mouse_y) {
-        if let Some(s) = app.ui.search_bar.as_mut() {
-            s.focused_field = SearchField::Replace;
-            app.scheduler.invalidate_all();
-        }
-        return true;
-    }
-
-    if rect_contains(layout.prev_btn_rect, mouse_x, mouse_y) {
-        if let Some(sel) = app.ui.search_bar.as_mut().and_then(|s| s.previous_match()) {
-            select_match(app, sel);
-        }
-        return true;
-    }
-
-    if rect_contains(layout.next_btn_rect, mouse_x, mouse_y) {
-        if let Some(sel) = app.ui.search_bar.as_mut().and_then(|s| s.next_match()) {
-            select_match(app, sel);
-        }
-        return true;
-    }
-
-    if rect_contains(layout.case_btn_rect, mouse_x, mouse_y) {
-        if let Some(s) = app.ui.search_bar.as_mut() {
-            s.toggle_case(&app.buffer);
-            app.scheduler.invalidate_all();
-        }
-        return true;
-    }
-
-    if rect_contains(layout.word_btn_rect, mouse_x, mouse_y) {
-        if let Some(s) = app.ui.search_bar.as_mut() {
-            s.toggle_word(&app.buffer);
-            app.scheduler.invalidate_all();
-        }
-        return true;
-    }
-
-    if rect_contains(layout.regex_btn_rect, mouse_x, mouse_y) {
-        if let Some(s) = app.ui.search_bar.as_mut() {
-            s.toggle_regex(&app.buffer);
-            app.scheduler.invalidate_all();
-        }
-        return true;
-    }
-
-    if rect_contains(layout.selection_btn_rect, mouse_x, mouse_y) {
-        if let Some(s) = app.ui.search_bar.as_mut() {
-            let active_range =
-                (!app.cursors.primary().is_empty()).then(|| app.cursors.primary().char_range());
-            s.toggle_in_selection(&app.buffer, active_range);
-            app.scheduler.invalidate_all();
-        }
-        return true;
-    }
-
-    if replace_mode && rect_contains(layout.find_btn_rect, mouse_x, mouse_y) {
-        if let Some(sel) = app.ui.search_bar.as_mut().and_then(|s| s.next_match()) {
-            select_match(app, sel);
-        }
-        return true;
-    }
-
-    if replace_mode && rect_contains(layout.find_all_btn_rect, mouse_x, mouse_y) {
-        find_all(app);
-        return true;
-    }
-
-    if replace_mode && rect_contains(layout.replace_btn_rect, mouse_x, mouse_y) {
-        let (replaced_tx, next_sel) = {
-            let Some(s) = app.ui.search_bar.as_mut() else {
-                return true;
-            };
-            let tx = s.replace_current(&mut app.buffer);
-            let sel = s.search_bar.current();
-            (tx, sel)
-        };
-        if let Some(tx) = replaced_tx {
-            app.sync_syntax_incremental(&tx.edits);
-            app.history.record(tx);
-            if let Some(sel) = next_sel {
-                select_match(app, sel);
-            }
-        }
-        return true;
-    }
-
-    if replace_mode && rect_contains(layout.replace_all_btn_rect, mouse_x, mouse_y) {
-        let replaced_tx = app
-            .ui
-            .search_bar
-            .as_mut()
-            .and_then(|s| s.replace_all(&mut app.buffer));
-        if let Some(tx) = replaced_tx {
-            app.sync_syntax_incremental(&tx.edits);
-            app.history.record(tx);
-            app.scheduler.invalidate_all();
-        }
-        return true;
-    }
-
-    true
-}
-
-fn rect_contains(rect: [f32; 4], x: f32, y: f32) -> bool {
-    let [rx, ry, rw, rh] = rect;
-    x >= rx && x <= rx + rw && y >= ry && y <= ry + rh
 }
 
 #[cfg(test)]
