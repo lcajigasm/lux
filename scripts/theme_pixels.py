@@ -315,14 +315,17 @@ def check_palette(path, row_fill):
         2,
     )
     card = mode(image, int(left + 40), int(left + card_w - 40), int(top + 2), int(top + 12), 2)
-    # The selection is pushed to 3:1 against the card, so it is no longer
-    # the raw panel-row hex. `row_fill` stays in the call for the job log.
+    # Since #163 the selected row is the theme's selection color, pushed
+    # away from the card only as far as 1.4:1 (Sublime-like, not a slab);
+    # text on it is still held to 4.5:1 by the app's contrast tests.
+    # mode() keeps 5 bits per channel, so allow a little under 1.4 here.
+    # `row_fill` stays in the call for the job log.
     _ = row_fill
     row_ratio = contrast(row, card)
-    if row_ratio < 2.9:
+    if row_ratio < 1.35:
         fail(
             f"{path} palette selection {hex_of(row)} on card {hex_of(card)} "
-            f"is {row_ratio:.2f}, want >= 2.9 ({row_fill})"
+            f"is {row_ratio:.2f}, want >= 1.35 ({row_fill})"
         )
     # mode() keeps the top 5 bits, so a real #75715E row is reported as
     # #707058 (distance 6). A legal mid-gray selection such as #686868
