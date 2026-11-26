@@ -56,6 +56,7 @@ impl App {
         let tab_bar_height = self.tab_bar_height();
         let status_bar_height = self.status_bar_height();
         let tab_width = self.tab_width();
+        let (strip_left, strip_width) = crate::tab_strip::span(self);
         let is_current_dirty = self.document_dirty();
         let editor_top = tab_bar_height;
 
@@ -304,8 +305,8 @@ impl App {
             tab_bar::render_tab_bar(
                 documents,
                 is_current_dirty,
-                sidebar_width,
-                viewport.width,
+                strip_left,
+                strip_width,
                 tab_width,
                 tab_bar_height,
                 *scale_factor,

@@ -202,6 +202,10 @@ pub enum PlatformEvent {
     /// it as further [`PlatformEvent::MouseWheel`] pixel deltas.
     ColorSchemeChanged(ColorScheme),
     Focused(bool),
+    /// The window finished entering (`true`) or leaving (`false`) native
+    /// fullscreen, however it was asked for: the menu, a shortcut, or the
+    /// green button. Sent once the transition has settled.
+    FullscreenChanged(bool),
     Occluded(bool),
     CloseRequested,
     RedrawRequested,

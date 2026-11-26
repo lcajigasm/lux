@@ -255,7 +255,7 @@ impl App {
 
     pub(crate) fn tab_width(&self) -> f32 {
         let count = self.documents.tabs.tabs().len().max(1) as f32;
-        let per_tab = self.viewport.width / count;
+        let per_tab = crate::tab_strip::span(self).1 / count;
         per_tab.clamp(
             TAB_MIN_WIDTH * self.scale_factor,
             TAB_MAX_WIDTH * self.scale_factor,

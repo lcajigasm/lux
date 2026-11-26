@@ -80,6 +80,7 @@ impl App {
             text,
         });
         self.apply_user_settings();
+        crate::title_bar::attach(self);
         self.scheduler.invalidate_all();
         crate::probe::phase("gpu");
         window.request_redraw();
@@ -112,8 +113,11 @@ impl App {
             - search_bar_height
             - term_dock_height)
             .max(1.0);
+        crate::title_bar::refresh(self);
         self.scheduler.invalidate_all();
-        gpu_window.window.request_redraw();
+        if let Some(gpu_window) = &self.gpu_window {
+            gpu_window.window.request_redraw();
+        }
     }
 
     pub(crate) fn sync_editor_clear_color(&mut self) {

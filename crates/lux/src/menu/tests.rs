@@ -262,3 +262,18 @@ fn quick_open_stays_open_when_the_key_arrives_before_the_menu() {
         "the menu delivery closed Goto Anything the key had just opened"
     );
 }
+
+#[test]
+fn the_full_screen_item_matches_the_keymap_binding() {
+    use lux_config::keymap::{ChordSequence, Platform};
+    let (title, key, mask) = super::FULL_SCREEN_ITEM;
+    assert_eq!(title, "Enter Full Screen");
+    // NSEventModifierFlagControl | NSEventModifierFlagCommand.
+    assert_eq!(mask, 0x40000 | 0x100000);
+    let keymap = lux_config::keymap::presets::sublime();
+    let bound = keymap
+        .binding_for("toggle_full_screen", Platform::Mac)
+        .expect("toggle_full_screen has a macOS binding");
+    let expected: ChordSequence = format!("cmd+ctrl+{key}").parse().unwrap();
+    assert_eq!(*bound, expected);
+}

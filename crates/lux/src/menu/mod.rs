@@ -105,6 +105,12 @@ pub(crate) enum MenuAction {
     ClearRecent = 213,
 }
 
+/// View > Enter Full Screen: title, key equivalent, and modifier mask
+/// (Control-Command), matching the `toggle_full_screen` macOS binding.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) const FULL_SCREEN_ITEM: (&str, &str, usize) =
+    ("Enter Full Screen", "f", (1 << 18) | (1 << 20));
+
 impl MenuAction {
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub(crate) fn tag(self) -> isize {

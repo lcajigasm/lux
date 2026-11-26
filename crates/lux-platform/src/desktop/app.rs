@@ -18,6 +18,12 @@ use super::dialog::RfdFileDialogs;
 pub(super) enum AccessibilityEvent {
     Accessibility(accesskit_winit::Event),
     Background,
+    /// A native fullscreen transition finished (macOS notification).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    Fullscreen {
+        window: winit::window::WindowId,
+        fullscreen: bool,
+    },
 }
 
 impl From<accesskit_winit::Event> for AccessibilityEvent {
@@ -35,6 +41,9 @@ pub(super) struct WindowRecord {
     pub(super) id: WindowId,
     pub(super) window: Rc<winit::window::Window>,
     pub(super) accessibility: Rc<RefCell<accesskit_winit::Adapter>>,
+    /// Keeps the window's AppKit title-bar observer alive.
+    #[cfg(target_os = "macos")]
+    pub(super) _title_bar: Option<Rc<super::macos_title_bar::TitleBar>>,
 }
 
 pub(super) struct DesktopApp<H: PlatformEventHandler> {
@@ -113,6 +122,10 @@ impl<H: PlatformEventHandler> ApplicationHandler<AccessibilityEvent> for Desktop
         let Some(id) = self.windows.borrow().get(&window_id).map(|r| r.id) else {
             return;
         };
+        #[cfg(target_os = "macos")]
+        if matches!(event, winit::event::WindowEvent::Focused(true)) {
+            super::macos_title_bar::refresh_double_click_action();
+        }
         let Some(event) = convert::window_event(event) else {
             return;
         };
@@ -140,6 +153,22 @@ impl<H: PlatformEventHandler> ApplicationHandler<AccessibilityEvent> for Desktop
                     &self.accessibility_proxy,
                 );
                 self.handler.background_event(&ctx);
+                return;
+            }
+            AccessibilityEvent::Fullscreen { window, fullscreen } => {
+                let Some(id) = self.windows.borrow().get(&window).map(|r| r.id) else {
+                    return;
+                };
+                let ctx = DesktopContext::new(
+                    event_loop,
+                    &self.clipboard,
+                    &self.dialogs,
+                    &self.windows,
+                    &self.next_id,
+                    &self.accessibility_proxy,
+                );
+                self.handler
+                    .window_event(&ctx, id, PlatformEvent::FullscreenChanged(fullscreen));
                 return;
             }
         };

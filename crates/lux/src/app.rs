@@ -407,6 +407,7 @@ impl PlatformEventHandler for App {
                     gpu.window.request_redraw();
                 }
             }
+            PlatformEvent::FullscreenChanged(on) => crate::title_bar::fullscreen_changed(self, on),
             PlatformEvent::ColorSchemeChanged(scheme) => {
                 self.apply_system_scheme(scheme);
             }

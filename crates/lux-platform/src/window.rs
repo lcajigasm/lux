@@ -154,6 +154,29 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn set_cursor(&self, cursor: CursorShape) {
         let _ = cursor;
     }
+    /// Physical pixels the window's own controls take at the leading end
+    /// of the content's top row. Non-zero only where the content draws the
+    /// title bar (macOS, outside fullscreen); zero where the system draws
+    /// a separate title bar or none.
+    fn title_bar_leading_inset(&self) -> f64 {
+        0.0
+    }
+    /// Height, in logical points, of the content row that serves as the
+    /// title bar. macOS centers the traffic lights on it.
+    fn set_title_bar_height(&self, height: f64) {
+        let _ = height;
+    }
+    /// The primary button went down on empty space of a content-drawn
+    /// title bar. Behaves like the native title bar: a drag moves the
+    /// window, a double click does what the user's system setting says.
+    /// A no-op where the system draws the title bar.
+    fn title_bar_pressed(&self) {}
+    /// Color (sRGB) of the content row serving as the title bar, and
+    /// whether it is dark. macOS paints the window background with it and
+    /// draws the traffic lights for that appearance.
+    fn set_title_bar_color(&self, rgb: [u8; 3], dark: bool) {
+        let _ = (rgb, dark);
+    }
 }
 
 #[cfg(test)]

@@ -50,6 +50,11 @@ pub(crate) fn build_view_and_tool_menus(mtm: MainThreadMarker, main_menu: &NSMen
         1048576 | 262144 | 131072,
         Some(MenuAction::ToggleDistractionFree),
     );
+    // AppKit's own action on the key window: it retitles the item Enter /
+    // Exit Full Screen, and the green button reaches the same state.
+    let (title, key, mask) = super::FULL_SCREEN_ITEM;
+    let full_screen = add_system_item(mtm, &view_menu, title, key, sel!(toggleFullScreen:));
+    full_screen.setKeyEquivalentModifierMask(objc2_app_kit::NSEventModifierFlags(mask));
     add_separator(mtm, &view_menu);
     add_item_with_mask(
         mtm,
@@ -303,6 +308,8 @@ pub(crate) fn build_view_and_tool_menus(mtm: MainThreadMarker, main_menu: &NSMen
     add_system_item(mtm, &win_menu, "Zoom", "", sel!(performZoom:));
     main_menu.addItem(&win_menu_item);
     main_menu.setSubmenu_forItem(Some(&win_menu), &win_menu_item);
+    // AppKit lists the open windows by title here.
+    objc2_app_kit::NSApplication::sharedApplication(mtm).setWindowsMenu(Some(&win_menu));
 
     // 10. Help Menu
     let help_menu_item = NSMenuItem::new(mtm);

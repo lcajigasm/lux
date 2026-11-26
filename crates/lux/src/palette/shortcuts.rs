@@ -88,6 +88,7 @@ const MAP: &[(&str, &str)] = &[
     ("view.move_to_group_3", "move_to_group_3"),
     ("view.move_to_group_4", "move_to_group_4"),
     ("view.toggle_distraction_free", "toggle_distraction_free"),
+    ("view.toggle_full_screen", "toggle_full_screen"),
     ("build.build", "build"),
     ("build.build_with", "build_with"),
     ("build.cancel", "cancel_build"),

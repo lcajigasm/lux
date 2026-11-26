@@ -5,6 +5,8 @@
 pub(crate) mod list;
 
 #[cfg(test)]
+mod inset_tests;
+#[cfg(test)]
 mod tests;
 
 use lux_platform::event::KeyEvent;
@@ -29,6 +31,9 @@ pub(crate) struct StripState {
     revealed: Option<TabId>,
     /// Goto Anything's transient preview tab (ST-NAV-01).
     pub(crate) preview: crate::goto::preview::PreviewTab,
+    /// Physical pixels the window controls take at the row's leading end
+    /// (macOS traffic lights; zero in fullscreen and on other platforms).
+    pub(crate) controls_inset: f32,
 }
 
 /// A press on a tab, and the drag it becomes once the pointer moves.
@@ -100,14 +105,44 @@ impl StripLayout {
     }
 }
 
-pub(crate) fn layout(app: &App) -> StripLayout {
-    StripLayout::new(
+/// `(left, width)` of the strip, after the sidebar and window controls.
+pub(crate) fn span(app: &App) -> (f32, f32) {
+    crate::title_bar::strip_span(
         app.sidebar_width(),
         app.viewport.width,
+        app.documents.strip.controls_inset,
+    )
+}
+
+pub(crate) fn layout(app: &App) -> StripLayout {
+    let (left, width) = span(app);
+    StripLayout::new(
+        left,
+        width,
         app.tab_width(),
         app.documents.tabs.tabs().len(),
         app.scale_factor,
     )
+}
+
+/// What a press at `mouse_x` in the tab row lands on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RowHit {
+    Overflow,
+    /// Tab index, and whether the press is on its close mark.
+    Tab(usize, bool),
+    /// No tab and no button: title-bar space.
+    Empty,
+}
+
+pub(crate) fn row_hit(app: &App, mouse_x: f32) -> RowHit {
+    if layout(app).on_button(mouse_x) {
+        RowHit::Overflow
+    } else if let Some((index, on_close)) = tab_at(app, mouse_x) {
+        RowHit::Tab(index, on_close)
+    } else {
+        RowHit::Empty
+    }
 }
 
 /// The tab under `mouse_x`, and whether the pointer is on its close mark.

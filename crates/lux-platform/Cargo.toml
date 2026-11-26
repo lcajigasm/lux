@@ -25,3 +25,10 @@ winit = { version = "0.30.13", default-features = false, features = [
     "wayland-dlopen",
     "wayland-csd-adwaita-crossfont",
 ] }
+
+# The unified title bar (traffic lights over the tab row) and the user's
+# title-bar double-click setting need AppKit calls winit does not wrap.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.4"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSObject", "NSNotification", "NSUserDefaults", "NSGeometry", "NSAutoreleasePool"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSButton", "NSControl", "NSApplication", "NSEvent", "NSColor", "NSAppearance", "objc2-core-foundation"] }

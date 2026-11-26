@@ -17,6 +17,8 @@ pub(super) struct DesktopWindow {
     /// converted `PlatformEvent` — see
     /// `docs/adr/0013-platform-accessibility-adapter-wiring.md`.
     pub(super) accessibility: Rc<RefCell<accesskit_winit::Adapter>>,
+    #[cfg(target_os = "macos")]
+    pub(super) title_bar: Option<Rc<super::macos_title_bar::TitleBar>>,
 }
 
 impl PlatformWindow for DesktopWindow {
@@ -44,6 +46,11 @@ impl PlatformWindow for DesktopWindow {
 
     fn set_title(&self, title: &str) {
         self.window.set_title(title);
+        // AppKit lays the title bar out again on a title change.
+        #[cfg(target_os = "macos")]
+        if let Some(title_bar) = &self.title_bar {
+            title_bar.recenter();
+        }
     }
 
     fn request_redraw(&self) {
@@ -70,6 +77,9 @@ impl PlatformWindow for DesktopWindow {
         self.accessibility.borrow_mut().update_if_active(|| update);
     }
 
+    /// On macOS winit's borderless fullscreen is native fullscreen in its
+    /// own Space (`toggleFullScreen:`), the same state the green button
+    /// and View > Enter Full Screen reach.
     fn set_fullscreen(&self, fullscreen: bool) {
         if fullscreen {
             self.window
@@ -130,6 +140,35 @@ impl PlatformWindow for DesktopWindow {
             CursorShape::ResizeNorthSouth => winit::window::CursorIcon::NsResize,
         };
         self.window.set_cursor(icon);
+    }
+
+    #[cfg(target_os = "macos")]
+    fn title_bar_leading_inset(&self) -> f64 {
+        if self.title_bar.is_none() {
+            return 0.0;
+        }
+        super::macos_title_bar::leading_inset(&self.window)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn set_title_bar_height(&self, height: f64) {
+        if let Some(title_bar) = &self.title_bar {
+            title_bar.set_row_height(height);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn set_title_bar_color(&self, rgb: [u8; 3], dark: bool) {
+        if self.title_bar.is_some() {
+            super::macos_title_bar::set_title_bar_color(&self.window, rgb, dark);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn title_bar_pressed(&self) {
+        if self.title_bar.is_some() {
+            super::macos_title_bar::title_bar_pressed(&self.window);
+        }
     }
 }
 

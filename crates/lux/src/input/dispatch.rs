@@ -306,6 +306,9 @@ pub(crate) fn execute_keymap_command(
         "toggle_distraction_free" => {
             app.toggle_distraction_free();
         }
+        "toggle_full_screen" => {
+            app.toggle_full_screen();
+        }
         "trim_trailing_whitespace" => {
             app.trim_trailing_whitespace();
         }

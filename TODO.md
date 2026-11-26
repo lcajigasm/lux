@@ -658,19 +658,19 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ---
 
-### ST-MAC-02 — Pulido de Ventana Nativa macOS (Botones de Semáforo y Fullscreen)
-- Prioridad: `P1 (Estética macOS)`
-- Estado: `OPEN`
-- Dependencias: —
-- Problema actual:
-  - Los botones de la ventana de macOS (rojo, amarillo, verde de cerrar, minimizar y maximizar) pueden colisionar visualmente con las primeras pestañas de la barra superior.
-- Alcance detallado:
-  - Ajustar el inset horizontal de la barra de pestañas en macOS:
-    - Reservar un margen izquierdo de 78 px en la barra de pestañas cuando la ventana está en modo ventana normal para dar espacio a los semáforos nativos.
-    - En modo pantalla completa (`fullscreen`), colapsar dicho margen a 0 px dinámicamente.
-  - Integrar soporte completo de espacios nativos de macOS para pantalla completa con animación fluida.
-- Criterios de aceptación:
-  - Los botones de control de ventana de macOS tienen su espaciado holgado y no pisan los títulos de las pestañas ni sus botones de cierre.
+### ST-MAC-02 — macOS window polish: unified title bar and native fullscreen
+- Priority: `P1 (macOS look)`
+- Status: `DONE`
+- Dependencies: —
+- Resolved: see `docs/STATUS.md` (ST-MAC-02) and `docs/adr/0020-macos-unified-title-bar.md`. Verified on a real window by `scripts/unified-title-bar.sh`; the inactive gray traffic lights on a light theme are not captured.
+- Goal:
+  1. Unified title bar on macOS: transparent title bar with full-size content view (winit `titlebar_transparent`, `fullsize_content_view`, `title_hidden`). The tab strip occupies the title bar row with a left inset that clears the traffic lights (from the real button frame when available, else the standard 78 pt at the current scale). Empty space left of and among the tabs drags the window; a double click there does what the user's "Double-click a window's title bar to" setting says (`AppleActionOnDoubleClick`, read off the UI thread). The traffic lights are vertically centered on the tab row, and the window title is still set for Mission Control and the Window menu. Hit-testing for tabs, the `▼` overflow button, close buttons and drag accounts for the inset. Other platforms unchanged; `lux-platform` stays the only crate touching winit/objc2 for this.
+  2. Native fullscreen (Spaces) via View > Enter Full Screen, Ctrl+Cmd+F and the green button, distinct from distraction-free mode, which also uses native fullscreen (as Sublime does) with hidden chrome. Frame and chrome are restored on exit. In fullscreen the inset is removed.
+  3. Light/dark: the title bar area follows the theme's tab-bar color; the traffic lights remain visible on light themes.
+- Acceptance criteria:
+  - Geometry tests for the inset and hit-testing at scale 1 and 2, fullscreen on and off; menu and keymap wiring tests.
+  - A macOS UI scenario captures the window and asserts the tab strip is at the top (y < 40 pt).
+  - The traffic lights do not overlap tab titles or close buttons.
 
 ---
 
