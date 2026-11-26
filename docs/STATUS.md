@@ -1039,7 +1039,11 @@ the sidebar never showed it (test:
 `a_file_created_while_the_seed_scan_runs_is_reported_as_created`). On a
 filesystem with one-second timestamps (HFS+), or Linux's coarse
 file-timestamp clock, a file born within that granularity of the watch can
-still be seeded; (2) deleting a
+still be seeded. `existed_before` compares the file's birth time, stamped
+by the filesystem, with the local clock, so a network share whose clock
+runs ahead of this machine, or a backward step of the local clock, can
+leave files that already existed out of the seed (their first spurious
+`Create` then reads as `Created`); (2) deleting a
 file shortly after creating it (even across separate, real syscalls) makes
 FSEvents coalesce the whole lifecycle into one raw batch, which trips
 `notify-debouncer-full`'s own create-then-remove cancellation heuristic and
