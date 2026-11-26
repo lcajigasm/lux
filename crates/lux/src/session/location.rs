@@ -45,7 +45,12 @@ pub(crate) fn legacy_session_file(root: Option<&Path>) -> PathBuf {
 /// The file to read a session from: the new location, or the legacy one
 /// once, while nothing has been written to the new location yet.
 pub(crate) fn readable_session_file(root: Option<&Path>) -> Option<PathBuf> {
-    let current = session_file(root);
+    readable_session_file_in(&data_dir(), root)
+}
+
+/// [`readable_session_file`] with sessions kept under `data_dir`.
+pub(crate) fn readable_session_file_in(data_dir: &Path, root: Option<&Path>) -> Option<PathBuf> {
+    let current = session_store::session_file(data_dir, root);
     if current.exists() {
         return Some(current);
     }

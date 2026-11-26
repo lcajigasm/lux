@@ -42,13 +42,16 @@ pub(crate) fn restored(ctx: &dyn PlatformContext) -> Option<PlacedWindow> {
 /// project session instead. A later launch creates the window before it
 /// knows which project it will open, so the frame has to be in the
 /// global file.
-pub(crate) fn mirror_global(frame: &WindowFrame, written_to: &std::path::Path) {
-    let global = location::session_file(None);
+pub(crate) fn mirror_global(
+    frame: &WindowFrame,
+    written_to: &std::path::Path,
+    global: &std::path::Path,
+) {
     if global == written_to {
         return;
     }
     let existed = global.exists();
-    let mut session = Session::load(&global).unwrap_or_default();
+    let mut session = Session::load(global).unwrap_or_default();
     let clean = existed && !session.needs_recovery();
     session.windows.clear();
     session.windows.push(frame.clone());
@@ -56,9 +59,9 @@ pub(crate) fn mirror_global(frame: &WindowFrame, written_to: &std::path::Path) {
         let _ = std::fs::create_dir_all(parent);
     }
     if clean {
-        let _ = session.end_cleanly(&global);
+        let _ = session.end_cleanly(global);
     } else {
-        let _ = session.save(&global);
+        let _ = session.save(global);
     }
 }
 

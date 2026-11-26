@@ -36,7 +36,7 @@ impl FileDialogs for NoDialogs {
 
 static NO_DIALOGS: NoDialogs = NoDialogs;
 
-struct Ctx;
+pub(super) struct Ctx;
 impl lux_platform::Clipboard for Ctx {
     fn read_text(&self) -> Result<String, lux_platform::PlatformError> {
         Ok(String::new())
@@ -68,7 +68,7 @@ impl PlatformContext for Ctx {
     fn exit(&self) {}
 }
 
-fn new_app() -> App {
+pub(super) fn new_app() -> App {
     let mut app =
         App::new(include_bytes!("../../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
     app.viewport.width = 800.0;
@@ -89,7 +89,7 @@ fn press(app: &mut App, key: Key, text: Option<&str>) {
     );
 }
 
-fn type_text(app: &mut App, text: &str) {
+pub(super) fn type_text(app: &mut App, text: &str) {
     app.modifiers = Modifiers::default();
     for ch in text.chars() {
         let s = ch.to_string();
@@ -97,7 +97,7 @@ fn type_text(app: &mut App, text: &str) {
     }
 }
 
-fn undo_key(app: &mut App) {
+pub(super) fn undo_key(app: &mut App) {
     app.modifiers = Modifiers {
         meta: cfg!(target_os = "macos"),
         control: !cfg!(target_os = "macos"),
@@ -108,7 +108,7 @@ fn undo_key(app: &mut App) {
     app.modifiers = Modifiers::default();
 }
 
-fn open_file(app: &mut App, path: &std::path::Path) {
+pub(super) fn open_file(app: &mut App, path: &std::path::Path) {
     let name = path.file_name().unwrap().to_string_lossy().to_string();
     let tab = app.documents.tabs.open(&name);
     let buffer = Buffer::open(path).unwrap();
@@ -128,14 +128,14 @@ fn sel(buffer: &Buffer, anchor: usize, head: usize) -> Selection {
 #[test]
 fn quit_and_restore_keeps_text_selections_scroll_layout_and_undo() {
     let dir = tempfile::tempdir().unwrap();
-    let session_file = dir.path().join("session.json");
     let a = dir.path().join("a.txt");
     let b = dir.path().join("b.txt");
     std::fs::write(&a, "first line\n".repeat(80)).unwrap();
     std::fs::write(&b, "other file\n").unwrap();
 
     let mut app = new_app();
-    app.ui.session.session_path = Some(session_file.clone());
+    app.ui.session.data_dir = Some(dir.path().join("data"));
+    let session_file = crate::session::snapshot::current_file(&app);
     let untitled = app.documents.entries[0].tab_id;
     open_file(&mut app, &b);
     open_file(&mut app, &a);
@@ -193,7 +193,7 @@ fn quit_and_restore_keeps_text_selections_scroll_layout_and_undo() {
     );
 
     let mut fresh = new_app();
-    fresh.ui.session.session_path = Some(session_file.clone());
+    fresh.ui.session.data_dir = Some(dir.path().join("data"));
     assert!(restore_session(&mut fresh, &session_file).unwrap());
 
     assert_eq!(fresh.documents.path.as_deref(), Some(a.as_path()));
@@ -232,12 +232,12 @@ fn quit_and_restore_keeps_text_selections_scroll_layout_and_undo() {
 #[test]
 fn a_file_changed_on_disk_after_quit_restores_without_its_stale_history() {
     let dir = tempfile::tempdir().unwrap();
-    let session_file = dir.path().join("session.json");
     let file = dir.path().join("clean.txt");
     std::fs::write(&file, "abc").unwrap();
 
     let mut app = new_app();
-    app.ui.session.session_path = Some(session_file.clone());
+    app.ui.session.data_dir = Some(dir.path().join("data"));
+    let session_file = crate::session::snapshot::current_file(&app);
     open_file(&mut app, &file);
     // An edit that was then saved: clean, but with undo history.
     let edit = lux_core::edit::Edit::insert(3, "d");
@@ -286,7 +286,7 @@ fn a_legacy_project_session_is_read_and_later_written_to_the_data_dir() {
     let mut app = new_app();
     assert!(restore_session(&mut app, &legacy_file).unwrap());
     assert_eq!(app.cursors.primary().head.char, 3);
-    let target = app.ui.session.session_path.clone().unwrap();
+    let target = crate::session::snapshot::current_file(&app);
     assert_ne!(target, legacy_file);
     assert_eq!(target, location::session_file(Some(&root)));
     assert!(target.starts_with(location::data_dir()));
@@ -314,9 +314,9 @@ fn a_burst_of_changes_wakes_the_loop_once_quiet_and_writes_off_thread() {
     assert!(rx.try_recv().is_err(), "a burst wakes the loop once");
 
     let dir = tempfile::tempdir().unwrap();
-    let session_file = dir.path().join("session.json");
     let mut app = new_app();
-    app.ui.session.session_path = Some(session_file.clone());
+    app.ui.session.data_dir = Some(dir.path().join("data"));
+    let session_file = crate::session::snapshot::current_file(&app);
     type_text(&mut app, "draft");
     super::snapshot::submit(&mut app);
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -351,9 +351,9 @@ fn a_burst_of_changes_wakes_the_loop_once_quiet_and_writes_off_thread() {
 #[test]
 fn restore_twenty_tabs_reports_its_time() {
     let dir = tempfile::tempdir().unwrap();
-    let session_file = dir.path().join("session.json");
     let mut app = new_app();
-    app.ui.session.session_path = Some(session_file.clone());
+    app.ui.session.data_dir = Some(dir.path().join("data"));
+    let session_file = crate::session::snapshot::current_file(&app);
     let text = "let value = compute(42); // a typical line of code\n".repeat(2_000);
     for i in 0..20 {
         let path = dir.path().join(format!("file{i}.rs"));

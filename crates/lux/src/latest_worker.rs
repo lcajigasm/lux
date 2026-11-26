@@ -45,15 +45,17 @@ impl<T: Send + 'static> LatestWorker<T> {
         }
     }
 
-    /// Writes `job` on the calling thread, discarding any job still
-    /// waiting and waiting for the one in flight. For the quit path, where
-    /// the process must not exit before the newest state is on disk.
-    pub(crate) fn run_now(&self, job: T) {
+    /// Runs `write` on the calling thread in place of the worker,
+    /// discarding any job still waiting and waiting for the one in flight,
+    /// and returns what `write` returns. For the quit path, where the
+    /// process must not exit before the newest state is on disk and the
+    /// caller needs to know whether it got there.
+    pub(crate) fn run_now<R>(&self, write: impl FnOnce() -> R) -> R {
         let _writing = self.writing.lock().unwrap_or_else(|e| e.into_inner());
         if let Ok(mut slot) = self.slot.lock() {
             slot.take();
         }
-        (self.run)(job);
+        write()
     }
 
     fn drain(&'static self) {
@@ -111,7 +113,7 @@ mod tests {
         }
         assert!(SEEN.load(Ordering::SeqCst) < 50, "jobs were not coalesced");
         WORKER.submit(60);
-        WORKER.run_now(70);
+        WORKER.run_now(|| record(70));
         assert_eq!(LAST.load(Ordering::SeqCst), 70, "run_now was overtaken");
     }
 }

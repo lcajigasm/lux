@@ -17,26 +17,19 @@ use crate::document::DocumentEntry;
 use crate::split::LayoutPreset;
 
 /// Restores the session read from `read_from`. Later writes go to the
-/// current location for the restored project, even when `read_from` is a
-/// legacy file.
+/// current location for the restored project (see
+/// `snapshot::current_file`), even when `read_from` is a legacy file.
 pub(crate) fn restore_session(app: &mut App, read_from: &Path) -> std::io::Result<bool> {
     let session = Session::load(read_from)?;
     if session.folders.is_empty() && session.tabs.is_empty() {
         return Ok(false);
     }
     let root = session.folders.first().filter(|f| f.exists());
-    let write_to = app
-        .ui
-        .session
-        .session_path
-        .clone()
-        .unwrap_or_else(|| super::location::session_file(root.map(|p| p.as_path())));
     if let Some(folder) = root {
         app.ui.sidebar = crate::sidebar::SidebarState::open_folder(folder.clone());
         app.ui.session.init_watcher(folder);
     }
     let history_dir = session_store::history_dir(read_from);
-    app.ui.session.session_path = Some(write_to);
 
     let had_initial_empty = app.documents.entries.len() == 1
         && app.documents.entries[0].path.is_none()

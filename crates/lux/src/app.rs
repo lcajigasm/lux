@@ -374,7 +374,7 @@ impl PlatformEventHandler for App {
         }
         if !crate::document::open_queue::busy(self)
             && self.ui.sidebar.is_none()
-            && let Some(session_file) = crate::session::location::readable_session_file(None)
+            && let Some(session_file) = crate::session::readable_file(self, None)
         {
             let _ = crate::session::restore_session(self, &session_file);
         }

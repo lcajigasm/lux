@@ -11,6 +11,7 @@ use super::*;
 use crate::document::DocumentEntry;
 
 mod hot_exit;
+mod switching;
 #[test]
 fn session_round_trip() {
     let dir = tempfile::tempdir().unwrap();
@@ -57,8 +58,8 @@ fn app_session_save_and_restore() {
     app.documents.entries.push(entry);
     app.switch_to_tab(tab_id);
 
-    let session_file = dir.path().join(SESSION_FILE_NAME);
-    app.ui.session.session_path = Some(session_file.clone());
+    app.ui.session.data_dir = Some(dir.path().join("data"));
+    let session_file = crate::session::snapshot::current_file(&app);
 
     save_session(&mut app, true).unwrap();
     assert!(session_file.exists());
@@ -75,10 +76,10 @@ fn app_session_save_and_restore() {
 #[test]
 fn app_session_hot_exit_restores_unsaved_untitled_and_draft_files() {
     let dir = tempfile::tempdir().unwrap();
-    let session_file = dir.path().join(SESSION_FILE_NAME);
 
     let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-    app.ui.session.session_path = Some(session_file.clone());
+    app.ui.session.data_dir = Some(dir.path().join("data"));
+    let session_file = crate::session::snapshot::current_file(&app);
 
     // Edit the default untitled tab with some unsaved notes
     app.buffer = Buffer::from_bytes(b"# My Scratchpad\nDraft notes here").unwrap();
@@ -104,14 +105,14 @@ fn app_session_hot_exit_restores_unsaved_untitled_and_draft_files() {
 #[test]
 fn hot_exit_restores_a_dirty_named_file_beside_a_clean_tab() {
     let dir = tempfile::tempdir().unwrap();
-    let session_file = dir.path().join(SESSION_FILE_NAME);
     let named = dir.path().join("saved.txt");
     std::fs::write(&named, "on disk\n").unwrap();
     let other = dir.path().join("other.txt");
     std::fs::write(&other, "clean\n").unwrap();
 
     let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-    app.ui.session.session_path = Some(session_file.clone());
+    app.ui.session.data_dir = Some(dir.path().join("data"));
+    let session_file = crate::session::snapshot::current_file(&app);
     app.documents.entries[0].path = Some(named.clone());
     app.documents.entries[0].buffer = Buffer::from_bytes(b"draft text\n").unwrap();
     app.documents.entries[0].saved_version = 1;
@@ -152,9 +153,9 @@ fn hot_exit_restores_a_dirty_named_file_beside_a_clean_tab() {
 #[test]
 fn save_session_records_the_window_frame() {
     let dir = tempfile::tempdir().unwrap();
-    let session_file = dir.path().join(SESSION_FILE_NAME);
     let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
-    app.ui.session.session_path = Some(session_file.clone());
+    app.ui.session.data_dir = Some(dir.path().join("data"));
+    let session_file = crate::session::snapshot::current_file(&app);
     app.ui.session.frame = Some(lux_workspace::WindowFrame {
         x: 12,
         y: 34,

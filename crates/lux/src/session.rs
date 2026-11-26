@@ -26,7 +26,11 @@ use crate::document::DocumentEntry;
 #[derive(Default)]
 pub(crate) struct WorkspaceSession {
     pub(crate) watcher: Option<FileWatcher>,
-    pub(crate) session_path: Option<PathBuf>,
+    /// Where session files live; `None` is the platform data directory.
+    /// The file itself is never stored: it is derived from the workspace
+    /// root at each write, so a write always lands in the session of the
+    /// project that is open (ADR 0019).
+    pub(crate) data_dir: Option<PathBuf>,
     /// Background project symbol index for `Cmd+Shift+R`.
     pub(crate) symbols: Option<lux_workspace::SymbolIndexer>,
     waker: Option<Arc<dyn Fn() + Send + Sync>>,
@@ -128,6 +132,14 @@ pub(crate) fn pane_tokens(entry: &DocumentEntry) -> Vec<lux_syntax::Token> {
     let mut doc = lux_syntax::Document::new(lang);
     doc.set_rope(entry.buffer.rope());
     doc.highlight_rope(entry.buffer.rope())
+}
+
+/// The file to restore `root`'s session from, if it has one.
+pub(crate) fn readable_file(app: &App, root: Option<&Path>) -> Option<PathBuf> {
+    match &app.ui.session.data_dir {
+        Some(dir) => location::readable_session_file_in(dir, root),
+        None => location::readable_session_file(root),
+    }
 }
 
 /// Writes the session now, on this thread. Only for the quit path.

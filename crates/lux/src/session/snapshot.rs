@@ -32,13 +32,18 @@ pub(crate) struct TabPayload {
 /// Everything the worker needs to write one session.
 pub(crate) struct Snapshot {
     file: PathBuf,
+    /// The folderless window's session in the same data directory, which
+    /// also keeps the window frame (see `place::mirror_global`).
+    global: PathBuf,
     session: Session,
     payloads: Vec<TabPayload>,
     frame: Option<WindowFrame>,
     clean: bool,
 }
 
-static SESSION_WRITER: LatestWorker<Snapshot> = LatestWorker::new("lux-session", write);
+static SESSION_WRITER: LatestWorker<Snapshot> = LatestWorker::new("lux-session", |snapshot| {
+    let _ = write(snapshot);
+});
 
 /// Queues a session write on the worker. Returns at once.
 pub(crate) fn submit(app: &mut App) {
@@ -51,21 +56,21 @@ pub(crate) fn submit(app: &mut App) {
 /// newest state is on disk.
 pub(crate) fn write_now(app: &mut App, clean: bool) -> std::io::Result<()> {
     let snapshot = take(app, clean);
-    let file = snapshot.file.clone();
-    SESSION_WRITER.run_now(snapshot);
-    if file.exists() {
-        Ok(())
-    } else {
-        Err(std::io::Error::other("session was not written"))
-    }
+    SESSION_WRITER.run_now(|| write(snapshot))
 }
 
+/// The session file for the project open right now. Recomputed on every
+/// call, so opening, adding or closing folders moves later writes to the
+/// new project's file instead of the one the window was restored from.
 pub(crate) fn current_file(app: &App) -> PathBuf {
-    app.ui
-        .session
-        .session_path
-        .clone()
-        .unwrap_or_else(|| super::location::session_file(workspace_root(app)))
+    file_for(app, workspace_root(app))
+}
+
+fn file_for(app: &App, root: Option<&Path>) -> PathBuf {
+    match &app.ui.session.data_dir {
+        Some(dir) => session_store::session_file(dir, root),
+        None => super::location::session_file(root),
+    }
 }
 
 fn workspace_root(app: &App) -> Option<&Path> {
@@ -161,6 +166,7 @@ fn take(app: &mut App, clean: bool) -> Snapshot {
 
     Snapshot {
         file,
+        global: file_for(app, None),
         session,
         payloads,
         frame: app.ui.session.frame.clone(),
@@ -236,10 +242,13 @@ fn layout_state(
 /// unchanged history is not encoded again on every write.
 static ENCODED: Mutex<Option<HashMap<(u64, u64), String>>> = Mutex::new(None);
 
-/// Runs on the worker.
-fn write(snapshot: Snapshot) {
+/// Runs on the worker, or on the UI thread at quit. The result is the
+/// session JSON's write; history files are best effort, since a missing
+/// one only costs that tab its undo.
+fn write(snapshot: Snapshot) -> std::io::Result<()> {
     let Snapshot {
         file,
+        global,
         mut session,
         payloads,
         frame,
@@ -272,23 +281,22 @@ fn write(snapshot: Snapshot) {
     drop(encoded);
 
     if let Some(frame) = frame {
-        crate::place::mirror_global(&frame, &file);
+        crate::place::mirror_global(&frame, &file, &global);
         session.windows.push(frame);
     } else if let Ok(previous) = Session::load(&file) {
         session.windows = previous.windows;
     }
     if let Some(parent) = file.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        std::fs::create_dir_all(parent)?;
     }
-    let written = if clean {
-        session.end_cleanly(&file)
+    if clean {
+        session.end_cleanly(&file)?;
     } else {
-        session.save(&file)
-    };
-    // Prune only once the JSON that stops naming them is in place.
-    if written.is_ok() {
-        let _ = session_store::prune_histories(&dir, &keep);
+        session.save(&file)?;
     }
+    // Prune only once the JSON that stops naming them is in place.
+    let _ = session_store::prune_histories(&dir, &keep);
+    Ok(())
 }
 
 /// Encodes one history and writes it under a name derived from its bytes,
