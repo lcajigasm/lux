@@ -1,140 +1,235 @@
-//! Render pass for the minimap overview widget.
+//! Render pass for the minimap overview widget: syntax-colored word
+//! strokes, the viewport box, and git, bookmark and search marks.
 
-use crate::minimap::{MINIMAP_ROW_HEIGHT, MinimapState};
+use crate::app::SyntaxState;
+use crate::git::colors::{GutterKind, gutter_color};
+use crate::minimap::{MINIMAP_ROW_HEIGHT, SyntaxColors, drag};
 use crate::render::paint::color;
+use crate::ui::UiOverlays;
+use lux_core::bookmarks::BookmarkState;
 use lux_core::buffer::Buffer;
+use lux_core::folding::FoldState;
+use lux_git::gutter::HunkKind;
 use lux_render::QuadInstance;
+use lux_ui::minimap::{MinimapFrame, row_for_buffer_line};
 use lux_ui::{Theme, Viewport};
+
+/// The document the minimap shows.
+pub(crate) struct MinimapDoc<'a> {
+    pub(crate) id: u64,
+    pub(crate) buffer: &'a Buffer,
+    pub(crate) syntax: Option<&'a SyntaxState>,
+    pub(crate) bookmarks: &'a BookmarkState,
+    pub(crate) folds: &'a FoldState,
+}
+
+/// Where the strip sits and how big one row is, in physical pixels.
+struct Strip {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    row_h: f32,
+    rows: usize,
+    stroke: f32,
+}
+
+impl Strip {
+    fn row_y(&self, row: usize) -> f32 {
+        self.y + row as f32 * self.row_h
+    }
+}
+
+/// Bookmark marks take the gutter's bookmark cyan.
+const BOOKMARK: [f32; 4] = [0.25, 0.70, 0.95, 0.95];
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_minimap(
-    state: &mut MinimapState,
-    document: u64,
-    buffer: &Buffer,
+    ui: &mut UiOverlays,
+    doc: &MinimapDoc<'_>,
     viewport: &Viewport,
-    window_width: f32,
-    window_height: f32,
+    window: (f32, f32),
     tab_bar_height: f32,
     status_bar_height: f32,
     scale_factor: f32,
-    stroke: f32,
     line_height: f32,
     theme: &Theme,
-    folds: Option<&lux_core::folding::FoldState>,
-    search_info: Option<(&[lux_core::selection::Selection], Option<usize>)>,
     quad_instances: &mut Vec<QuadInstance>,
 ) {
-    let minimap_w = state.effective_width(scale_factor);
-    if minimap_w <= 0.0 {
-        return;
-    }
-
-    let minimap_x = window_width - minimap_w;
-    let minimap_y = tab_bar_height;
-    let minimap_h = (window_height - tab_bar_height - status_bar_height).max(0.0);
-    if minimap_h <= 0.0 {
-        return;
-    }
-
+    let minimap_w = ui.minimap.effective_width(scale_factor);
+    let minimap_h = (window.1 - tab_bar_height - status_bar_height).max(0.0);
     let row_h = MINIMAP_ROW_HEIGHT * scale_factor;
     let available_rows = (minimap_h / row_h).floor() as usize;
-    if available_rows == 0 {
+    if minimap_w <= 0.0 || available_rows == 0 {
         return;
     }
-
+    let strip = Strip {
+        x: window.0 - minimap_w,
+        y: tab_bar_height,
+        w: minimap_w,
+        h: minimap_h,
+        row_h,
+        rows: available_rows,
+        stroke: scale_factor,
+    };
     let visible_start = (viewport.scroll_y / line_height).floor() as usize;
     let visible_end = ((viewport.scroll_y + viewport.height) / line_height).ceil() as usize;
-    let frame = state.frame(
-        document,
-        buffer,
+    let colors = doc.syntax.map(SyntaxColors);
+    let Some(frame) = ui.minimap.frame(
+        doc.id,
+        doc.buffer,
         visible_start..visible_end,
         available_rows,
-        folds,
-    );
-
-    let Some(frame) = frame else {
+        Some(doc.folds),
+        colors
+            .as_ref()
+            .map(|c| c as &dyn lux_ui::minimap::LineColors),
+    ) else {
         return;
     };
 
-    // Minimap background quad (slightly darker/contrast)
     let bg = color(theme.background);
-    let bg_color = [bg[0] * 0.95, bg[1] * 0.95, bg[2] * 0.95, bg[3]];
+    let well = [bg[0] * 0.95, bg[1] * 0.95, bg[2] * 0.95, bg[3]];
     quad_instances.push(QuadInstance::solid(
-        [minimap_x, minimap_y, minimap_w, minimap_h],
-        bg_color,
+        [strip.x, strip.y, strip.w, strip.h],
+        well,
     ));
+    paint_strokes(&frame, &strip, theme, quad_instances);
+    paint_viewport_box(doc, viewport, line_height, &strip, theme, quad_instances);
+    paint_marks(ui, doc, &strip, theme, quad_instances);
+}
 
-    // Density rows
-    let char_w = 1.2 * scale_factor;
-    let pad_left = 6.0 * scale_factor;
-    let max_density_w = minimap_w - pad_left - 4.0 * scale_factor;
-    let bar_color = density_bar(color(theme.foreground), color(theme.background));
-
-    for (row_idx, row) in frame.rows.iter().enumerate() {
-        if row.content_columns == 0 {
-            continue;
+/// Each row's words, in their syntax colors, one column per 1.2 points. All
+/// strokes join the frame's one instanced quad batch.
+fn paint_strokes(
+    frame: &MinimapFrame,
+    strip: &Strip,
+    theme: &Theme,
+    quad_instances: &mut Vec<QuadInstance>,
+) {
+    let char_w = 1.2 * strip.stroke;
+    let left = strip.x + 6.0 * strip.stroke;
+    let right = strip.x + strip.w - 4.0 * strip.stroke;
+    let plain = density_bar(color(theme.foreground), color(theme.background));
+    let h = (strip.row_h - strip.stroke).max(1.0);
+    // A half-pixel radius makes the quad shader's coverage soften each
+    // stroke's ends, so a word reads as a smudge of text, not a hard block.
+    let radius = 0.5 * strip.stroke;
+    for row in 0..frame.rows.len() {
+        let y = strip.row_y(row);
+        for span in frame.row_spans(row) {
+            let x = left + span.start as f32 * char_w;
+            if x >= right {
+                break;
+            }
+            let w = (span.len as f32 * char_w).min(right - x);
+            let ink = span.color.map_or(plain, |[r, g, b]| {
+                [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 0.85]
+            });
+            quad_instances.push(QuadInstance::rounded([x, y, w, h], ink, radius));
         }
-        let y = minimap_y + row_idx as f32 * row_h;
-        let indent_x = (row.indent_columns as f32 * char_w).min(minimap_w * 0.4);
-        let x = minimap_x + pad_left + indent_x;
-        let w = (row.content_columns as f32 * char_w).clamp(2.0 * scale_factor, max_density_w);
-        let h = (row_h - 1.0 * stroke).max(1.0);
-
-        quad_instances.push(QuadInstance::solid([x, y, w, h], bar_color));
     }
+}
 
-    // Viewport indicator overlay
-    if !frame.viewport.rows.is_empty() {
-        let vy = minimap_y + frame.viewport.rows.start as f32 * row_h;
-        let vh = (frame.viewport.rows.len() as f32 * row_h).max(row_h * 2.0);
-        let clamped_vh = vh.min(minimap_h - (vy - minimap_y).max(0.0));
-
-        let sel = color(theme.selection);
-        let indicator_bg = [sel[0], sel[1], sel[2], 0.18];
+/// The translucent "you are here" box. Its top follows the scroll offset
+/// continuously, so a drag moves it smoothly rather than a row at a time.
+fn paint_viewport_box(
+    doc: &MinimapDoc<'_>,
+    viewport: &Viewport,
+    line_height: f32,
+    strip: &Strip,
+    theme: &Theme,
+    quad_instances: &mut Vec<QuadInstance>,
+) {
+    let total_visual = doc.folds.total_visual_lines(doc.buffer.len_lines()).max(1);
+    let per_row = lux_ui::minimap::lines_per_row(total_visual, strip.rows) as f32;
+    let scale = strip.row_h / (per_row * line_height.max(1.0));
+    let (offset, vh) = drag::box_extent(
+        viewport.scroll_y,
+        viewport.height,
+        scale,
+        strip.row_h,
+        strip.h,
+    );
+    let vy = strip.y + offset;
+    let sel = color(theme.selection);
+    quad_instances.push(QuadInstance::solid(
+        [strip.x, vy, strip.w, vh],
+        [sel[0], sel[1], sel[2], 0.18],
+    ));
+    for edge in [vy, (vy + vh - strip.stroke).max(vy)] {
         quad_instances.push(QuadInstance::solid(
-            [minimap_x, vy, minimap_w, clamped_vh],
-            indicator_bg,
+            [strip.x, edge, strip.w, strip.stroke],
+            sel,
         ));
+    }
+}
 
-        // Indicator top and bottom borders
+/// Git changes on the left edge (green added, orange modified, red
+/// removed), bookmarks on the right edge, and Cmd+F matches as gold ticks
+/// across the strip.
+fn paint_marks(
+    ui: &UiOverlays,
+    doc: &MinimapDoc<'_>,
+    strip: &Strip,
+    theme: &Theme,
+    quad_instances: &mut Vec<QuadInstance>,
+) {
+    let total_lines = doc.buffer.len_lines();
+    let row_of = |line: usize| {
+        row_for_buffer_line(total_lines, strip.rows, line, Some(doc.folds))
+            .filter(|row| *row < strip.rows)
+    };
+    let edge_w = 2.0 * strip.stroke;
+    for marker in &ui.git.markers {
+        let Some(row) = row_of((marker.line as usize).saturating_sub(1)) else {
+            continue;
+        };
+        let kind = match marker.kind {
+            HunkKind::Added => GutterKind::Added,
+            HunkKind::Modified => GutterKind::Modified,
+            HunkKind::Removed => GutterKind::Removed,
+        };
         quad_instances.push(QuadInstance::solid(
-            [minimap_x, vy, minimap_w, stroke],
-            color(theme.selection),
+            [strip.x, strip.row_y(row), edge_w, strip.row_h],
+            color(gutter_color(kind, theme.background)),
         ));
+    }
+    for line in doc.bookmarks.iter() {
+        if let Some(row) = row_of(line) {
+            quad_instances.push(QuadInstance::solid(
+                [
+                    strip.x + strip.w - edge_w,
+                    strip.row_y(row),
+                    edge_w,
+                    strip.row_h,
+                ],
+                BOOKMARK,
+            ));
+        }
+    }
+    let Some(search) = &ui.search_bar else {
+        return;
+    };
+    let current = search.search_bar.current_index();
+    for (i, m) in search.search_bar.matches().iter().enumerate() {
+        let Some(row) = row_of(m.head.line) else {
+            continue;
+        };
+        let tick = if current == Some(i) {
+            [1.0, 0.85, 0.20, 0.95]
+        } else {
+            [0.85, 0.65, 0.15, 0.70]
+        };
         quad_instances.push(QuadInstance::solid(
             [
-                minimap_x,
-                (vy + clamped_vh - stroke).max(vy),
-                minimap_w,
-                stroke,
+                strip.x,
+                strip.row_y(row),
+                strip.w,
+                strip.row_h.max(2.0 * strip.stroke),
             ],
-            color(theme.selection),
+            tick,
         ));
-    }
-
-    // Search match highlights on minimap (Sublime gold ticks)
-    if let Some((matches, current_idx)) = search_info {
-        let total_lines = buffer.len_lines();
-        for (i, m) in matches.iter().enumerate() {
-            let line = m.head.line;
-            if let Some(row_idx) =
-                lux_ui::minimap::row_for_buffer_line(total_lines, available_rows, line, folds)
-                && row_idx < available_rows
-            {
-                let y = minimap_y + row_idx as f32 * row_h;
-                let is_curr = current_idx == Some(i);
-                let tick_color = if is_curr {
-                    [1.0, 0.85, 0.20, 0.95]
-                } else {
-                    [0.85, 0.65, 0.15, 0.70]
-                };
-                let tick_h = (row_h).max(2.0 * stroke);
-                quad_instances.push(QuadInstance::solid(
-                    [minimap_x, y, minimap_w, tick_h],
-                    tick_color,
-                ));
-            }
-        }
     }
 }
 
@@ -210,3 +305,7 @@ mod tests {
         assert!((bar[3] - 0.28).abs() < 0.001);
     }
 }
+
+#[cfg(test)]
+#[path = "minimap_marks_tests.rs"]
+mod marks_tests;

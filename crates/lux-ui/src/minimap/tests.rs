@@ -160,6 +160,7 @@ fn sample<'a>(
         visible,
         available_rows,
         folds: None,
+        colors: None,
     }
 }
 

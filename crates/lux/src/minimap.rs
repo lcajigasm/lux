@@ -1,5 +1,9 @@
 //! Minimap state and interaction for the Lux desktop application.
 
+mod colors;
+pub(crate) mod drag;
+
+pub(crate) use colors::SyntaxColors;
 use lux_core::buffer::Buffer;
 use lux_core::folding::FoldState;
 use lux_core::multicursor::MultiCursor;
@@ -15,6 +19,8 @@ pub(crate) struct MinimapState {
     pub(crate) width: f32,
     pub(crate) edit: Option<LineEdit>,
     pub(crate) model: lux_ui::minimap::MinimapModel,
+    /// While the viewport box is held: the pointer's offset below its top.
+    pub(crate) drag: Option<f32>,
 }
 
 impl Default for MinimapState {
@@ -24,6 +30,7 @@ impl Default for MinimapState {
             width: MINIMAP_WIDTH,
             edit: None,
             model: lux_ui::minimap::MinimapModel::default(),
+            drag: None,
         }
     }
 }
@@ -60,7 +67,8 @@ impl MinimapState {
     }
 
     /// The minimap frame for `buffer` in tab `document`, reusing cached bars
-    /// while the buffer revision is unchanged.
+    /// while the buffer revision is unchanged and cached strokes while the
+    /// syntax colors are unchanged.
     pub(crate) fn frame(
         &mut self,
         document: u64,
@@ -68,6 +76,7 @@ impl MinimapState {
         visible: Range<usize>,
         available_rows: usize,
         folds: Option<&FoldState>,
+        colors: Option<&dyn lux_ui::minimap::LineColors>,
     ) -> Option<MinimapFrame> {
         let edit = self.edit.take();
         self.model.frame(
@@ -80,6 +89,7 @@ impl MinimapState {
                 visible,
                 available_rows,
                 folds,
+                colors,
             },
         )
     }
@@ -101,58 +111,6 @@ impl crate::app::App {
             .minimap
             .note_input(&self.cursors, text, before, after);
     }
-}
-
-pub(crate) fn handle_minimap_click(app: &mut crate::app::App, mouse_x: f32, mouse_y: f32) -> bool {
-    let scale = app.scale_factor;
-    let minimap_w = app.ui.minimap.effective_width(scale);
-    if minimap_w <= 0.0 {
-        return false;
-    }
-
-    let Some(gpu_window) = &app.gpu_window else {
-        return false;
-    };
-    let window_w = gpu_window.window.inner_size().width as f32;
-    let minimap_x = window_w - minimap_w;
-    if mouse_x < minimap_x || mouse_x > window_w {
-        return false;
-    }
-
-    let tab_bar_h = app.tab_bar_height();
-    let status_bar_h = app.status_bar_height();
-    let window_h = gpu_window.window.inner_size().height as f32;
-    let minimap_bottom = window_h - status_bar_h;
-
-    if mouse_y < tab_bar_h || mouse_y >= minimap_bottom {
-        return false;
-    }
-
-    let available_height = minimap_bottom - tab_bar_h;
-    let row_h = MINIMAP_ROW_HEIGHT * scale;
-    let available_rows = (available_height / row_h).floor() as usize;
-    if available_rows == 0 {
-        return false;
-    }
-
-    let clicked_row = ((mouse_y - tab_bar_h) / row_h).floor() as usize;
-    let total_lines = app.buffer.len_lines();
-    let target_line = lux_ui::minimap::line_for_row_with_folds(
-        total_lines,
-        available_rows,
-        clicked_row,
-        Some(&app.fold_state),
-    );
-
-    let line_height = app.editor_view.metrics().line_height.max(1.0);
-    let visual_row = app
-        .fold_state
-        .buffer_to_visual_line(target_line)
-        .unwrap_or(0);
-    let target_scroll_y = (visual_row as f32 * line_height - app.viewport.height * 0.5).max(0.0);
-    app.viewport.scroll_y = target_scroll_y;
-    app.scheduler.invalidate_all();
-    true
 }
 
 #[cfg(test)]
@@ -206,7 +164,10 @@ mod tests {
 
     fn bars(app: &mut crate::app::App) -> Vec<usize> {
         let document = app.minimap_document();
-        let frame = app.ui.minimap.frame(document, &app.buffer, 0..3, 100, None);
+        let frame = app
+            .ui
+            .minimap
+            .frame(document, &app.buffer, 0..3, 100, None, None);
         frame
             .unwrap()
             .rows

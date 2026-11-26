@@ -13,8 +13,13 @@
 //! more lines than the minimap has pixel rows for, several source lines
 //! collapse into one row, represented by the densest line in that group
 //! (the one with the most content), so a long line is never hidden by
-//! averaging it away with its blank neighbors.
+//! averaging it away with its blank neighbors. That line is drawn as word
+//! strokes in its syntax colors (`ink`), taken from the highlight tokens the
+//! editor already holds, so the strip reads as miniature text.
 
+mod ink;
+
+pub use ink::{ColorRun, LineColors, MAX_INK_COLUMNS, MinimapSpan};
 use lux_core::buffer::Buffer;
 use std::ops::Range;
 
@@ -64,7 +69,21 @@ pub struct ViewportIndicator {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MinimapFrame {
     pub rows: Vec<MinimapRow>,
+    /// Every row's strokes, back to back; see [`MinimapFrame::row_spans`].
+    pub spans: Vec<MinimapSpan>,
+    span_starts: Vec<u32>,
     pub viewport: ViewportIndicator,
+}
+
+impl MinimapFrame {
+    /// The strokes of row `row`, left to right.
+    pub fn row_spans(&self, row: usize) -> &[MinimapSpan] {
+        let (Some(start), Some(end)) = (self.span_starts.get(row), self.span_starts.get(row + 1))
+        else {
+            return &[];
+        };
+        &self.spans[*start as usize..*end as usize]
+    }
 }
 
 /// Builds one minimap frame for `buffer`, or `None` if the minimap is off
@@ -72,6 +91,7 @@ pub struct MinimapFrame {
 /// empty one. `visible_line_range` is the main editor's current visible
 /// range (`EditorView`'s own `visible_line_range`); `available_rows` is
 /// how many pixel rows the minimap widget has, e.g. `height / row_height`.
+/// Strokes take the plain foreground; [`MinimapModel`] adds syntax colors.
 pub fn build_frame(
     minimap: &Minimap,
     buffer: &Buffer,
@@ -91,25 +111,46 @@ pub fn build_frame(
         ));
     }
     let lines = line_densities(buffer);
-    Some(frame_from_densities(
-        &lines,
+    let rows = rows_from_densities(&lines, available_rows, folds);
+    let spans = plain_spans(buffer, &rows);
+    Some(frame_from_rows(
+        &rows,
+        &spans,
+        lines.len(),
         visible_line_range,
         available_rows,
         folds,
     ))
 }
 
-/// Remembers one document's row bars so a scroll does not walk the rope again.
-/// `revision` is [`Buffer::revision`], which changes on every mutation,
-/// including replacements that bypass undo history. `document` is the tab.
+/// Remembers one document's row bars and strokes so a scroll does not walk
+/// the rope again. `revision` is [`Buffer::revision`], which changes on every
+/// mutation, including replacements that bypass undo history. `document` is
+/// the tab. Strokes are cached per row, for the one line each row shows, so
+/// their cost follows the minimap's height, not the document's length.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MinimapModel {
     revision: u64,
     document: u64,
     available_rows: usize,
     fold_stamp: u64,
+    ink_stamp: u64,
     lines: Vec<(u32, u32)>,
     rows: Vec<MinimapRow>,
+    /// Strokes per row; `None` until computed or after that row changed.
+    strokes: Vec<Option<Vec<MinimapSpan>>>,
+    stats: MinimapStats,
+}
+
+/// Work counters, cumulative since the model was created. They make the
+/// incremental claim testable: a scroll measures and inks nothing, a typed
+/// character measures and inks one line.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MinimapStats {
+    /// Lines whose indent and length were read from the rope.
+    pub lines_measured: u64,
+    /// Lines turned into colored strokes.
+    pub lines_inked: u64,
 }
 
 /// One edit that changed only `line`, taking the buffer from revision
@@ -132,9 +173,15 @@ pub struct MinimapSample<'a> {
     pub visible: Range<usize>,
     pub available_rows: usize,
     pub folds: Option<&'a lux_core::folding::FoldState>,
+    /// The editor's syntax colors, if the document has a language.
+    pub colors: Option<&'a dyn LineColors>,
 }
 
 impl MinimapModel {
+    pub fn stats(&self) -> MinimapStats {
+        self.stats
+    }
+
     pub fn frame(&mut self, minimap: &Minimap, sample: MinimapSample<'_>) -> Option<MinimapFrame> {
         if !minimap.enabled || sample.available_rows == 0 {
             return None;
@@ -160,20 +207,44 @@ impl MinimapModel {
             let patched = self.try_patch(&sample, total_lines, fold_stamp);
             if !patched {
                 self.lines = line_densities(sample.buffer);
+                self.stats.lines_measured += self.lines.len() as u64;
                 self.rows = rows_from_densities(&self.lines, sample.available_rows, sample.folds);
+                self.strokes = vec![None; self.rows.len()];
             }
             self.revision = sample.revision;
             self.document = sample.document;
             self.available_rows = sample.available_rows;
             self.fold_stamp = fold_stamp;
         }
-        Some(frame_from_densities_rows(
+        let ink_stamp = sample.colors.map_or(0, |colors| colors.stamp());
+        if ink_stamp != self.ink_stamp {
+            self.strokes.iter_mut().for_each(|row| *row = None);
+            self.ink_stamp = ink_stamp;
+        }
+        self.ink_rows(sample.buffer, sample.colors);
+        Some(frame_from_rows(
             &self.rows,
-            &self.lines,
+            &self.strokes,
+            total_lines,
             sample.visible,
             sample.available_rows,
             sample.folds,
         ))
+    }
+
+    fn ink_rows(&mut self, buffer: &Buffer, colors: Option<&dyn LineColors>) {
+        let mut runs = Vec::new();
+        for (row, strokes) in self.rows.iter().zip(self.strokes.iter_mut()) {
+            if strokes.is_some() {
+                continue;
+            }
+            let mut out = Vec::new();
+            if row.content_columns > 0 {
+                ink::line_spans(buffer, row.line, colors, &mut runs, &mut out);
+                self.stats.lines_inked += 1;
+            }
+            *strokes = Some(out);
+        }
     }
 
     fn rows_match(
@@ -192,6 +263,7 @@ impl MinimapModel {
             && self.fold_stamp == fold_stamp
     }
 
+    /// Re-measures the edited line and rebuilds only the row that shows it.
     fn try_patch(
         &mut self,
         sample: &MinimapSample<'_>,
@@ -214,7 +286,16 @@ impl MinimapModel {
             return false;
         }
         self.lines[line] = sample.buffer.line_columns(line).unwrap_or((0, 0));
-        self.rows = rows_from_densities(&self.lines, sample.available_rows, sample.folds);
+        self.stats.lines_measured += 1;
+        let folds = sample.folds;
+        let total_visual = folds.map_or(total_lines, |f| f.total_visual_lines(total_lines));
+        let per_row = lines_per_row(total_visual, sample.available_rows);
+        let row = row_for_buffer_line(total_lines, sample.available_rows, line, folds);
+        if let Some(row) = row.filter(|row| *row < self.rows.len()) {
+            self.rows[row] =
+                densest_row(&self.lines, row, per_row, total_visual, total_lines, folds);
+            self.strokes[row] = None;
+        }
         true
     }
 }
@@ -240,36 +321,47 @@ fn fold_stamp(folds: Option<&lux_core::folding::FoldState>) -> u64 {
     stamp
 }
 
-fn frame_from_densities(
-    lines: &[(u32, u32)],
-    visible_line_range: Range<usize>,
-    available_rows: usize,
-    folds: Option<&lux_core::folding::FoldState>,
-) -> MinimapFrame {
-    let rows = rows_from_densities(lines, available_rows, folds);
-    frame_from_rows(&rows, lines, visible_line_range, available_rows, folds)
-}
-
-fn frame_from_densities_rows(
-    rows: &[MinimapRow],
-    lines: &[(u32, u32)],
-    visible_line_range: Range<usize>,
-    available_rows: usize,
-    folds: Option<&lux_core::folding::FoldState>,
-) -> MinimapFrame {
-    frame_from_rows(rows, lines, visible_line_range, available_rows, folds)
+fn plain_spans(buffer: &Buffer, rows: &[MinimapRow]) -> Vec<Option<Vec<MinimapSpan>>> {
+    let mut runs = Vec::new();
+    rows.iter()
+        .map(|row| {
+            let mut out = Vec::new();
+            ink::line_spans(buffer, row.line, None, &mut runs, &mut out);
+            Some(out)
+        })
+        .collect()
 }
 
 fn frame_from_rows(
     rows: &[MinimapRow],
-    lines: &[(u32, u32)],
+    strokes: &[Option<Vec<MinimapSpan>>],
+    total_lines: usize,
     visible_line_range: Range<usize>,
     available_rows: usize,
     folds: Option<&lux_core::folding::FoldState>,
 ) -> MinimapFrame {
-    let total_lines = lines.len();
     let total_visual = folds.map_or(total_lines, |folds| folds.total_visual_lines(total_lines));
-    let viewport_rows = if visible_line_range.is_empty() {
+    let mut spans = Vec::new();
+    let mut span_starts = Vec::with_capacity(rows.len() + 1);
+    for row in strokes {
+        span_starts.push(spans.len() as u32);
+        spans.extend_from_slice(row.as_deref().unwrap_or(&[]));
+    }
+    span_starts.push(spans.len() as u32);
+    MinimapFrame {
+        rows: rows.to_vec(),
+        spans,
+        span_starts,
+        viewport: viewport_rows(total_visual, visible_line_range, available_rows),
+    }
+}
+
+fn viewport_rows(
+    total_visual: usize,
+    visible_line_range: Range<usize>,
+    available_rows: usize,
+) -> ViewportIndicator {
+    let rows = if visible_line_range.is_empty() {
         0..0
     } else {
         let first_row = row_for_line(total_visual, available_rows, visible_line_range.start);
@@ -280,12 +372,7 @@ fn frame_from_rows(
         let last_row = row_for_line(total_visual, available_rows, last_line);
         first_row..last_row + 1
     };
-    MinimapFrame {
-        rows: rows.to_vec(),
-        viewport: ViewportIndicator {
-            rows: viewport_rows,
-        },
-    }
+    ViewportIndicator { rows }
 }
 
 fn rows_from_densities(
@@ -330,7 +417,7 @@ pub fn line_for_row_with_folds(
 /// How many source lines each minimap row represents: 1 when the document
 /// fits (one row per line), more when it's downsampled. Never 0, so every
 /// row is guaranteed to cover at least one line.
-fn lines_per_row(total_lines: usize, available_rows: usize) -> usize {
+pub fn lines_per_row(total_lines: usize, available_rows: usize) -> usize {
     if available_rows == 0 {
         return total_lines.max(1);
     }
@@ -372,7 +459,8 @@ pub fn row_for_buffer_line(
 
 /// One line per minimap row, read from the rope. A huge file is millions
 /// of lines; building a byte range for every line is a second copy of the
-/// file and the slow part of the first frame.
+/// file and the slow part of the first frame. A huge file has no syntax
+/// highlighting, so its strokes take the plain foreground.
 fn sampled_frame(
     buffer: &Buffer,
     visible_line_range: Range<usize>,
@@ -382,7 +470,7 @@ fn sampled_frame(
     let total_lines = buffer.len_lines();
     let total_visual = folds.map_or(total_lines, |f| f.total_visual_lines(total_lines));
     let per_row = lines_per_row(total_visual, available_rows);
-    let rows = (0..row_count(total_visual, available_rows))
+    let rows: Vec<MinimapRow> = (0..row_count(total_visual, available_rows))
         .map(|row| {
             let start_v = (row * per_row).min(total_visual.saturating_sub(1));
             let line = folds.map_or(start_v, |fold| {
@@ -397,21 +485,15 @@ fn sampled_frame(
             }
         })
         .collect();
-    let viewport_rows = if visible_line_range.is_empty() {
-        0..0
-    } else {
-        let first_row = row_for_line(total_visual, available_rows, visible_line_range.start);
-        let last_line =
-            (visible_line_range.end.saturating_sub(1)).min(total_visual.saturating_sub(1));
-        let last_row = row_for_line(total_visual, available_rows, last_line);
-        first_row..last_row + 1
-    };
-    MinimapFrame {
-        rows,
-        viewport: ViewportIndicator {
-            rows: viewport_rows,
-        },
-    }
+    let spans = plain_spans(buffer, &rows);
+    frame_from_rows(
+        &rows,
+        &spans,
+        total_lines,
+        visible_line_range,
+        available_rows,
+        folds,
+    )
 }
 
 fn line_columns(buffer: &Buffer, line: usize) -> (usize, usize) {
@@ -471,3 +553,6 @@ fn densest_row(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod model_tests;

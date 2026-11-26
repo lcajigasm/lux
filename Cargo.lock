@@ -3246,6 +3246,7 @@ dependencies = [
  "lux-git",
  "lux-search",
  "lux-syntax",
+ "lux-ui",
  "lux-workspace",
  "tempfile",
  "tree-sitter",

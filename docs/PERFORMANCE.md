@@ -291,3 +291,15 @@ Run 43525497637 measured key-to-frame at 21.41 ms p99 after recovery moved off t
 | Restore 20 tabs with undo history | < 100 ms, not gated | 35.1, 36.0, 34.7, 42.5, 35.9 ms | 35.9 ms |
 
 The test prints the time and does not assert it (CLAUDE.md rule 3: budgets are gated only on repeatable hardware). Debug builds measured 413 ms on the same machine.
+
+## Minimap on a 50k-line file (ST-MAP-01)
+
+**2026-11-26, Apple M1 Max, `cargo bench -p lux-benches --bench minimap`, not the CI runner.** A 50,000-line Rust-like file, 300 minimap rows, one colored run per `fn` keyword standing in for the highlighter's tokens. `full_build` is a cold model: every line measured once, one line per row turned into strokes. `scroll` changes only the visible range. `typed_char` types one character on one line and passes that line edit, the path the editor takes for single-caret typing.
+
+| Measurement | Mean |
+|---|---|
+| `minimap_50k_lines/full_build` | 16.26 ms |
+| `minimap_50k_lines/scroll` | 2.92 µs |
+| `minimap_50k_lines/typed_char` | 6.70 µs |
+
+Not gated (CLAUDE.md rule 3). The work-counter test `minimap::model_tests::a_fifty_thousand_line_file_builds_incrementally` is the deterministic gate: a scroll measures and inks no line, a typed character measures one line and inks at most one, and a new parse result re-inks at most one line per row.

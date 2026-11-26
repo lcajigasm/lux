@@ -19,7 +19,7 @@ pub(crate) mod colors;
 mod job;
 pub(crate) mod live;
 pub(crate) mod marks;
-mod snapshot;
+pub(crate) mod snapshot;
 
 pub(crate) use branch_picker::handle_branch_picker_key;
 pub(crate) use job::new_gutter_context;
