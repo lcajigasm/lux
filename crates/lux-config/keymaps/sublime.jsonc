@@ -65,6 +65,8 @@
   { "command": "undo", "key": "ctrl+z", "mac": "cmd+z" },
   { "command": "redo", "key": "ctrl+shift+z", "mac": "cmd+shift+z" },
   { "command": "redo", "key": "ctrl+y", "mac": "cmd+y" },
+  { "command": "soft_undo", "key": "ctrl+u", "mac": "cmd+u" },
+  { "command": "soft_redo", "key": "ctrl+shift+u", "mac": "cmd+shift+u" },
   { "command": "save", "key": "ctrl+s", "mac": "cmd+s" },
   { "command": "save_all", "key": "ctrl+alt+s", "mac": "cmd+alt+s" },
   { "command": "reopen_closed_tab", "key": "ctrl+shift+t", "mac": "cmd+shift+t" },

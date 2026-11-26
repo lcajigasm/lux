@@ -71,6 +71,8 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
                 ));
             app.reset_goal_columns();
         }
+        "edit.soft_undo" => app.soft_undo(),
+        "edit.soft_redo" => app.soft_redo(),
         "edit.transpose" => {
             if !app.editing_blocked() {
                 let op = lux_core::edit_ops::transpose_op(&app.buffer, &app.cursors);

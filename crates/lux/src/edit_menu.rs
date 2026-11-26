@@ -219,6 +219,7 @@ pub(crate) fn press_editor(app: &mut App, ctx: &dyn PlatformContext, button: Mou
     if button != MouseButton::Left {
         return;
     }
+    app.settle_selection_history();
     dismiss_pickers(app);
     crate::focus::focus_editor(app);
     let pos = app.position_at_mouse();

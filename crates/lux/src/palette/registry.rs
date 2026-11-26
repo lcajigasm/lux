@@ -46,6 +46,8 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
         ),
         ("edit.undo", "Edit: Undo", "Edit"),
         ("edit.redo", "Edit: Redo", "Edit"),
+        ("edit.soft_undo", "Edit: Soft Undo", "Edit"),
+        ("edit.soft_redo", "Edit: Soft Redo", "Edit"),
         ("edit.cut", "Edit: Cut", "Edit"),
         ("edit.copy", "Edit: Copy", "Edit"),
         ("edit.paste", "Edit: Paste", "Edit"),

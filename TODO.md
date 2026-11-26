@@ -224,7 +224,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-EDIT-01 — Historial de Posición de Cursor y Soft Undo (`Cmd+U` / `Ctrl+U`)
 - Prioridad: `P0 (Core Sublime)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: —
 - Objetivo: El legendario "Soft Undo" de Sublime Text, que revierte selecciones y movimientos de cursor sin alterar el texto.
 - Alcance detallado:
