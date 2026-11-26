@@ -46,8 +46,9 @@ pub(crate) fn render_command_palette(
             hits: lux_search::fuzzy::char_spans(&entry.command.title, &entry.indices),
             badge: None,
             detail: palette.shortcuts.get(&entry.command.id).map(String::as_str),
-            icon: Some(super::icons::icon_for_category(&entry.command.category)),
+            icon: None,
             swatches: None,
+            ..Default::default()
         })
         .collect();
     let frame = centered_frame(

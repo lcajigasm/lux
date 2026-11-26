@@ -6,41 +6,13 @@ use lux_render::QuadInstance;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Icon {
     File,
-    Folder,
     Edit,
-    Find,
-    Selection,
-    Goto,
     View,
-    Git,
-    Terminal,
-    Settings,
-    Theme,
     Symbol,
     Command,
-    Build,
     Snippet,
-    Help,
-}
-
-pub(crate) fn icon_for_category(category: &str) -> Icon {
-    match category {
-        "File" => Icon::File,
-        "Edit" => Icon::Edit,
-        "Find" => Icon::Find,
-        "Selection" => Icon::Selection,
-        "Goto" => Icon::Goto,
-        "View" => Icon::View,
-        "Git" => Icon::Git,
-        "LSP" => Icon::Symbol,
-        "Terminal" => Icon::Terminal,
-        "Preferences" | "UI" => Icon::Settings,
-        "Build" => Icon::Build,
-        "Project" => Icon::Folder,
-        "Snippets" => Icon::Snippet,
-        "Help" => Icon::Help,
-        _ => Icon::Command,
-    }
+    /// The active choice in a picker, e.g. the current color scheme.
+    Check,
 }
 
 fn mark(
@@ -71,10 +43,6 @@ pub(crate) fn push_icon(
     let u = size / 14.0;
     match icon {
         Icon::File => mark(quads, x + 3.0 * u, y + u, 8.0 * u, 12.0 * u, ink, 1.5 * u),
-        Icon::Folder => {
-            mark(quads, x + u, y + 3.0 * u, 6.0 * u, 3.0 * u, ink, u);
-            mark(quads, x + u, y + 5.0 * u, 12.0 * u, 8.0 * u, ink, 1.5 * u);
-        }
         Icon::Edit => {
             for i in 0..3 {
                 mark(
@@ -88,133 +56,9 @@ pub(crate) fn push_icon(
                 );
             }
         }
-        Icon::Find => {
-            mark(
-                quads,
-                x + 2.0 * u,
-                y + 2.0 * u,
-                8.0 * u,
-                8.0 * u,
-                ink,
-                4.0 * u,
-            );
-            mark(
-                quads,
-                x + 4.0 * u,
-                y + 4.0 * u,
-                4.0 * u,
-                4.0 * u,
-                hole,
-                2.0 * u,
-            );
-            mark(
-                quads,
-                x + 9.0 * u,
-                y + 9.0 * u,
-                3.0 * u,
-                3.0 * u,
-                ink,
-                0.5 * u,
-            );
-        }
-        Icon::Selection => {
-            mark(quads, x + 2.0 * u, y + 3.0 * u, 4.0 * u, 4.0 * u, ink, u);
-            mark(
-                quads,
-                x + 8.0 * u,
-                y + 4.0 * u,
-                4.0 * u,
-                1.6 * u,
-                ink,
-                0.8 * u,
-            );
-            mark(
-                quads,
-                x + 8.0 * u,
-                y + 8.0 * u,
-                4.0 * u,
-                1.6 * u,
-                ink,
-                0.8 * u,
-            );
-        }
-        Icon::Goto => {
-            mark(quads, x + 2.0 * u, y + 6.0 * u, 8.0 * u, 2.0 * u, ink, u);
-            mark(quads, x + 8.0 * u, y + 3.0 * u, 2.0 * u, 8.0 * u, ink, u);
-        }
         Icon::View => {
             mark(quads, x + u, y + 2.0 * u, 12.0 * u, 10.0 * u, ink, 1.5 * u);
             mark(quads, x + 3.0 * u, y + 4.0 * u, 8.0 * u, 6.0 * u, hole, u);
-        }
-        Icon::Git => {
-            mark(
-                quads,
-                x + 2.0 * u,
-                y + 2.0 * u,
-                4.0 * u,
-                4.0 * u,
-                ink,
-                2.0 * u,
-            );
-            mark(quads, x + 5.0 * u, y + 4.0 * u, 2.0 * u, 6.0 * u, ink, u);
-            mark(quads, x + 5.0 * u, y + 8.0 * u, 6.0 * u, 2.0 * u, ink, u);
-            mark(
-                quads,
-                x + 9.0 * u,
-                y + 7.0 * u,
-                3.0 * u,
-                3.0 * u,
-                ink,
-                1.5 * u,
-            );
-        }
-        Icon::Terminal => {
-            mark(quads, x + u, y + 3.0 * u, 12.0 * u, 8.0 * u, ink, 1.5 * u);
-            mark(
-                quads,
-                x + 3.0 * u,
-                y + 6.0 * u,
-                3.0 * u,
-                2.0 * u,
-                hole,
-                0.4 * u,
-            );
-            mark(
-                quads,
-                x + 7.0 * u,
-                y + 6.0 * u,
-                3.0 * u,
-                2.0 * u,
-                hole,
-                0.4 * u,
-            );
-        }
-        Icon::Settings => {
-            mark(
-                quads,
-                x + 2.0 * u,
-                y + 2.0 * u,
-                10.0 * u,
-                10.0 * u,
-                ink,
-                2.0 * u,
-            );
-            mark(
-                quads,
-                x + 5.0 * u,
-                y + 5.0 * u,
-                4.0 * u,
-                4.0 * u,
-                hole,
-                2.0 * u,
-            );
-        }
-        Icon::Theme => {
-            let c = size * 0.38;
-            mark(quads, x + u, y + u, c, c, ink, u);
-            mark(quads, x + u + c + u, y + u, c, c, hole, u);
-            mark(quads, x + u, y + u + c + u, c, c, hole, u);
-            mark(quads, x + u + c + u, y + u + c + u, c, c, ink, u);
         }
         Icon::Symbol => {
             mark(quads, x + 6.0 * u, y + 2.0 * u, 2.0 * u, 10.0 * u, ink, u);
@@ -223,10 +67,6 @@ pub(crate) fn push_icon(
         Icon::Command => {
             mark(quads, x + 3.0 * u, y + 3.0 * u, 2.0 * u, 8.0 * u, ink, u);
             mark(quads, x + 5.0 * u, y + 6.0 * u, 6.0 * u, 2.0 * u, ink, u);
-        }
-        Icon::Build => {
-            mark(quads, x + 2.0 * u, y + 10.0 * u, 10.0 * u, 2.0 * u, ink, u);
-            mark(quads, x + 6.0 * u, y + 2.0 * u, 2.0 * u, 8.0 * u, ink, u);
         }
         Icon::Snippet => {
             mark(quads, x + 2.0 * u, y + 2.0 * u, 6.0 * u, 10.0 * u, ink, u);
@@ -249,15 +89,29 @@ pub(crate) fn push_icon(
                 0.6 * u,
             );
         }
-        Icon::Help => mark(
-            quads,
-            x + 3.0 * u,
-            y + 2.0 * u,
-            8.0 * u,
-            10.0 * u,
-            ink,
-            4.0 * u,
-        ),
+        Icon::Check => {
+            // Two strokes of round dots: a short fall, then a long rise.
+            let dot = 2.2 * u;
+            let path: [(f32, f32); 3] = [(2.0, 7.0), (5.5, 10.5), (12.0, 3.5)];
+            for pair in path.windows(2) {
+                let ((x0, y0), (x1, y1)) = (pair[0], pair[1]);
+                let steps = ((x1 - x0).abs().max((y1 - y0).abs()) * 2.0).ceil() as usize;
+                for step in 0..=steps {
+                    let t = step as f32 / steps as f32;
+                    let cx = x0 + (x1 - x0) * t;
+                    let cy = y0 + (y1 - y0) * t;
+                    mark(
+                        quads,
+                        x + cx * u - dot * 0.5,
+                        y + cy * u - dot * 0.5,
+                        dot,
+                        dot,
+                        ink,
+                        dot * 0.5,
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -359,34 +213,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn categories_pick_distinct_icons_and_each_icon_draws() {
-        assert_eq!(icon_for_category("File"), Icon::File);
-        assert_eq!(icon_for_category("Find"), Icon::Find);
-        assert_ne!(icon_for_category("File"), icon_for_category("Git"));
+    fn each_icon_draws() {
         let ink = [1.0, 0.2, 0.4, 1.0];
         let hole = [0.1, 0.1, 0.1, 1.0];
         for icon in [
             Icon::File,
-            Icon::Folder,
             Icon::Edit,
-            Icon::Find,
-            Icon::Selection,
-            Icon::Goto,
             Icon::View,
-            Icon::Git,
-            Icon::Terminal,
-            Icon::Settings,
-            Icon::Theme,
             Icon::Symbol,
             Icon::Command,
-            Icon::Build,
             Icon::Snippet,
-            Icon::Help,
+            Icon::Check,
         ] {
             let mut quads = Vec::new();
             push_icon(icon, &mut quads, 0.0, 0.0, 14.0, ink, hole);
             assert!(!quads.is_empty(), "{icon:?} drew nothing");
             assert!(quads.iter().all(|quad| quad.radius >= 0.0));
+            // Every mark stays inside its box.
+            assert!(quads.iter().all(|quad| quad.rect[0] >= 0.0
+                && quad.rect[1] >= 0.0
+                && quad.rect[0] + quad.rect[2] <= 14.0
+                && quad.rect[1] + quad.rect[3] <= 14.0));
         }
     }
 }

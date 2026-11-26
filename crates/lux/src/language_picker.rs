@@ -200,16 +200,12 @@ pub(crate) fn handle_language_picker_click(
             && mouse_y <= card.top + card.height;
         if !inside {
             None
-        } else if mouse_y >= card.rows_top && card.row_height > 0.0 {
-            let display_idx = ((mouse_y - card.rows_top) / card.row_height) as usize;
-            let actual_idx = card.origin + display_idx;
-            if display_idx < card.visible && actual_idx < filtered.len() {
-                Some(Some(filtered[actual_idx].0))
-            } else {
-                Some(None)
-            }
         } else {
-            Some(None)
+            // The same rows the card paints.
+            Some(
+                card.row_at(filtered.len(), mouse_x, mouse_y)
+                    .map(|index| filtered[index].0),
+            )
         }
     };
     match choice {
@@ -241,16 +237,9 @@ pub(crate) fn handle_language_picker_hover(
         (picker.filtered().len(), picker.selected_index)
     };
     let card = picker_card(app, selected, total);
-    let rows_bottom = card.rows_top + card.visible as f32 * card.row_height;
-    if mouse_x < card.left
-        || mouse_x > card.left + card.width
-        || mouse_y < card.rows_top
-        || mouse_y >= rows_bottom
-        || card.row_height <= 0.0
-    {
+    let Some(actual_idx) = card.row_at(total, mouse_x, mouse_y) else {
         return false;
-    }
-    let actual_idx = card.origin + ((mouse_y - card.rows_top) / card.row_height) as usize;
+    };
     if actual_idx < total && actual_idx != selected {
         if let Some(picker) = app.ui.language_picker.as_mut() {
             picker.selected_index = actual_idx;

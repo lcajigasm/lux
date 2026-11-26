@@ -9,6 +9,7 @@ use lux_platform::{Key, NamedKey, PlatformContext};
 use lux_ui::goto_anything::RecentFiles;
 use lux_ui::tabs::TabId;
 
+pub(crate) mod display;
 mod search;
 pub(crate) mod symbols;
 
@@ -38,6 +39,11 @@ pub(crate) struct GotoItem {
     /// Byte ranges of `label` the query matched, as the matcher aligned it.
     pub(crate) hits: Vec<std::ops::Range<usize>>,
     pub(crate) detail: String,
+    /// Second line of a file row: where the file lives, relative to the
+    /// folder or `~`-abbreviated. Empty for symbol and term rows.
+    pub(crate) subtitle: String,
+    /// Byte ranges of `subtitle` the query matched.
+    pub(crate) subtitle_hits: Vec<std::ops::Range<usize>>,
     pub(crate) path: String,
     pub(crate) line: Option<u32>,
     pub(crate) col: Option<u32>,
@@ -142,6 +148,11 @@ impl GotoState {
         state
     }
 
+    /// File results carry a path line, so the card uses two-line rows.
+    pub(crate) fn two_line(&self) -> bool {
+        self.items.iter().any(|item| !item.subtitle.is_empty())
+    }
+
     pub(crate) fn record_open(&mut self, path: &str) {
         self.recent_files.record_open(path);
         if !self.history.contains(&path.to_string()) {
@@ -179,18 +190,19 @@ pub(crate) fn handle_goto_key(
     ctx: &dyn PlatformContext,
     event: &KeyEvent,
 ) -> bool {
-    let total = if let Some(goto) = app.ui.goto_anything.as_ref() {
-        goto.items.len()
+    let (total, two_line) = if let Some(goto) = app.ui.goto_anything.as_ref() {
+        (goto.items.len(), goto.two_line())
     } else {
         return false;
     };
     let metrics = crate::modal::ModalMetrics::from_app(app);
-    let visible = crate::overlay_list::visible_rows(
+    let visible = crate::overlay_list::visible_rows_for(
         metrics.vp_height,
         metrics.tab_bar_height,
         metrics.status_bar,
         metrics.scale,
         total,
+        two_line,
     );
 
     match &event.key {
@@ -361,17 +373,27 @@ pub(crate) fn execute_goto(
         path.clone()
     };
 
+    let root = app
+        .ui
+        .sidebar
+        .as_ref()
+        .and_then(|sidebar| sidebar.workspace_root.as_deref());
     let existing_tab = app.documents.entries.iter().find(|e| {
-        e.path
-            .as_ref()
-            .is_some_and(|p| p == &path || p == &full_path)
-            || app
-                .documents
-                .tabs
-                .tabs()
-                .iter()
-                .find(|t| t.id == e.tab_id)
-                .is_some_and(|t| t.title == target_path)
+        e.path.as_ref().is_some_and(|p| {
+            p == &path
+                || p == &full_path
+                || (path.is_relative()
+                    && root
+                        .and_then(|root| display::folder_relative(p, root))
+                        .as_ref()
+                        == Some(&path))
+        }) || app
+            .documents
+            .tabs
+            .tabs()
+            .iter()
+            .find(|t| t.id == e.tab_id)
+            .is_some_and(|t| t.title == target_path)
     });
 
     if let Some(entry) = existing_tab {
@@ -478,9 +500,37 @@ mod tests {
             .map(|span| &item.label[span.clone()])
             .collect();
         // `a`, `p`, `p` of `app` and `r`, `s` of `rs` — not the `a` of `crates`.
+        // The title is the file name; the path line keeps the same hits.
+        assert_eq!(item.label, "app.rs");
         assert_eq!(lit, ["a", "p", "p", "r", "s"]);
-        assert_eq!(item.hits[0], 15..16);
-        assert_eq!(item.hits[4], 20..21);
+        assert_eq!(item.hits[0], 0..1);
+        assert_eq!(item.hits[4], 5..6);
+        assert_eq!(item.subtitle, "crates/lux/src/app.rs");
+        assert_eq!(item.subtitle_hits[0], 15..16);
+        assert_eq!(item.subtitle_hits[4], 20..21);
+        assert!(goto.two_line());
+    }
+
+    #[test]
+    fn an_open_tab_and_its_folder_entry_are_one_result() {
+        let dir = std::env::temp_dir().join(format!("lux-goto-dedupe-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        let file = dir.join("src/status_bar.rs");
+        std::fs::write(&file, "fn main() {}\n").unwrap();
+        let mut app = crate::app::App::new(
+            include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec(),
+        );
+        app.ui.sidebar = crate::sidebar::SidebarState::open_folder(dir.clone());
+        // The open file spells the folder differently (`/private/var` for
+        // `/var` on macOS); a plain prefix would list it twice.
+        app.documents.initial_path = Some(dir.canonicalize().unwrap().join("src/status_bar.rs"));
+        let candidates = search::collect_candidates(&app);
+        let hits: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.ends_with("status_bar.rs"))
+            .collect();
+        assert_eq!(hits, ["src/status_bar.rs"], "{candidates:?}");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

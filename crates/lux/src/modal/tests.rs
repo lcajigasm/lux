@@ -147,6 +147,8 @@ fn test_goto_anything_row_click_and_hover() {
     if let Some(goto) = app.ui.goto_anything.as_mut() {
         goto.items = vec![
             GotoItem {
+                subtitle: String::new(),
+                subtitle_hits: Vec::new(),
                 label: "file_a.rs".into(),
                 hits: Vec::new(),
                 detail: "".into(),
@@ -159,6 +161,8 @@ fn test_goto_anything_row_click_and_hover() {
                 },
             },
             GotoItem {
+                subtitle: String::new(),
+                subtitle_hits: Vec::new(),
                 label: "file_b.rs".into(),
                 hits: Vec::new(),
                 detail: "".into(),

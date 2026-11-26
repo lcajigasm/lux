@@ -35,8 +35,9 @@ pub(crate) fn render_snippet_picker(
             hits,
             badge: None,
             detail: Some(snippet.trigger.as_str()),
-            icon: Some(super::icons::Icon::Snippet),
+            icon: None,
             swatches: None,
+            ..Default::default()
         })
         .collect();
     let frame = centered_frame(

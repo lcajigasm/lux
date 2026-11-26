@@ -3,61 +3,35 @@
 use swash::FontRef;
 use swash::scale::ScaleContext;
 
-use crate::overlay_list::ListFrame;
+use crate::overlay_list::{ListFrame, TEXT_INSET_PT, TITLE_PT};
 use crate::render::icons::Icon;
-use crate::render::paint::{overlay_text, push_bold_glyph, push_glyph, span_covers};
+use crate::render::paint::{overlay_text, push_glyph};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
 
+mod colors;
+mod row;
+
+pub(crate) use colors::{OverlayColors, overlay_colors};
+
+#[derive(Default)]
 pub(crate) struct OverlayItem<'a> {
     pub title: &'a str,
     /// Byte ranges of `title` to draw as the match. They come from the
     /// matcher that ranked the row, never from re-scanning the title.
     pub hits: crate::overlay_list::Hits,
+    /// A second, smaller line under the title (goto's file path). Only
+    /// painted when the frame has two-line rows.
+    pub subtitle: Option<&'a str>,
+    /// Byte ranges of `subtitle` the query matched.
+    pub subtitle_hits: crate::overlay_list::Hits,
     pub badge: Option<&'a str>,
     pub detail: Option<&'a str>,
+    /// Only for icons that carry meaning; painted small and muted.
     pub icon: Option<Icon>,
     pub swatches: Option<[[f32; 4]; 4]>,
-}
-
-pub(crate) struct OverlayColors {
-    pub card: [f32; 4],
-    pub selection: [f32; 4],
-    pub thumb: [f32; 4],
-    pub text_card: [f32; 4],
-    pub text_selection: [f32; 4],
-    pub match_card: [f32; 4],
-    pub match_selection: [f32; 4],
-    pub detail_card: [f32; 4],
-    pub detail_selection: [f32; 4],
-}
-
-pub(crate) fn overlay_colors(theme: &lux_ui::Theme) -> OverlayColors {
-    use super::paint::color;
-    use super::panel::{
-        card_fill, contrasting_fill, label_ink, readable_ink, selected_fill, shortcut_ink,
-    };
-    let card = card_fill(theme);
-    let selection = contrasting_fill(selected_fill(theme), card);
-    let accent = color(theme.accent);
-    let match_on = |background| {
-        if super::panel::contrast_ratio(accent, background) >= 4.8 {
-            accent
-        } else {
-            label_ink(theme, background)
-        }
-    };
-    OverlayColors {
-        card,
-        selection,
-        thumb: contrasting_fill(color(theme.chrome.border), card),
-        text_card: label_ink(theme, card),
-        text_selection: label_ink(theme, selection),
-        match_card: match_on(card),
-        match_selection: match_on(selection),
-        detail_card: readable_ink(shortcut_ink(theme), card),
-        detail_selection: readable_ink(shortcut_ink(theme), selection),
-    }
+    /// The current choice, marked with a check.
+    pub checked: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -92,13 +66,8 @@ pub(crate) fn paint_overlay(
         20.0 * scale,
         stroke.max(1.5 * scale),
     );
-    let font_size = 13.0 * scale;
+    let font_size = TITLE_PT * scale;
     let (font, family) = crate::font::ui_font(font, editor_view.family());
-    let style = lux_render::LineStyle {
-        family: &family,
-        font_size,
-        ligatures: false,
-    };
     let pad = 10.0 * scale;
     let field_h = (frame.input_height - 14.0 * scale).max(font_size + 8.0 * scale);
     super::panel::push_rounded_surface(
@@ -115,6 +84,15 @@ pub(crate) fn paint_overlay(
         0.0,
         stroke.max(1.0),
     );
+    let mut pen = row::Pen {
+        font,
+        family: &family,
+        editor_view,
+        atlas,
+        atlas_dirty,
+        scale_cx,
+        glyphs,
+    };
     let (display, ink) = if query.is_empty() {
         (
             placeholder,
@@ -123,33 +101,29 @@ pub(crate) fn paint_overlay(
     } else {
         (query, colors.text_card)
     };
-    let input = editor_view
-        .text_layout_mut()
-        .layout_line(&style, display, &[]);
-    let text_x = frame.left + 22.0 * scale;
+    // The query starts where every row's text starts.
+    let text_x = frame.left + TEXT_INSET_PT * scale;
     let input_y = top + 8.0 * scale + (field_h - font_size) * 0.5;
-    for cluster in input.clusters() {
-        push_glyph(
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            font,
-            font_size,
-            &cluster,
-            text_x,
-            input_y + input.baseline(),
-            ink,
-            glyphs,
-        );
-    }
+    let plain = row::Ink {
+        text: ink,
+        hit: ink,
+        hit_bold: false,
+    };
+    let room = frame.width - 2.0 * TEXT_INSET_PT * scale;
+    pen.line(
+        display,
+        &[],
+        font_size,
+        text_x,
+        input_y,
+        room,
+        row::Elide::Start,
+        plain,
+    );
     if !query.is_empty() {
+        let caret_x = text_x + pen.width(query, font_size).min(room);
         quads.push(QuadInstance::solid(
-            [
-                text_x + input.width() + 2.0 * stroke,
-                input_y,
-                2.0 * stroke,
-                font_size,
-            ],
+            [caret_x + 2.0 * stroke, input_y, 2.0 * stroke, font_size],
             colors.text_card,
         ));
     }
@@ -171,129 +145,24 @@ pub(crate) fn paint_overlay(
         );
     }
     paint_scrollbar(frame, items.len(), top, &colors, scale, quads);
-    let row_baseline = (frame.row_height - font_size) * 0.5;
     for (offset, item) in items
         .iter()
         .skip(frame.origin)
         .take(frame.visible)
         .enumerate()
     {
-        let index = frame.origin + offset;
-        let selected_row = index == selected;
-        let row_y = rows_top + offset as f32 * frame.row_height;
-        let row_fill = if selected_row {
-            colors.selection
-        } else {
-            colors.card
-        };
-        let text = if selected_row {
-            colors.text_selection
-        } else {
-            colors.text_card
-        };
-        let hit = if selected_row {
-            colors.match_selection
-        } else {
-            colors.match_card
-        };
-        let detail_ink = if selected_row {
-            colors.detail_selection
-        } else {
-            colors.detail_card
-        };
-        let mut text_x = frame.left + 16.0 * scale;
-        if let Some(icon) = item.icon {
-            let icon_size = 16.0 * scale;
-            super::icons::push_icon(
-                icon,
-                quads,
-                text_x,
-                row_y + (frame.row_height - icon_size) * 0.5,
-                icon_size,
-                text,
-                row_fill,
-            );
-            text_x += icon_size + 10.0 * scale;
-        }
-        if let Some(badge) = item.badge {
-            text_x = paint_badge(
-                badge,
-                text_x,
-                row_y,
-                frame.row_height,
-                font_size,
-                scale,
-                &style,
-                font,
-                text,
-                row_fill,
-                editor_view,
-                atlas,
-                atlas_dirty,
-                scale_cx,
-                glyphs,
-                quads,
-            );
-        }
-        let detail_w = item.detail.map(|detail| {
-            editor_view
-                .text_layout_mut()
-                .layout_line(&style, detail, &[])
-                .width()
-        });
-        let swatch_w = item
-            .swatches
-            .map(|_| 4.0 * 12.0 * scale + 3.0 * 3.0 * scale);
-        let right_w = detail_w.or(swatch_w).unwrap_or(0.0);
-        let limit = frame.left + frame.width - right_w - 28.0 * scale;
-        let title = editor_view
-            .text_layout_mut()
-            .layout_line(&style, item.title, &[]);
-        for cluster in title.clusters() {
-            if text_x + cluster.x + cluster.advance > limit {
-                continue;
-            }
-            let matched = span_covers(&item.hits, &cluster.byte_range);
-            let draw = if matched && selected_row {
-                push_bold_glyph
-            } else {
-                push_glyph
-            };
-            draw(
-                atlas,
-                atlas_dirty,
-                scale_cx,
-                font,
-                font_size,
-                &cluster,
-                text_x,
-                row_y + row_baseline + title.baseline(),
-                if matched { hit } else { text },
-                glyphs,
-            );
-        }
-        if let Some(colors4) = item.swatches {
-            paint_swatches(colors4, frame, row_y, scale, quads);
-        } else if let Some(detail) = item.detail {
-            let line = editor_view
-                .text_layout_mut()
-                .layout_line(&style, detail, &[]);
-            let x = frame.left + frame.width - line.width() - 18.0 * scale;
-            for cluster in line.clusters() {
-                push_glyph(
-                    atlas,
-                    atlas_dirty,
-                    scale_cx,
-                    font,
-                    font_size,
-                    &cluster,
-                    x,
-                    row_y + row_baseline + line.baseline(),
-                    detail_ink,
-                    glyphs,
-                );
-            }
-        }
+        let slots = frame.row_slots(rows_top, offset, scale);
+        let selected_row = frame.origin + offset == selected;
+        row::paint_row(
+            &mut pen,
+            item,
+            frame,
+            slots,
+            selected_row,
+            &colors,
+            scale,
+            quads,
+        );
     }
 }
 
@@ -324,73 +193,6 @@ fn paint_scrollbar(
         colors.thumb,
         2.0 * scale,
     ));
-}
-
-#[allow(clippy::too_many_arguments)]
-fn paint_badge(
-    badge: &str,
-    x: f32,
-    row_y: f32,
-    row_height: f32,
-    font_size: f32,
-    scale: f32,
-    style: &lux_render::LineStyle<'_>,
-    font: FontRef<'_>,
-    ink: [f32; 4],
-    fill: [f32; 4],
-    editor_view: &mut EditorView,
-    atlas: &mut GlyphAtlas,
-    atlas_dirty: &mut bool,
-    scale_cx: &mut ScaleContext,
-    glyphs: &mut Vec<GlyphInstance>,
-    quads: &mut Vec<QuadInstance>,
-) -> f32 {
-    let line = editor_view.text_layout_mut().layout_line(style, badge, &[]);
-    let width = line.width() + 10.0 * scale;
-    let height = font_size + 6.0 * scale;
-    let y = row_y + (row_height - height) * 0.5;
-    quads.push(QuadInstance::rounded(
-        [x, y, width, height],
-        super::panel::contrasting_fill(fill, ink),
-        3.0 * scale,
-    ));
-    for cluster in line.clusters() {
-        push_glyph(
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            font,
-            font_size,
-            &cluster,
-            x + 5.0 * scale,
-            y + (height - font_size) * 0.5 + line.baseline(),
-            ink,
-            glyphs,
-        );
-    }
-    x + width + 8.0 * scale
-}
-
-fn paint_swatches(
-    colors: [[f32; 4]; 4],
-    frame: &ListFrame,
-    row_y: f32,
-    scale: f32,
-    quads: &mut Vec<QuadInstance>,
-) {
-    let size = 12.0 * scale;
-    let gap = 3.0 * scale;
-    let total = 4.0 * size + 3.0 * gap;
-    let mut x = frame.left + frame.width - total - 18.0 * scale;
-    let y = row_y + (frame.row_height - size) * 0.5;
-    for color in colors {
-        quads.push(QuadInstance::rounded(
-            [x, y, size, size],
-            color,
-            2.0 * scale,
-        ));
-        x += size + gap;
-    }
 }
 
 /// A short status at the right end of the input field, such as
@@ -438,74 +240,5 @@ pub(crate) fn paint_input_notice(
             ink,
             glyphs,
         );
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ten_bundled_themes_paint_overlay_at_wcag_aa() {
-        use super::super::panel::contrast_ratio;
-        let schemes = crate::color_scheme::bundled_schemes();
-        assert!(schemes.len() >= 10);
-        for scheme in schemes.iter().take(10) {
-            let colors = overlay_colors(&scheme.theme);
-            let pairs = [
-                (
-                    contrast_ratio(colors.selection, colors.card),
-                    3.0,
-                    "selection/card",
-                ),
-                (contrast_ratio(colors.thumb, colors.card), 3.0, "thumb/card"),
-                (
-                    contrast_ratio(colors.text_card, colors.card),
-                    4.5,
-                    "text/card",
-                ),
-                (
-                    contrast_ratio(colors.text_selection, colors.selection),
-                    4.5,
-                    "text/selection",
-                ),
-                (
-                    contrast_ratio(colors.match_card, colors.card),
-                    4.5,
-                    "match/card",
-                ),
-                (
-                    contrast_ratio(colors.match_selection, colors.selection),
-                    4.5,
-                    "match/selection",
-                ),
-                (
-                    contrast_ratio(colors.detail_card, colors.card),
-                    4.5,
-                    "detail/card",
-                ),
-                (
-                    contrast_ratio(colors.detail_selection, colors.selection),
-                    4.5,
-                    "detail/selection",
-                ),
-            ];
-            println!(
-                "{} {}",
-                scheme.name,
-                pairs
-                    .iter()
-                    .map(|(ratio, _, name)| format!("{name} {ratio:.2}"))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            );
-            for (ratio, floor, name) in pairs {
-                assert!(
-                    ratio >= floor,
-                    "{} {name} {ratio:.2} < {floor}",
-                    scheme.name
-                );
-            }
-        }
     }
 }

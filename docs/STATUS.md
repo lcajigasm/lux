@@ -877,8 +877,16 @@ those in the accent color: `apprs` on `crates/lux/src/app.rs` lights `a`, `p`,
 `p` of `app` and `r`, `s` of `rs`, not the `a` of `crates`. `@symbol`,
 `#term`, and Goto Symbol in Project rows light the substring their filter
 matched. Every list on the shared overlay card paints the byte ranges its
-row carries (`OverlayItem::hits`). Gate: `cargo test -p lux goto::`, `cargo test -p lux-search fuzzy`,
-`cargo test -p lux-ui goto_anything`, `cargo test -p lux list_hits`.
+row carries (`OverlayItem::hits`). A file result is a 44 pt two-line row:
+the file name in 13 pt with its matched characters lit, over its path in
+11 pt muted text, relative to the open folder or `~`-abbreviated outside
+it, elided from the left with "…" so the file end stays visible
+(`crates/lux/src/goto/display.rs`). An open tab under the folder is listed
+by the same folder-relative path as the folder index, so a file appears
+once, including a `/tmp` folder whose tabs read `/private/tmp`.
+Gate: `cargo test -p lux goto::`, `cargo test -p lux-search fuzzy`,
+`cargo test -p lux-ui goto_anything`, `cargo test -p lux list_hits`,
+`cargo test -p lux overlay_list`.
 
 **Command palette** is `implemented` on macOS (`crates/lux/src/palette.rs`,
 `crates/lux/src/render/palette.rs`). Toggled with `Cmd+Shift+P`, it renders a floating
@@ -892,7 +900,16 @@ the same way. The build, snippet, and project pickers rank a longer key
 (`name command args`, `name trigger description`, the full path) and light
 the part of the match inside the title they show; a match only in the
 command or directory lights nothing. The branch list filters by substring
-and lights that substring; its create row lights nothing. Gate: `cargo test -p lux palette::`.
+and lights that substring; its create row lights nothing. Every picker on
+the shared card uses 28 pt one-line rows and starts its text, and the query,
+at one 22 pt inset; rows carry no decorative icons (completion keeps a
+12 pt muted kind icon). A match is the theme accent where it clears 3:1
+against the row, otherwise the row's text in bold; the selected row is the
+theme's selection color (moved off the card to at least 1.4:1) with
+foreground text and bold matches, checked on all 14 bundled themes. The
+color scheme picker rims each swatch with 20% foreground and marks the
+active scheme with a check. Gate: `cargo test -p lux palette::`,
+`cargo test -p lux overlay_list`.
 
 **Search/replace bar** is `implemented` on macOS (`crates/lux/src/search/`,
 `crates/lux/src/render/search.rs`). Toggled with `Cmd+F` (find) or `Cmd+H` (replace), it

@@ -36,16 +36,6 @@ pub(crate) fn render_theme_picker(
     let reduced = crate::overlay_motion::reduced_motion();
     let ranked = picker.ranked();
     let filtered: Vec<&'static str> = ranked.iter().map(|(name, _)| *name).collect();
-    let labels: Vec<String> = filtered
-        .iter()
-        .map(|name| {
-            if name.eq_ignore_ascii_case(theme.name) {
-                format!("{name}  (active)")
-            } else {
-                (*name).to_string()
-            }
-        })
-        .collect();
     let swatches: Vec<[[f32; 4]; 4]> = filtered
         .iter()
         .map(|name| {
@@ -58,19 +48,16 @@ pub(crate) fn render_theme_picker(
             ]
         })
         .collect();
-    let items: Vec<OverlayItem<'_>> = labels
+    let items: Vec<OverlayItem<'_>> = filtered
         .iter()
         .zip(swatches.iter())
         .zip(ranked.iter())
-        // The name leads the label, so its byte ranges hold for the label;
-        // the "(active)" suffix is never lit.
-        .map(|((title, swatch), (_, hits))| OverlayItem {
-            title,
+        .map(|((name, swatch), (_, hits))| OverlayItem {
+            title: name,
             hits: hits.clone(),
-            badge: None,
-            detail: None,
-            icon: Some(super::icons::Icon::Theme),
             swatches: Some(*swatch),
+            checked: name.eq_ignore_ascii_case(theme.name),
+            ..Default::default()
         })
         .collect();
     let frame = centered_frame(
