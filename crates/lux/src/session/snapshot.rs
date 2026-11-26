@@ -1,6 +1,7 @@
 //! Writing the session (ADR 0019). The UI thread takes a cheap snapshot —
 //! rope clones, cursor positions, and each tab's undo history shared
-//! through an `Arc` that is rebuilt only when that history changed — and
+//! through an `Arc` that is rebuilt only when that history changed, by a
+//! clone that copies pointers to shared undo steps, never their text — and
 //! hands it to the shared latest-only worker. The worker turns drafts into
 //! text, encodes the histories, and writes everything transactionally:
 //! history files first, then the session JSON atomically, then it prunes
@@ -80,8 +81,9 @@ fn workspace_root(app: &App) -> Option<&Path> {
         .and_then(|s| s.workspace_root.as_deref())
 }
 
-/// Builds the snapshot. Cost is a rope clone per tab plus one history
-/// clone for each tab whose history changed since the last snapshot.
+/// Builds the snapshot. Cost is a rope clone per tab plus, for each tab
+/// whose history changed since the last snapshot, a history clone that is
+/// linear in its number of undo steps and independent of their text.
 fn take(app: &mut App, clean: bool) -> Snapshot {
     let file = current_file(app);
     let mut session = Session::new();
@@ -175,7 +177,8 @@ fn take(app: &mut App, clean: bool) -> Snapshot {
 }
 
 /// The history behind an `Arc`, cloned only when it changed since the
-/// last snapshot of the same buffer.
+/// last snapshot of the same buffer. The clone shares every undo step's
+/// transaction with the live history, so a large paste is not copied.
 fn shared_history(
     cache: &HashMap<u64, Arc<History>>,
     buffer_id: u64,

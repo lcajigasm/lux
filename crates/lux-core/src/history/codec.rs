@@ -245,9 +245,14 @@ impl<'a> Reader<'a> {
         let selections_before = self.selections()?;
         let selections_after = self.selections()?;
         Some(HistoryEntry {
-            transaction: Transaction::new(edits, selections_before, selections_after),
+            transaction: std::sync::Arc::new(Transaction::new(
+                edits,
+                selections_before,
+                selections_after,
+            )),
             before,
             after,
+            sealed: false,
         })
     }
 }

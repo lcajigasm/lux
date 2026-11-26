@@ -10,6 +10,7 @@
 //! `should_coalesce`. A pause is the gap since the previous chained edit,
 //! measured when the next edit arrives. Nothing wakes up to watch the clock.
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -205,11 +206,20 @@ impl Default for Revision {
     }
 }
 
+/// One undo step. The transaction sits behind an `Arc`, so cloning a
+/// `History` (as session persistence does on every debounced write) copies
+/// pointers, never edit text: a large paste is shared, not duplicated.
+/// Only coalescing into the newest step copies it, and only while a clone
+/// still holds it.
 #[derive(Debug, Clone)]
 struct HistoryEntry {
-    transaction: Transaction,
+    transaction: Arc<Transaction>,
     before: u64,
     after: u64,
+    /// Set by [`History::checkpoint`]: nothing coalesces into this step
+    /// any more. Kept outside the shared transaction so sealing a step
+    /// never copies it.
+    sealed: bool,
 }
 
 impl History {
@@ -251,17 +261,20 @@ impl History {
         self.state = self.next_state;
         self.redo_stack.clear();
         if let Some(last) = self.undo_stack.last_mut()
+            && !last.sealed
             && should_coalesce(&last.transaction, &transaction)
         {
-            last.transaction.edits.extend(transaction.edits);
-            last.transaction.selections_after = transaction.selections_after;
+            let merged = Arc::make_mut(&mut last.transaction);
+            merged.edits.extend(transaction.edits);
+            merged.selections_after = transaction.selections_after;
             last.after = self.state;
             return;
         }
         self.undo_stack.push(HistoryEntry {
-            transaction,
+            transaction: Arc::new(transaction),
             before,
             after: self.state,
+            sealed: false,
         });
     }
 
@@ -309,8 +322,9 @@ impl History {
     pub fn checkpoint(&mut self) -> u64 {
         if let Some(last) = self.undo_stack.last_mut()
             && last.transaction.chainable
+            && !last.sealed
         {
-            last.transaction.chainable = false;
+            last.sealed = true;
             self.revision = Revision::fresh();
         }
         self.state
@@ -327,6 +341,42 @@ impl History {
 mod tests {
     use super::*;
     use crate::position::Position;
+
+    #[test]
+    fn a_clone_shares_its_steps_and_stays_independent() {
+        let mut buffer = Buffer::from_bytes(b"").unwrap();
+        let mut history = History::new();
+        record_insert(&mut history, &mut buffer, 0, &"pasted text ".repeat(1000));
+        let end = buffer.len_chars();
+        record_insert(&mut history, &mut buffer, end, "a");
+        let snapshot = history.clone();
+        assert!(Arc::ptr_eq(
+            &history.undo_stack[0].transaction,
+            &snapshot.undo_stack[0].transaction
+        ));
+        // Coalescing into the newest step and sealing it leave the clone
+        // as it was.
+        let end = buffer.len_chars();
+        record_insert(&mut history, &mut buffer, end, "b");
+        history.checkpoint();
+        assert_eq!(
+            snapshot.undo_stack.last().unwrap().transaction.edits.len(),
+            1
+        );
+        assert!(!snapshot.undo_stack.last().unwrap().sealed);
+        assert_eq!(
+            history.undo_stack.last().unwrap().transaction.edits.len(),
+            2
+        );
+        assert!(Arc::ptr_eq(
+            &history.undo_stack[0].transaction,
+            &snapshot.undo_stack[0].transaction
+        ));
+        let mut replay = buffer.clone();
+        history.undo(&mut replay);
+        history.undo(&mut replay);
+        assert_eq!(replay.text(), "");
+    }
 
     #[test]
     fn saved_state_survives_undo_redo_coalescing_and_branching() {
