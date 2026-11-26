@@ -2,12 +2,16 @@
 //!
 //! Arrowing onto a file that is not open reads it on a `ui_io` worker and
 //! shows it in the window's single transient tab when the text arrives.
-//! The next preview replaces that tab's document; Escape discards it. It
-//! becomes an ordinary tab on Enter, on an edit, on a save, or on a
-//! double-click of the tab. A read the panel stopped waiting for (the
-//! selection moved on, or the panel closed) is dropped when it lands.
+//! The next preview replaces that tab's document. Every way of closing the
+//! panel other than Enter discards it (`dismiss`), so it lives only while
+//! the panel is open. It becomes an ordinary tab on Enter, on an edit, or
+//! on a save; a reload from disk is not an edit and keeps it transient.
+//! Reads go to one latest-wins worker: a request the selection has left
+//! before the worker took it is never read, and a read the panel stopped
+//! waiting for (the selection moved on, or the panel closed) is dropped
+//! when it lands.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use lux_core::buffer::Buffer;
@@ -24,9 +28,6 @@ pub(crate) const TOO_LARGE_NOTICE: &str = "Too large to preview: Enter opens it"
 /// Shown when the selected file could not be read (binary, missing, …).
 pub(crate) const UNREADABLE_NOTICE: &str = "Cannot preview this file";
 
-/// Two presses on the same tab within this window promote it.
-const DOUBLE_CLICK_MS: u128 = 400;
-
 /// The window's one transient tab, and the history state it was loaded
 /// at: any other state means it was edited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,8 +40,6 @@ pub(crate) struct Transient {
 #[derive(Debug, Default)]
 pub(crate) struct PreviewTab {
     transient: Option<Transient>,
-    /// Last left press on a tab, for double-click promotion.
-    last_press: Option<(std::time::Instant, TabId)>,
 }
 
 /// A caret a preview moved in an already-open tab, restored on Escape.
@@ -88,22 +87,25 @@ pub(crate) fn is_transient(documents: &Documents, id: TabId) -> bool {
     transient(documents) == Some(id)
 }
 
-/// Starts reading `path` on a worker; the panel waits for this ticket only.
+/// Asks the preview worker for `path`, replacing any request it has not
+/// started yet; the panel waits for this ticket only.
 pub(crate) fn request(app: &mut App, path: PathBuf, line: Option<u32>, col: Option<u32>) {
     let ticket = Ticket(NEXT_TICKET.fetch_add(1, Ordering::Relaxed));
     let Some(goto) = app.ui.goto_anything.as_mut() else {
         return;
     };
     goto.preview = Some(ticket);
-    crate::ui_io::spawn(app, None, move || {
+    crate::ui_io::spawn_latest(app, None, move || {
         Some(crate::ui_io::Done::Preview(Box::new(read(
             ticket, path, line, col,
         ))))
     });
 }
 
-/// The panel no longer waits for any preview read.
+/// The panel no longer waits for any preview read; one not started yet
+/// is not read at all.
 pub(crate) fn cancel(app: &mut App) {
+    crate::ui_io::cancel_latest(app);
     if let Some(goto) = app.ui.goto_anything.as_mut() {
         goto.preview = None;
         if matches!(goto.notice, Some(TOO_LARGE_NOTICE | UNREADABLE_NOTICE)) {
@@ -112,7 +114,15 @@ pub(crate) fn cancel(app: &mut App) {
     }
 }
 
+/// Tests: every path the preview worker has read, in order.
+#[cfg(test)]
+pub(crate) static READS: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+
 fn read(ticket: Ticket, path: PathBuf, line: Option<u32>, col: Option<u32>) -> Loaded {
+    #[cfg(test)]
+    if let Ok(mut reads) = READS.lock() {
+        reads.push(path.clone());
+    }
     let policy = HugeFilePolicy::default();
     let result = match classify_path(&path, policy) {
         Ok(class) if class.is_huge() => Err(Refusal::TooLarge),
@@ -201,6 +211,26 @@ pub(crate) fn promote_active(app: &mut App) {
     }
 }
 
+/// A reload of `path` from disk changed the transient tab's history
+/// without the user editing it: it stays transient at its new state.
+pub(crate) fn note_reload(app: &mut App, path: &Path) {
+    let Some(t) = app.documents.strip.preview.transient else {
+        return;
+    };
+    let Some(entry) = app.documents.entries.iter().find(|e| e.tab_id == t.id) else {
+        return;
+    };
+    if entry.path.as_deref() != Some(path) {
+        return;
+    }
+    let baseline = if app.documents.active_tab == Some(t.id) {
+        app.history.state_id()
+    } else {
+        entry.history.state_id()
+    };
+    app.documents.strip.preview.transient = Some(Transient { baseline, ..t });
+}
+
 /// An edit makes the transient tab permanent. Cheap: one comparison.
 pub(crate) fn settle(app: &mut App) {
     let Some(t) = app.documents.strip.preview.transient else {
@@ -216,23 +246,6 @@ pub(crate) fn settle(app: &mut App) {
             .map(|e| e.history.state_id())
     };
     if state.is_some_and(|s| s != t.baseline) {
-        promote(app);
-    }
-}
-
-/// A left press on tab `id`: the second press in a row promotes it.
-pub(crate) fn note_tab_press(app: &mut App, id: TabId) {
-    let now = std::time::Instant::now();
-    let double = app
-        .documents
-        .strip
-        .preview
-        .last_press
-        .is_some_and(|(at, last)| {
-            last == id && now.duration_since(at).as_millis() < DOUBLE_CLICK_MS
-        });
-    app.documents.strip.preview.last_press = (!double).then_some((now, id));
-    if double && is_transient(&app.documents, id) {
         promote(app);
     }
 }
@@ -289,10 +302,13 @@ pub(crate) fn note_touched(app: &mut App, id: TabId) {
     snapshot.touched.push(touched);
 }
 
-/// Escape, a click outside, or Cmd+P again: back to the tab, carets and
-/// scroll from before the panel opened, with the transient tab gone.
-pub(crate) fn dismiss(app: &mut App, mut goto: super::GotoState) {
+/// The panel closed without Enter: back to the tab, carets and scroll
+/// from before the panel opened, with the transient tab gone. Callers go
+/// through `goto::close`.
+pub(super) fn dismiss(app: &mut App, mut goto: super::GotoState) {
+    crate::ui_io::cancel_latest(app);
     let Some(snapshot) = goto.snapshot.take() else {
+        discard(app);
         return;
     };
     if let Some(origin) = snapshot.active_tab

@@ -57,10 +57,7 @@ impl App {
     }
 
     pub(crate) fn toggle_goto_anything(&mut self) {
-        if self.ui.goto_anything.is_some() {
-            if let Some(goto) = self.ui.goto_anything.take() {
-                crate::goto::preview::dismiss(self, goto);
-            }
+        if crate::goto::close(self) {
             crate::focus::focus_editor(self);
             self.scheduler.invalidate_all();
         } else {
@@ -69,9 +66,9 @@ impl App {
     }
 
     pub(crate) fn open_goto_anything(&mut self, initial_query: &str) {
-        // Escape returns to the tab the panel opened from; a preview must
-        // never replace it, so a transient tab shown there is kept.
-        crate::goto::preview::promote_active(self);
+        // A panel already open is closed first, so the new one starts from
+        // the tab it was opened from, never from a transient tab.
+        crate::goto::close(self);
         let mut state = crate::goto::GotoState::new(self);
         state.query = crate::field::QueryField::from_text(initial_query);
         state.refresh_results(self);
@@ -84,7 +81,7 @@ impl App {
     }
 
     pub(crate) fn open_goto_project_symbols(&mut self) {
-        crate::goto::preview::promote_active(self);
+        crate::goto::close(self);
         crate::goto::symbols::index_open_documents(self);
         let mut state = crate::goto::GotoState::new_project_symbols(self);
         state.refresh_results(self);

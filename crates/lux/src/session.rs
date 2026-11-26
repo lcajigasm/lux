@@ -4,7 +4,7 @@
 //! Watches opened folders/files and classifies external disk changes into clean auto-reloads vs. dirty conflicts.
 
 mod debounce;
-mod disk_events;
+pub(crate) mod disk_events;
 pub(crate) mod location;
 mod restore;
 mod snapshot;

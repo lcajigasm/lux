@@ -13,6 +13,8 @@ use lux_platform::PlatformContext;
 
 use crate::app::App;
 
+mod latest;
+
 type Wake = Arc<dyn Fn() + Send + Sync>;
 type Task = Box<dyn FnOnce() + Send>;
 
@@ -89,6 +91,8 @@ pub(crate) struct Jobs {
     wake: Option<Wake>,
     /// Settings writes are read-modify-write; one thread keeps them in order.
     serial: Option<Sender<Task>>,
+    /// Goto Anything previews: only the newest request is read.
+    latest: latest::Latest,
     in_flight: usize,
     gate: Arc<Gate>,
 }
@@ -101,6 +105,7 @@ impl Default for Jobs {
             receiver,
             wake: None,
             serial: None,
+            latest: latest::Latest::default(),
             in_flight: 0,
             gate: Arc::new(Gate::default()),
         }
@@ -217,6 +222,34 @@ pub(crate) fn spawn_serial(
     } else {
         jobs.serial = None;
         app.documents.message = Some("Cannot start file operation".into());
+    }
+}
+
+/// Runs `work` on the one latest-wins worker. A job still waiting there
+/// when the next one arrives is dropped without running, so a burst of
+/// requests costs one thread and one run, not one of each per request.
+pub(crate) fn spawn_latest(
+    app: &mut App,
+    ctx: Option<&dyn PlatformContext>,
+    work: impl FnOnce() -> Option<Done> + Send + 'static,
+) {
+    note_wake(app, ctx);
+    let jobs = &mut app.ui.dialogs.jobs;
+    let task = jobs.task(work);
+    match jobs.latest.post(task, &jobs.gate) {
+        Ok(true) => jobs.in_flight += 1,
+        Ok(false) => {}
+        Err(error) => {
+            app.documents.message = Some(format!("Cannot start file operation: {error}"));
+        }
+    }
+}
+
+/// Drops the latest-wins job that has not started yet, if any.
+pub(crate) fn cancel_latest(app: &mut App) {
+    let jobs = &mut app.ui.dialogs.jobs;
+    if jobs.latest.clear() {
+        jobs.in_flight = jobs.in_flight.saturating_sub(1);
     }
 }
 

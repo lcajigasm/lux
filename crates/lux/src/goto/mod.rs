@@ -195,6 +195,17 @@ impl GotoState {
     }
 }
 
+/// Closes the panel the way Escape does: the transient tab is discarded
+/// and the editor goes back to where the panel was opened. Every path that
+/// closes the panel without Enter comes here. `true` if it was open.
+pub(crate) fn close(app: &mut crate::app::App) -> bool {
+    let Some(goto) = app.ui.goto_anything.take() else {
+        return false;
+    };
+    preview::dismiss(app, goto);
+    true
+}
+
 pub(crate) fn handle_goto_key(
     app: &mut crate::app::App,
     ctx: &dyn PlatformContext,
@@ -217,9 +228,7 @@ pub(crate) fn handle_goto_key(
 
     match &event.key {
         Key::Named(NamedKey::Escape) => {
-            if let Some(goto) = app.ui.goto_anything.take() {
-                preview::dismiss(app, goto);
-            }
+            close(app);
             crate::focus::focus_editor(app);
             app.scheduler.invalidate_all();
             true
@@ -256,10 +265,12 @@ pub(crate) fn handle_goto_key(
                 }
             };
 
-            if let Some(mut goto) = app.ui.goto_anything.take()
-                && !target_path.is_empty()
-            {
+            if target_path.is_empty() {
+                // Nothing to open: leave as Escape does.
+                close(app);
+            } else if let Some(mut goto) = app.ui.goto_anything.take() {
                 goto.record_open(&target_path);
+                crate::ui_io::cancel_latest(app);
                 execute_goto(app, ctx, &target_path, line, col);
             }
             crate::focus::focus_editor(app);

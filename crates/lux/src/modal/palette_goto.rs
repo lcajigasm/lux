@@ -93,9 +93,7 @@ pub(super) fn click_goto_anything(
     let geom = geom_goto(m, goto);
 
     if !geom.contains(mx, my) {
-        if let Some(g) = app.ui.goto_anything.take() {
-            crate::goto::preview::dismiss(app, g);
-        }
+        crate::goto::close(app);
         crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
         return true;

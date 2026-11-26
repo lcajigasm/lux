@@ -37,6 +37,8 @@ fn fixture(dir: &Path) -> (App, lux_ui::tabs::TabId, mpsc::Receiver<()>) {
 
 /// Blocks on the worker's wake (no timer) and applies every finished read.
 fn land_reads(app: &mut App, woke: &mpsc::Receiver<()>) {
+    // A wake the test already took may have left a result waiting.
+    crate::ui_io::poll(app, &DummyContext);
     while app.ui.dialogs.jobs.in_flight() > 0 {
         woke.recv_timeout(Duration::from_secs(10))
             .expect("the preview read never woke the editor");
@@ -125,32 +127,85 @@ fn enter_keeps_the_previewed_file_as_an_ordinary_tab() {
 }
 
 #[test]
-fn typing_in_a_previewed_buffer_makes_it_permanent() {
+fn an_edit_to_the_previewed_buffer_makes_it_permanent() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut app, _, woke) = fixture(dir.path());
+    let (mut app, origin, woke) = fixture(dir.path());
     let before = tab_count(&app);
 
     app.open_goto_anything("");
     type_str(&mut app, "peek_gamma");
     land_reads(&mut app, &woke);
-    // Leave the panel without dismissing it: the preview stays transient.
-    crate::focus::escape_to_editor(&mut app);
     let shown = app.documents.active_tab.unwrap();
     assert!(preview::is_transient(&app.documents, shown));
 
-    type_str(&mut app, "x");
+    // Keys go to the panel, so the edit comes through the editor directly.
+    app.insert_at_cursor("x");
     assert!(app.buffer.text().starts_with('x'));
     assert!(preview::transient(&app.documents).is_none());
+
+    // Escape still goes back to the origin, but keeps the edited tab.
+    press_key(&mut app, NamedKey::Escape);
+    assert_eq!(app.documents.active_tab, Some(origin));
     assert_eq!(tab_count(&app), before + 1);
 
-    // A later preview opens its own tab instead of replacing this one.
+    // A later preview opens its own tab instead of replacing that one.
     app.open_goto_anything("");
     type_str(&mut app, "peek_alpha");
     land_reads(&mut app, &woke);
     assert_eq!(tab_count(&app), before + 2);
     press_key(&mut app, NamedKey::Escape);
-    assert_eq!(app.documents.active_tab, Some(shown));
+    assert_eq!(tab_count(&app), before + 1);
+    app.switch_to_tab(shown);
     assert!(app.buffer.text().starts_with('x'));
+}
+
+/// The paths of `dir` the preview worker read since `from`.
+fn reads_in(dir: &Path, from: usize) -> Vec<String> {
+    let canonical = dir.canonicalize().unwrap();
+    let reads = preview::READS.lock().unwrap();
+    reads[from..]
+        .iter()
+        .filter(|p| p.starts_with(dir) || p.starts_with(&canonical))
+        .map(|p| p.file_name().unwrap().to_string_lossy().into())
+        .collect()
+}
+
+fn reads_so_far() -> usize {
+    preview::READS.lock().unwrap().len()
+}
+
+#[test]
+fn requests_the_selection_left_before_the_worker_took_them_are_never_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut app, _, woke) = fixture(dir.path());
+    let from = reads_so_far();
+
+    app.open_goto_anything("");
+    let hold = app.ui.dialogs.jobs.hold();
+    type_str(&mut app, "peek");
+    press_key(&mut app, NamedKey::ArrowDown);
+    press_key(&mut app, NamedKey::ArrowDown);
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 1, "one request waits");
+    let last = selected_file(&app);
+    hold.release();
+    land_reads(&mut app, &woke);
+
+    assert_eq!(reads_in(dir.path(), from), std::slice::from_ref(&last));
+    assert_eq!(active_file(&app), last);
+
+    // Moving to an open file withdraws a request that has not started.
+    let from = reads_so_far();
+    let hold = app.ui.dialogs.jobs.hold();
+    press_key(&mut app, NamedKey::ArrowUp);
+    for _ in 0.."peek".len() {
+        press_key(&mut app, NamedKey::Backspace);
+    }
+    type_str(&mut app, "main.rs");
+    assert_eq!(selected_file(&app), "main.rs");
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 0);
+    hold.release();
+    assert!(reads_in(dir.path(), from).is_empty());
+    press_key(&mut app, NamedKey::Escape);
 }
 
 #[test]
@@ -160,30 +215,30 @@ fn a_read_that_lands_after_the_selection_moved_on_is_dropped() {
     let before = tab_count(&app);
 
     app.open_goto_anything("");
-    let hold = app.ui.dialogs.jobs.hold();
     type_str(&mut app, "peek_alpha");
-    assert!(app.ui.dialogs.jobs.in_flight() >= 1, "the read is queued");
+    // The read finishes, but the editor has not taken its result yet.
+    woke.recv_timeout(Duration::from_secs(10))
+        .expect("the preview read never woke the editor");
     // Typing never waits for the read; the selection moves to the open file.
     for _ in 0.."peek_alpha".len() {
         press_key(&mut app, NamedKey::Backspace);
     }
     type_str(&mut app, "main.rs");
     assert_eq!(selected_file(&app), "main.rs");
-    hold.release();
     land_reads(&mut app, &woke);
 
     assert_eq!(tab_count(&app), before, "the stale read opened no tab");
     assert_eq!(app.documents.active_tab, Some(origin));
     assert!(preview::transient(&app.documents).is_none());
 
-    // A read still in flight when the panel closes is dropped as well.
-    let hold = app.ui.dialogs.jobs.hold();
+    // A read finished when the panel closes is dropped as well.
     for _ in 0.."main.rs".len() {
         press_key(&mut app, NamedKey::Backspace);
     }
     type_str(&mut app, "peek_beta");
+    woke.recv_timeout(Duration::from_secs(10))
+        .expect("the preview read never woke the editor");
     press_key(&mut app, NamedKey::Escape);
-    hold.release();
     land_reads(&mut app, &woke);
     assert_eq!(tab_count(&app), before);
     assert_eq!(app.documents.active_tab, Some(origin));
@@ -244,16 +299,13 @@ fn the_session_does_not_keep_a_transient_tab() {
 }
 
 #[test]
-fn double_clicking_the_transient_tab_keeps_it_and_the_tab_list_marks_it() {
+fn the_tab_list_marks_the_transient_tab() {
     let dir = tempfile::tempdir().unwrap();
     let (mut app, _, woke) = fixture(dir.path());
-    app.viewport.width = 1600.0;
 
     app.open_goto_anything("");
     type_str(&mut app, "peek_alpha");
     land_reads(&mut app, &woke);
-    crate::focus::escape_to_editor(&mut app);
-    let shown = app.documents.active_tab.unwrap();
 
     crate::tab_strip::list::open(&mut app);
     let rows = crate::tab_strip::list::rows(&app.documents, false).unwrap();
@@ -262,23 +314,103 @@ fn double_clicking_the_transient_tab_keeps_it_and_the_tab_list_marks_it() {
         details,
         [None, Some(crate::tab_strip::list::PREVIEW_DETAIL)]
     );
-    app.documents.strip.list = None;
+}
 
-    let strip = crate::tab_strip::layout(&app);
-    app.mouse.position.x = (strip.left + strip.tab_width * 1.5) as f64;
-    app.mouse.position.y = (app.tab_bar_height() * 0.5) as f64;
-    let click = |app: &mut App| {
-        app.handle_mouse_click_on_chrome(&DummyContext, lux_platform::MouseButton::Left);
-        app.documents.strip.drag = None;
-    };
-    click(&mut app);
-    assert!(
-        preview::is_transient(&app.documents, shown),
-        "one click keeps it transient"
-    );
-    click(&mut app);
+/// Previews `peek_beta.rs` with its caret on line 30, then closes the
+/// panel with `close`; the panel must leave as Escape does.
+fn closing_restores_the_origin(close: impl FnOnce(&mut App)) {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut app, origin, woke) = fixture(dir.path());
+    let before = tab_count(&app);
+
+    app.open_goto_anything("");
+    type_str(&mut app, "peek_beta:30");
+    land_reads(&mut app, &woke);
+    assert!(preview::transient(&app.documents).is_some());
+    assert_eq!(caret_line(&app), 29);
+
+    close(&mut app);
+    assert!(app.ui.goto_anything.is_none());
+    assert_eq!(tab_count(&app), before);
+    assert_eq!(app.documents.active_tab, Some(origin));
+    assert_eq!(active_file(&app), "main.rs");
     assert!(preview::transient(&app.documents).is_none());
-    assert_eq!(app.documents.active_tab, Some(shown));
+
+    // The next Cmd+P starts from the origin, not from a leftover preview.
+    app.open_goto_anything("");
+    assert_eq!(app.documents.active_tab, Some(origin));
+    assert_eq!(tab_count(&app), before);
+}
+
+#[test]
+fn a_right_click_in_the_editor_closes_the_panel_like_escape() {
+    closing_restores_the_origin(|app| {
+        crate::edit_menu::press_editor(app, &DummyContext, lux_platform::MouseButton::Right);
+        app.mouse.context_menu = None;
+    });
+}
+
+#[test]
+fn escaping_focus_to_the_editor_closes_the_panel_like_escape() {
+    closing_restores_the_origin(|app| {
+        assert!(crate::focus::escape_to_editor(app));
+        assert_eq!(caret_line(app), 2, "the origin's caret is back");
+    });
+}
+
+#[test]
+fn enter_with_no_result_closes_the_panel_like_escape() {
+    closing_restores_the_origin(|app| {
+        type_str(app, "zzzzqqqq");
+        assert!(app.ui.goto_anything.as_ref().unwrap().items.is_empty());
+        press_key(app, NamedKey::Enter);
+    });
+}
+
+#[test]
+fn reopening_the_panel_while_it_is_open_starts_from_the_origin() {
+    closing_restores_the_origin(|app| {
+        app.open_goto_anything("");
+        assert!(app.ui.goto_anything.is_some());
+        press_key(app, NamedKey::Escape);
+    });
+}
+
+#[test]
+fn a_reload_from_disk_keeps_the_preview_transient_and_shows_the_new_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut app, _, woke) = fixture(dir.path());
+    let (wake_tx, reloaded) = mpsc::channel();
+    app.ui.session.register_waker(Arc::new(move || {
+        let _ = wake_tx.send(());
+    }));
+
+    app.open_goto_anything("");
+    type_str(&mut app, "peek_beta");
+    land_reads(&mut app, &woke);
+    let shown = app.documents.active_tab.unwrap();
+    let path = app.documents.path.clone().unwrap();
+
+    std::fs::write(&path, "changed on disk\n").unwrap();
+    let change = lux_workspace::watcher::FileChange {
+        path,
+        kind: lux_workspace::watcher::ChangeKind::Reload,
+        is_dir: false,
+    };
+    crate::session::disk_events::apply_changes(&mut app, vec![change]);
+    // Other wakes share this waker; the reload is the one that changes the text.
+    while app.buffer.text() != "changed on disk\n" {
+        reloaded
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the reload never woke the editor");
+        crate::session::poll_file_watcher(&mut app);
+    }
+    // The frame and the session snapshot both settle; neither promotes.
+    crate::goto::preview::settle(&mut app);
+    assert!(preview::is_transient(&app.documents, shown));
+
+    press_key(&mut app, NamedKey::Escape);
+    assert!(preview::transient(&app.documents).is_none());
 }
 
 #[test]

@@ -75,7 +75,6 @@ pub(crate) fn handle_mouse_click_on_chrome(
                         app.documents.strip.drag = None;
                     } else {
                         app.switch_to_tab(tab_id);
-                        crate::goto::preview::note_tab_press(app, tab_id);
                         crate::tab_strip::press_tab(app, tab_id, index, mouse_x);
                     }
                 }
