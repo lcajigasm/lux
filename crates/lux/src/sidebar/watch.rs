@@ -75,7 +75,10 @@ mod tests {
 
     pub(super) fn wait_until(app: &mut App, mut ready: impl FnMut(&SidebarState) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(4);
+        let ctx = crate::sidebar::behavior_tests::Context::new();
         loop {
+            // Folder reads (an added folder's first level) land here.
+            crate::sidebar::worker::poll(app, &ctx);
             poll_file_watcher(app);
             if app.ui.sidebar.as_ref().is_some_and(&mut ready) {
                 return;

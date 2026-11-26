@@ -136,6 +136,7 @@ fn clicking_a_file_row_opens_it_and_focuses_the_tree() {
     let mut app = app();
     app.ui.sidebar = SidebarState::open_folder(dir.path().to_path_buf());
     let ctx = Context::new();
+    ctx.attach(&mut app);
     let notes_y = 32.0 + 28.0 + 11.0;
     assert!(handle_sidebar_click(
         &mut app,
@@ -146,6 +147,12 @@ fn clicking_a_file_row_opens_it_and_focuses_the_tree() {
     ));
     drag::release(&mut app, &ctx);
     assert!(app.chrome.focus.current() == lux_ui::focus::FocusTarget::FileTree);
+    assert_eq!(
+        row_names(&mut app),
+        vec!["0:notes", "0:a.txt"],
+        "read inline"
+    );
+    ctx.wake(&mut app);
     let names: Vec<_> = listed_rows(app.ui.sidebar.as_mut().unwrap().tree.as_mut().unwrap())
         .iter()
         .map(|row| row.name.clone())
@@ -207,6 +214,8 @@ fn the_keyboard_creates_renames_and_trashes_and_reveal_selects_the_open_file() {
     ctx.attach(&mut app);
     app.documents.path = Some(dir.path().join("notes").join("readme.txt"));
     crate::palette::execute_command(&mut app, &ctx, "view.reveal_active_file");
+    assert_eq!(row_names(&mut app), vec!["0:notes"], "read inline");
+    ctx.wake(&mut app);
     let selected = app.ui.sidebar.as_ref().unwrap().selected_node;
     let name = listed_rows(app.ui.sidebar.as_mut().unwrap().tree.as_mut().unwrap())
         .into_iter()
@@ -340,6 +349,7 @@ fn dragging_a_file_onto_a_folder_moves_it_and_retargets_the_open_tab() {
     let mut app = app();
     app.ui.sidebar = SidebarState::open_folder(dir.path().to_path_buf());
     let ctx = Context::new();
+    ctx.attach(&mut app);
 
     let file_y = row_center(&app, 1);
     assert!(handle_sidebar_click(
@@ -364,6 +374,8 @@ fn dragging_a_file_onto_a_folder_moves_it_and_retargets_the_open_tab() {
     let notes_y = row_center(&app, 0);
     assert!(drag::update(&mut app, 40.0, notes_y));
     drag::release(&mut app, &ctx);
+    assert!(source.exists(), "moved on the UI thread");
+    ctx.wake(&mut app);
 
     let moved = dir.path().join("notes").join("move-me.txt");
     assert!(moved.is_file(), "file was not moved on disk");
@@ -391,6 +403,7 @@ fn dropping_onto_an_existing_name_leaves_both_files() {
     let mut app = app();
     app.ui.sidebar = SidebarState::open_folder(dir.path().to_path_buf());
     let ctx = Context::new();
+    ctx.attach(&mut app);
 
     // notes, then move-me.txt. The folder already holds that name.
     let file_y = row_center(&app, 1);
@@ -404,6 +417,7 @@ fn dropping_onto_an_existing_name_leaves_both_files() {
     ));
     assert!(drag::update(&mut app, 40.0, notes_y));
     drag::release(&mut app, &ctx);
+    ctx.wake(&mut app);
     assert!(
         app.documents
             .message
@@ -427,6 +441,7 @@ fn dragging_a_folder_onto_its_child_does_not_move_it() {
     let mut app = app();
     app.ui.sidebar = SidebarState::open_folder(dir.path().to_path_buf());
     let ctx = Context::new();
+    ctx.attach(&mut app);
     let parent_y = row_center(&app, 0);
     assert!(handle_sidebar_click(
         &mut app,
@@ -436,6 +451,7 @@ fn dragging_a_folder_onto_its_child_does_not_move_it() {
         MouseButton::Left
     ));
     drag::release(&mut app, &ctx);
+    ctx.wake(&mut app);
     assert_eq!(
         row_names(&mut app),
         vec!["0:parent".to_string(), "1:child".to_string()]
@@ -462,4 +478,54 @@ fn dragging_a_folder_onto_its_child_does_not_move_it() {
         row_names(&mut app),
         vec!["0:parent".to_string(), "1:child".to_string()]
     );
+}
+
+/// Opening a folder and adding a second one show their headers at once and
+/// read the first level on the file-ops worker.
+#[test]
+fn opening_and_adding_folders_read_them_on_the_worker() {
+    let alpha = tempfile::tempdir().unwrap();
+    let beta = tempfile::tempdir().unwrap();
+    std::fs::write(alpha.path().join("a.txt"), "a").unwrap();
+    std::fs::write(beta.path().join("b.txt"), "b").unwrap();
+    let mut app = app();
+    let ctx = Context::new();
+    ctx.attach(&mut app);
+
+    reads::open_root(&mut app, alpha.path().to_path_buf());
+    assert_eq!(app.workspace_root(), Some(alpha.path().to_path_buf()));
+    assert!(row_names(&mut app).is_empty(), "read inline");
+    ctx.wake(&mut app);
+    assert_eq!(row_names(&mut app), vec!["0:a.txt"]);
+
+    assert!(app.add_sidebar_folder(beta.path().to_path_buf()));
+    let label = tree_label(app.ui.sidebar.as_ref().unwrap());
+    assert!(!label.contains("b.txt"), "read inline: {label}");
+    ctx.wake(&mut app);
+    let label = tree_label(app.ui.sidebar.as_ref().unwrap());
+    assert!(label.contains("1:b.txt"), "{label}");
+}
+
+/// A folder that cannot be listed is dropped once the read fails, as a
+/// failed synchronous open always was.
+#[test]
+#[cfg(unix)]
+fn an_unreadable_folder_closes_the_sidebar_when_its_read_fails() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let locked = dir.path().join("locked");
+    std::fs::create_dir(&locked).unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read_dir(&locked).is_ok() {
+        // Running as root: permissions do not stop the read.
+        return;
+    }
+    let mut app = app();
+    let ctx = Context::new();
+    ctx.attach(&mut app);
+    reads::open_root(&mut app, locked.clone());
+    assert!(app.ui.sidebar.is_some());
+    ctx.wake(&mut app);
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(app.ui.sidebar.is_none());
 }

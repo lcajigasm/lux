@@ -50,6 +50,24 @@ pub fn rename_entry(from: &Path, new_name: &str) -> io::Result<PathBuf> {
     Ok(to)
 }
 
+/// Moves `from` into the directory `to_dir`, keeping its name. Refuses a
+/// move of a directory into itself or below, and an existing destination.
+pub fn move_entry(from: &Path, to_dir: &Path) -> io::Result<PathBuf> {
+    if to_dir == from || to_dir.starts_with(from) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "cannot move a directory into itself or a descendant",
+        ));
+    }
+    let name = from
+        .file_name()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "nothing to move"))?;
+    let to = to_dir.join(name);
+    reject_if_exists(&to)?;
+    fs::rename(from, &to)?;
+    Ok(to)
+}
+
 /// Copies the file `src` to `"<stem> copy.<ext>"` beside it, then
 /// `"<stem> copy 2.<ext>"` and so on. Never overwrites. Directories are
 /// refused.

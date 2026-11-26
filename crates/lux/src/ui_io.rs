@@ -28,6 +28,8 @@ pub(crate) enum Done {
         workspace: lux_workspace::project::Workspace,
     },
     ProjectFailed(PathBuf),
+    /// Recent projects for the Quick Switch Project picker.
+    ProjectList(Vec<PathBuf>),
     /// Save Project As wrote the project file.
     ProjectSaved(PathBuf),
     ProjectSaveFailed(PathBuf),
@@ -99,7 +101,10 @@ impl Gate {
 pub(crate) struct Jobs {
     sender: Sender<Option<Done>>,
     receiver: Receiver<Option<Done>>,
-    wake: Option<Wake>,
+    /// Shared with every job, so a job started before the event loop
+    /// registered its waker (a project file on the command line) still
+    /// wakes it.
+    wake: Arc<Mutex<Option<Wake>>>,
     /// Settings writes are read-modify-write; one thread keeps them in order.
     serial: Option<Sender<Task>>,
     /// Goto Anything previews: only the newest request is read.
@@ -114,7 +119,7 @@ impl Default for Jobs {
         Self {
             sender,
             receiver,
-            wake: None,
+            wake: Arc::default(),
             serial: None,
             latest: latest::Latest::default(),
             in_flight: 0,
@@ -132,8 +137,17 @@ impl std::fmt::Debug for Jobs {
 }
 
 impl Jobs {
+    /// Registers the event loop's waker. The first registration wakes the
+    /// loop once when jobs are in flight, so results that landed before
+    /// there was a waker are applied.
     pub(crate) fn set_wake(&mut self, wake: Wake) {
-        self.wake = Some(wake);
+        let had = match self.wake.lock() {
+            Ok(mut slot) => slot.replace(Arc::clone(&wake)).is_some(),
+            Err(_) => true,
+        };
+        if !had && self.in_flight > 0 {
+            wake();
+        }
     }
 
     /// Jobs started and not yet applied by `poll`.
@@ -149,6 +163,7 @@ impl Jobs {
         Box::new(move || {
             gate.wait();
             let done = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).unwrap_or(None);
+            let wake = wake.lock().ok().and_then(|slot| slot.clone());
             if sender.send(done).is_ok()
                 && let Some(wake) = wake
             {
@@ -309,6 +324,7 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
         Done::ProjectFailed(path) => {
             app.ui.announcement = Some(format!("Failed to open project: {}", path.display()));
         }
+        Done::ProjectList(projects) => app.show_project_list(projects),
         Done::ProjectSaved(path) => app.note_project_saved(&path),
         Done::ProjectSaveFailed(path) => {
             app.ui.announcement = Some(format!("Failed to save project to {}", path.display()));

@@ -1,5 +1,6 @@
 //! Sidebar filesystem operations run here, never on the UI thread: create,
-//! rename, duplicate, and move to trash. Each job runs on its own short
+//! rename, duplicate, move to trash, drag-move, and the directory reads
+//! that open a folder and expand or reveal a row (see `reads`). Each job runs on its own short
 //! thread, sends one `Done` back, and wakes the platform loop. `poll`
 //! applies the result to whichever open folder holds the path. The
 //! watcher may report the same change first; applying it twice is a
@@ -11,7 +12,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use lux_platform::{FileDialogs, PlatformContext};
-use lux_ui::file_tree::{FileTree, NodeId, NodeKind, disk};
+use lux_ui::file_tree::{FileTree, Listing, NodeId, NodeKind, RootRead, disk};
 
 use super::SidebarState;
 use super::pending::{self, Renames};
@@ -37,6 +38,19 @@ pub(crate) enum Job {
     Trash {
         path: PathBuf,
         dialogs: Arc<dyn FileDialogs>,
+    },
+    /// Drag-move of `from` into the directory `to_dir`.
+    Move {
+        from: PathBuf,
+        to_dir: PathBuf,
+        kind: NodeKind,
+    },
+    /// The first level of a folder opened in the sidebar.
+    ReadRoot(PathBuf),
+    /// Directory listings, outermost first, then `then`.
+    List {
+        dirs: Vec<PathBuf>,
+        then: super::reads::After,
     },
 }
 
@@ -65,6 +79,21 @@ pub(crate) enum Done {
     /// The user declined the trash confirmation.
     Kept,
     Failed(String),
+    /// `listing` is the destination folder after the move, so a folder
+    /// never expanded before shows the moved entry once it opens.
+    Moved {
+        from: PathBuf,
+        to: PathBuf,
+        kind: NodeKind,
+        listing: Option<Listing>,
+    },
+    RootRead(Box<RootRead>),
+    /// Every listing read before the first failure. `then` runs only when
+    /// all of them were read.
+    Listed {
+        listings: Vec<(PathBuf, Listing)>,
+        then: Option<super::reads::After>,
+    },
 }
 
 pub(crate) struct Jobs {
@@ -93,7 +122,7 @@ impl Default for Jobs {
 impl Jobs {
     pub(crate) fn submit(&mut self, job: Job, wake: Option<Wake>) {
         let renaming = match &job {
-            Job::Rename { from, .. } => Some(from.clone()),
+            Job::Rename { from, .. } | Job::Move { from, .. } => Some(from.clone()),
             _ => None,
         };
         if let Some(from) = &renaming {
@@ -162,6 +191,37 @@ fn run(job: Job) -> Done {
                 }
             }
         }
+        Job::Move { from, to_dir, kind } => match disk::move_entry(&from, &to_dir) {
+            Ok(to) => Done::Moved {
+                listing: Listing::read(&to_dir).ok(),
+                from,
+                to,
+                kind,
+            },
+            Err(error) => Done::RenameFailed {
+                from,
+                message: format!("Move error: {error}"),
+            },
+        },
+        Job::ReadRoot(path) => Done::RootRead(Box::new(RootRead::read(path))),
+        Job::List { dirs, then } => {
+            let mut listings = Vec::with_capacity(dirs.len());
+            for dir in dirs {
+                match Listing::read(&dir) {
+                    Ok(listing) => listings.push((dir, listing)),
+                    Err(_) => {
+                        return Done::Listed {
+                            listings,
+                            then: None,
+                        };
+                    }
+                }
+            }
+            Done::Listed {
+                listings,
+                then: Some(then),
+            }
+        }
     }
 }
 
@@ -172,7 +232,10 @@ fn label(path: &Path) -> String {
 }
 
 /// The open folder whose tree holds `path`, as `(root index, tree)`.
-fn tree_for<'a>(sidebar: &'a mut SidebarState, path: &Path) -> Option<(usize, &'a mut FileTree)> {
+pub(super) fn tree_for<'a>(
+    sidebar: &'a mut SidebarState,
+    path: &Path,
+) -> Option<(usize, &'a mut FileTree)> {
     sidebar
         .tree
         .iter_mut()
@@ -260,5 +323,20 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
         }
         Done::Kept => {}
         Done::Failed(message) => app.documents.message = Some(message),
+        Done::Moved {
+            from,
+            to,
+            kind,
+            listing,
+        } => {
+            note(app, &from, |tree| {
+                super::reads::note_moved(tree, &from, &to, kind, listing)
+            });
+            super::drag::retarget_paths(app, &from, &to);
+            app.ui.session.file_ops.renames.finish(&from);
+            app.documents.message = Some(format!("Moved {}", label(&to)));
+        }
+        Done::RootRead(read) => super::reads::apply_root(app, *read),
+        Done::Listed { listings, then } => super::reads::apply_listed(app, listings, then),
     }
 }

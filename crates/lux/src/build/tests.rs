@@ -320,7 +320,9 @@ fn project_build_files_and_project_build_systems_are_listed() {
     let file = work.path().join("notes.txt");
     let ctx = Context::new();
     let mut app = app_with(config.path(), &file, &ctx);
-    assert!(app.open_project_file(&work.path().join("app.sublime-project"), Some(&ctx)));
+    // The project is read on a worker; wait until it lands.
+    app.open_project_file(&work.path().join("app.sublime-project"), Some(&ctx));
+    ctx.settle_until(&mut app, |app| app.ui.project.workspace.is_some());
     load(&mut app, &ctx);
 
     let listed = select::candidates(&app, &Markers::default());
@@ -485,7 +487,9 @@ fn a_project_build_system_with_a_string_cmd_runs_through_the_shell() {
     .unwrap();
     let ctx = Context::new();
     let mut app = app_with(config.path(), &work.path().join("notes.txt"), &ctx);
-    assert!(app.open_project_file(&work.path().join("app.sublime-project"), Some(&ctx)));
+    // The project is read on a worker; wait until it lands.
+    app.open_project_file(&work.path().join("app.sublime-project"), Some(&ctx));
+    ctx.settle_until(&mut app, |app| app.ui.project.workspace.is_some());
     let listed = select::candidates(&app, &Markers::default());
     assert_eq!(listed[0].name, "Str");
     assert_eq!(listed[0].args.last().map(String::as_str), Some("make all"));

@@ -478,3 +478,60 @@ fn a_new_editor_font_is_read_on_a_worker_and_swapped_in_after() {
     assert_eq!(app.ui.dialogs.jobs.in_flight(), 0);
     assert_eq!(app.editor_view.family(), startup);
 }
+
+#[test]
+fn opening_a_project_file_from_the_switcher_reads_it_on_a_worker() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("switch.sublime-project");
+    std::fs::write(&project, r#"{"folders": [{"path": "."}]}"#).unwrap();
+    let ctx = Context::new(Dialogs::default());
+    let mut app = app();
+    let hold = app.ui.dialogs.jobs.hold();
+    app.open_project_file(&project, Some(&ctx));
+    assert!(app.ui.project.workspace.is_none(), "read inline");
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 1);
+
+    hold.release();
+    ctx.settle(&mut app, 1);
+    assert_eq!(app.ui.project.active_project_path, Some(project));
+    assert_eq!(app.workspace_root(), Some(dir.path().to_path_buf()));
+}
+
+#[test]
+fn quick_switch_reads_recent_projects_on_a_worker() {
+    let ctx = Context::new(Dialogs::default());
+    let mut app = app();
+    app.ui.dialogs.jobs.set_wake(ctx.background_waker());
+    app.ui.project.active_project_path = Some(PathBuf::from("/nowhere/p.sublime-project"));
+    let hold = app.ui.dialogs.jobs.hold();
+    app.quick_switch_project();
+    assert!(app.ui.project.picker.is_none(), "read inline");
+
+    hold.release();
+    ctx.settle(&mut app, 1);
+    let picker = app.ui.project.picker.as_ref().expect("the picker opens");
+    assert!(!picker.projects.is_empty());
+}
+
+/// A job started before the event loop registered its waker (a project
+/// file on the command line) still wakes the loop.
+#[test]
+fn a_job_started_before_the_waker_still_wakes_the_loop() {
+    let ctx = Context::new(Dialogs::default());
+    let mut app = app();
+    super::spawn(&mut app, None, || {
+        Some(super::Done::ProjectList(Vec::new()))
+    });
+    app.ui.dialogs.jobs.set_wake(ctx.background_waker());
+    // Registering wakes the loop once; the job wakes it again if it was
+    // still running then. Either way no result is stranded.
+    ctx.settle(&mut app, 1);
+    if app.ui.dialogs.jobs.in_flight() > 0 {
+        ctx.settle(&mut app, 1);
+    }
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 0);
+    assert_eq!(
+        app.ui.announcement.as_deref(),
+        Some("No recent projects found")
+    );
+}

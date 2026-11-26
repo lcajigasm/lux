@@ -82,9 +82,18 @@ fn new_file_from_the_folder_menu_creates_lists_and_opens_it() {
 
     ctx.wake(&mut app);
     ctx.complete(&mut app);
+    // Opening the file reveals it; `src` is read on the worker first. Other
+    // workers (syntax, git) wake the loop too, so wait for the row itself.
     let service = dir.path().join("src").join("service.rs");
     assert!(service.is_file());
-    assert!(row_names(&mut app).contains(&"1:service.rs".to_string()));
+    for _ in 0..20 {
+        if row_names(&mut app).contains(&"1:service.rs".to_string()) {
+            break;
+        }
+        ctx.wake(&mut app);
+    }
+    let rows = row_names(&mut app);
+    assert!(rows.contains(&"1:service.rs".to_string()), "{rows:?}");
     assert_eq!(app.documents.path.as_deref(), Some(service.as_path()));
 }
 
@@ -196,6 +205,7 @@ fn duplicate_in_a_second_folder_copies_that_folders_file() {
     std::fs::write(beta.path().join("beta.txt"), "beta").unwrap();
     let (mut app, ctx) = setup(alpha.path());
     assert!(app.add_sidebar_folder(beta.path().to_path_buf()));
+    ctx.wake(&mut app);
     // Rows: alpha.txt, the beta title, beta.txt.
     menu_action(&mut app, &ctx, 2, SidebarAction::Duplicate);
     ctx.wake(&mut app);

@@ -222,18 +222,16 @@ pub(crate) fn handle_project_switch_key(
 
 impl App {
     /// Loads a `.sublime-project` or `.lux-project` file into the editor.
-    pub(crate) fn open_project_file(
-        &mut self,
-        path: &Path,
-        _ctx: Option<&dyn PlatformContext>,
-    ) -> bool {
-        let Ok(workspace) = load_project(path) else {
-            self.ui.announcement = Some(format!("Failed to open project: {}", path.display()));
-            self.scheduler.invalidate_all();
-            return false;
-        };
-        self.apply_project(path, workspace);
-        true
+    /// The file is read, parsed and recorded as recent on a worker;
+    /// `apply_project` shows it when the worker reports back.
+    pub(crate) fn open_project_file(&mut self, path: &Path, ctx: Option<&dyn PlatformContext>) {
+        let path = path.to_path_buf();
+        crate::ui_io::spawn(self, ctx, move || {
+            Some(match load_project(&path) {
+                Ok(workspace) => Done::ProjectOpened { path, workspace },
+                Err(_) => Done::ProjectFailed(path),
+            })
+        });
     }
 
     /// Shows a project that `load_project` already read and parsed.
@@ -241,13 +239,12 @@ impl App {
         crate::session::leave_root(self);
         let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
 
-        if let Some(first_root) = workspace.roots().first() {
-            self.ui.sidebar = crate::sidebar::SidebarState::open_folder(first_root.path.clone());
-            self.ui.session.init_watcher(&first_root.path);
-        } else {
-            self.ui.sidebar = crate::sidebar::SidebarState::open_folder(base_dir.to_path_buf());
-            self.ui.session.init_watcher(base_dir);
-        }
+        let root = workspace
+            .roots()
+            .first()
+            .map_or_else(|| base_dir.to_path_buf(), |root| root.path.clone());
+        crate::sidebar::reads::open_root(self, root.clone());
+        self.ui.session.init_watcher(&root);
 
         // Apply settings overrides
         for (k, v) in workspace.settings() {
@@ -353,32 +350,41 @@ impl App {
         self.scheduler.invalidate_all();
     }
 
-    /// Opens the Quick Switch Project modal picker (`Cmd+Ctrl+P`).
-    pub(crate) fn quick_switch_project(&mut self) -> bool {
-        let recents = RecentProjects::load();
-        let mut projects = recents.paths;
-        if projects.is_empty() {
-            if let Some(active) = &self.ui.project.active_project_path {
-                projects.push(active.clone());
-            } else if let Some(root) = self.workspace_root()
-                && let Some(sub) = find_sublime_project(&root)
-            {
-                projects.push(sub);
+    /// Opens the Quick Switch Project modal picker (`Cmd+Ctrl+P`). The
+    /// recent-projects file (and, with none, the open folder's
+    /// `.sublime-project`) is read on a worker; the picker opens when the
+    /// list lands.
+    pub(crate) fn quick_switch_project(&mut self) {
+        let active = self.ui.project.active_project_path.clone();
+        let root = self.workspace_root();
+        crate::ui_io::spawn(self, None, move || {
+            let mut projects = RecentProjects::load().paths;
+            if projects.is_empty() {
+                if let Some(active) = active {
+                    projects.push(active);
+                } else if let Some(root) = root
+                    && let Some(sub) = find_sublime_project(&root)
+                {
+                    projects.push(sub);
+                }
             }
-        }
+            Some(Done::ProjectList(projects))
+        });
+    }
+
+    /// Shows the project list a worker read. No disk access.
+    pub(crate) fn show_project_list(&mut self, projects: Vec<PathBuf>) {
         if projects.is_empty() {
             self.ui.announcement = Some("No recent projects found".into());
             self.scheduler.invalidate_all();
-            return false;
+            return;
         }
-
         self.ui.project.picker = Some(ProjectSwitchState {
             projects,
             query: crate::field::QueryField::new(),
             selected: 0,
         });
         self.scheduler.invalidate_all();
-        true
     }
 
     /// Closes the current project workspace.

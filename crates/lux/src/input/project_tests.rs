@@ -109,8 +109,9 @@ fn test_open_sublime_project_loads_folders_and_settings() {
 
     let mut app = create_test_app();
     let ctx = DummyContext;
-    let opened = app.open_project_file(&proj_file, Some(&ctx));
-    assert!(opened);
+    app.open_project_file(&proj_file, Some(&ctx));
+    assert!(app.ui.project.workspace.is_none(), "read on the UI thread");
+    crate::ui_io::finish_all(&mut app, &ctx);
 
     assert_eq!(app.ui.project.active_project_path, Some(proj_file.clone()));
     assert_eq!(app.workspace_root(), Some(dir.path().to_path_buf()));
@@ -153,7 +154,9 @@ fn project_tab_size_keeps_detected_tabs() {
         app.buffer.indent().style,
         lux_core::buffer::IndentStyle::Tabs
     );
-    assert!(app.open_project_file(&proj_file, Some(&DummyContext)));
+    app.open_project_file(&proj_file, Some(&DummyContext));
+    crate::ui_io::finish_all(&mut app, &DummyContext);
+    assert!(app.ui.project.workspace.is_some());
     assert_eq!(
         app.buffer.indent().style,
         lux_core::buffer::IndentStyle::Tabs
@@ -212,8 +215,10 @@ fn test_quick_switch_project_key_lifecycle() {
     std::fs::write(&proj_file, r#"{"folders":[{"path":"."}]}"#).unwrap();
 
     app.open_project_file(&proj_file, Some(&ctx));
-    let opened = app.quick_switch_project();
-    assert!(opened);
+    crate::ui_io::finish_all(&mut app, &ctx);
+    app.quick_switch_project();
+    assert!(app.ui.project.picker.is_none(), "read on the UI thread");
+    crate::ui_io::finish_all(&mut app, &ctx);
     assert!(app.ui.project.picker.is_some());
 
     // Type query
@@ -283,6 +288,7 @@ fn test_project_keymap_command_dispatch() {
 
     // Dispatch quick_switch_project
     execute_keymap_command(&mut app, "quick_switch_project", Some(&ctx), None);
+    crate::ui_io::finish_all(&mut app, &ctx);
     assert!(app.ui.project.picker.is_some());
 
     // Dismiss
