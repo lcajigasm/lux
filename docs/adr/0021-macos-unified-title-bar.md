@@ -1,4 +1,4 @@
-# 0020. The tab row is the macOS title bar; fullscreen is native
+# 0021. The tab row is the macOS title bar; fullscreen is native
 
 ## Status
 
