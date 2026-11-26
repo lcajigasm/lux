@@ -106,7 +106,7 @@ pub(crate) fn decide(app: &mut App) -> CursorShape {
         return shape;
     }
     if y < app.tab_bar_height() {
-        return if crate::chrome::tab_at(app, x).is_some() {
+        return if crate::tab_strip::tab_at(app, x).is_some() {
             CursorShape::Hand
         } else {
             CursorShape::Arrow

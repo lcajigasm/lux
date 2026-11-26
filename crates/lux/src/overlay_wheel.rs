@@ -28,6 +28,9 @@ pub(crate) fn scroll_open_overlay(app: &mut App, delta: ScrollDelta) -> bool {
     if crate::language_picker::handle_language_picker_scroll(app, delta) {
         return true;
     }
+    if crate::tab_strip::list::scroll(app, delta) {
+        return true;
+    }
     if scroll_indexed(app, delta, Which::Build, 2) {
         return true;
     }

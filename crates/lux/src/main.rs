@@ -55,6 +55,7 @@ mod snapshot;
 mod snippets;
 mod split;
 mod status_bar;
+mod tab_strip;
 mod term;
 mod theme_picker;
 mod ui;

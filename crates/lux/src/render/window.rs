@@ -141,12 +141,13 @@ impl App {
         if self.wheel_targets_tabs()
             && self.ui.command_palette.is_none()
             && self.ui.goto_anything.is_none()
+            && self.documents.strip.list.is_none()
         {
             let pixels = match delta {
                 ScrollDelta::Lines { x, y } => (x + y) * self.tab_width(),
                 ScrollDelta::Pixels(position) => position.x as f32 + position.y as f32,
             };
-            crate::chrome::scroll_tabs(self, pixels);
+            crate::tab_strip::scroll_tabs(self, pixels);
         } else if !crate::overlay_wheel::scroll_open_overlay(self, delta) {
             self.scroll(delta);
         }

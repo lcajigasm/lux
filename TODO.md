@@ -435,7 +435,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-TAB-01 — Desbordamiento de Pestañas con Desplazamiento Horizontal y Menú Desplegable
 - Prioridad: `P1 (UX Pestañas)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: —
 - Problema actual:
   - La barra de pestañas actual calcula un ancho fijo dividido entre el total de pestañas. Al abrir más de 8-10 pestañas, estas se comprimen hasta ser ilegibles o se ocultan más allá del borde derecho de la ventana sin forma de acceder a ellas.
@@ -453,7 +453,8 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-TAB-02 — Reordenación de Pestañas por Arrastre (Drag-and-Drop)
 - Prioridad: `P1 (Ergonomía)`
-- Estado: `OPEN`
+- Estado: `IN_PROGRESS`
+- Remaining: dragging a tab to another split pane; it needs a tab strip per pane, which the app does not have yet.
 - Dependencias: ST-TAB-01
 - Objetivo: Organización visual manual de documentos.
 - Alcance detallado:

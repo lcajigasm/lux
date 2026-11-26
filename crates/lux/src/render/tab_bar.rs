@@ -2,10 +2,169 @@
 
 use crate::document::Documents;
 use crate::render::paint::{color, push_glyph};
+use crate::tab_strip::StripLayout;
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
+use lux_ui::tabs::Tab;
 use lux_ui::{EditorView, Theme};
 use swash::FontRef;
 use swash::scale::ScaleContext;
+
+/// Everything one tab, the `▼` button, or the context menu draws into.
+struct Painter<'a> {
+    theme: &'a Theme,
+    stroke: f32,
+    height: f32,
+    font_size: f32,
+    family: String,
+    font: FontRef<'static>,
+    editor_view: &'a mut EditorView,
+    atlas: &'a mut GlyphAtlas,
+    atlas_dirty: &'a mut bool,
+    scale_cx: &'a mut ScaleContext,
+    quads: &'a mut Vec<QuadInstance>,
+    glyphs: &'a mut Vec<GlyphInstance>,
+}
+
+impl Painter<'_> {
+    /// Draws `text` from `x`, vertically centered in a band at `top` of
+    /// `band` height, stopping before `max_width`.
+    fn text(&mut self, text: &str, x: f32, top: f32, band: f32, max_width: f32, ink: [f32; 4]) {
+        let style = lux_render::LineStyle {
+            family: &self.family,
+            font_size: self.font_size,
+            ligatures: false,
+        };
+        let layout = self
+            .editor_view
+            .text_layout_mut()
+            .layout_line(&style, text, &[]);
+        let y = top + (band - self.font_size) * 0.5 + layout.baseline();
+        for cluster in layout.clusters() {
+            if cluster.x > max_width {
+                break;
+            }
+            push_glyph(
+                self.atlas,
+                self.atlas_dirty,
+                self.scale_cx,
+                self.font,
+                self.font_size,
+                &cluster,
+                x,
+                y,
+                ink,
+                self.glyphs,
+            );
+        }
+    }
+
+    fn tab(&mut self, tab: &Tab, x: f32, width: f32, active: bool, dirty: bool, close_w: f32) {
+        let stroke = self.stroke;
+        let height = self.height;
+        let theme = self.theme;
+        let fill = if active {
+            theme.background
+        } else {
+            theme.chrome.tab_inactive
+        };
+        self.quads.push(QuadInstance::solid(
+            [x, 0.0, width, height - stroke],
+            color(fill),
+        ));
+        if active {
+            self.quads.push(QuadInstance::solid(
+                [x, 0.0, width, 2.0 * stroke],
+                color(theme.accent),
+            ));
+        }
+        self.quads.push(QuadInstance::solid(
+            [x + width - stroke, 0.0, stroke, height - stroke],
+            color(theme.chrome.border),
+        ));
+        // Inactive wells are `#34352F`. Monokai muted (`#75715E`) on that
+        // fill is about 2.5:1, so the title and the close mark use the
+        // foreground. The well and the accent bar distinguish the active tab.
+        let foreground = color(theme.foreground);
+        let max_title_w = (width - close_w - 18.0 * stroke).max(0.0) - 8.0 * stroke;
+        self.text(
+            &tab.title,
+            x + 8.0 * stroke,
+            0.0,
+            height,
+            max_title_w,
+            foreground,
+        );
+        if tab.pinned {
+            self.quads.push(QuadInstance::solid(
+                [
+                    x + 2.0 * stroke,
+                    4.0 * stroke,
+                    3.0 * stroke,
+                    height - 8.0 * stroke,
+                ],
+                color(theme.accent),
+            ));
+        }
+        if dirty {
+            let dot = 5.0 * stroke;
+            let dot_x = x + width - close_w - dot - 2.0 * stroke;
+            self.quads.push(QuadInstance::solid(
+                [dot_x, (height - dot) * 0.5, dot, dot],
+                color(theme.accent),
+            ));
+        }
+        self.text(
+            "×",
+            x + width - close_w * 0.7,
+            0.0,
+            height,
+            f32::MAX,
+            foreground,
+        );
+    }
+
+    /// The `▼` button: a well with a left rule and a triangle of bars, so
+    /// it does not depend on the editor font having the glyph.
+    fn overflow_button(&mut self, [x, width]: [f32; 2], open: bool) {
+        let stroke = self.stroke;
+        let height = self.height;
+        let fill = if open {
+            self.theme.background
+        } else {
+            self.theme.chrome.tab_inactive
+        };
+        self.quads.push(QuadInstance::solid(
+            [x, 0.0, width, height - stroke],
+            color(fill),
+        ));
+        self.quads.push(QuadInstance::solid(
+            [x, 0.0, stroke, height - stroke],
+            color(self.theme.chrome.border),
+        ));
+        let ink = color(self.theme.foreground);
+        let unit = stroke.max(1.0);
+        let center = x + width * 0.5;
+        let top = (height - 4.0 * unit) * 0.5;
+        for row in 0..4 {
+            let half = (4 - row) as f32 * unit;
+            self.quads.push(QuadInstance::solid(
+                [center - half, top + row as f32 * unit, 2.0 * half, unit],
+                ink,
+            ));
+        }
+    }
+}
+
+fn tab_dirty(documents: &Documents, tab: &Tab, active: bool, is_current_dirty: bool) -> bool {
+    if active {
+        return is_current_dirty;
+    }
+    documents
+        .entries
+        .iter()
+        .find(|e| e.tab_id == tab.id)
+        .is_some_and(|e| e.is_dirty())
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_tab_bar(
@@ -27,134 +186,74 @@ pub(crate) fn render_tab_bar(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
-    let foreground = color(theme.foreground);
-    let tab_font_size = font_size * 0.82;
     let family = editor_view.family().to_string();
-    let tab_style = lux_render::LineStyle {
-        family: &family,
-        font_size: tab_font_size,
-        ligatures: false,
+    let mut painter = Painter {
+        theme,
+        stroke,
+        height: tab_bar_height,
+        font_size: font_size * 0.82,
+        family,
+        font,
+        editor_view,
+        atlas,
+        atlas_dirty,
+        scale_cx,
+        quads: quad_instances,
+        glyphs: glyph_instances,
     };
-    let close_btn_w = crate::app::TAB_CLOSE_BTN_WIDTH * scale_factor;
+    let close_w = crate::app::TAB_CLOSE_BTN_WIDTH * scale_factor;
+    let tabs = documents.tabs.tabs();
+    let strip = StripLayout::new(
+        sidebar_width,
+        strip_width,
+        tab_width,
+        tabs.len(),
+        scale_factor,
+    );
+    let scroll = documents.tabs.scroll();
+    let origin = sidebar_width - scroll;
+    let strip_right = strip.right();
+    let drag = documents.strip.drag.filter(|d| d.moving);
 
-    let origin = sidebar_width - documents.tabs.scroll();
-    let strip_right = sidebar_width + strip_width;
-    for (i, tab) in documents.tabs.tabs().iter().enumerate() {
+    for (i, tab) in tabs.iter().enumerate() {
         let tab_x = origin + i as f32 * tab_width;
-        if tab_x + tab_width <= sidebar_width || tab_x >= strip_right {
+        // A dragged tab's slot stays empty; the tab follows the pointer.
+        if drag.is_some_and(|d| d.id == tab.id)
+            || tab_x + tab_width <= sidebar_width
+            || tab_x >= strip_right
+        {
             continue;
         }
-        let is_active = Some(tab.id) == documents.active_tab;
-        let tab_bg = if is_active {
-            color(theme.background)
-        } else {
-            color(theme.chrome.tab_inactive)
-        };
-        quad_instances.push(QuadInstance::solid(
-            [tab_x, 0.0, tab_width, tab_bar_height - stroke],
-            tab_bg,
+        let active = Some(tab.id) == documents.active_tab;
+        let dirty = tab_dirty(documents, tab, active, is_current_dirty);
+        painter.tab(tab, tab_x, tab_width, active, dirty, close_w);
+    }
+
+    if let Some(drag) = drag {
+        let slot = strip.drop_slot(scroll, drag.pointer_x);
+        let marker_w = 2.0 * stroke.max(1.0);
+        let marker_x = (origin + slot as f32 * tab_width - marker_w * 0.5)
+            .clamp(sidebar_width, (strip_right - marker_w).max(sidebar_width));
+        if let Some(tab) = tabs.iter().find(|t| t.id == drag.id) {
+            let x = (drag.pointer_x - drag.grab_offset)
+                .clamp(sidebar_width, (strip_right - tab_width).max(sidebar_width));
+            let active = Some(tab.id) == documents.active_tab;
+            let dirty = tab_dirty(documents, tab, active, is_current_dirty);
+            painter.tab(tab, x, tab_width, active, dirty, close_w);
+        }
+        painter.quads.push(QuadInstance::solid(
+            [marker_x, 0.0, marker_w, tab_bar_height - stroke],
+            color(theme.accent),
         ));
-        if is_active {
-            quad_instances.push(QuadInstance::solid(
-                [tab_x, 0.0, tab_width, 2.0 * stroke],
-                color(theme.accent),
-            ));
-        }
-        quad_instances.push(QuadInstance::solid(
-            [
-                tab_x + tab_width - stroke,
-                0.0,
-                stroke,
-                tab_bar_height - stroke,
-            ],
-            color(theme.chrome.border),
-        ));
+    }
 
-        let is_tab_dirty = if is_active {
-            is_current_dirty
-        } else {
-            documents
-                .entries
-                .iter()
-                .find(|e| e.tab_id == tab.id)
-                .is_some_and(|e| e.is_dirty())
-        };
-
-        // Inactive wells are `#34352F`. Monokai muted (`#75715E`) on that
-        // fill is about 2.5:1, so the title and the close mark use the
-        // foreground. The well and the accent bar distinguish the active tab.
-        let title_color = foreground;
-
-        let max_title_w = (tab_width - close_btn_w - 18.0 * stroke).max(0.0);
-        let layout = editor_view
-            .text_layout_mut()
-            .layout_line(&tab_style, &tab.title, &[]);
-        let title_y = (tab_bar_height - tab_font_size) * 0.5;
-        for cluster in layout.clusters() {
-            if cluster.x + 8.0 * stroke > max_title_w {
-                break;
-            }
-            push_glyph(
-                atlas,
-                atlas_dirty,
-                scale_cx,
-                font,
-                tab_font_size,
-                &cluster,
-                tab_x + 8.0 * stroke,
-                title_y + layout.baseline(),
-                title_color,
-                glyph_instances,
-            );
-        }
-
-        if tab.pinned {
-            let pin_indicator_w = 3.0 * stroke;
-            quad_instances.push(QuadInstance::solid(
-                [
-                    tab_x + 2.0 * stroke,
-                    4.0 * stroke,
-                    pin_indicator_w,
-                    tab_bar_height - 8.0 * stroke,
-                ],
-                color(theme.accent),
-            ));
-        }
-
-        if is_tab_dirty {
-            let dot_size = 5.0 * stroke;
-            let dot_x = tab_x + tab_width - close_btn_w - dot_size - 2.0 * stroke;
-            let dot_y = (tab_bar_height - dot_size) * 0.5;
-            quad_instances.push(QuadInstance::solid(
-                [dot_x, dot_y, dot_size, dot_size],
-                color(theme.accent),
-            ));
-        }
-
-        let close_layout = editor_view
-            .text_layout_mut()
-            .layout_line(&tab_style, "×", &[]);
-        let close_x = tab_x + tab_width - close_btn_w * 0.7;
-        for cluster in close_layout.clusters() {
-            push_glyph(
-                atlas,
-                atlas_dirty,
-                scale_cx,
-                font,
-                tab_font_size,
-                &cluster,
-                close_x,
-                title_y + close_layout.baseline(),
-                foreground,
-                glyph_instances,
-            );
-        }
+    if let Some(button) = strip.button {
+        painter.overflow_button(button, documents.strip.list.is_some());
     }
 
     if let Some(menu) = &documents.tab_context_menu {
         let [mx, my, mw, mh] = menu.rect;
-        // Background and border
-        quad_instances.push(QuadInstance::solid(
+        painter.quads.push(QuadInstance::solid(
             [
                 mx - stroke,
                 my - stroke,
@@ -163,32 +262,23 @@ pub(crate) fn render_tab_bar(
             ],
             color(theme.chrome.panel),
         ));
-        quad_instances.push(QuadInstance::solid(
+        painter.quads.push(QuadInstance::solid(
             [mx, my, mw, mh],
             color(theme.chrome.panel_input),
         ));
         let item_h = crate::document::tab_ops::TAB_MENU_ITEM_HEIGHT * scale_factor;
+        let foreground = color(theme.foreground);
         for (idx, item) in menu.items.iter().enumerate() {
             let item_y = my + 4.0 * scale_factor + idx as f32 * item_h;
             let label = item.label(menu.is_pinned);
-            let layout = editor_view
-                .text_layout_mut()
-                .layout_line(&tab_style, label, &[]);
-            let text_y = item_y + (item_h - tab_font_size) * 0.5;
-            for cluster in layout.clusters() {
-                push_glyph(
-                    atlas,
-                    atlas_dirty,
-                    scale_cx,
-                    font,
-                    tab_font_size,
-                    &cluster,
-                    mx + 12.0 * stroke,
-                    text_y + layout.baseline(),
-                    foreground,
-                    glyph_instances,
-                );
-            }
+            painter.text(
+                label,
+                mx + 12.0 * stroke,
+                item_y,
+                item_h,
+                f32::MAX,
+                foreground,
+            );
         }
     }
 }

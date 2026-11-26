@@ -123,8 +123,8 @@ pub(crate) struct Documents {
     /// Files to open after `initial_path`, one at a time, as their own tabs.
     pub(crate) open_queue: Vec<PathBuf>,
     pub(crate) tab_context_menu: Option<tab_ops::TabContextMenu>,
-    /// Tab being dragged, and the pointer x where the drag started.
-    pub(crate) tab_drag: Option<(TabId, f32)>,
+    /// Drag gesture, `▼` list, and scroll-follow state of the strip.
+    pub(crate) strip: crate::tab_strip::StripState,
     pub(crate) view_cache: crate::app::view_bind::ViewCache,
 }
 
@@ -151,7 +151,7 @@ impl Default for Documents {
             initial_path: None,
             open_queue: Vec::new(),
             tab_context_menu: None,
-            tab_drag: None,
+            strip: Default::default(),
             view_cache: crate::app::view_bind::ViewCache::default(),
         }
     }
@@ -590,8 +590,6 @@ mod drop_tests;
 mod save_all_tests;
 #[cfg(test)]
 mod shortcut_tests;
-#[cfg(test)]
-mod tab_strip_tests;
 #[cfg(test)]
 pub(crate) mod tests;
 #[cfg(test)]
