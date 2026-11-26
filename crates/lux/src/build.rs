@@ -3,10 +3,12 @@
 //! `build_systems` and auto-detection (`detect`); `select` resolves them
 //! for the active buffer.
 
-mod detect;
+pub(crate) mod detect;
+pub(crate) mod request;
 pub(crate) mod select;
 pub(crate) mod systems;
 
+#[cfg(test)]
 pub(crate) use detect::detect_build_variants;
 
 use std::path::PathBuf;
@@ -110,6 +112,9 @@ pub(crate) struct BuildState {
     /// selector still matches the active buffer. `None` is automatic.
     pub(crate) chosen: Option<BuildVariant>,
     pub(crate) systems: systems::Registry,
+    /// Bumped by every `Cmd+B` / Build With; a marker probe landing for
+    /// an older one is dropped.
+    pub(crate) detect_generation: u64,
 }
 
 pub(crate) fn parse_build_errors(
@@ -230,32 +235,16 @@ pub(crate) fn handle_build_key(app: &mut App, ctx: &dyn PlatformContext, event: 
 }
 
 impl App {
+    /// `Cmd+B`. The build starts once a worker has probed the marker
+    /// files (see `request`).
     pub(crate) fn build(&mut self, ctx: Option<&dyn PlatformContext>) -> bool {
-        let variant = select::automatic(self);
-
-        let Some(variant) = variant else {
-            self.ui.announcement = Some("No build system found for this project".into());
-            self.scheduler.invalidate_all();
-            return false;
-        };
-
-        self.execute_build_variant(variant, ctx)
+        request::start(self, ctx, request::Request::Build);
+        true
     }
 
-    pub(crate) fn build_with(&mut self) -> bool {
-        let variants = select::candidates(self);
-        if variants.is_empty() {
-            self.ui.announcement = Some("No build system variants found".into());
-            self.scheduler.invalidate_all();
-            return false;
-        }
-
-        self.ui.build.picker = Some(BuildPickerState {
-            variants,
-            query: crate::field::QueryField::new(),
-            selected: 0,
-        });
-        self.scheduler.invalidate_all();
+    /// Build With: the picker opens once the marker probe lands.
+    pub(crate) fn build_with(&mut self, ctx: Option<&dyn PlatformContext>) -> bool {
+        request::start(self, ctx, request::Request::BuildWith);
         true
     }
 

@@ -450,7 +450,7 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
             app.build(Some(ctx));
         }
         MenuAction::BuildWith => {
-            app.build_with();
+            app.build_with(Some(ctx));
         }
         MenuAction::CancelBuild => {
             app.cancel_build();

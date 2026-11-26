@@ -228,3 +228,92 @@ fn load_dir_reads_nested_build_files_and_reports_bad_ones() {
     let (missing, missing_errors) = load_dir(&dir.path().join("nope"));
     assert!(missing.is_empty() && missing_errors.is_empty());
 }
+
+#[test]
+fn env_values_fall_back_to_the_inherited_environment() {
+    let system = BuildSystem::from_value(
+        "Env",
+        &serde_json::json!({
+            "cmd": ["make", "$HOME"],
+            "env": {
+                "PATH": "/opt/homebrew/bin:$PATH",
+                "BRACED": "${PATH}:/x",
+                "DIR": "${file_path}",
+                "SHADOW": "$file_name",
+                "MISSING": "${NOPE:fallback}",
+                "EMPTY": "a$NOPE"
+            }
+        }),
+    )
+    .unwrap();
+    let environment = |name: &str| match name {
+        "PATH" => Some("/usr/bin:/bin".to_string()),
+        "HOME" => Some("/home/me".to_string()),
+        // A Sublime variable wins over an environment variable.
+        "file_name" => Some("from-env".to_string()),
+        _ => None,
+    };
+    let resolved = system.resolve_with_env(&context(), &environment);
+    let env: std::collections::HashMap<&str, &str> = resolved[0]
+        .env
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    assert_eq!(env["PATH"], "/opt/homebrew/bin:/usr/bin:/bin");
+    assert_eq!(env["BRACED"], "/usr/bin:/bin:/x");
+    assert_eq!(env["DIR"], "/work/app/src");
+    assert_eq!(env["SHADOW"], "main.rs");
+    assert_eq!(env["MISSING"], "fallback");
+    assert_eq!(env["EMPTY"], "a");
+    // Commands keep Sublime's rule: unknown names are empty.
+    assert_eq!(
+        resolved[0].command,
+        BuildCommand::Argv(vec!["make".into(), String::new()])
+    );
+}
+
+#[test]
+fn resolve_prepends_to_this_process_path() {
+    let path = std::env::var("PATH").expect("tests run with a PATH");
+    let system = BuildSystem::from_value(
+        "Env",
+        &serde_json::json!({ "cmd": ["true"], "env": { "PATH": "/opt/bin:$PATH" } }),
+    )
+    .unwrap();
+    let resolved = system.resolve(&context());
+    assert_eq!(
+        resolved[0].env,
+        [("PATH".into(), format!("/opt/bin:{path}"))]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn load_dir_does_not_follow_symlinked_folders_and_stops_at_max_depth() {
+    let dir = TempDir::new("load-dir-loop");
+    let sub = dir.path().join("sub");
+    std::fs::create_dir(&sub).unwrap();
+    std::fs::write(sub.join("A.sublime-build"), r#"{ "cmd": ["a"] }"#).unwrap();
+    // A loop back to the top, and a symlinked file, which is read.
+    std::os::unix::fs::symlink(dir.path(), sub.join("loop")).unwrap();
+    std::os::unix::fs::symlink(
+        sub.join("A.sublime-build"),
+        dir.path().join("B.sublime-build"),
+    )
+    .unwrap();
+    let (systems, errors) = load_dir(dir.path());
+    let mut names: Vec<&str> = systems.iter().map(|s| s.name.as_str()).collect();
+    names.sort();
+    assert_eq!(names, ["A", "B"]);
+    assert!(errors.is_empty(), "{errors:?}");
+
+    // Deeper than the cap is not scanned.
+    let mut deep = dir.path().join("deep");
+    for i in 0..=MAX_LOAD_DEPTH {
+        deep = deep.join(format!("d{i}"));
+    }
+    std::fs::create_dir_all(&deep).unwrap();
+    std::fs::write(deep.join("Deep.sublime-build"), r#"{ "cmd": ["d"] }"#).unwrap();
+    let (systems, _) = load_dir(dir.path());
+    assert!(!systems.iter().any(|s| s.name == "Deep"));
+}

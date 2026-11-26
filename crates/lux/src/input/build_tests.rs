@@ -208,8 +208,9 @@ fn test_build_picker_key_handling_lifecycle() {
     let mut app = create_test_app();
     let ctx = DummyContext;
 
-    // Open Build With... modal picker
-    app.build_with();
+    // Open Build With... modal picker, once the marker probe lands.
+    app.build_with(Some(&ctx));
+    crate::ui_io::finish_all(&mut app, &ctx);
     assert!(app.ui.build.picker.is_some());
 
     // Type query
@@ -254,6 +255,7 @@ fn test_build_keymap_command_dispatch() {
 
     // Dispatch build_with command
     execute_keymap_command(&mut app, "build_with", Some(&ctx), None);
+    crate::ui_io::finish_all(&mut app, &ctx);
     assert!(app.ui.build.picker.is_some());
 
     // Cancel / dismiss via Escape

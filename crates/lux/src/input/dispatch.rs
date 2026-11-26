@@ -292,10 +292,10 @@ pub(crate) fn execute_keymap_command(
             }
         }
         "build" => {
-            app.build(None);
+            app.build(ctx);
         }
         "build_with" => {
-            app.build_with();
+            app.build_with(ctx);
         }
         "cancel_build" => {
             app.cancel_build();

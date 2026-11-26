@@ -6,7 +6,8 @@ use std::path::Path;
 use lux_config::build_system::{self, BuildCommand, BuildSystem, ExpandContext, ResolvedBuild};
 use lux_syntax::LanguageId;
 
-use super::{BuildVariant, detect_build_variants};
+use super::BuildVariant;
+use super::detect::{self, Markers};
 use crate::app::App;
 
 /// Sublime Text's base scope for a Lux language, the scope `.sublime-build`
@@ -97,7 +98,9 @@ pub(crate) fn variant_from(resolved: ResolvedBuild, selector: Option<&str>) -> B
 /// systems whose `selector` matches (best match first), then project and
 /// `.sublime-build` systems without a selector, then auto-detected ones.
 /// Systems whose selector does not match are left out, as in Sublime.
-pub(crate) fn candidates(app: &App) -> Vec<BuildVariant> {
+/// `markers` is the worker's probe for the marker files: nothing here
+/// touches the disk.
+pub(crate) fn candidates(app: &App, markers: &Markers) -> Vec<BuildVariant> {
     let scope = active_scope(app);
     let context = expand_context(app);
     let mut systems = project_systems(app);
@@ -123,11 +126,7 @@ pub(crate) fn candidates(app: &App) -> Vec<BuildVariant> {
         })
         .filter(|v| !v.command.is_empty())
         .collect();
-    let root = app.workspace_root();
-    out.extend(detect_build_variants(
-        root.as_deref(),
-        app.documents.path.as_deref(),
-    ));
+    out.extend(detect::variants(markers, app.documents.path.as_deref()));
     out
 }
 
@@ -141,17 +140,18 @@ pub(crate) fn applies(variant: &BuildVariant, scope: Option<&str>) -> bool {
 
 /// `Cmd+B`: the variant picked in Build With while it still applies, else
 /// the first candidate (the best-matching build system's own command).
-/// The picked variant is re-resolved so `${file}` follows the active file.
-pub(crate) fn automatic(app: &App) -> Option<BuildVariant> {
+/// The picked variant is always taken from the candidates for the active
+/// file, so its variables expand against that file; one that is not
+/// offered for it (a selector that no longer matches, or a detected
+/// "Run File" for another language) is skipped.
+pub(crate) fn automatic(app: &App, markers: &Markers) -> Option<BuildVariant> {
     let scope = active_scope(app);
-    let mut candidates = candidates(app);
+    let mut candidates = candidates(app, markers);
     if let Some(chosen) = app.ui.build.chosen.as_ref()
         && applies(chosen, scope)
+        && let Some(index) = candidates.iter().position(|v| v.name == chosen.name)
     {
-        if let Some(index) = candidates.iter().position(|v| v.name == chosen.name) {
-            return Some(candidates.swap_remove(index));
-        }
-        return Some(chosen.clone());
+        return Some(candidates.swap_remove(index));
     }
     candidates.into_iter().next()
 }

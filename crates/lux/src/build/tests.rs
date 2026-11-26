@@ -15,6 +15,7 @@ use lux_platform::{
     PlatformWindow, WindowAttributes,
 };
 
+use super::detect::Markers;
 use super::{BuildVariant, parse_build_errors, select, systems};
 use crate::app::App;
 use crate::document::DocumentEntry;
@@ -193,14 +194,16 @@ fn a_user_sublime_build_is_listed_and_runs_its_expanded_command() {
     assert_eq!(loaded, ["Echo"]);
 
     // Build With lists the system and its variant first.
-    assert!(app.build_with());
+    assert!(app.build_with(Some(&ctx)));
+    crate::ui_io::finish_all(&mut app, &ctx);
     let listed = app.ui.build.picker.as_ref().unwrap().variants.clone();
     assert_eq!(&names(&listed)[..2], ["Echo", "Echo - Shell"]);
 
     // Cmd+B picks it automatically by selector and runs it expanded, in
     // the file's folder (Sublime's default `working_dir`).
     app.ui.build.picker = None;
-    assert!(app.build(None));
+    assert!(app.build(Some(&ctx)));
+    crate::ui_io::finish_all(&mut app, &ctx);
     let ran = app.ui.build.active_variant.clone().unwrap();
     assert_eq!(ran.name, "Echo");
     assert_eq!(ran.args, ["built:main.py:main:py"]);
@@ -210,7 +213,8 @@ fn a_user_sublime_build_is_listed_and_runs_its_expanded_command() {
 
     // Build With -> the `shell_cmd` variant runs through the shell with
     // its `env`, and becomes what Cmd+B runs next.
-    assert!(app.build_with());
+    assert!(app.build_with(Some(&ctx)));
+    crate::ui_io::finish_all(&mut app, &ctx);
     for c in "shell".chars() {
         press(&mut app, &ctx, Key::Character(c.to_string()));
     }
@@ -222,7 +226,10 @@ fn a_user_sublime_build_is_listed_and_runs_its_expanded_command() {
     let output = wait_for_output(&app, "env:from-env");
     assert!(output.contains("shell:main"), "{output}");
     assert!(output.contains("env:from-env"), "{output}");
-    assert_eq!(select::automatic(&app).unwrap().name, "Echo - Shell");
+    assert_eq!(
+        select::automatic(&app, &Markers::default()).unwrap().name,
+        "Echo - Shell"
+    );
 }
 
 #[test]
@@ -241,7 +248,7 @@ fn a_selector_that_does_not_match_leaves_the_system_out() {
     let mut app = app_with(config.path(), &file, &ctx);
     load(&mut app, &ctx);
 
-    let listed = select::candidates(&app);
+    let listed = select::candidates(&app, &Markers::default());
     assert!(!names(&listed).contains(&"Echo"), "{:?}", names(&listed));
     assert!(names(&listed).contains(&"Any"));
     assert!(names(&listed).contains(&"Rust: Compile File"));
@@ -253,7 +260,10 @@ fn a_selector_that_does_not_match_leaves_the_system_out() {
         selector: Some("source.python".into()),
         ..BuildVariant::default()
     });
-    assert_eq!(select::automatic(&app).unwrap().name, "Any");
+    assert_eq!(
+        select::automatic(&app, &Markers::default()).unwrap().name,
+        "Any"
+    );
 }
 
 #[test]
@@ -279,7 +289,10 @@ fn editing_the_user_build_folder_reloads_through_its_watcher() {
             .iter()
             .any(|s| s.name == "Echo")
     });
-    assert_eq!(select::automatic(&app).unwrap().name, "Echo");
+    assert_eq!(
+        select::automatic(&app, &Markers::default()).unwrap().name,
+        "Echo"
+    );
 }
 
 #[test]
@@ -310,7 +323,7 @@ fn project_build_files_and_project_build_systems_are_listed() {
     assert!(app.open_project_file(&work.path().join("app.sublime-project"), Some(&ctx)));
     load(&mut app, &ctx);
 
-    let listed = select::candidates(&app);
+    let listed = select::candidates(&app, &Markers::default());
     assert_eq!(&names(&listed)[..3], ["Proj", "Proj - Clean", "Here"]);
     assert_eq!(listed[1].args, ["clean"]);
     assert_eq!(listed[1].working_dir, Some(work.path().join("sub")));
@@ -377,7 +390,8 @@ fn cmd_b_then_f4_jumps_to_the_error_relative_to_the_working_dir() {
     app.buffer = Buffer::from_bytes(b"print('hi')\nprint('bye')\n").unwrap();
     load(&mut app, &ctx);
 
-    assert!(app.build(None));
+    assert!(app.build(Some(&ctx)));
+    crate::ui_io::finish_all(&mut app, &ctx);
     wait_for_output(&app, "boom");
     assert!(app.next_build_error(Some(&ctx)));
     assert_eq!(app.ui.build.current_error_idx, Some(0));
@@ -387,4 +401,92 @@ fn cmd_b_then_f4_jumps_to_the_error_relative_to_the_working_dir() {
     assert_eq!(app.documents.path.as_deref(), Some(file.as_path()));
     let head = app.cursors.primary().head;
     assert_eq!((head.line, head.column), (1, 4));
+}
+
+#[test]
+fn a_remembered_variant_follows_the_active_file_or_steps_aside() {
+    let config = tempfile::tempdir().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let ctx = Context::new();
+    let mut app = app_with(config.path(), &work.path().join("a.py"), &ctx);
+    load(&mut app, &ctx);
+    let markers = Markers::default();
+    let python = select::automatic(&app, &markers).unwrap();
+    assert_eq!(python.name, "Python: Run File");
+    app.ui.build.chosen = Some(python);
+
+    // On a Rust file the Python run is not offered: Cmd+B runs what the
+    // Rust file offers, never `python3 a.py`.
+    app.documents.path = Some(work.path().join("main.rs"));
+    let ran = select::automatic(&app, &markers).unwrap();
+    assert_eq!(ran.name, "Rust: Compile File");
+    assert_eq!(
+        ran.args,
+        [work.path().join("main.rs").display().to_string()]
+    );
+
+    // Back on another Python file it applies again, expanded for that file.
+    app.documents.path = Some(work.path().join("b.py"));
+    let ran = select::automatic(&app, &markers).unwrap();
+    assert_eq!(ran.name, "Python: Run File");
+    assert_eq!(ran.args, [work.path().join("b.py").display().to_string()]);
+}
+
+#[test]
+fn marker_files_are_probed_on_a_worker_not_the_ui_thread() {
+    let config = tempfile::tempdir().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    std::fs::write(work.path().join("Cargo.toml"), "[package]\n").unwrap();
+    let file = work.path().join("src.txt");
+    let ctx = Context::new();
+    let mut app = app_with(config.path(), &file, &ctx);
+    load(&mut app, &ctx);
+
+    // With workers held, the UI-thread call returns having probed nothing.
+    let hold = app.ui.dialogs.jobs.hold();
+    assert!(app.build_with(Some(&ctx)));
+    assert!(app.ui.build.picker.is_none());
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 1);
+    hold.release();
+    crate::ui_io::finish_all(&mut app, &ctx);
+    let listed = app.ui.build.picker.as_ref().unwrap().variants.clone();
+    assert!(
+        names(&listed).contains(&"Cargo: Check"),
+        "{:?}",
+        names(&listed)
+    );
+
+    // A probe for a file that is no longer active is redone for the new one.
+    app.ui.build.picker = None;
+    let hold = app.ui.dialogs.jobs.hold();
+    assert!(app.build_with(Some(&ctx)));
+    app.documents.path = Some(work.path().join("run.py"));
+    hold.release();
+    crate::ui_io::finish_all(&mut app, &ctx);
+    let listed = app.ui.build.picker.as_ref().unwrap().variants.clone();
+    assert!(
+        names(&listed).contains(&"Python: Run File"),
+        "{:?}",
+        names(&listed)
+    );
+}
+
+#[test]
+fn a_project_build_system_with_a_string_cmd_runs_through_the_shell() {
+    let config = tempfile::tempdir().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    std::fs::write(
+        work.path().join("app.sublime-project"),
+        r#"{
+            "folders": [{ "path": "." }],
+            "build_systems": [{ "name": "Str", "cmd": "make all", "quiet": true }]
+        }"#,
+    )
+    .unwrap();
+    let ctx = Context::new();
+    let mut app = app_with(config.path(), &work.path().join("notes.txt"), &ctx);
+    assert!(app.open_project_file(&work.path().join("app.sublime-project"), Some(&ctx)));
+    let listed = select::candidates(&app, &Markers::default());
+    assert_eq!(listed[0].name, "Str");
+    assert_eq!(listed[0].args.last().map(String::as_str), Some("make all"));
 }

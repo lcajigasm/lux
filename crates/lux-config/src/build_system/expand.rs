@@ -1,7 +1,10 @@
 //! Sublime build variables: `$name`, `${name}` and `${name:default}`,
-//! with `\$` for a literal dollar sign. Unknown names expand to the empty
-//! string, as in Sublime, so shell variables need `\\$HOME` in a
-//! `.sublime-build` file. `${packages}` is not supported: Lux has no
+//! with `\$` for a literal dollar sign. In commands, unknown names expand
+//! to the empty string, as in Sublime, so shell variables need `\\$HOME`
+//! in a `.sublime-build` file. In `env` values an unknown name falls back
+//! to the environment (Sublime runs them through `os.path.expandvars`), so
+//! `"PATH": "/opt/bin:$PATH"` prepends to the inherited `PATH`; the
+//! Sublime variables above still take precedence. `${packages}` is not supported: Lux has no
 //! Packages directory. The `${var/regex/replace/}` form is not supported.
 
 use std::path::{Path, PathBuf};
@@ -15,6 +18,24 @@ pub struct ExpandContext {
     /// The `.sublime-project` / `.lux-project` file, when one is open.
     pub project: Option<PathBuf>,
 }
+
+/// The variables Sublime defines. Only names outside this list fall back
+/// to the environment in `env` values.
+const SUBLIME_VARIABLES: &[&str] = &[
+    "file",
+    "file_path",
+    "file_name",
+    "file_base_name",
+    "file_extension",
+    "folder",
+    "project",
+    "project_path",
+    "project_name",
+    "project_base_name",
+    "project_extension",
+    "platform",
+    "packages",
+];
 
 impl ExpandContext {
     /// The value of one variable, or `None` when it is unknown or unset.
@@ -62,8 +83,26 @@ fn is_name_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
-/// Expands every variable in `text` against `context`.
+/// Expands every variable in `text` against `context`; unknown names
+/// expand to the empty string.
 pub fn expand(text: &str, context: &ExpandContext) -> String {
+    expand_with(text, context, &|_| None)
+}
+
+/// Like [`expand`], but a name Sublime does not define is looked up in
+/// `environment` (for `env` values: the environment the child inherits).
+pub fn expand_with(
+    text: &str,
+    context: &ExpandContext,
+    environment: &dyn Fn(&str) -> Option<String>,
+) -> String {
+    let value = |name: &str| {
+        if SUBLIME_VARIABLES.contains(&name) {
+            context.lookup(name)
+        } else {
+            environment(name)
+        }
+    };
     let mut out = String::with_capacity(text.len());
     let mut chars = text.char_indices().peekable();
     while let Some((i, c)) = chars.next() {
@@ -82,9 +121,11 @@ pub fn expand(text: &str, context: &ExpandContext) -> String {
                         Some((name, default)) => (name, Some(default)),
                         None => (inner, None),
                     };
-                    match context.lookup(name).filter(|v| !v.is_empty()) {
+                    match value(name).filter(|v| !v.is_empty()) {
                         Some(value) => out.push_str(&value),
-                        None => out.push_str(&expand(default.unwrap_or(""), context)),
+                        None => {
+                            out.push_str(&expand_with(default.unwrap_or(""), context, environment))
+                        }
                     }
                     // Skip `{`, the body and `}`.
                     let skip = end + 2;
@@ -97,7 +138,7 @@ pub fn expand(text: &str, context: &ExpandContext) -> String {
                         out.push('$');
                         continue;
                     }
-                    out.push_str(&context.lookup(&rest[..len]).unwrap_or_default());
+                    out.push_str(&value(&rest[..len]).unwrap_or_default());
                     while chars.peek().is_some_and(|(j, _)| *j <= i + len) {
                         chars.next();
                     }

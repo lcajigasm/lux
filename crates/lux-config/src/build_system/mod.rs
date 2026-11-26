@@ -11,7 +11,7 @@
 mod expand;
 mod selector;
 
-pub use expand::{ExpandContext, expand};
+pub use expand::{ExpandContext, expand, expand_with};
 pub use selector::score;
 
 use std::path::{Path, PathBuf};
@@ -136,16 +136,27 @@ impl BuildSystem {
     }
 
     /// The top level and every variant, expanded against `context`. An
-    /// entry with no command (also not inherited) is left out.
+    /// entry with no command (also not inherited) is left out. Unknown
+    /// names in `env` values come from this process's environment, the
+    /// one the build inherits.
     pub fn resolve(&self, context: &ExpandContext) -> Vec<ResolvedBuild> {
+        self.resolve_with_env(context, &|name| std::env::var(name).ok())
+    }
+
+    /// [`Self::resolve`] with the inherited environment given explicitly.
+    pub fn resolve_with_env(
+        &self,
+        context: &ExpandContext,
+        environment: &dyn Fn(&str) -> Option<String>,
+    ) -> Vec<ResolvedBuild> {
         let mut out = Vec::new();
-        if let Some(build) = resolve_spec(&self.name, &self.base, context) {
+        if let Some(build) = resolve_spec(&self.name, &self.base, context, environment) {
             out.push(build);
         }
         for variant in &self.variants {
             let merged = inherit(&self.base, &variant.spec);
             let name = format!("{} - {}", self.name, variant.name);
-            if let Some(build) = resolve_spec(&name, &merged, context) {
+            if let Some(build) = resolve_spec(&name, &merged, context, environment) {
                 out.push(build);
             }
         }
@@ -175,7 +186,12 @@ fn inherit(base: &BuildSpec, own: &BuildSpec) -> BuildSpec {
     }
 }
 
-fn resolve_spec(name: &str, spec: &BuildSpec, context: &ExpandContext) -> Option<ResolvedBuild> {
+fn resolve_spec(
+    name: &str,
+    spec: &BuildSpec,
+    context: &ExpandContext,
+    environment: &dyn Fn(&str) -> Option<String>,
+) -> Option<ResolvedBuild> {
     let command = match spec.command.as_ref()? {
         BuildCommand::Argv(argv) => {
             BuildCommand::Argv(argv.iter().map(|a| expand(a, context)).collect())
@@ -202,7 +218,7 @@ fn resolve_spec(name: &str, spec: &BuildSpec, context: &ExpandContext) -> Option
         env: spec
             .env
             .iter()
-            .map(|(k, v)| (k.clone(), expand(v, context)))
+            .map(|(k, v)| (k.clone(), expand_with(v, context, environment)))
             .collect(),
         file_regex: spec.file_regex.clone(),
         line_regex: spec.line_regex.clone(),
@@ -258,23 +274,34 @@ fn string(object: &Map<String, Value>, key: &str) -> Result<Option<String>, Buil
     }
 }
 
+/// How deep `load_dir` descends below the folder it was given.
+pub const MAX_LOAD_DEPTH: usize = 8;
+
 /// Reads every `*.sublime-build` under `dir` (recursively, as Sublime
-/// scans its packages). A missing directory yields nothing; files that
-/// fail to read or parse are reported in the second list and skipped.
+/// scans its packages, at most [`MAX_LOAD_DEPTH`] folders down). A
+/// missing directory yields nothing; files that fail to read or parse are
+/// reported in the second list and skipped. Symlinked folders are not
+/// followed, so a link loop cannot trap the scan; symlinked files are
+/// read.
 pub fn load_dir(dir: &Path) -> (Vec<BuildSystem>, Vec<BuildParseError>) {
     let mut systems = Vec::new();
     let mut errors = Vec::new();
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(dir) = stack.pop() {
+    let mut stack = vec![(dir.to_path_buf(), 0usize)];
+    while let Some((dir, depth)) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
         };
-        let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
-        paths.sort();
-        for path in paths {
-            if path.is_dir() {
-                stack.push(path);
-            } else {
+        let mut entries: Vec<(PathBuf, std::fs::FileType)> = entries
+            .flatten()
+            .filter_map(|e| Some((e.path(), e.file_type().ok()?)))
+            .collect();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        for (path, kind) in entries {
+            if kind.is_dir() {
+                if depth < MAX_LOAD_DEPTH {
+                    stack.push((path, depth + 1));
+                }
+            } else if kind.is_file() || (kind.is_symlink() && path.is_file()) {
                 load_file_into(&path, &mut systems, &mut errors);
             }
         }

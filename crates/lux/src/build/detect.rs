@@ -1,19 +1,56 @@
 //! Build variants Lux offers without any build file: Cargo, npm, Python,
 //! Go, Make, Bash and rustc, chosen from marker files in the workspace and
-//! the active file's extension.
+//! the active file's extension. Looking for the marker files touches the
+//! disk, so `Markers::probe` runs on a worker; turning markers into
+//! variants is pure and runs on the UI thread.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::BuildVariant;
 
+/// Which marker files exist for one workspace root and active file.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Markers {
+    /// The root and file the probe ran for.
+    pub(crate) root: Option<PathBuf>,
+    pub(crate) file: Option<PathBuf>,
+    cargo: bool,
+    package_json: bool,
+    pyproject: bool,
+    go: bool,
+    makefile: bool,
+}
+
+impl Markers {
+    /// Looks for the marker files on disk. Never call on the UI thread.
+    pub(crate) fn probe(workspace_root: Option<&Path>, current_file: Option<&Path>) -> Self {
+        let in_root = |name: &str| workspace_root.is_some_and(|r| r.join(name).exists());
+        let above_file = |name: &str| current_file.is_some_and(|f| has_ancestor_file(f, name));
+        Markers {
+            root: workspace_root.map(Path::to_path_buf),
+            file: current_file.map(Path::to_path_buf),
+            cargo: in_root("Cargo.toml") || above_file("Cargo.toml"),
+            package_json: in_root("package.json") || above_file("package.json"),
+            pyproject: in_root("pyproject.toml") || in_root("pytest.ini"),
+            go: in_root("go.mod") || above_file("go.mod"),
+            makefile: in_root("Makefile") || in_root("makefile"),
+        }
+    }
+}
+
+/// Probes and lists in one go: for tests and workers only.
+#[cfg(test)]
 pub(crate) fn detect_build_variants(
     workspace_root: Option<&Path>,
     current_file: Option<&Path>,
 ) -> Vec<BuildVariant> {
-    let mut variants = Vec::new();
+    variants(&Markers::probe(workspace_root, current_file), current_file)
+}
 
-    let has_cargo = workspace_root.is_some_and(|r| r.join("Cargo.toml").exists())
-        || current_file.is_some_and(|f| has_ancestor_file(f, "Cargo.toml"));
+/// The detected variants for `markers` and the active file. No I/O.
+pub(crate) fn variants(markers: &Markers, current_file: Option<&Path>) -> Vec<BuildVariant> {
+    let mut variants = Vec::new();
+    let has_cargo = markers.cargo;
 
     if has_cargo {
         variants.push(BuildVariant {
@@ -48,8 +85,7 @@ pub(crate) fn detect_build_variants(
         });
     }
 
-    let has_package_json = workspace_root.is_some_and(|r| r.join("package.json").exists())
-        || current_file.is_some_and(|f| has_ancestor_file(f, "package.json"));
+    let has_package_json = markers.package_json;
 
     if has_package_json {
         variants.push(BuildVariant {
@@ -115,8 +151,7 @@ pub(crate) fn detect_build_variants(
         }
     }
 
-    let has_pyproject = workspace_root
-        .is_some_and(|r| r.join("pyproject.toml").exists() || r.join("pytest.ini").exists());
+    let has_pyproject = markers.pyproject;
     if has_pyproject {
         variants.push(BuildVariant {
             name: "Python: Pytest".into(),
@@ -126,8 +161,7 @@ pub(crate) fn detect_build_variants(
         });
     }
 
-    let has_go = workspace_root.is_some_and(|r| r.join("go.mod").exists())
-        || current_file.is_some_and(|f| has_ancestor_file(f, "go.mod"));
+    let has_go = markers.go;
     if has_go {
         variants.push(BuildVariant {
             name: "Go: Build".into(),
@@ -143,8 +177,7 @@ pub(crate) fn detect_build_variants(
         });
     }
 
-    let has_makefile =
-        workspace_root.is_some_and(|r| r.join("Makefile").exists() || r.join("makefile").exists());
+    let has_makefile = markers.makefile;
     if has_makefile {
         variants.push(BuildVariant {
             name: "Make".into(),

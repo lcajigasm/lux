@@ -125,10 +125,10 @@ fn project_file_round_trips_through_json() {
         settings: Map::new(),
         build_systems: vec![ProjectBuildSystem {
             name: "Cargo Check".to_owned(),
-            cmd: vec!["cargo".to_owned(), "check".to_owned()],
-            file_regex: None,
-            selector: None,
-            extra: Map::new(),
+            keys: serde_json::json!({ "cmd": ["cargo", "check"] })
+                .as_object()
+                .unwrap()
+                .clone(),
         }],
     };
 
@@ -335,7 +335,10 @@ fn discover_loads_sublime_project_when_present() {
     );
     assert_eq!(workspace.build_systems().len(), 1);
     assert_eq!(workspace.build_systems()[0].name, "Build My App");
-    assert_eq!(workspace.build_systems()[0].cmd, vec!["make", "app"]);
+    assert_eq!(
+        workspace.build_systems()[0].get("cmd"),
+        Some(&serde_json::json!(["make", "app"]))
+    );
     assert_eq!(
         workspace.project_path(),
         Some(dir.join("my_app.sublime-project").as_path())
@@ -355,4 +358,37 @@ fn discover_falls_back_to_a_single_root_when_no_project_file_exists() {
     assert!(workspace.excludes().is_empty());
 
     fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn project_build_systems_accept_every_sublime_build_key_form() {
+    let json = r#"{
+        "folders": [{ "path": "." }],
+        "build_systems": [
+            { "name": "Str", "cmd": "make all", "file_regex": "^(.*):(\\d+)" },
+            {
+                "name": "Shell",
+                "shell_cmd": "make",
+                "working_dir": "${folder}",
+                "env": { "PATH": "/opt/bin:$PATH" },
+                "selector": "source.c",
+                "target": "exec",
+                "quiet": true,
+                "variants": [{ "name": "Clean", "cmd": ["make", "clean"] }]
+            }
+        ]
+    }"#;
+    let project: ProjectFile = serde_json::from_str(json).unwrap();
+    assert_eq!(project.build_systems.len(), 2);
+    assert_eq!(
+        project.build_systems[0].get("cmd"),
+        Some(&Value::from("make all"))
+    );
+    assert_eq!(
+        project.build_systems[1].get("quiet"),
+        Some(&Value::from(true))
+    );
+    let back: ProjectFile =
+        serde_json::from_str(&serde_json::to_string(&project).unwrap()).unwrap();
+    assert_eq!(project, back);
 }

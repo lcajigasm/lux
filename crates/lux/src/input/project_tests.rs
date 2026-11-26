@@ -123,10 +123,13 @@ fn test_open_sublime_project_loads_folders_and_settings() {
     let custom_builds = app.ui.project.custom_build_systems();
     assert_eq!(custom_builds.len(), 1);
     assert_eq!(custom_builds[0].name, "Custom Make");
-    assert_eq!(custom_builds[0].cmd, vec!["make", "check"]);
+    assert_eq!(
+        custom_builds[0].get("cmd"),
+        Some(&serde_json::json!(["make", "check"]))
+    );
 
     // The project's build system comes before the auto-detected ones.
-    let variants = crate::build::select::candidates(&app);
+    let variants = crate::build::select::candidates(&app, &Default::default());
     assert!(!variants.is_empty());
     assert_eq!(variants[0].name, "Custom Make");
     assert_eq!(variants[0].command, "make");
