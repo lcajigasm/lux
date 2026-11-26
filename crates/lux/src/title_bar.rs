@@ -58,6 +58,8 @@ pub(crate) fn refresh(app: &mut App) {
         .map_or(0.0, |gpu| gpu.window.title_bar_leading_inset() as f32);
     if inset != app.documents.strip.controls_inset {
         app.documents.strip.controls_inset = inset;
+        // In distraction-free mode the inset decides whether the row shows.
+        app.update_viewport_dimensions();
         app.scheduler.invalidate_all();
     }
 }
@@ -113,6 +115,8 @@ impl App {
     /// View > Enter Full Screen: native fullscreen in its own Space on
     /// macOS, borderless fullscreen elsewhere. Chrome stays as it is.
     pub(crate) fn toggle_full_screen(&mut self) {
+        #[cfg(test)]
+        tests::TOGGLES.with(|count| count.set(count.get() + 1));
         if let Some(gpu) = &self.gpu_window {
             let next = !gpu.window.is_fullscreen();
             gpu.window.set_fullscreen(next);
@@ -121,8 +125,13 @@ impl App {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::strip_span;
+
+    thread_local! {
+        /// `App::toggle_full_screen` calls on this test thread.
+        pub(crate) static TOGGLES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
 
     #[test]
     fn traffic_lights_take_the_appearance_of_every_bundled_tab_bar() {

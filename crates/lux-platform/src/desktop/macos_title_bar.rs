@@ -5,19 +5,27 @@
 //! winit 0.30.13 creates the transparent, full-size-content window but has
 //! no API for the button frames, their vertical position, or fullscreen
 //! transitions finishing. Those are the AppKit calls below.
+//!
+//! AppKit lays the title bar out again, putting the buttons back where a
+//! 28 pt title bar wants them, on resize, fullscreen exit, title change,
+//! key and main changes, and appearance change. Each of those re-centers
+//! them: the first four through notifications, the last two from the
+//! calls that cause them (`set_title`, `set_title_bar_color`).
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use objc2::rc::Retained;
-use objc2::runtime::AnyObject;
+use objc2::rc::{Retained, Weak};
+use objc2::runtime::{AnyClass, AnyObject, NSObjectProtocol, Sel};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAppearance, NSAppearanceCustomization, NSAppearanceNameAqua, NSAppearanceNameDarkAqua,
-    NSApplication, NSColor, NSView, NSWindow, NSWindowButton,
-    NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification,
-    NSWindowDidResizeNotification, NSWindowStyleMask,
+    NSApplication, NSColor, NSView, NSWindow, NSWindowButton, NSWindowDidBecomeKeyNotification,
+    NSWindowDidBecomeMainNotification, NSWindowDidEnterFullScreenNotification,
+    NSWindowDidExitFullScreenNotification, NSWindowDidResignKeyNotification,
+    NSWindowDidResignMainNotification, NSWindowDidResizeNotification, NSWindowStyleMask,
 };
+use objc2_foundation::NSNotificationName;
 use objc2_foundation::{
     NSNotification, NSNotificationCenter, NSObject, NSPoint, NSRect, NSSize, NSString,
     NSUserDefaults,
@@ -73,9 +81,39 @@ pub(super) fn leading_inset(window: &winit::window::Window) -> f64 {
     leading_inset_physical(points, window.scale_factor())
 }
 
+/// The window's frame view: the content view's superview.
+fn frame_view(window: &NSWindow) -> Option<Retained<NSView>> {
+    // SAFETY: plain view-hierarchy getters on the main thread.
+    window
+        .contentView()
+        .and_then(|view| unsafe { view.superview() })
+}
+
+/// The title-bar views around the buttons, `(container, titlebar)`, only
+/// when the hierarchy is the one this code was written against: close
+/// button → `NSTitlebarView` → `NSTitlebarContainerView` → the window's
+/// frame view. Anything else is `None`, and nothing is resized.
+fn title_bar_views(
+    window: &NSWindow,
+    close: &NSView,
+) -> Option<(Retained<NSView>, Retained<NSView>)> {
+    let is = |view: &NSView, name: &std::ffi::CStr| {
+        AnyClass::get(name).is_some_and(|class| view.isKindOfClass(class))
+    };
+    // SAFETY: plain view-hierarchy getters on the main thread.
+    let titlebar = unsafe { close.superview() }?;
+    let container = unsafe { titlebar.superview() }?;
+    let parent = unsafe { container.superview() }?;
+    let frame = frame_view(window)?;
+    let expected = is(&titlebar, c"NSTitlebarView")
+        && is(&container, c"NSTitlebarContainerView")
+        && std::ptr::eq::<NSView>(&*parent, &*frame);
+    expected.then_some((container, titlebar))
+}
+
 /// Moves the traffic lights so they are centered on a top row of
-/// `row_height` points. AppKit lays the title bar out again on resize,
-/// fullscreen exit, and title changes, so every one of those calls this.
+/// `row_height` points. If the view hierarchy is not the expected one the
+/// buttons keep AppKit's own placement.
 fn center_buttons(window: &NSWindow, row_height: f64) {
     if is_fullscreen(window) {
         return;
@@ -83,15 +121,10 @@ fn center_buttons(window: &NSWindow, row_height: f64) {
     let Some(close) = window.standardWindowButton(NSWindowButton::CloseButton) else {
         return;
     };
-    // close -> NSTitlebarView -> NSTitlebarContainerView -> NSThemeFrame.
-    // SAFETY: plain view-hierarchy getters on the main thread.
-    let Some(titlebar) = (unsafe { close.superview() }) else {
+    let Some((container, titlebar)) = title_bar_views(window, &close) else {
         return;
     };
-    let Some(container) = (unsafe { titlebar.superview() }) else {
-        return;
-    };
-    let Some(frame_view) = (unsafe { container.superview() }) else {
+    let Some(frame_view) = frame_view(window) else {
         return;
     };
     let width = frame_view.frame().size.width;
@@ -144,6 +177,12 @@ pub(super) fn set_title_bar_color(window: &winit::window::Window, rgb: [u8; 3], 
         }
     };
     ns.setAppearance(NSAppearance::appearanceNamed(name).as_deref());
+    // A new appearance lays the title bar out again. Run that layout now,
+    // so the caller's re-centering comes after it and is not undone.
+    if let Some(frame) = frame_view(&ns) {
+        // SAFETY: `-[NSView layoutSubtreeIfNeeded]`, no arguments, main thread.
+        let _: () = unsafe { msg_send![&*frame, layoutSubtreeIfNeeded] };
+    }
 }
 
 static DOUBLE_CLICK: AtomicU8 = AtomicU8::new(0);
@@ -211,7 +250,8 @@ pub(super) fn title_bar_pressed(window: &winit::window::Window) {
 }
 
 pub(super) struct ObserverIvars {
-    window: Retained<NSWindow>,
+    /// Weak: the observer must not keep a closed window alive.
+    window: Weak<NSWindow>,
     winit_id: winit::window::WindowId,
     proxy: EventLoopProxy<AccessibilityEvent>,
     row_height: Cell<f64>,
@@ -225,8 +265,9 @@ define_class!(
     pub(super) struct TitleBarObserver;
 
     impl TitleBarObserver {
-        #[unsafe(method(windowDidResize:))]
-        fn did_resize(&self, _note: &NSNotification) {
+        /// Resize, and key or main changes: AppKit re-laid the title bar.
+        #[unsafe(method(windowDidRelayOutTitleBar:))]
+        fn did_relayout(&self, _note: &NSNotification) {
             self.recenter();
         }
 
@@ -246,7 +287,9 @@ define_class!(
 impl TitleBarObserver {
     fn recenter(&self) {
         let ivars = self.ivars();
-        center_buttons(&ivars.window, ivars.row_height.get());
+        if let Some(window) = ivars.window.load() {
+            center_buttons(&window, ivars.row_height.get());
+        }
     }
 
     fn notify(&self, fullscreen: bool) {
@@ -271,7 +314,7 @@ impl TitleBar {
         let mtm = MainThreadMarker::new()?;
         let ns = ns_window(window)?;
         let observer = TitleBarObserver::alloc(mtm).set_ivars(ObserverIvars {
-            window: ns.clone(),
+            window: Weak::from_retained(&ns),
             winit_id: window.id(),
             proxy,
             row_height: Cell::new(DEFAULT_ROW_HEIGHT),
@@ -280,27 +323,50 @@ impl TitleBar {
         let observer: Retained<TitleBarObserver> = unsafe { msg_send![super(observer), init] };
         let center = NSNotificationCenter::defaultCenter();
         let object: &AnyObject = &ns;
-        // SAFETY: each selector exists on the observer and takes one
-        // NSNotification. The observer is removed in `Drop`.
-        unsafe {
-            center.addObserver_selector_name_object(
-                &observer,
-                sel!(windowDidResize:),
-                Some(NSWindowDidResizeNotification),
-                Some(object),
-            );
-            center.addObserver_selector_name_object(
-                &observer,
-                sel!(windowDidEnterFullScreen:),
-                Some(NSWindowDidEnterFullScreenNotification),
-                Some(object),
-            );
-            center.addObserver_selector_name_object(
-                &observer,
-                sel!(windowDidExitFullScreen:),
-                Some(NSWindowDidExitFullScreenNotification),
-                Some(object),
-            );
+        // SAFETY: AppKit's notification-name constants.
+        let names: [(Sel, &NSNotificationName); 7] = unsafe {
+            [
+                (
+                    sel!(windowDidRelayOutTitleBar:),
+                    NSWindowDidResizeNotification,
+                ),
+                (
+                    sel!(windowDidRelayOutTitleBar:),
+                    NSWindowDidBecomeKeyNotification,
+                ),
+                (
+                    sel!(windowDidRelayOutTitleBar:),
+                    NSWindowDidResignKeyNotification,
+                ),
+                (
+                    sel!(windowDidRelayOutTitleBar:),
+                    NSWindowDidBecomeMainNotification,
+                ),
+                (
+                    sel!(windowDidRelayOutTitleBar:),
+                    NSWindowDidResignMainNotification,
+                ),
+                (
+                    sel!(windowDidEnterFullScreen:),
+                    NSWindowDidEnterFullScreenNotification,
+                ),
+                (
+                    sel!(windowDidExitFullScreen:),
+                    NSWindowDidExitFullScreenNotification,
+                ),
+            ]
+        };
+        for (selector, name) in names {
+            // SAFETY: each selector exists on the observer and takes one
+            // NSNotification. The observer is removed in `Drop`.
+            unsafe {
+                center.addObserver_selector_name_object(
+                    &observer,
+                    selector,
+                    Some(name),
+                    Some(object),
+                );
+            }
         }
         refresh_double_click_action();
         let title_bar = TitleBar { observer };

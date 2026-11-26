@@ -111,8 +111,7 @@ impl PlatformContext for DesktopContext<'_> {
         let accessibility = Rc::new(RefCell::new(adapter));
         #[cfg(target_os = "macos")]
         let title_bar =
-            super::macos_title_bar::TitleBar::attach(&window, self.accessibility_proxy.clone())
-                .map(Rc::new);
+            super::macos_title_bar::TitleBar::attach(&window, self.accessibility_proxy.clone());
 
         self.windows.borrow_mut().insert(
             window.id(),
@@ -120,8 +119,6 @@ impl PlatformContext for DesktopContext<'_> {
                 id,
                 window: Rc::clone(&window),
                 accessibility: Rc::clone(&accessibility),
-                #[cfg(target_os = "macos")]
-                _title_bar: title_bar.clone(),
             },
         );
 

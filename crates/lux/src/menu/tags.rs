@@ -99,6 +99,7 @@ pub(super) fn from_tag(tag: isize) -> Option<MenuAction> {
         211 => Some(MenuAction::ReopenClosedTab),
         212 => Some(MenuAction::NewWindow),
         213 => Some(MenuAction::ClearRecent),
+        214 => Some(MenuAction::ToggleFullScreen),
         _ => None,
     }
 }

@@ -246,3 +246,27 @@ fn test_distraction_free_menu_action() {
     handle_menu_action(&mut app, &ctx, MenuAction::ToggleDistractionFree);
     assert!(!app.is_distraction_free());
 }
+
+#[test]
+fn the_tab_row_keeps_the_traffic_lights_off_the_text_until_fullscreen() {
+    let mut app = App::new(test_font());
+    app.viewport.width = 1200.0;
+    app.viewport.height = 800.0;
+    // A windowed macOS window: the lights take 78 pt of the row.
+    app.documents.strip.controls_inset = 78.0;
+    app.enter_distraction_free();
+    assert!(app.is_distraction_free());
+    assert!(
+        app.tab_bar_height() > 0.0,
+        "the row went away while the lights were still on it"
+    );
+    // The fullscreen transition took the lights away.
+    app.documents.strip.controls_inset = 0.0;
+    assert_eq!(app.tab_bar_height(), 0.0);
+    // Fullscreen ended (or was refused and the window kept its lights):
+    // the row is back, and leaving fullscreen leaves distraction-free.
+    app.documents.strip.controls_inset = 78.0;
+    assert!(app.tab_bar_height() > 0.0);
+    crate::title_bar::fullscreen_changed(&mut app, false);
+    assert!(!app.is_distraction_free());
+}

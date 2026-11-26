@@ -3,7 +3,9 @@
 # is the window's title bar: it starts at the top of the window frame, the
 # tabs start after the traffic lights, and native fullscreen (Control-
 # Command-F) removes that inset and restores it on exit. Positions come
-# from AppKit through the probe; the PNGs are screencaptures of the window.
+# from AppKit through the probe; the PNGs are screencaptures of the window,
+# checked for traffic lights centered on the 32 pt row (not AppKit's 28 pt
+# title-bar placement), also after a live theme switch re-themes the window.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -92,6 +94,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+mkdir -p "$HOME/.config/lux"
+settings="$HOME/.config/lux/settings.json"
+printf '{ "workbench.colorTheme": "monokai" }\n' > "$settings"
 drive_launch "$files/first.txt" "$files/second.txt"
 sleep 0.5
 
@@ -120,8 +125,9 @@ check_windowed() {
   inset="$(drive_field title_bar_inset_pt)"
   left="$(drive_field tab_strip_left_pt)"
   echo "$label tab_row_window_y_pt=$row_y title_bar_inset_pt=$inset tab_strip_left_pt=$left" | tee -a "$report"
-  awk -v y="$row_y" 'BEGIN { exit !(y >= 0 && y < 40) }' \
-    || die "$label: tab row starts ${row_y}pt below the window top, want < 40"
+  # A standard title bar puts the content 28 pt down; unified is 0.
+  awk -v y="$row_y" 'BEGIN { exit !(y >= 0 && y < 1) }' \
+    || die "$label: tab row starts ${row_y}pt below the window top, want < 1"
   pass "$label: tab row at the top of the window (${row_y}pt)"
   awk -v i="$inset" 'BEGIN { exit !(i >= 60 && i <= 120) }' \
     || die "$label: traffic-light inset ${inset}pt is not a plausible button width"
@@ -130,12 +136,13 @@ check_windowed() {
   pass "$label: tabs start after the traffic lights (${left}pt >= ${inset}pt)"
 }
 
-# The traffic lights must stand out from the tab row behind them.
+# The traffic lights must stand out from the tab row behind them and be
+# centered on it (16 pt +/- 1.5 pt from the window top).
 check_lights() {
   local png="$1" label="$2"
   python3 -I "$root/scripts/title_bar_pixels.py" "$png" "$WINDOW_PT" | tee -a "$report" \
-    || die "$label: traffic lights not visible on the tab bar"
-  pass "$label: traffic lights visible on the tab bar"
+    || die "$label: traffic lights not visible on, or not centered on, the tab row"
+  pass "$label: traffic lights visible and centered on the tab row"
 }
 
 check_windowed "windowed"
@@ -153,11 +160,29 @@ drive_focus
 drive_key tap 3 cmd,ctrl
 check_windowed "after fullscreen"
 shoot "$out/restored.png"
+check_lights "$out/restored.png" "after fullscreen"
 
-# A light theme: the window takes the light appearance and the buttons
-# still read on the light tab bar.
-mkdir -p "$HOME/.config/lux"
-printf '{ "workbench.colorTheme": "celeste" }\n' > "$HOME/.config/lux/settings.json"
+# A live theme switch: the settings watcher applies the light theme, the
+# window takes the light appearance (AppKit lays the title bar out again),
+# and the buttons must still be centered on the row and read on it.
+printf '{ "workbench.colorTheme": "celeste" }\n' > "$settings"
+switched=0
+for _ in $(seq 1 40); do
+  drive_dump || die "probe died"
+  if [[ "$(drive_field theme)" == "Celeste" ]]; then
+    switched=1
+    break
+  fi
+  sleep 0.5
+done
+[[ "$switched" == 1 ]] || die "theme switch: theme is $(drive_field theme), want Celeste"
+sleep 0.5
+check_windowed "theme switch"
+shoot "$out/switched.png"
+check_lights "$out/switched.png" "theme switch"
+
+# A light theme from launch: the window is created with the light
+# appearance and the buttons still read on the light tab bar.
 drive_launch "$files/first.txt"
 sleep 1
 check_windowed "light theme"

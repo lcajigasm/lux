@@ -50,11 +50,22 @@ pub(crate) fn build_view_and_tool_menus(mtm: MainThreadMarker, main_menu: &NSMen
         1048576 | 262144 | 131072,
         Some(MenuAction::ToggleDistractionFree),
     );
-    // AppKit's own action on the key window: it retitles the item Enter /
-    // Exit Full Screen, and the green button reaches the same state.
+    // A `MenuAction`, so the menu and the keymap claim one press between
+    // them. Its selector is `toggleFullScreen:` (answered by the menu
+    // target) so AppKit sees a full-screen item and does not add its own.
     let (title, key, mask) = super::FULL_SCREEN_ITEM;
-    let full_screen = add_system_item(mtm, &view_menu, title, key, sel!(toggleFullScreen:));
-    full_screen.setKeyEquivalentModifierMask(objc2_app_kit::NSEventModifierFlags(mask));
+    let full_screen = add_item_with_mask(
+        mtm,
+        &view_menu,
+        title,
+        key,
+        mask,
+        Some(MenuAction::ToggleFullScreen),
+    );
+    // SAFETY: the target (`MenuTarget`) implements `toggleFullScreen:`.
+    unsafe {
+        let _: () = objc2::msg_send![&*full_screen, setAction: sel!(toggleFullScreen:)];
+    }
     add_separator(mtm, &view_menu);
     add_item_with_mask(
         mtm,

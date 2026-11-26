@@ -17,8 +17,11 @@ pub(super) struct DesktopWindow {
     /// converted `PlatformEvent` — see
     /// `docs/adr/0013-platform-accessibility-adapter-wiring.md`.
     pub(super) accessibility: Rc<RefCell<accesskit_winit::Adapter>>,
+    /// The window's AppKit title-bar observer. Owned here only: dropping
+    /// this window drops it, which unregisters the notifications. The
+    /// observer holds the `NSWindow` weakly.
     #[cfg(target_os = "macos")]
-    pub(super) title_bar: Option<Rc<super::macos_title_bar::TitleBar>>,
+    pub(super) title_bar: Option<super::macos_title_bar::TitleBar>,
 }
 
 impl PlatformWindow for DesktopWindow {
@@ -159,8 +162,10 @@ impl PlatformWindow for DesktopWindow {
 
     #[cfg(target_os = "macos")]
     fn set_title_bar_color(&self, rgb: [u8; 3], dark: bool) {
-        if self.title_bar.is_some() {
+        if let Some(title_bar) = &self.title_bar {
             super::macos_title_bar::set_title_bar_color(&self.window, rgb, dark);
+            // The appearance change re-laid the title bar out.
+            title_bar.recenter();
         }
     }
 

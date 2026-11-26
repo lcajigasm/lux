@@ -146,6 +146,8 @@ pub(crate) fn action_for_command(cmd: &str) -> Option<MenuAction> {
         "reopen_closed_tab" | "file.reopen_closed_tab" => MenuAction::ReopenClosedTab,
         "command_palette" => MenuAction::CommandPalette,
         "open_settings" | "preferences.open_settings_ui" => MenuAction::Preferences,
+        "toggle_full_screen" => MenuAction::ToggleFullScreen,
+        "toggle_distraction_free" => MenuAction::ToggleDistractionFree,
         _ => return None,
     })
 }

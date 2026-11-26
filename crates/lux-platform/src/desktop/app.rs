@@ -41,9 +41,6 @@ pub(super) struct WindowRecord {
     pub(super) id: WindowId,
     pub(super) window: Rc<winit::window::Window>,
     pub(super) accessibility: Rc<RefCell<accesskit_winit::Adapter>>,
-    /// Keeps the window's AppKit title-bar observer alive.
-    #[cfg(target_os = "macos")]
-    pub(super) _title_bar: Option<Rc<super::macos_title_bar::TitleBar>>,
 }
 
 pub(super) struct DesktopApp<H: PlatformEventHandler> {

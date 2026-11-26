@@ -30,8 +30,14 @@ of a fullscreen transition.
   12 pt, or 78 pt when AppKit returns no button, or 0 in fullscreen. The
   tab strip starts at `max(sidebar width, inset)`. The platform resizes
   the title-bar container to the tab row's height and centers the buttons
-  on it, again on every `NSWindowDidResizeNotification`, fullscreen exit,
-  and title change, which are when AppKit lays the title bar out anew.
+  on it. AppKit lays the title bar out anew, with the buttons back at their
+  28 pt places, on resize, fullscreen exit, title change, key and main
+  changes, and appearance change; the platform re-centers after each:
+  `NSWindowDidResize`, `NSWindowDidBecome/ResignKey` and
+  `NSWindowDidBecome/ResignMain` notifications, fullscreen exit,
+  `set_title`, and `set_title_bar_color`, which runs the layout the new
+  appearance causes (`layoutSubtreeIfNeeded`) before re-centering. Nothing
+  polls.
 - **Empty tab-row space** calls `PlatformWindow::title_bar_pressed`. On
   macOS a double click (the current `NSEvent`'s `clickCount`) zooms,
   minimizes, or does nothing per `AppleActionOnDoubleClick` (with the
@@ -39,14 +45,23 @@ of a fullscreen transition.
   set). The defaults are read on a worker thread at window creation and
   whenever the app regains focus. Any other press starts winit's
   `drag_window`.
-- **Fullscreen** is AppKit's: View > Enter Full Screen is a
-  `toggleFullScreen:` item (Control-Command-F) with no target, so AppKit
-  retitles it and does not add a second one. The `toggle_full_screen`
-  keymap command and palette entry call the same winit fullscreen.
+- **Fullscreen** is AppKit's native fullscreen. View > Enter Full Screen
+  (Control-Command-F) is `MenuAction::ToggleFullScreen`: one press reaches
+  both the menu key equivalent and the keymap, and like every menu chord
+  the two deliveries share one claim (`menu::chords`), so the press
+  toggles once. The item's selector is `toggleFullScreen:`, answered by
+  Lux's menu target, so AppKit sees a full-screen item and does not insert
+  its own; Lux retitles it Enter / Exit Full Screen when a transition
+  finishes. The `toggle_full_screen` keymap command, the menu item and the
+  palette entry call the same winit fullscreen.
   `NSWindowDidEnter/ExitFullScreenNotification` become
   `PlatformEvent::FullscreenChanged`, sent once the transition settles,
   whatever started it. Distraction-free mode stays in native fullscreen,
-  as in Sublime Text; leaving fullscreen by any route leaves it too.
+  as in Sublime Text; leaving fullscreen by any route leaves it too. The
+  mode hides the tab row only once the window's controls are off it (the
+  inset is 0): during the transition into fullscreen, and if AppKit
+  refuses fullscreen, the row stays so the traffic lights never sit on
+  the text.
 - **Color.** The window background is the theme's tab-bar color and its
   appearance is Aqua or Dark Aqua by that color's contrast, so the
   traffic lights are drawn for the color behind them.
@@ -69,7 +84,22 @@ AppKit posts notifications.
 A session saved before this change stored the content size below a
 28 pt title bar; restoring it makes the window 28 pt shorter once. Moving
 the buttons depends on AppKit's private view hierarchy (button →
-`NSTitlebarView` → `NSTitlebarContainerView` → theme frame); if a macOS
-release changes it, the lookups return `None` and the buttons stay where
-AppKit puts them, with the inset still computed from their real frame.
-`scripts/unified-title-bar.sh` checks the position on every macOS UI run.
+`NSTitlebarView` → `NSTitlebarContainerView` → the window's frame view).
+Before resizing anything the platform checks each class with
+`isKindOfClass` and that the third view is the content view's superview;
+if a macOS release changes the hierarchy, nothing is resized and the
+buttons stay where AppKit puts them, with the inset still computed from
+their real frame. A layout AppKit runs on a trigger not listed above
+would also leave them at AppKit's place until the next listed event.
+`scripts/unified-title-bar.sh` checks the position on every macOS UI run:
+the tab row less than 1 pt below the window top and each button's center
+16 ± 1.5 pt from it, windowed, after fullscreen, after a live theme
+switch, and with a light theme from launch.
+
+Window lifetime: each window's title-bar observer is owned by its
+`DesktopWindow` alone and holds the `NSWindow` weakly; dropping the
+window unregisters it. The platform's `WindowRecord` registry still holds
+a strong `Rc` of every winit window and never removes entries. Today
+that is harmless: Lux has one window per process (New Window starts a
+second process) and closing it exits. Multi-window support must remove
+the record when its window closes.

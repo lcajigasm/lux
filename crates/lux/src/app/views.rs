@@ -174,7 +174,10 @@ impl App {
     }
 
     pub(crate) fn tab_bar_height(&self) -> f32 {
-        if self.ui.distraction_free.is_some() {
+        // Distraction-free hides the row once the window controls are off
+        // it. Until the macOS fullscreen transition takes them away, or if
+        // fullscreen was refused, the row stays so they never sit on text.
+        if self.ui.distraction_free.is_some() && self.documents.strip.controls_inset == 0.0 {
             return 0.0;
         }
         TAB_BAR_HEIGHT * self.scale_factor

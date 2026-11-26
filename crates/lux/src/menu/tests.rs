@@ -59,6 +59,7 @@ fn test_menu_action_tag_roundtrip() {
         MenuAction::ReopenClosedTab,
         MenuAction::NewWindow,
         MenuAction::ClearRecent,
+        MenuAction::ToggleFullScreen,
     ];
 
     for action in all_actions {
@@ -264,16 +265,45 @@ fn quick_open_stays_open_when_the_key_arrives_before_the_menu() {
 }
 
 #[test]
-fn the_full_screen_item_matches_the_keymap_binding() {
+fn one_control_command_f_press_toggles_full_screen_once() {
     use lux_config::keymap::{ChordSequence, Platform};
-    let (title, key, mask) = super::FULL_SCREEN_ITEM;
-    assert_eq!(title, "Enter Full Screen");
+    // The menu item's key equivalent is the keymap's chord, so one press
+    // reaches both the menu and the keymap.
+    let (_, key, mask) = super::FULL_SCREEN_ITEM;
     // NSEventModifierFlagControl | NSEventModifierFlagCommand.
     assert_eq!(mask, 0x40000 | 0x100000);
     let keymap = lux_config::keymap::presets::sublime();
-    let bound = keymap
-        .binding_for("toggle_full_screen", Platform::Mac)
-        .expect("toggle_full_screen has a macOS binding");
-    let expected: ChordSequence = format!("cmd+ctrl+{key}").parse().unwrap();
-    assert_eq!(*bound, expected);
+    let chord: ChordSequence = format!("cmd+ctrl+{key}").parse().unwrap();
+    assert_eq!(
+        keymap.command_for(&chord, Platform::Mac),
+        Some("toggle_full_screen")
+    );
+
+    let toggles = || crate::title_bar::tests::TOGGLES.with(std::cell::Cell::get);
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    let ctx = TestCtx {
+        folder_to_pick: None,
+    };
+    super::chords::clear_claim();
+    let before = toggles();
+    // Menu first, then the keymap delivery of the same press.
+    super::handle_menu_action(&mut app, &ctx, MenuAction::ToggleFullScreen);
+    crate::input::dispatch::execute_keymap_command(&mut app, "toggle_full_screen", None, None);
+    assert_eq!(toggles() - before, 1);
+    // Keymap first, then the menu.
+    crate::input::dispatch::execute_keymap_command(&mut app, "toggle_full_screen", None, None);
+    super::handle_menu_action(&mut app, &ctx, MenuAction::ToggleFullScreen);
+    assert_eq!(toggles() - before, 2);
+}
+
+#[test]
+fn one_distraction_free_press_toggles_it_once() {
+    super::chords::clear_claim();
+    let mut app = App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec());
+    let ctx = TestCtx {
+        folder_to_pick: None,
+    };
+    super::handle_menu_action(&mut app, &ctx, MenuAction::ToggleDistractionFree);
+    crate::input::dispatch::execute_keymap_command(&mut app, "toggle_distraction_free", None, None);
+    assert!(app.is_distraction_free());
 }
