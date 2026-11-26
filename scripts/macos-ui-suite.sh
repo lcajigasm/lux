@@ -61,6 +61,10 @@ for script in "${scenarios[@]}"; do
     echo "FAIL $script"
     failed=1
   fi
+  # A scenario that exits early can leave its Lux running and frontmost;
+  # the next one would then drive the wrong window. Reap anything started
+  # from this checkout's build before moving on.
+  pkill -f "^$root/target/" 2>/dev/null || true
 done
 
 if [[ "$failed" != 0 ]]; then
