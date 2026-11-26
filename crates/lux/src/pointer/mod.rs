@@ -4,6 +4,7 @@
 //! cursor on every move, `press`/`release` drag the sidebar edge, and
 //! `leave` puts the arrow back when the pointer exits the window.
 
+mod gutter;
 mod preview;
 
 use lux_platform::{CursorShape, MouseButton};
@@ -66,6 +67,8 @@ pub(crate) fn sync(app: &mut App) {
     };
     app.mouse.shape = shape;
     apply(app, shape);
+    let hover = gutter::hovered(app);
+    gutter::update(app, hover);
 }
 
 pub(crate) fn leave(app: &mut App) {
@@ -77,6 +80,7 @@ pub(crate) fn leave(app: &mut App) {
     }
     app.mouse.shape = CursorShape::Arrow;
     apply(app, CursorShape::Arrow);
+    gutter::update(app, None);
 }
 
 /// Starts a sidebar-edge drag. Returns true when this press is that edge,

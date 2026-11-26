@@ -16,6 +16,35 @@ use super::clip::{self, clip_rect};
 use super::paint::{color, faint_rule, push_glyph, syntax_color};
 use crate::app::{AtlasState, SyntaxState};
 
+mod gutter;
+
+pub(crate) use gutter::{
+    GutterMarks, gutter_marker_width, gutter_marker_x, gutter_total_width, render_gutter,
+};
+
+/// Indent guide ink: the foreground at 12%, and 30% for the guide of the
+/// block that holds the caret. Neither reads as syntax color.
+pub(crate) const GUIDE_ALPHA: f32 = 0.12;
+pub(crate) const ACTIVE_GUIDE_ALPHA: f32 = 0.30;
+
+/// One indent guide's rect and ink: a single device pixel wide, snapped
+/// to a pixel column so it never straddles two and blurs.
+pub(crate) fn guide_quad(
+    x: f32,
+    y: f32,
+    height: f32,
+    active: bool,
+    theme: &Theme,
+) -> ([f32; 4], [f32; 4]) {
+    let ink = color(theme.foreground);
+    let alpha = if active {
+        ACTIVE_GUIDE_ALPHA
+    } else {
+        GUIDE_ALPHA
+    };
+    ([x.round(), y, 1.0, height], [ink[0], ink[1], ink[2], alpha])
+}
+
 /// The text area quads are clipped to: right of the gutter, inside the
 /// editor viewport.
 pub(crate) fn text_bounds(
@@ -68,7 +97,6 @@ pub(crate) fn render_text_lines(
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
     let foreground = color(theme.foreground);
-    let muted = color(theme.muted);
     let selection_color = color(theme.selection);
     let text_bounds = text_bounds(viewport, editor_top, sidebar_width, text_left);
 
@@ -88,18 +116,11 @@ pub(crate) fn render_text_lines(
 
     for line in &frame.lines {
         let y = editor_top + line.top - viewport.scroll_y;
-        for guide_x in &line.indent_guides {
-            push_quad(
-                quad_instances,
-                [
-                    text_left + guide_x - viewport.scroll_x,
-                    y,
-                    stroke,
-                    line_height,
-                ],
-                muted,
-                text_bounds,
-            );
+        for (level, guide_x) in line.indent_guides.iter().enumerate() {
+            let x = text_left + guide_x - viewport.scroll_x;
+            let active = line.active_guide == Some(level);
+            let (rect, ink) = guide_quad(x, y, line_height, active, theme);
+            push_quad(quad_instances, rect, ink, text_bounds);
         }
     }
     for selection in &frame.selections {
@@ -213,146 +234,6 @@ pub(crate) fn render_text_lines(
     }
 }
 
-/// Left margin of the digit column, in physical pixels. A digit drawn on
-/// the window edge is clipped by the framebuffer.
-pub(crate) fn gutter_number_pad(scale: f32) -> f32 {
-    (4.0 * scale).max(1.0)
-}
-
-/// Digit column, its left margin, and the lane for the change marker and
-/// fold chevron.
-pub(crate) fn gutter_total_width(digit_width: f32, scale: f32) -> f32 {
-    if digit_width <= 0.0 {
-        0.0
-    } else {
-        digit_width + gutter_number_pad(scale) + 16.0 * scale
-    }
-}
-
-/// Change marker, in the lane to the right of the digits. The gap is at
-/// least one physical pixel so the marker cannot cover a glyph.
-pub(crate) fn gutter_marker_x(sidebar: f32, digit_width: f32, scale: f32) -> f32 {
-    sidebar + gutter_number_pad(scale) + digit_width + (2.0 * scale).max(1.0)
-}
-
-pub(crate) fn gutter_fold_x(sidebar: f32, digit_width: f32, scale: f32) -> f32 {
-    gutter_marker_x(sidebar, digit_width, scale) + 5.0 * scale
-}
-
-/// Opaque gutter. Drawn after the text so a horizontal scroll cannot cover
-/// the line numbers. It does not move with `scroll_x`.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn render_gutter(
-    frame: &EditorViewFrame,
-    bookmarks: Option<&lux_core::bookmarks::BookmarkState>,
-    viewport: &Viewport,
-    editor_top: f32,
-    line_height: f32,
-    sidebar_width: f32,
-    gutter_width: f32,
-    stroke: f32,
-    theme: &Theme,
-    atlas_state: &mut AtlasState,
-    font: FontRef,
-    font_size: f32,
-    quad_instances: &mut Vec<QuadInstance>,
-    glyph_instances: &mut Vec<GlyphInstance>,
-) {
-    if gutter_width <= 0.0 {
-        return;
-    }
-    let gutter_bounds = [sidebar_width, editor_top, gutter_width, viewport.height];
-    quad_instances.push(QuadInstance::solid(
-        gutter_bounds,
-        color(theme.chrome.gutter),
-    ));
-    let foreground = color(theme.foreground);
-    let muted = color(theme.muted);
-    for line in &frame.lines {
-        let y = editor_top + line.top - viewport.scroll_y;
-        if bookmarks.is_some_and(|marks| marks.contains(line.index)) {
-            let bm_x = sidebar_width + 2.0 * stroke;
-            let bm_w = 4.0 * stroke;
-            let bm_h = (line_height * 0.60).clamp(8.0 * stroke, 14.0 * stroke);
-            let bm_y = y + (line_height - bm_h) / 2.0;
-            push_quad(
-                quad_instances,
-                [bm_x, bm_y, bm_w, bm_h - 2.0 * stroke],
-                [0.25, 0.70, 0.95, 0.95],
-                gutter_bounds,
-            );
-            push_quad(
-                quad_instances,
-                [
-                    bm_x + stroke,
-                    bm_y + bm_h - 2.0 * stroke,
-                    bm_w - 2.0 * stroke,
-                    stroke,
-                ],
-                [0.20, 0.60, 0.85, 0.95],
-                gutter_bounds,
-            );
-        }
-
-        let line_pad_y = (line_height - font_size) * 0.5;
-        let is_current = frame.cursors.iter().any(|cursor| cursor.line == line.index);
-        let num_color = if is_current { foreground } else { muted };
-        for cluster in line.number_layout.clusters() {
-            let start = glyph_instances.len();
-            push_glyph(
-                &mut atlas_state.atlas,
-                &mut atlas_state.dirty,
-                &mut atlas_state.scale_cx,
-                font,
-                font_size,
-                &cluster,
-                sidebar_width + gutter_number_pad(stroke),
-                y + line_pad_y + line.number_layout.baseline(),
-                num_color,
-                glyph_instances,
-            );
-            clip::clip_glyphs(glyph_instances, start, gutter_bounds);
-        }
-
-        if line.is_folded || line.is_foldable {
-            let icon_x = gutter_fold_x(sidebar_width, frame.gutter_width, stroke);
-            let icon_color = if line.is_folded { foreground } else { muted };
-            let tri_h = (line_height * 0.40).clamp(5.0 * stroke, 9.0 * stroke);
-            let tri_y = y + (line_height - tri_h) / 2.0;
-            if line.is_folded {
-                let cols = 4;
-                for column in 0..cols {
-                    let col_x = icon_x + column as f32 * stroke;
-                    let inset = column as f32 * stroke * 0.85;
-                    let col_y = tri_y + inset;
-                    let col_h = (tri_h - 2.0 * inset).max(stroke);
-                    push_quad(
-                        quad_instances,
-                        [col_x, col_y, stroke, col_h],
-                        icon_color,
-                        gutter_bounds,
-                    );
-                }
-            } else {
-                let rows = 4;
-                let tri_w = tri_h;
-                for row in 0..rows {
-                    let row_y = tri_y + row as f32 * stroke;
-                    let inset = row as f32 * stroke * 0.85;
-                    let row_x = icon_x + inset;
-                    let row_w = (tri_w - 2.0 * inset).max(stroke);
-                    push_quad(
-                        quad_instances,
-                        [row_x, row_y, row_w, stroke],
-                        icon_color,
-                        gutter_bounds,
-                    );
-                }
-            }
-        }
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_carets(
     frame: &EditorViewFrame,
@@ -386,32 +267,58 @@ pub(crate) fn render_carets(
     primary
 }
 
-fn push_quad(out: &mut Vec<QuadInstance>, rect: [f32; 4], color: [f32; 4], bounds: [f32; 4]) {
+pub(super) fn push_quad(
+    out: &mut Vec<QuadInstance>,
+    rect: [f32; 4],
+    color: [f32; 4],
+    bounds: [f32; 4],
+) {
     if let Some(rect) = clip_rect(rect, bounds) {
         out.push(QuadInstance::solid(rect, color));
     }
 }
 
 #[cfg(test)]
-mod gutter_layout_tests {
+mod tests {
     use super::*;
 
     #[test]
-    fn the_digit_column_clears_the_window_edge_and_the_change_marker() {
-        for scale in [1.0_f32, 2.0] {
-            let digits = 14.0 * scale;
-            let pad = gutter_number_pad(scale);
-            assert!(pad >= 1.0, "scale {scale}");
-            let digit_right = pad + digits;
-            let marker = gutter_marker_x(0.0, digits, scale);
-            assert!(
-                marker >= digit_right + 1.0,
-                "scale {scale}: marker {marker} digit_right {digit_right}"
-            );
-            let total = gutter_total_width(digits, scale);
-            assert!(marker + 3.0 * scale <= total);
-            let fold = gutter_fold_x(0.0, digits, scale);
-            assert!(fold >= marker + 3.0 * scale);
+    fn guides_are_one_snapped_pixel_of_faint_foreground() {
+        let theme = Theme::MONOKAI;
+        let (rect, ink) = guide_quad(100.4, 20.0, 18.0, false, &theme);
+        assert_eq!(rect, [100.0, 20.0, 1.0, 18.0]);
+        let fg = color(theme.foreground);
+        assert_eq!(&ink[..3], &fg[..3], "guides carry no syntax color");
+        assert_eq!(ink[3], GUIDE_ALPHA);
+        let (rect, ink) = guide_quad(100.6, 20.0, 18.0, true, &theme);
+        assert_eq!(rect[0], 101.0);
+        assert_eq!(ink[3], ACTIVE_GUIDE_ALPHA);
+    }
+
+    #[test]
+    fn the_text_clip_stops_at_the_minimap() {
+        use crate::frame_layout::{ChromeSizes, compute};
+        for (scale, minimap) in [(1.0, 90.0), (2.0, 180.0), (2.0, 0.0)] {
+            let layout = compute(&ChromeSizes {
+                window_width: 1000.0 * scale,
+                window_height: 700.0 * scale,
+                tab_bar: 32.0 * scale,
+                status_bar: 24.0 * scale,
+                search_bar: 0.0,
+                dock: 0.0,
+                sidebar: 220.0 * scale,
+                minimap,
+            });
+            let [x, y, width, height] = layout.editor;
+            let viewport = Viewport {
+                width,
+                height,
+                scroll_x: 0.0,
+                scroll_y: 0.0,
+            };
+            let text_left = x + 40.0 * scale;
+            let clip = text_bounds(&viewport, y, x, text_left);
+            assert_eq!(clip[0] + clip[2], 1000.0 * scale - minimap);
         }
     }
 }

@@ -35,6 +35,8 @@ pub(super) struct SinglePane<'a> {
     pub gutter_total_width: f32,
     pub window_width: f32,
     pub distraction_free: bool,
+    /// See `MouseState::gutter_hover`.
+    pub gutter_hover: Option<[f32; 2]>,
 }
 
 /// Where the pane's instances go. The gutter has its own lists because it
@@ -161,10 +163,15 @@ impl SinglePane<'_> {
             color(theme.accent),
             quad_instances,
         );
-        if self.gutter_total_width > 0.0 {
+        {
+            let marks = text::GutterMarks::new(
+                Some(self.bookmarks),
+                self.gutter_hover,
+                [sidebar_width, editor_top],
+            );
             text::render_gutter(
                 frame,
-                Some(self.bookmarks),
+                marks,
                 &editor_viewport,
                 editor_top,
                 line_height,

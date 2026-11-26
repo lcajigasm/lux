@@ -42,12 +42,31 @@
 > Lux editor well is `#272822`, the current line is `#2C2D27`, the tab bar
 > is `#1E1F1C`, and the status bar is `#414339`, beside Sublime Text on the
 > same file. A selection on each of the 14 bundled themes paints at least
-> 1.30:1 over that editor (`SELECTION_CONTRAST_MIN`). Monokai's selection
-> is opaque `#49483E`. The right-hand status labels are light on that bar. The window
+> 1.30:1 over that editor (`SELECTION_CONTRAST_MIN`). The selection is
+> painted above the current-line highlight, and on all 14 it also clears
+> 1.30:1 over that highlight: where a scheme's highlight crowds its
+> selection (Nord, Dracula, Solarized Dark and Light, Catppuccin Latte,
+> GitHub Light, and the built-in Mariana), the highlight is faded toward
+> the editor until it does. The fade is computed once, when a bundled
+> scheme loads (Mariana's constant is authored already faded), and the
+> painter reads the stored color. A user `.sublime-color-scheme` keeps the
+> `line_highlight` it sets, even one that crowds its selection; without
+> one, the derived highlight is faded the same way. Monokai's selection is opaque
+> `#49483E`, 1.51:1 over its `#2C2D27` current line. The right-hand status labels are light on that bar. The window
 > title is the file name and its parent folder. The column ruler is off
 > unless `editor.columnRulers` is set. Indent guides are drawn only where
-> a line has leading indentation. The minimap is a darker strip at the
-> right edge and does not paint a stroke across the buffer. Word wrap
+> a line has leading indentation, one at the start of each indent level
+> and never on the line's first glyph. They are one device pixel wide,
+> the foreground at 12%, and the guide of the block holding the caret is
+> at 30%. The minimap is a darker strip at the
+> right edge and does not paint a stroke across the buffer. Editor text
+> is clipped at the minimap's left edge. The minimap's visible-region
+> band is the foreground at 8% on dark themes and 6% on light ones. The
+> gutter is, left to right, 8 pt of padding, the line numbers, 6 pt, a
+> 3 pt git change bar, 2 pt, and a 10 pt fold column. Fold triangles on
+> open regions show only while the pointer is over that pane's gutter
+> (keyed by the pane's rectangle, so stacked panes in 2 Rows or Grid do
+> not both show them); a folded region always shows its marker. Word wrap
 > defaults to off (`editor.wordWrap` in the shipped settings). The View
 > menu, the command palette, Settings, and Option+Z toggle it, and the
 > choice is written back to that setting. An untitled buffer stays Plain
