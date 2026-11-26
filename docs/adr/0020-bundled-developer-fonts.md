@@ -63,12 +63,17 @@ tree. Every packager calls it:
 - `.deb` (`scripts/package-deb.sh`): `/usr/share/lux/fonts/`.
 - dist tree (`scripts/package.sh`): `share/lux/fonts/`.
 - dev runs from `target/`: the repository's own `fonts/`, found from the
-  crate's compile-time manifest directory.
+  crate's compile-time manifest directory. Debug builds and tests only; a
+  release binary never looks in the source tree, so a package missing its
+  fonts shows up as a fallback instead of silently working on the build
+  machine.
 
 The binary looks for the font directory relative to its own path in that
 order. If no directory or file is found, the request falls back to the
 system face and a line is logged. The Windows MSI does not install the
-directory yet; there, every bundled family falls back to the system face.
+directory yet, so on Windows the Settings page does not offer the bundled
+families and `editor.fontFamily` accepts only `system` there (rule 1: no UI
+for something that cannot work).
 
 Embedding was rejected: 1.5 MB in every binary, including the CLI copy in
 `SharedSupport/bin`, for fonts most users never select.

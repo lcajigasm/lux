@@ -117,21 +117,25 @@ impl App {
         }
         fonts.pending = Some(name);
         crate::ui_io::spawn(self, None, move || {
-            Some(crate::ui_io::Done::EditorFont(read_face(name)))
+            Some(crate::ui_io::Done::EditorFont(name, read_face(name)))
         });
     }
 
-    /// Registers what a worker read and draws with it. A result for a
-    /// request that was replaced meanwhile is dropped.
-    pub(crate) fn install_editor_font(&mut self, loaded: Option<LoadedFont>) {
-        let Some(loaded) = loaded else {
-            self.atlas_state.fonts.pending = None;
-            return;
-        };
-        if self.atlas_state.fonts.pending != Some(loaded.requested) {
+    /// Registers what a worker read for `requested` and draws with it. A
+    /// result for a request that was replaced meanwhile, found or not, is
+    /// dropped and leaves the newer request pending.
+    pub(crate) fn install_editor_font(
+        &mut self,
+        requested: &'static str,
+        loaded: Option<LoadedFont>,
+    ) {
+        if self.atlas_state.fonts.pending != Some(requested) {
             return;
         }
         self.atlas_state.fonts.pending = None;
+        let Some(loaded) = loaded else {
+            return;
+        };
         let face = match self.atlas_state.fonts.cached(loaded.resolved) {
             Some(face) => face,
             None => {
@@ -179,5 +183,18 @@ impl App {
         if fonts.cached(face.name).is_none() {
             fonts.loaded.push(face);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_failed_older_read_leaves_the_newer_request_pending() {
+        let mut app = crate::document::tests::app();
+        app.atlas_state.fonts.pending = Some("Fira Code");
+        app.install_editor_font("JetBrains Mono", None);
+        assert_eq!(app.atlas_state.fonts.pending, Some("Fira Code"));
+        app.install_editor_font("Fira Code", None);
+        assert_eq!(app.atlas_state.fonts.pending, None);
     }
 }

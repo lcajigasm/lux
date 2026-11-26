@@ -56,7 +56,10 @@ const SYSTEM_FAMILIES: &[(&str, &[&str])] = &[
 #[cfg(not(target_os = "macos"))]
 const SYSTEM_FAMILIES: &[(&str, &[&str])] = &[];
 
-/// What the Settings page offers, in order.
+/// What the Settings page offers, in order. Only families that are
+/// installed where the binary runs: the macOS bundle and the Linux `.deb`
+/// and tarball ship the bundled fonts; the Windows MSI does not, so Windows
+/// offers the system face alone.
 #[cfg(target_os = "macos")]
 pub(crate) const FAMILY_OPTIONS: &[&str] = &[
     SYSTEM,
@@ -68,7 +71,7 @@ pub(crate) const FAMILY_OPTIONS: &[&str] = &[
     "Source Code Pro",
     "Cascadia Code",
 ];
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 pub(crate) const FAMILY_OPTIONS: &[&str] = &[
     SYSTEM,
     "JetBrains Mono",
@@ -77,18 +80,32 @@ pub(crate) const FAMILY_OPTIONS: &[&str] = &[
     "Source Code Pro",
     "Cascadia Code",
 ];
+#[cfg(windows)]
+pub(crate) const FAMILY_OPTIONS: &[&str] = &[SYSTEM];
 
 /// The canonical spelling of an `editor.fontFamily` value. Unset, empty,
-/// and `"system"` are the system face. `None` for a family Lux cannot load.
+/// and `"system"` are the system face. A CSS-style stack such as VS Code's
+/// `"'JetBrains Mono', Menlo, monospace"` resolves to its first entry Lux
+/// can load; the generic `monospace` is the system face. `None` when no
+/// entry is a family Lux can load.
 pub(crate) fn canonical(raw: Option<&str>) -> Option<&'static str> {
     let raw = raw.map(str::trim).unwrap_or("");
     if raw.is_empty() {
         return Some(SYSTEM);
     }
-    FAMILY_OPTIONS
-        .iter()
-        .copied()
-        .find(|name| name.eq_ignore_ascii_case(raw))
+    let known = |name: &str| {
+        FAMILY_OPTIONS
+            .iter()
+            .copied()
+            .find(|option| option.eq_ignore_ascii_case(name))
+    };
+    known(raw).or_else(|| {
+        raw.split(',')
+            .map(|entry| entry.trim().trim_matches(|c| c == '\'' || c == '"').trim())
+            .find_map(|entry| {
+                known(entry).or_else(|| entry.eq_ignore_ascii_case("monospace").then_some(SYSTEM))
+            })
+    })
 }
 
 pub(crate) fn bundled(name: &str) -> Option<&'static BundledFont> {
@@ -100,8 +117,9 @@ pub(crate) fn bundled(name: &str) -> Option<&'static BundledFont> {
 /// Where the fonts directory can be, for a binary at `exe`, in lookup
 /// order: inside a macOS bundle (from `Contents/MacOS` and from
 /// `Contents/SharedSupport/bin`), the `.deb` and dist layout
-/// (`bin/../share/lux/fonts`), then the repository for dev runs from
-/// `target/`.
+/// (`bin/../share/lux/fonts`), then, in debug builds and tests only, the
+/// repository for dev runs from `target/`. A release build never looks in
+/// the source tree, so a package that forgot the fonts shows it.
 pub(crate) fn font_dirs(exe: Option<&Path>) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(bin) = exe.and_then(Path::parent) {
@@ -109,6 +127,7 @@ pub(crate) fn font_dirs(exe: Option<&Path>) -> Vec<PathBuf> {
         dirs.push(bin.join("../../Resources/fonts"));
         dirs.push(bin.join("../share/lux/fonts"));
     }
+    #[cfg(any(debug_assertions, test))]
     dirs.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts"));
     dirs
 }

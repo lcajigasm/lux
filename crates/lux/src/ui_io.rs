@@ -50,8 +50,9 @@ pub(crate) enum Done {
     },
     /// The UI face was read from disk and can be registered.
     UiFont,
-    /// An editor face read for `editor.fontFamily`.
-    EditorFont(Option<crate::font::editor::LoadedFont>),
+    /// An editor face read for the `editor.fontFamily` name it carries;
+    /// `None` when not even the system face could be read.
+    EditorFont(&'static str, Option<crate::font::editor::LoadedFont>),
     /// Coverage font faces read from disk.
     Fonts(Vec<crate::font::CoverageFace>),
     /// First document with an unsaved recovery snapshot, if any.
@@ -265,7 +266,7 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
             crate::font::install_coverage_faces(layout, &faces);
         }
         Done::UiFont => crate::font::install_ui_font(app.editor_view.text_layout_mut()),
-        Done::EditorFont(loaded) => app.install_editor_font(loaded),
+        Done::EditorFont(requested, loaded) => app.install_editor_font(requested, loaded),
         Done::Recovery(first) => crate::app::startup::note_recovery(app, first),
     }
 }

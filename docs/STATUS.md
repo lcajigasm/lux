@@ -1370,16 +1370,22 @@ family's SIL OFL 1.1 text and `fonts/NOTICE.md` (1.5 MB of fonts).
 `Lux.app/Contents/Resources/fonts` (`stage-lux-app.sh`,
 `package-macos.sh`, which also checks the mounted DMG), the `.deb`
 (`/usr/share/lux/fonts`), and the dist tree (`share/lux/fonts`); dev runs
-use the repository's `fonts/`. `editor.fontFamily` accepts `system`
+use the repository's `fonts/` (debug builds only; a release build never
+reads the source tree). `scripts/install-fonts.sh` verifies with `shasum`
+or, where that is missing, `sha256sum`. `editor.fontFamily` accepts `system`
 (default: SF Mono, then Menlo on macOS), the five families
-(case-insensitive), and on macOS `SF Mono` and `Menlo`. Settings → Font
+(case-insensitive), and on macOS `SF Mono` and `Menlo`. A CSS-style stack
+such as VS Code's `"'JetBrains Mono', Menlo, monospace"` resolves to its
+first entry Lux can load (`monospace` is the system face). Settings → Font
 Family lists exactly those; its description line is a preview drawn in the
 editor face with the current ligature setting. The startup read loads the
 selected face instead of the system one (one file either way, before the
 event loop). A later change reads the file on a `ui_io` worker and swaps
 the editor family and rasterizing face when it lands; a face loaded once is
 reused without disk access. A missing file or unknown name logs and keeps
-the system face. `editor.fontLigatures` changes `->`, `!=`, `=>` in
+the system face. When the family changes again while a read is running,
+the older result is dropped and the newer request stays pending, even when
+the older read found nothing. `editor.fontLigatures` changes `->`, `!=`, `=>` in
 JetBrains Mono, Fira Code, and Cascadia Code, and leaves Plex and Source
 Code Pro unchanged. Only Regular ships: nothing draws bold or italic.
 Verified on macOS (aarch64-apple-darwin): `cargo test -p lux font::bundled`
@@ -1390,7 +1396,8 @@ change after; switching back reads nothing),
 `settings::tests::the_font_family_row_lists_the_system_face_and_every_bundled_family`,
 and a staged `target/Lux.app` that loaded JetBrains Mono from
 `Contents/Resources/fonts` and painted `→ ≠ ⇒`. Windows: the MSI does not
-install `fonts/`, so every bundled name falls back to Consolas. Linux: the
+install `fonts/`, so Settings offers only `system` there and every bundled
+name falls back to Consolas. Linux: the
 `.deb` installs them, not run on Linux hardware.
 
 **Scope note (`lux-config::font_settings` — typography with project/folder

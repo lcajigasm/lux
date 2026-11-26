@@ -197,10 +197,13 @@ fn the_font_family_row_lists_the_system_face_and_every_bundled_family() {
     let SettingKind::Enum { value, options } = &row.kind else {
         panic!("Font Family is a menu");
     };
-    assert_eq!(value, "Fira Code");
     assert_eq!(options[0], "system");
+    // The Windows MSI does not install the bundled fonts, so Windows does
+    // not offer them.
+    let offered = !cfg!(windows);
+    assert_eq!(value, if offered { "Fira Code" } else { "system" });
     for font in crate::font::bundled::BUNDLED_FONTS {
-        assert!(options.contains(&font.family), "{}", font.family);
+        assert_eq!(options.contains(&font.family), offered, "{}", font.family);
     }
     assert_eq!(row.description, catalog::FONT_PREVIEW);
 

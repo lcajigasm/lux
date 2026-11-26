@@ -92,9 +92,44 @@ fn every_option_is_canonical_and_names_match_without_case() {
     for option in FAMILY_OPTIONS {
         assert_eq!(canonical(Some(option)), Some(*option));
     }
+    // Offered only where the packages install them (not the Windows MSI).
     for font in BUNDLED_FONTS {
-        assert!(FAMILY_OPTIONS.contains(&font.family), "{}", font.family);
+        assert_eq!(
+            FAMILY_OPTIONS.contains(&font.family),
+            !cfg!(windows),
+            "{}",
+            font.family
+        );
     }
+}
+
+#[test]
+fn a_font_stack_resolves_to_its_first_loadable_entry() {
+    assert_eq!(
+        canonical(Some("'JetBrains Mono', Menlo, monospace")),
+        Some("JetBrains Mono")
+    );
+    assert_eq!(
+        canonical(Some("Comic Sans MS, \"fira code\", monospace")),
+        Some("Fira Code")
+    );
+    assert_eq!(canonical(Some("Comic Sans MS, monospace")), Some(SYSTEM));
+    assert_eq!(canonical(Some("Comic Sans MS, Papyrus")), None);
+}
+
+#[test]
+fn only_debug_builds_look_in_the_source_tree() {
+    let repo_fonts = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts");
+    // Tests always build with the source tree in the list; the line is
+    // `cfg(any(debug_assertions, test))`, so a release binary drops it.
+    assert!(font_dirs(None).contains(&repo_fonts));
+    let source = include_str!("bundled.rs");
+    let line = source
+        .lines()
+        .position(|l| l.contains("CARGO_MANIFEST_DIR"))
+        .unwrap();
+    let previous = source.lines().nth(line - 1).unwrap();
+    assert_eq!(previous.trim(), "#[cfg(any(debug_assertions, test))]");
 }
 
 #[test]

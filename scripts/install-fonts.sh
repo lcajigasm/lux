@@ -13,7 +13,15 @@ if [[ ! -f "$src/SHA256SUMS" || ! -f "$src/NOTICE.md" ]]; then
   echo "install-fonts: $src is missing SHA256SUMS or NOTICE.md" >&2
   exit 1
 fi
-(cd "$src" && shasum -a 256 -c SHA256SUMS >/dev/null) || {
+if command -v shasum >/dev/null 2>&1; then
+  sha256=(shasum -a 256)
+elif command -v sha256sum >/dev/null 2>&1; then
+  sha256=(sha256sum)
+else
+  echo "install-fonts: neither shasum nor sha256sum is installed" >&2
+  exit 1
+fi
+(cd "$src" && "${sha256[@]}" -c SHA256SUMS >/dev/null) || {
   echo "install-fonts: a font in $src does not match SHA256SUMS" >&2
   exit 1
 }
