@@ -493,7 +493,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-SIDE-01 — Menú Contextual Completo y Creación/Renombrado Inline en el Árbol
 - Prioridad: `P1 (Ergonomía)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: ST-FIX-02
 - Problema actual:
   - Las operaciones de creación o borrado en `crates/lux/src/sidebar/ops.rs` ejecutan I/O síncrono en el hilo de UI y el menú contextual carece de confirmaciones y opciones avanzadas.
@@ -513,7 +513,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-SIDE-02 — Sincronización Automática en Tiempo Real con el Sistema de Archivos (FSEvents)
 - Prioridad: `P1 (Core UX)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: ST-SIDE-01
 - Problema actual:
   - Si se crean, borran o modifican archivos externamente (e.g. vía `git checkout`, `cargo build` o terminal), la barra lateral no refleja los cambios automáticamente.

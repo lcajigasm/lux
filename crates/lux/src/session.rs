@@ -11,11 +11,14 @@ use lux_core::multicursor::MultiCursor;
 use lux_core::position::Position;
 use lux_core::selection::Selection;
 use lux_workspace::session::{CursorState, SESSION_FILE_NAME, Session, TabState};
-use lux_workspace::watcher::{ChangeKind, FileWatcher};
+use lux_workspace::watcher::FileWatcher;
 
 use crate::app::App;
-use crate::conflict::ConflictPrompt;
 use crate::document::DocumentEntry;
+
+mod disk_events;
+
+pub(crate) use disk_events::{mark_removed, poll_file_watcher};
 
 #[derive(Default)]
 pub(crate) struct WorkspaceSession {
@@ -24,23 +27,55 @@ pub(crate) struct WorkspaceSession {
     /// Background project symbol index for `Cmd+Shift+R`.
     pub(crate) symbols: Option<lux_workspace::SymbolIndexer>,
     waker: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// Sidebar create, rename, duplicate, and trash jobs. Kept here so a
+    /// result still reaches the tabs after the last folder closes.
+    pub(crate) file_ops: crate::sidebar::worker::Jobs,
+    /// Clean open files being read again after an external edit.
+    pub(crate) reloads: disk_events::Reloads,
     /// Last measured frame. Written on move and resize, and used at quit
     /// if the window has already closed.
     pub(crate) frame: Option<lux_workspace::WindowFrame>,
 }
 
 impl WorkspaceSession {
+    /// A fresh watcher on `root`. The watch and its seeding scan run on a
+    /// worker, and the waker fires once the watch is in place.
     pub(crate) fn init_watcher(&mut self, root: &Path) {
         self.symbols = Some(lux_workspace::SymbolIndexer::start(
             Some(root.to_path_buf()),
             self.waker.clone(),
         ));
         if let Ok(mut watcher) = FileWatcher::new(Duration::from_millis(150)) {
-            let _ = watcher.watch(root);
             if let Some(waker) = &self.waker {
                 watcher.set_waker(Arc::clone(waker));
             }
+            watcher.watch_detached(root);
             self.watcher = Some(watcher);
+        }
+    }
+
+    /// `init_watcher` for tests: only the watcher wakes `wake`, so a test
+    /// that waits for "the watch is in place" is not released early by the
+    /// symbol indexer's first snapshot.
+    #[cfg(test)]
+    pub(crate) fn init_watcher_waking(&mut self, root: &Path, wake: Arc<dyn Fn() + Send + Sync>) {
+        self.symbols = Some(lux_workspace::SymbolIndexer::start(
+            Some(root.to_path_buf()),
+            None,
+        ));
+        if let Ok(mut watcher) = FileWatcher::new(Duration::from_millis(150)) {
+            watcher.set_waker(wake);
+            watcher.watch_detached(root);
+            self.watcher = Some(watcher);
+        }
+    }
+
+    /// Adds or drops one more sidebar folder. Off the UI thread.
+    pub(crate) fn watch_folder(&mut self, root: &Path, watch: bool) {
+        match self.watcher.as_mut() {
+            Some(watcher) if watch => watcher.watch_detached(root),
+            Some(watcher) => watcher.unwatch_detached(root),
+            None => {}
         }
     }
 
@@ -284,76 +319,6 @@ pub(crate) fn restore_session(app: &mut App, session_path: &Path) -> std::io::Re
     Ok(restored_any)
 }
 
-pub(crate) fn poll_file_watcher(app: &mut App) {
-    crate::goto::symbols::poll(app);
-    let changes = if let Some(watcher) = &mut app.ui.session.watcher {
-        watcher.try_recv().changes
-    } else {
-        return;
-    };
-
-    crate::goto::symbols::note_changes(app, &changes);
-
-    let mut repaint_needed = false;
-    for change in changes {
-        match change.kind {
-            ChangeKind::Reload => {
-                let is_active_reloaded = if let Some(entry) = app
-                    .documents
-                    .entries
-                    .iter_mut()
-                    .find(|e| e.path.as_ref() == Some(&change.path))
-                {
-                    if !entry.is_dirty() {
-                        if let Ok(new_buf) = Buffer::open(&change.path) {
-                            entry.buffer = new_buf.clone();
-                            entry.saved_version = entry.history.state_id();
-                            entry.disk_snapshot = Some(new_buf);
-                            app.documents.active_tab == Some(entry.tab_id)
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
-
-                if is_active_reloaded && let Ok(new_buf) = Buffer::open(&change.path) {
-                    app.buffer = new_buf;
-                    app.update_syntax_on_open();
-                }
-                repaint_needed = true;
-            }
-            ChangeKind::Conflict => {
-                let is_dirty_open = app
-                    .documents
-                    .entries
-                    .iter()
-                    .any(|e| e.path.as_ref() == Some(&change.path) && e.is_dirty());
-
-                if is_dirty_open {
-                    app.ui.dialogs.conflict_prompt = Some(ConflictPrompt::new(change.path));
-                    repaint_needed = true;
-                }
-            }
-            ChangeKind::Created | ChangeKind::Removed => {
-                if crate::sidebar::watch::apply(app, &change.path, change.kind) {
-                    repaint_needed = true;
-                }
-            }
-        }
-    }
-
-    if repaint_needed {
-        app.scheduler.invalidate_all();
-        if let Some(gpu) = &app.gpu_window {
-            gpu.window.request_redraw();
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -545,7 +510,7 @@ mod tests {
         app.documents.entries[0].path = Some(file.clone());
         app.documents.entries[0].buffer = buf.clone();
         app.buffer = buf;
-        app.ui.session.init_watcher(dir.path());
+        crate::sidebar::watch::watch_and_wait(&mut app, dir.path());
 
         std::fs::write(&file, "fresh\n").unwrap();
         let deadline = std::time::Instant::now() + Duration::from_secs(4);

@@ -28,6 +28,9 @@ impl FileDialogs for DummyDialogs {
     fn confirm_save(&self, _: &str) -> lux_platform::dialog::SaveDecision {
         lux_platform::dialog::SaveDecision::Discard
     }
+    fn confirm_trash(&self, _: &str) -> bool {
+        false
+    }
 }
 
 static DUMMY_DIALOGS: DummyDialogs = DummyDialogs;

@@ -128,6 +128,7 @@ mod tests {
         FileChange {
             path: path.to_path_buf(),
             kind,
+            is_dir: false,
         }
     }
 

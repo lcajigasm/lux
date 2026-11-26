@@ -56,6 +56,9 @@ impl FileDialogs for DummyDialogs {
     fn confirm_save(&self, _: &str) -> SaveDecision {
         SaveDecision::Discard
     }
+    fn confirm_trash(&self, _: &str) -> bool {
+        false
+    }
 }
 
 impl Clipboard for TestContext {

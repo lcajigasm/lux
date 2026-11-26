@@ -465,6 +465,9 @@ impl FileDialogs for Dialogs {
     fn confirm_save(&self, _: &str) -> lux_platform::dialog::SaveDecision {
         lux_platform::dialog::SaveDecision::Discard
     }
+    fn confirm_trash(&self, _: &str) -> bool {
+        false
+    }
 }
 
 static DIALOGS: Dialogs = Dialogs;

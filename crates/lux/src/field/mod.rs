@@ -8,6 +8,8 @@ use lux_platform::{Clipboard, ElementState, Ime, Key, PhysicalKey};
 
 use crate::app::App;
 
+mod caret;
+
 #[derive(Clone, Debug)]
 pub(crate) struct QueryField {
     text: String,
@@ -276,6 +278,14 @@ fn text_field(app: &mut App) -> Option<&mut QueryField> {
             crate::project_search::SearchField::Replace => &mut search.replace_query,
         });
     }
+    if let Some(input) = app
+        .ui
+        .sidebar
+        .as_mut()
+        .and_then(|sidebar| sidebar.inline_input.as_mut())
+    {
+        return Some(&mut input.field);
+    }
     None
 }
 
@@ -486,6 +496,11 @@ fn has_text_field(app: &App) -> bool {
         || app.ui.goto_anything.is_some()
         || app.ui.search_bar.is_some()
         || app.ui.project_search.is_some()
+        || app
+            .ui
+            .sidebar
+            .as_ref()
+            .is_some_and(|sidebar| sidebar.inline_input.is_some())
 }
 
 fn sync_search(app: &mut App) {

@@ -49,6 +49,9 @@ impl FileDialogs for MockDialogs {
     fn confirm_save(&self, _: &str) -> SaveDecision {
         self.decision
     }
+    fn confirm_trash(&self, _: &str) -> bool {
+        false
+    }
 }
 
 struct TestContext {

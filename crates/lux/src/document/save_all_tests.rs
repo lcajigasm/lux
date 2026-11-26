@@ -34,6 +34,9 @@ impl FileDialogs for Dialogs {
     fn confirm_save(&self, _: &str) -> SaveDecision {
         SaveDecision::Discard
     }
+    fn confirm_trash(&self, _: &str) -> bool {
+        false
+    }
 }
 
 struct Context {

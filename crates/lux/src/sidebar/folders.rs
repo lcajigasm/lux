@@ -85,6 +85,10 @@ impl SidebarState {
     /// Drops the folder at `index` from the sidebar. Index 0 is the header
     /// folder. The returned path is not removed from disk.
     pub(crate) fn close_folder(&mut self, index: usize) -> Option<PathBuf> {
+        let open = 1 + self.extra.len();
+        if index < open && self.workspace_root.is_some() {
+            self.shift_inline_input(index);
+        }
         if index == 0 {
             let removed = self.workspace_root.take()?;
             if self.extra.is_empty() {
@@ -108,6 +112,28 @@ impl SidebarState {
             self.selected_node = None;
         }
         Some(removed.path)
+    }
+
+    /// The inline field follows its folder when an earlier one closes and
+    /// is cancelled when its own folder closes, so Enter never resolves
+    /// its node against another folder's tree.
+    fn shift_inline_input(&mut self, closing: usize) {
+        let Some(input) = self.inline_input.as_mut() else {
+            return;
+        };
+        if input.root == closing {
+            self.inline_input = None;
+        } else if input.root > closing {
+            input.root -= 1;
+        }
+    }
+
+    /// The tree of open folder `root`: 0 is the header, then `extra`.
+    pub(crate) fn tree_at(&self, root: usize) -> Option<&FileTree> {
+        match root {
+            0 => self.tree.as_ref(),
+            n => self.extra.get(n - 1).map(|folder| &folder.tree),
+        }
     }
 
     pub(crate) fn root_names(&self) -> Vec<String> {
@@ -208,14 +234,22 @@ pub(crate) fn close(app: &mut crate::app::App, index: usize) {
                 .focus
                 .set_focus(lux_ui::focus::FocusTarget::Editor);
         }
-    } else if index == 0
-        && let Some(root) = app
-            .ui
-            .sidebar
-            .as_ref()
-            .and_then(|sidebar| sidebar.workspace_root.clone())
-    {
-        app.ui.session.init_watcher(&root);
+    } else {
+        // The other folders stay watched, and so do unsaved-file marks.
+        app.ui.session.watch_folder(&path, false);
+        if index == 0
+            && let Some(root) = app
+                .ui
+                .sidebar
+                .as_ref()
+                .and_then(|sidebar| sidebar.workspace_root.clone())
+        {
+            // The project symbol index follows the new first folder.
+            app.ui.session.symbols = Some(lux_workspace::SymbolIndexer::start(
+                Some(root),
+                app.ui.session.waker(),
+            ));
+        }
     }
     detach_closed_repo(app, &path);
     // A clean tab whose file lives in the closed folder goes with it.
@@ -456,5 +490,37 @@ mod tests {
             .collect();
         assert!(titles.contains(&"Untitled"), "{titles:?}");
         assert!(!titles.contains(&"ci.yml"), "{titles:?}");
+    }
+
+    /// A field open in the third folder moves to index 1 when the header
+    /// folder closes, and is cancelled when its own folder closes.
+    #[test]
+    fn the_inline_field_follows_its_folder_and_closes_with_it() {
+        use crate::sidebar::inline::{self, InlineInputMode};
+        let alpha = tempfile::tempdir().unwrap();
+        let beta = tempfile::tempdir().unwrap();
+        let gamma = tempfile::tempdir().unwrap();
+        std::fs::write(gamma.path().join("g.txt"), "g").unwrap();
+        let mut sidebar = SidebarState::open_folder(alpha.path().to_path_buf()).unwrap();
+        assert!(sidebar.add_folder(beta.path().to_path_buf()));
+        assert!(sidebar.add_folder(gamma.path().to_path_buf()));
+        let root = sidebar.tree_at(2).unwrap().root();
+        inline::begin(
+            &mut sidebar,
+            2,
+            InlineInputMode::CreateFile { parent_id: root },
+        );
+
+        sidebar.close_folder(0);
+        let input = sidebar.inline_input.as_ref().expect("field still open");
+        assert_eq!(input.root, 1);
+        let tree = sidebar.tree_at(input.root).unwrap();
+        let anchor = tree.node_path(input.anchor()).unwrap();
+        assert!(anchor.ends_with(gamma.path().file_name().unwrap()));
+
+        sidebar.close_folder(0);
+        assert_eq!(sidebar.inline_input.as_ref().unwrap().root, 0);
+        sidebar.close_folder(0);
+        assert!(sidebar.inline_input.is_none());
     }
 }
