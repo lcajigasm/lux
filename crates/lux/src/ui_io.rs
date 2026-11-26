@@ -326,7 +326,6 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
         }
         Done::UiFont => crate::font::install_ui_font(app.editor_view.text_layout_mut()),
         Done::EditorFont(requested, loaded) => app.install_editor_font(requested, loaded),
-
         Done::BuildSystems(loaded) => crate::build::systems::apply_loaded(app, *loaded),
         Done::BuildDetected(detected) => crate::build::request::finish(app, ctx, *detected),
         Done::Recovery(first) => crate::app::startup::note_recovery(app, first),

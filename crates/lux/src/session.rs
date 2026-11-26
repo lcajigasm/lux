@@ -48,7 +48,6 @@ pub(crate) struct WorkspaceSession {
     /// A change was noted since the last session snapshot. Only set while
     /// the event loop runs (a waker is registered), like the debounce.
     unsaved: bool,
-
     /// Bumped whenever the watched folders change, so state derived from
     /// the open folders (build systems) knows to reload.
     folder_epoch: u64,

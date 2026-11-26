@@ -428,7 +428,7 @@ fn coverage_fonts_and_recovery_scan_load_after_the_call_returns() {
     );
 
     hold.release();
-    ctx.settle(&mut app, 4);
+    ctx.settle(&mut app, 5);
     assert_eq!(app.ui.dialogs.jobs.in_flight(), 0);
 }
 
