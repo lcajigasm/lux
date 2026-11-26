@@ -10,6 +10,11 @@ hinting quality. Used only by `glyph_atlas` tests; never shipped in the
 editor itself. Sourced from
 `googlefonts/fontations/font-test-data/test_data/ttf/ahem.ttf`.
 
+`ahem-emoji.ttf` — a subset of `ahem.ttf` with only U+0020 and U+2122,
+renamed to the family "Ahem Emoji" so a test can register it as the emoji
+face next to the full Ahem file without the two merging into one family.
+Same license as Ahem. Used only by `faces::tests`.
+
 `dejavu-mono-mark.ttf` — a 4 KB subset of DejaVu Sans Mono containing
 U+0020, U+0065, and U+0323 (combining dot below), plus the mark-to-base
 layout tables. Used only by `text_layout::tests::a_combining_mark_is_not_dropped`

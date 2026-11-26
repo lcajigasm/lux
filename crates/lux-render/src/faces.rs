@@ -9,12 +9,15 @@
 //!   reads it there, and registers the bytes here. Dynamic faces follow the
 //!   primary family in every line's family list, so they apply whatever
 //!   script the run resolves to (symbols and math are script Common and
-//!   would miss a script-keyed fallback).
+//!   would miss a script-keyed fallback). The emoji generic family sits
+//!   between the primary and the dynamic faces, so a symbol face that also
+//!   maps ☀ or ❤ never draws them in monochrome ahead of the color face.
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 use fontique::Blob;
+use fontique::GenericFamily;
 use parley::{FontFamily, FontFamilyName, Layout, PositionedLayoutItem};
 
 use crate::text_layout::{NoBrush, TextLayoutContext};
@@ -24,6 +27,10 @@ use crate::text_layout::{NoBrush, TextLayoutContext};
 pub(crate) struct DynamicFallback {
     /// Family names in registration order, appended after the primary.
     families: Vec<String>,
+    /// The family list for `list_primary`: built once when the primary or
+    /// `families` changes, borrowed by every line after that.
+    list: Vec<FontFamilyName<'static>>,
+    list_primary: String,
     /// Keys (file paths) of faces already registered, so one face is read
     /// into the collection once.
     keys: Vec<String>,
@@ -35,16 +42,37 @@ pub(crate) struct DynamicFallback {
 }
 
 impl DynamicFallback {
-    /// The family value for one line: the primary alone, or the primary
-    /// followed by every dynamic face.
+    /// Rebuilds the cached family list if `primary` or the dynamic faces
+    /// changed since the last call. Allocates only then, not per line.
+    pub(crate) fn prepare(&mut self, primary: &str) {
+        if self.families.is_empty() || (!self.list.is_empty() && self.list_primary == primary) {
+            return;
+        }
+        self.list.clear();
+        self.list
+            .push(FontFamilyName::Named(Cow::Owned(primary.to_owned())));
+        // Emoji before the dynamic faces: parley only appends the emoji
+        // family after the line's own list, so without this a symbol face
+        // registered for some other character would win ☀ or ❤. The color
+        // emoji face maps almost nothing that is not emoji, and the primary
+        // still comes first for what it covers.
+        self.list
+            .push(FontFamilyName::Generic(GenericFamily::Emoji));
+        self.list.extend(
+            self.families
+                .iter()
+                .map(|f| FontFamilyName::Named(Cow::Owned(f.clone()))),
+        );
+        primary.clone_into(&mut self.list_primary);
+    }
+
+    /// The family value for one line: the primary alone, or the list
+    /// [`Self::prepare`] built for it.
     pub(crate) fn family<'a>(&'a self, primary: &'a str) -> FontFamily<'a> {
-        if self.families.is_empty() {
+        if self.families.is_empty() || self.list_primary != primary {
             return FontFamily::named(primary);
         }
-        let mut list = Vec::with_capacity(self.families.len() + 1);
-        list.push(FontFamilyName::named(primary));
-        list.extend(self.families.iter().map(|f| FontFamilyName::named(f)));
-        FontFamily::List(Cow::Owned(list))
+        FontFamily::List(Cow::Borrowed(&self.list))
     }
 
     /// Records non-emoji characters that shaped to glyph 0. ASCII lines are
@@ -122,15 +150,22 @@ impl TextLayoutContext {
         std::mem::take(&mut self.fallback.pending)
     }
 
+    /// Keys of the fallback faces registered so far, so a worker can skip
+    /// reading their files again.
+    pub fn fallback_face_keys(&self) -> impl Iterator<Item = &str> {
+        self.fallback.keys.iter().map(String::as_str)
+    }
+
     /// Registers a face the platform chose for missing characters and puts
     /// its families after the primary in every later layout. `key` (the
     /// file path) dedupes: a face already registered is not added again.
-    /// Returns whether the face is now available.
-    pub fn register_fallback_face(&mut self, key: &str, font_bytes: &[u8]) -> bool {
+    /// The bytes are moved into the collection, not copied, so the face
+    /// exists once in memory. Returns whether the face is now available.
+    pub fn register_fallback_face(&mut self, key: &str, font_bytes: Vec<u8>) -> bool {
         if self.fallback.keys.iter().any(|k| k == key) {
             return true;
         }
-        let blob = Blob::from(font_bytes.to_vec());
+        let blob = Blob::from(font_bytes);
         let registered = self.font_context.collection.register_fonts(blob, None);
         if registered.is_empty() {
             return false;
@@ -141,6 +176,7 @@ impl TextLayoutContext {
             };
             if !self.fallback.families.iter().any(|f| f == name) {
                 self.fallback.families.push(name.to_owned());
+                self.fallback.list.clear();
             }
         }
         self.fallback.keys.push(key.to_owned());

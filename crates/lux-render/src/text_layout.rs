@@ -224,6 +224,7 @@ impl TextLayoutContext {
         max_width: Option<f32>,
         ligature_overrides: &[(Range<usize>, bool)],
     ) -> LineLayout {
+        self.fallback.prepare(style.family);
         let mut builder =
             self.layout_context
                 .ranged_builder(&mut self.font_context, text, 1.0, true);

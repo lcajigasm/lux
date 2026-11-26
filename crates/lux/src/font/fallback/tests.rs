@@ -21,14 +21,15 @@ fn load_faces_reads_each_distinct_face_once_and_skips_unresolved_chars() {
         log.lock().unwrap().push(path.to_path_buf());
         Ok(path.to_string_lossy().as_bytes().to_vec())
     };
-    let faces = load_faces(&['x', 'y', 'q', 'z'], &locate, &read);
+    let faces = load_faces(&['x', 'y', 'q', 'z'], &[], &locate, &read);
     let keys: Vec<_> = faces.iter().map(|f| f.key.clone()).collect();
     assert_eq!(keys, vec![a.display().to_string(), b.display().to_string()]);
     assert_eq!(*reads.lock().unwrap(), vec![a.clone(), b.clone()]);
 
-    // A later batch with the same face is served from memory.
-    let again = load_faces(&['y'], &locate, &read);
-    assert_eq!(again.len(), 1);
+    // A later batch whose face the layout context already holds reads
+    // nothing and returns nothing: no second copy of the bytes.
+    let again = load_faces(&['y'], &keys, &locate, &read);
+    assert!(again.is_empty());
     assert_eq!(reads.lock().unwrap().len(), 2);
 }
 
@@ -108,11 +109,10 @@ fn scripts_outside_the_coverage_list_get_real_glyphs_from_a_worker() {
     .join()
     .unwrap();
     assert!(!faces.is_empty(), "CoreText names a face for these scripts");
-    // `READ` may already hold a face from another test in this process;
-    // whoever read it, it was not this (UI) thread.
+    assert!(!readers.lock().unwrap().is_empty());
     assert!(readers.lock().unwrap().iter().all(|id| *id != ui_thread));
 
-    install(&mut layout, &faces);
+    install(&mut layout, faces);
     let after = notdef(&mut layout);
     assert!(after.is_empty(), "still .notdef after fallback: {after:?}");
     assert!(take_job(&mut layout).is_none());

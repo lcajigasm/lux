@@ -17,26 +17,26 @@
 //! The UI thread never reads a font file and never calls CoreText here.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 
 /// A face read on a worker, ready to register on the UI thread.
 pub(crate) struct FallbackFace {
     /// File path; also the dedupe key in the layout context.
     pub(crate) key: String,
-    pub(crate) bytes: Arc<Vec<u8>>,
+    /// Moved into the layout context's collection on install: the only
+    /// copy of the face kept in memory.
+    pub(crate) bytes: Vec<u8>,
 }
 
 type Reader<'a> = &'a dyn Fn(&Path) -> std::io::Result<Vec<u8>>;
 
-/// Faces already read, by path, so another window or a later batch does not
-/// read the same file again.
-static READ: Mutex<Vec<(PathBuf, Arc<Vec<u8>>)>> = Mutex::new(Vec::new());
-
 /// Worker side: resolves each character to a face file with `locate`, then
-/// reads each distinct file once with `read`. Characters the system cannot
-/// draw either (CoreText answers with LastResort) produce nothing.
+/// reads each distinct file once with `read`. Files in `registered` (keys
+/// the layout context already holds) are not read again. Characters the
+/// system cannot draw either (CoreText answers with LastResort) produce
+/// nothing.
 fn load_faces(
     chars: &[char],
+    registered: &[String],
     locate: &dyn Fn(char) -> Option<PathBuf>,
     read: Reader<'_>,
 ) -> Vec<FallbackFace> {
@@ -50,39 +50,24 @@ fn load_faces(
     }
     let mut faces = Vec::new();
     for path in paths {
-        let cached = READ.lock().ok().and_then(|read| {
-            read.iter()
-                .find(|(p, _)| *p == path)
-                .map(|(_, b)| b.clone())
-        });
-        let bytes = match cached {
-            Some(bytes) => bytes,
-            None => match read(&path) {
-                Ok(bytes) => {
-                    let bytes = Arc::new(bytes);
-                    if let Ok(mut cache) = READ.lock() {
-                        cache.push((path.clone(), bytes.clone()));
-                    }
-                    bytes
-                }
-                Err(error) => {
-                    eprintln!("Lux: fallback face {} unreadable: {error}", path.display());
-                    continue;
-                }
-            },
-        };
-        faces.push(FallbackFace {
-            key: path.display().to_string(),
-            bytes,
-        });
+        let key = path.display().to_string();
+        if registered.contains(&key) {
+            continue;
+        }
+        match read(&path) {
+            Ok(bytes) => faces.push(FallbackFace { key, bytes }),
+            Err(error) => {
+                eprintln!("Lux: fallback face {} unreadable: {error}", path.display());
+            }
+        }
     }
     faces
 }
 
 /// UI side: registers faces a worker returned. No disk access.
-pub(crate) fn install(layout: &mut lux_render::TextLayoutContext, faces: &[FallbackFace]) {
+pub(crate) fn install(layout: &mut lux_render::TextLayoutContext, faces: Vec<FallbackFace>) {
     for face in faces {
-        if !layout.register_fallback_face(&face.key, &face.bytes) {
+        if !layout.register_fallback_face(&face.key, face.bytes) {
             eprintln!("Lux: fallback face {} did not parse", face.key);
         }
     }
@@ -91,6 +76,8 @@ pub(crate) fn install(layout: &mut lux_render::TextLayoutContext, faces: &[Fallb
 /// Characters to resolve, built on the UI thread and run on a worker.
 pub(crate) struct Job {
     chars: Vec<char>,
+    /// Keys of faces already registered when the job was built.
+    registered: Vec<String>,
     family: String,
 }
 
@@ -103,7 +90,12 @@ impl Job {
 
     /// Worker side. `read` is `std::fs::read` in the app.
     pub(crate) fn run(self, read: Reader<'_>) -> Vec<FallbackFace> {
-        load_faces(&self.chars, &|ch| locate(&self.family, ch), read)
+        load_faces(
+            &self.chars,
+            &self.registered,
+            &|ch| locate(&self.family, ch),
+            read,
+        )
     }
 }
 
@@ -118,6 +110,7 @@ pub(crate) fn take_job(layout: &mut lux_render::TextLayoutContext) -> Option<Job
     let chars = layout.take_missing_chars();
     (!chars.is_empty()).then(|| Job {
         chars,
+        registered: layout.fallback_face_keys().map(str::to_owned).collect(),
         family: String::new(),
     })
 }

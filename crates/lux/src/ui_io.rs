@@ -268,7 +268,7 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
             crate::font::install_coverage_faces(layout, &faces);
         }
         Done::FallbackFaces(faces) => {
-            crate::font::fallback::install(app.editor_view.text_layout_mut(), &faces);
+            crate::font::fallback::install(app.editor_view.text_layout_mut(), faces);
         }
         Done::UiFont => crate::font::install_ui_font(app.editor_view.text_layout_mut()),
         Done::EditorFont(requested, loaded) => app.install_editor_font(requested, loaded),

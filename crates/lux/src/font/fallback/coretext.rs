@@ -15,6 +15,9 @@ struct CFRange {
 }
 
 const UTF8: u32 = 0x0800_0100;
+/// `kCTFontUIFontUserFixedPitch`: the user's fixed-pitch font (Menlo or SF
+/// Mono).
+const USER_FIXED_PITCH: u32 = 1;
 
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
@@ -40,6 +43,8 @@ unsafe extern "C" {
 unsafe extern "C" {
     static kCTFontURLAttribute: CFTypeRef;
     fn CTFontCreateWithName(name: CFTypeRef, size: f64, matrix: *const c_void) -> CFTypeRef;
+    fn CTFontCreateUIFontForLanguage(kind: u32, size: f64, language: CFTypeRef) -> CFTypeRef;
+    fn CTFontCopyFamilyName(font: CFTypeRef) -> CFTypeRef;
     fn CTFontCreateForString(font: CFTypeRef, string: CFTypeRef, range: CFRange) -> CFTypeRef;
     fn CTFontGetGlyphsForCharacters(
         font: CFTypeRef,
@@ -92,12 +97,31 @@ fn rust_string(string: &Owned) -> Option<String> {
     String::from_utf8(buf[..end].to_vec()).ok()
 }
 
+/// The font CoreText starts its cascade from: `family` when it is an
+/// installed family. A face Lux registered from its own file (a bundled
+/// font) is unknown to CoreText, which would then answer with some
+/// unrelated default; the system monospace font stands in for it.
+fn base_font(family: &str) -> Option<Owned> {
+    if let Some(name) = cf_string(family) {
+        // SAFETY: `name` is a live CFString; a null matrix means identity.
+        let font = Owned::new(unsafe { CTFontCreateWithName(name.0, 16.0, std::ptr::null()) });
+        if let Some(font) = font {
+            // SAFETY: `font` is live; the copy follows the Create rule.
+            let found = Owned::new(unsafe { CTFontCopyFamilyName(font.0) })
+                .and_then(|name| rust_string(&name));
+            if found.is_some_and(|found| found.eq_ignore_ascii_case(family)) {
+                return Some(font);
+            }
+        }
+    }
+    // SAFETY: a constant font kind; a null language means the user's.
+    Owned::new(unsafe { CTFontCreateUIFontForLanguage(USER_FIXED_PITCH, 16.0, std::ptr::null()) })
+}
+
 /// The file of the face CoreText picks to draw `ch` after `family`, or
 /// `None` when no installed face has a glyph for it.
 pub(super) fn face_path_for(family: &str, ch: char) -> Option<PathBuf> {
-    let name = cf_string(family)?;
-    // SAFETY: `name` is a live CFString; a null matrix means identity.
-    let base = Owned::new(unsafe { CTFontCreateWithName(name.0, 16.0, std::ptr::null()) })?;
+    let base = base_font(family)?;
     let mut utf8 = [0u8; 4];
     let text = cf_string(ch.encode_utf8(&mut utf8))?;
     // SAFETY: `text` is a live CFString.
@@ -141,4 +165,28 @@ pub(super) fn face_path_for(family: &str, ch: char) -> Option<PathBuf> {
     }
     let end = path.iter().position(|b| *b == 0)?;
     Some(PathBuf::from(std::ffi::OsStr::from_bytes(&path[..end])))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn family_of(font: &Owned) -> Option<String> {
+        // SAFETY: `font` is live; the copy follows the Create rule.
+        Owned::new(unsafe { CTFontCopyFamilyName(font.0) }).and_then(|name| rust_string(&name))
+    }
+
+    #[test]
+    fn an_unknown_family_cascades_from_the_system_monospace_font() {
+        let system = base_font("")
+            .and_then(|f| family_of(&f))
+            .expect("system monospace");
+        let unknown = base_font("Lux Bundled Font That Is Not Installed")
+            .and_then(|f| family_of(&f))
+            .expect("a base font");
+        assert_eq!(unknown, system);
+        let menlo = base_font("Menlo").and_then(|f| family_of(&f));
+        assert_eq!(menlo.as_deref(), Some("Menlo"));
+        assert!(face_path_for("Lux Bundled Font That Is Not Installed", 'ส').is_some());
+    }
 }
