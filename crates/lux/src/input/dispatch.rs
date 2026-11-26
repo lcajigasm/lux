@@ -287,12 +287,12 @@ pub(crate) fn execute_keymap_command(
         }
         "next_result" => {
             if app.is_find_results_active() || !app.next_build_error(None) {
-                crate::find_results::next_result(app, None);
+                crate::find_results::next_result(app, ctx);
             }
         }
         "prev_result" => {
             if app.is_find_results_active() || !app.prev_build_error(None) {
-                crate::find_results::prev_result(app, None);
+                crate::find_results::prev_result(app, ctx);
             }
         }
         "build" => {

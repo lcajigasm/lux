@@ -345,6 +345,8 @@ impl PlatformEventHandler for App {
         self.finish_document_operation(ctx);
         crate::lsp::poll_lsp_events(self, ctx);
         self.poll_syntax_highlighter();
+        crate::find_stream::pump(self);
+        crate::find_stream::pump_panel(self);
         let mut settings = std::mem::take(&mut self.ui.settings);
         settings.poll_watcher(self);
         self.ui.settings = settings;

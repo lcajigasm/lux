@@ -2,14 +2,16 @@
 
 use lux_platform::event::KeyEvent;
 use lux_platform::{Key, NamedKey, PlatformContext};
-use lux_search::find_in_files::{SearchMatch, SearchOptions, SearchStream, find_in_files};
+use lux_search::find_in_files::{
+    Notify, SearchMatch, SearchOptions, SearchStream, find_in_files_notify,
+};
 use lux_search::replace_preview::{FileApplyResult, ReplacementPreview, build_preview};
 use std::path::{Path, PathBuf};
 
 #[allow(unused_imports)]
 pub(crate) use crate::find_results::{
-    FindResultsNav, format_find_results, next_result, open_find_result_at_line,
-    open_find_results_tab, open_match_in_editor, parse_matches_from_buffer, prev_result,
+    FindResultsNav, next_result, open_find_result_at_line, open_find_results_tab,
+    open_match_in_editor, parse_matches_from_buffer, prev_result,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -34,6 +36,8 @@ pub(crate) struct ProjectSearchState {
     pub(crate) focused_field: SearchField,
     pub(crate) case_insensitive: bool,
     pub(crate) status_message: Option<String>,
+    /// Platform loop waker: the live result list drains on a wake, not a key.
+    pub(crate) waker: Option<Notify>,
 }
 
 pub(crate) fn parse_where_query(where_str: &str) -> (Vec<String>, Vec<String>) {
@@ -75,44 +79,44 @@ impl ProjectSearchState {
             focused_field: SearchField::Find,
             case_insensitive: true,
             status_message: None,
+            waker: None,
         }
     }
 
-    pub(crate) fn start_search(&mut self, root: &Path) {
+    /// The trimmed query and options the `Find:`/`Where:` fields describe,
+    /// or `None` when there is nothing to search for.
+    pub(crate) fn search_request(&self) -> Option<(String, SearchOptions)> {
         let trimmed = self.find_query.trim();
         if trimmed.is_empty() {
-            self.stream = None;
-            self.matches.clear();
-            self.preview = None;
-            self.status_message = None;
-            return;
+            return None;
         }
-
         let (mut includes, mut excludes) = parse_where_query(&self.where_query);
-        for inc in self
-            .files_to_include
-            .split(',')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-        {
-            includes.push(inc.to_string());
-        }
-        for exc in self
-            .files_to_exclude
-            .split(',')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-        {
-            excludes.push(exc.to_string());
-        }
-
+        let split = |list: &str| -> Vec<String> {
+            list.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        };
+        includes.extend(split(&self.files_to_include));
+        excludes.extend(split(&self.files_to_exclude));
         let options = SearchOptions {
             case_insensitive: self.case_insensitive,
             includes,
             excludes,
         };
+        Some((trimmed.to_string(), options))
+    }
 
-        match find_in_files(root, trimmed, &options) {
+    pub(crate) fn start_search(&mut self, root: &Path) {
+        let Some((query, options)) = self.search_request() else {
+            self.stream = None;
+            self.matches.clear();
+            self.preview = None;
+            self.status_message = None;
+            return;
+        };
+        match find_in_files_notify(root, &query, &options, self.waker.clone()) {
             Ok(stream) => {
                 self.stream = Some(stream);
                 self.matches.clear();
@@ -122,6 +126,7 @@ impl ProjectSearchState {
                 self.poll_stream();
             }
             Err(e) => {
+                self.stream = None;
                 self.status_message = Some(e.to_string());
             }
         }
@@ -178,46 +183,30 @@ impl ProjectSearchState {
             self.selected_index -= 1;
         }
     }
-
-    #[cfg(test)]
-    pub(crate) fn wait_until_done(&mut self) {
-        if let Some(stream) = &mut self.stream {
-            stream.wait_until_done();
-            self.matches = stream.matches().to_vec();
-            self.stream = None;
-        }
-    }
 }
 
+fn workspace_root(app: &crate::app::App) -> PathBuf {
+    app.ui
+        .sidebar
+        .as_ref()
+        .and_then(|s| s.workspace_root.clone())
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Closes the panel and streams a fresh search into the `Find Results` tab.
+/// The panel's own preview stream is dropped (and so cancelled); a run
+/// already filling the tab is replaced.
 pub(crate) fn execute_find_in_files(app: &mut crate::app::App, _ctx: Option<&dyn PlatformContext>) {
-    let (query, _root) = {
-        let Some(state) = app.ui.project_search.as_mut() else {
-            return;
-        };
-        let root = app
-            .ui
-            .sidebar
-            .as_ref()
-            .and_then(|s| s.workspace_root.clone())
-            .unwrap_or_else(|| PathBuf::from("."));
-        if state.stream.is_none() && !state.find_query.trim().is_empty() {
-            state.start_search(&root);
-        }
-        #[cfg(test)]
-        state.wait_until_done();
-        (state.find_query.clone(), root)
+    let Some(state) = app.ui.project_search.take() else {
+        return;
     };
-
-    let matches = if let Some(state) = &app.ui.project_search {
-        state.matches.clone()
-    } else {
-        Vec::new()
+    let Some((query, options)) = state.search_request() else {
+        app.ui.project_search = Some(state);
+        return;
     };
-
-    let content = format_find_results(&query, &matches);
-    open_find_results_tab(app, &content);
-    app.ui.find_results_nav = FindResultsNav::new(matches);
-    app.ui.project_search = None;
+    drop(state);
+    let root = workspace_root(app);
+    crate::find_stream::start(app, &root, &query, &options);
     crate::focus::focus_editor(app);
     app.scheduler.invalidate_all();
 }
@@ -235,12 +224,7 @@ pub(crate) fn handle_project_search_key(
         return false;
     }
 
-    let root = app
-        .ui
-        .sidebar
-        .as_ref()
-        .and_then(|s| s.workspace_root.clone())
-        .unwrap_or_else(|| PathBuf::from("."));
+    let root = workspace_root(app);
 
     let state = app.ui.project_search.as_mut().unwrap();
 
@@ -338,12 +322,8 @@ pub(crate) fn open_project_find(app: &mut crate::app::App) {
     };
     let mut state = ProjectSearchState::new(false);
     state.find_query = crate::field::QueryField::from_text(initial_query);
-    let root = app
-        .ui
-        .sidebar
-        .as_ref()
-        .and_then(|s| s.workspace_root.clone())
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    state.waker = app.ui.session.waker();
+    let root = workspace_root(app);
     state.start_search(&root);
     app.ui.project_search = Some(state);
     app.scheduler.invalidate_all();
@@ -357,12 +337,8 @@ pub(crate) fn open_project_replace(app: &mut crate::app::App) {
     };
     let mut state = ProjectSearchState::new(true);
     state.find_query = crate::field::QueryField::from_text(initial_query);
-    let root = app
-        .ui
-        .sidebar
-        .as_ref()
-        .and_then(|s| s.workspace_root.clone())
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    state.waker = app.ui.session.waker();
+    let root = workspace_root(app);
     state.start_search(&root);
     app.ui.project_search = Some(state);
     app.scheduler.invalidate_all();
@@ -371,6 +347,19 @@ pub(crate) fn open_project_replace(app: &mut crate::app::App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::find_results::format_find_results;
+
+    impl ProjectSearchState {
+        /// Blocks on the panel stream; domain tests only. The app-level
+        /// tests drive the real wake path instead.
+        fn wait_until_done(&mut self) {
+            if let Some(stream) = &mut self.stream {
+                stream.wait_until_done();
+                self.matches = stream.matches().to_vec();
+                self.stream = None;
+            }
+        }
+    }
 
     #[test]
     fn project_search_state_lifecycle() {
@@ -453,11 +442,11 @@ mod tests {
             },
         ];
 
-        let formatted = format_find_results("test1", &matches);
-        assert!(formatted.contains("Searching 2 files for \"test1\""));
+        let formatted = format_find_results("test1", &matches, 7);
+        assert!(formatted.starts_with("Searching files for \"test1\"\n\n"));
         assert!(formatted.contains("/path/to/file1.rs:"));
         assert!(formatted.contains("    10: pub fn test1() {}"));
-        assert!(formatted.contains("3 matches across 2 files"));
+        assert!(formatted.contains("\n3 matches across 2 files (7 files searched)\n"));
 
         let buffer = lux_core::buffer::Buffer::from_bytes(formatted.as_bytes()).unwrap();
         let parsed = parse_matches_from_buffer(&buffer);

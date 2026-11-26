@@ -2,71 +2,30 @@
 
 use lux_platform::PlatformContext;
 use lux_search::find_in_files::SearchMatch;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct FindResultsNav {
     pub(crate) matches: Vec<SearchMatch>,
     pub(crate) active_index: Option<usize>,
+    /// The search still streaming into the tab, if any.
+    pub(crate) run: Option<crate::find_stream::FindRun>,
 }
 
-impl FindResultsNav {
-    pub(crate) fn new(matches: Vec<SearchMatch>) -> Self {
-        Self {
-            matches,
-            active_index: None,
+#[cfg(test)]
+/// The complete tab text for a finished search, built from the same pieces
+/// the streaming run appends one batch at a time.
+pub(crate) fn format_find_results(query: &str, matches: &[SearchMatch], searched: usize) -> String {
+    use crate::find_stream::{header, push_match, summary};
+    let mut out = header(query);
+    let mut last_path: Option<PathBuf> = None;
+    let mut files = 0;
+    for m in matches {
+        if push_match(&mut out, &mut last_path, m) {
+            files += 1;
         }
     }
-}
-
-pub(crate) fn format_find_results(query: &str, matches: &[SearchMatch]) -> String {
-    let mut out = String::new();
-    let mut files_set = std::collections::HashSet::new();
-    for m in matches {
-        files_set.insert(&m.path);
-    }
-    let total_files = files_set.len();
-    let file_label = if total_files == 1 { "file" } else { "files" };
-
-    out.push_str(&format!(
-        "Searching {} {} for \"{}\"\n\n",
-        total_files.max(1),
-        file_label,
-        query
-    ));
-
-    if matches.is_empty() {
-        out.push_str("0 matches across 0 files\n");
-        return out;
-    }
-
-    let mut current_path: Option<&Path> = None;
-    for m in matches {
-        if current_path != Some(m.path.as_path()) {
-            if current_path.is_some() {
-                out.push('\n');
-            }
-            current_path = Some(m.path.as_path());
-            out.push_str(&format!("{}:\n", m.path.display()));
-        }
-        let trimmed_line = m.line.trim_end_matches(['\r', '\n']);
-        out.push_str(&format!("  {:>4}: {}\n", m.line_number, trimmed_line));
-    }
-
-    let match_label = if matches.len() == 1 {
-        "match"
-    } else {
-        "matches"
-    };
-    let files_sum_label = if total_files == 1 { "file" } else { "files" };
-    out.push_str(&format!(
-        "\n{} {} across {} {}\n",
-        matches.len(),
-        match_label,
-        total_files,
-        files_sum_label
-    ));
-
+    out.push_str(&summary(matches.len(), files, searched));
     out
 }
 
@@ -95,6 +54,8 @@ pub(crate) fn open_find_results_tab(app: &mut crate::app::App, content: &str) {
     if let Some(tab_id) = existing_tab {
         if app.documents.active_tab == Some(tab_id) {
             app.buffer = buffer;
+            app.history = lux_core::history::History::new();
+            app.documents.saved_version = app.history.state_id();
             app.cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
             app.reset_goal_columns();
         } else {
@@ -105,6 +66,8 @@ pub(crate) fn open_find_results_tab(app: &mut crate::app::App, content: &str) {
                 .find(|e| e.tab_id == tab_id)
             {
                 entry.buffer = buffer;
+                entry.history = lux_core::history::History::new();
+                entry.saved_version = entry.history.state_id();
                 entry.cursors = MultiCursor::new(Selection::cursor(Position::document_start()));
                 entry.goal_columns = vec![0];
                 entry.scroll_x = 0.0;
@@ -120,6 +83,11 @@ pub(crate) fn open_find_results_tab(app: &mut crate::app::App, content: &str) {
     }
 }
 
+/// Shows `matched` in an editor tab. An already open file is switched to
+/// at once; any other file goes through the document worker's open queue
+/// (no disk access here), and the CLI location gate places the cursor on
+/// the matched line once the worker has loaded it. Without a platform
+/// context there is no worker to open it, so nothing happens.
 pub(crate) fn open_match_in_editor(
     app: &mut crate::app::App,
     ctx: Option<&dyn PlatformContext>,
@@ -128,33 +96,26 @@ pub(crate) fn open_match_in_editor(
     let path = matched.path.clone();
     let line_num = matched.line_number as u32;
 
-    let existing_tab = app.documents.entries.iter().find(|e| {
-        e.path.as_ref().is_some_and(|p| p == &path)
-            || app
-                .documents
-                .tabs
-                .tabs()
-                .iter()
-                .find(|t| t.id == e.tab_id)
-                .is_some_and(|t| t.title == path.display().to_string())
-    });
+    let existing_tab = app
+        .documents
+        .entries
+        .iter()
+        .find(|e| e.path.as_ref() == Some(&path))
+        .map(|e| e.tab_id);
 
-    if let Some(entry) = existing_tab {
-        let tab_id = entry.tab_id;
+    if let Some(tab_id) = existing_tab {
         app.switch_to_tab(tab_id);
-    } else if path.exists() {
-        if let Ok(buffer) = lux_core::buffer::Buffer::open(&path) {
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("File");
-            let tab_id = app.documents.tabs.open(name);
-            let entry = crate::document::DocumentEntry::new(tab_id, Some(path), buffer);
-            app.documents.entries.push(entry);
-            app.switch_to_tab(tab_id);
-        } else if let Some(ctx) = ctx {
-            app.request_document(ctx, crate::document::Request::Open(Some(path)));
-        }
+        crate::goto::jump_to_line(app, line_num);
+    } else if let Some(ctx) = ctx {
+        crate::cli::register_locations(&[crate::cli::Location {
+            path: path.clone(),
+            line: Some(line_num),
+            column: None,
+            scratch: false,
+            wait_token: 0,
+        }]);
+        crate::document::open_queue::enqueue(app, ctx, path);
     }
-
-    crate::goto::jump_to_line(app, line_num);
 }
 
 pub(crate) fn open_find_result_at_line(
@@ -316,6 +277,11 @@ pub(crate) fn is_find_results_active(app: &crate::app::App) -> bool {
 }
 
 pub(crate) fn find_results_buffer(app: &crate::app::App) -> Option<lux_core::buffer::Buffer> {
+    // The active tab's live text is `app.buffer`; its entry is only a
+    // snapshot taken when another tab was activated.
+    if is_find_results_active(app) {
+        return Some(app.buffer.clone());
+    }
     app.documents
         .entries
         .iter()
