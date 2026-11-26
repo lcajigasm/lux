@@ -76,16 +76,27 @@ pub(crate) fn box_span(app: &App, geo: &Geometry) -> (f32, f32) {
         app.viewport.height,
         box_scale(app, geo),
         geo.row_h,
+        geo.bottom - geo.top,
     );
     (geo.top + offset, height)
 }
 
 /// The viewport box below the minimap's top edge, as (offset, height):
 /// the editor's scroll offset and height times `scale` (minimap pixels per
-/// editor pixel), never shorter than two rows so it stays grabbable.
-/// The paint and the hit test both use this, so the box is where it's drawn.
-pub(crate) fn box_extent(scroll_y: f32, viewport_h: f32, scale: f32, row_h: f32) -> (f32, f32) {
-    (scroll_y * scale, (viewport_h * scale).max(row_h * 2.0))
+/// editor pixel), never shorter than two rows so it stays grabbable, and
+/// kept inside a strip `strip_h` tall (its top at least one row above the
+/// bottom). The paint and the hit test both use this, so the box is where
+/// it's drawn.
+pub(crate) fn box_extent(
+    scroll_y: f32,
+    viewport_h: f32,
+    scale: f32,
+    row_h: f32,
+    strip_h: f32,
+) -> (f32, f32) {
+    let offset = (scroll_y * scale).min(strip_h - row_h).max(0.0);
+    let height = (viewport_h * scale).max(row_h * 2.0).min(strip_h - offset);
+    (offset, height)
 }
 
 fn max_scroll(app: &App) -> f32 {

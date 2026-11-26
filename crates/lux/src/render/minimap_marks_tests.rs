@@ -111,3 +111,41 @@ fn strokes_take_the_highlighters_token_colors() {
     assert_eq!((first.start, first.len), (0, 2));
     assert_eq!(first.color, Some([keyword.r, keyword.g, keyword.b]));
 }
+
+/// The color at byte 0 of the first row, as the minimap paints it from the
+/// live highlighter.
+fn first_stroke_color(app: &mut App) -> Option<[u8; 3]> {
+    let syntax = app.syntax.as_ref().expect("highlighter");
+    let colors = SyntaxColors(syntax);
+    let frame = app
+        .ui
+        .minimap
+        .frame(1, &app.buffer, 0..1, 100, None, Some(&colors))
+        .unwrap();
+    frame.row_spans(0)[0].color
+}
+
+fn token_color_at_start(app: &App) -> Option<[u8; 3]> {
+    let syntax = app.syntax.as_ref().expect("highlighter");
+    syntax
+        .tokens
+        .iter()
+        .find(|t| t.start_byte == 0)
+        .map(|t| syntax.theme.color_for_token(t))
+        .map(|c| [c.r, c.g, c.b])
+}
+
+#[test]
+fn switching_the_language_recolors_strokes_without_an_edit() {
+    let mut app = app();
+    app.buffer = lux_core::buffer::Buffer::from_bytes(b"def f():\n    pass\n").unwrap();
+    app.set_language_mode(Some(lux_syntax::LanguageId::Rust));
+    let rust = first_stroke_color(&mut app);
+    assert_eq!(rust, token_color_at_start(&app));
+
+    app.set_language_mode(Some(lux_syntax::LanguageId::Python));
+    let python = token_color_at_start(&app);
+    assert!(python.is_some(), "Python highlights `def`");
+    assert_ne!(python, rust, "the two languages color `def` differently");
+    assert_eq!(first_stroke_color(&mut app), python);
+}

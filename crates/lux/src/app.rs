@@ -459,7 +459,7 @@ impl PlatformEventHandler for App {
                 self.mouse.word_anchor = None;
                 self.mouse.line_anchor = None;
                 self.mouse.context_menu = None;
-                crate::sidebar::drag::cancel(self);
+                crate::pointer::focus_lost(self);
             }
             PlatformEvent::Ime(ime_event) => {
                 crate::ime_hold::observe(self, ime_event);

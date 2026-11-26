@@ -114,6 +114,13 @@ pub(crate) fn shift_tokens(tokens: &mut Vec<lux_syntax::Token>, edit: &InputEdit
     tokens.truncate(write_idx);
 }
 
+/// A token generation no other `SyntaxState` has had, so a new highlighter
+/// (another language, a reopened document) never reuses an old one's stamp.
+fn next_generation() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 impl App {
     fn clear_syntax(&mut self) {
         if let Some(id) = self.documents.active_buffer_id() {
@@ -122,7 +129,8 @@ impl App {
         self.syntax = None;
     }
 
-    fn store_syntax(&mut self, syntax: SyntaxState) {
+    fn store_syntax(&mut self, mut syntax: SyntaxState) {
+        syntax.generation = next_generation();
         self.documents.view_cache.drop_syntax(syntax.buffer_id);
         self.syntax = Some(syntax);
     }
@@ -311,7 +319,7 @@ impl App {
             && res.version >= syntax.version
         {
             syntax.tokens = res.tokens;
-            syntax.generation += 1;
+            syntax.generation = next_generation();
             let ranges: Vec<FoldRange> = res
                 .fold_ranges
                 .into_iter()

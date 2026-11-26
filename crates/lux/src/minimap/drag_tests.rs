@@ -97,3 +97,59 @@ fn a_press_outside_the_minimap_is_not_taken() {
     assert!(!press(&mut app, geo.left - 5.0, geo.top + 10.0));
     assert!(app.ui.minimap.drag.is_none());
 }
+
+/// A document whose last scroll position would put the box's top in the
+/// minimap's last row or below it, unless it is kept inside the strip.
+fn app_scrolled_to_the_end() -> (App, Geometry) {
+    let probe = app_with_lines(10);
+    let geo = geometry(&probe).unwrap();
+    // `len_lines` counts the empty line after the last newline.
+    let mut app = app_with_lines(geo.rows * 3 - 1);
+    assert_eq!(app.buffer.len_lines(), geo.rows * 3);
+    app.viewport.scroll_y = max_scroll(&app);
+    (app, geo)
+}
+
+#[test]
+fn the_box_hit_test_matches_the_painted_box_at_the_document_end() {
+    let (mut app, geo) = app_scrolled_to_the_end();
+    let (box_top, box_h) = box_span(&app, &geo);
+    assert!(box_top <= geo.bottom - geo.row_h, "box top {box_top}");
+    assert!(box_top + box_h <= geo.bottom + 0.01);
+
+    let scroll = app.viewport.scroll_y;
+    let x = geo.left + 10.0;
+    let y = geo.bottom - geo.row_h * 0.5;
+    assert!(press(&mut app, x, y));
+    assert_eq!(
+        app.viewport.scroll_y, scroll,
+        "a press on the painted box grabs it instead of re-centering"
+    );
+    assert_eq!(app.ui.minimap.drag, Some(y - box_top));
+}
+
+#[test]
+fn leaving_the_window_ends_the_drag() {
+    let mut app = app_with_lines(5_000);
+    let geo = geometry(&app).unwrap();
+    let (box_top, _) = box_span(&app, &geo);
+    let x = geo.left + 10.0;
+    assert!(press(&mut app, x, box_top + 1.0));
+    crate::pointer::leave(&mut app);
+    assert!(app.ui.minimap.drag.is_none());
+    move_to(&mut app, x, box_top + 200.0);
+    assert_eq!(app.viewport.scroll_y, 0.0, "the box must not follow");
+}
+
+#[test]
+fn losing_focus_ends_the_drag() {
+    let mut app = app_with_lines(5_000);
+    let geo = geometry(&app).unwrap();
+    let (box_top, _) = box_span(&app, &geo);
+    let x = geo.left + 10.0;
+    assert!(press(&mut app, x, box_top + 1.0));
+    crate::pointer::focus_lost(&mut app);
+    assert!(app.ui.minimap.drag.is_none());
+    move_to(&mut app, x, box_top + 200.0);
+    assert_eq!(app.viewport.scroll_y, 0.0, "the box must not follow");
+}

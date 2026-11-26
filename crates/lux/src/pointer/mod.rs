@@ -70,6 +70,8 @@ pub(crate) fn sync(app: &mut App) {
 
 pub(crate) fn leave(app: &mut App) {
     app.mouse.placed = false;
+    // The button may come up outside the window, where no release arrives.
+    crate::minimap::drag::release(app);
     if let Some(sidebar) = &mut app.ui.sidebar {
         sidebar.resizing = false;
     }
@@ -92,6 +94,13 @@ pub(crate) fn press(app: &mut App, button: MouseButton) -> bool {
         sidebar.resizing = true;
     }
     true
+}
+
+/// The window lost focus: no release for a held button will arrive, so
+/// every pointer drag ends here.
+pub(crate) fn focus_lost(app: &mut App) {
+    release(app);
+    crate::sidebar::drag::cancel(app);
 }
 
 pub(crate) fn release(app: &mut App) {

@@ -144,9 +144,14 @@ fn paint_viewport_box(
     let total_visual = doc.folds.total_visual_lines(doc.buffer.len_lines()).max(1);
     let per_row = lux_ui::minimap::lines_per_row(total_visual, strip.rows) as f32;
     let scale = strip.row_h / (per_row * line_height.max(1.0));
-    let (offset, height) = drag::box_extent(viewport.scroll_y, viewport.height, scale, strip.row_h);
-    let vy = (strip.y + offset).min(strip.y + strip.h - strip.row_h);
-    let vh = height.min(strip.y + strip.h - vy);
+    let (offset, vh) = drag::box_extent(
+        viewport.scroll_y,
+        viewport.height,
+        scale,
+        strip.row_h,
+        strip.h,
+    );
+    let vy = strip.y + offset;
     let sel = color(theme.selection);
     quad_instances.push(QuadInstance::solid(
         [strip.x, vy, strip.w, vh],
