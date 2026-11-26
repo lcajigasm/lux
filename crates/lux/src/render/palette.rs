@@ -61,7 +61,7 @@ pub(crate) fn render_command_palette(
     );
     paint_overlay(
         &frame,
-        "Execute a command…",
+        palette.placeholder(),
         palette.query.as_str(),
         &items,
         palette.selected_index,

@@ -16,18 +16,22 @@ pub struct MacroState {
     pub last_macro: Option<Macro>,
     /// Named saved macros discovered from disk.
     pub saved_macros: Vec<Macro>,
+    /// Bumped by every disk read of the saved macros; a read that finishes
+    /// after a newer one started is dropped.
+    load_generation: u64,
 }
 
+/// Starts empty. Saved macros are read from disk on a worker
+/// (`library::start_loading`) and handed over with `set_saved`.
 impl Default for MacroState {
     fn default() -> Self {
-        let mut state = Self {
+        Self {
             is_recording: false,
             current_recording: Vec::new(),
             last_macro: None,
             saved_macros: Vec::new(),
-        };
-        state.load_all_user_macros(None);
-        state
+            load_generation: 0,
+        }
     }
 }
 
@@ -115,16 +119,56 @@ impl MacroState {
             default_macros_dir()
         };
 
-        let sanitized_name = name.trim().trim_end_matches(".sublime-macro");
+        let sanitized_name = super::library::valid_name(name)?;
         let filename = format!("{sanitized_name}.sublime-macro");
+        let path = target_dir.join(&filename);
+        // `valid_name` already refuses anything that could, but the file must
+        // land directly in the macro folder whatever the platform's rules.
+        if path.parent() != Some(target_dir.as_path())
+            || path.file_name() != Some(std::ffi::OsStr::new(&filename))
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "that name would leave the macro folder",
+            ));
+        }
         macro_to_save.name = Some(sanitized_name.to_string());
-        Ok((target_dir.join(filename), macro_to_save))
+        Ok((path, macro_to_save))
     }
 
     /// Lists a macro that was written to disk.
     pub fn note_saved(&mut self, saved: Macro) {
         self.saved_macros.retain(|m| m.name != saved.name);
         self.saved_macros.push(saved);
+        self.saved_macros.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+
+    /// Replaces the saved-macro list with what a worker read from disk.
+    pub fn set_saved(&mut self, macros: Vec<Macro>) {
+        self.saved_macros = macros;
+    }
+
+    /// Starts a disk read of the saved macros and returns its generation.
+    pub(crate) fn begin_load(&mut self) -> u64 {
+        self.load_generation += 1;
+        self.load_generation
+    }
+
+    /// Takes the result of the read started as `generation`, unless a newer
+    /// read has started since. Returns whether the list was replaced.
+    pub(crate) fn finish_load(&mut self, generation: u64, macros: Vec<Macro>) -> bool {
+        if generation != self.load_generation {
+            return false;
+        }
+        self.set_saved(macros);
+        true
+    }
+
+    /// The saved macro called `name`, if one is loaded.
+    pub fn saved(&self, name: &str) -> Option<&Macro> {
+        self.saved_macros
+            .iter()
+            .find(|m| m.name.as_deref() == Some(name))
     }
 
     /// Saves the current or last recorded macro synchronously.
@@ -139,55 +183,36 @@ impl MacroState {
         self.note_saved(saved);
         Ok(path)
     }
-
-    /// Recursively loads macros from the specified directory.
-    pub fn load_macros_from_dir(&mut self, dir: &Path) {
-        if !dir.is_dir() {
-            return;
-        }
-        let entries = match std::fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(_) => return,
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                self.load_macros_from_dir(&path);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("sublime-macro")
-                && let Ok(m) = Macro::load_from_file(&path)
-            {
-                if let Some(name) = &m.name {
-                    self.saved_macros
-                        .retain(|existing| existing.name.as_ref() != Some(name));
-                }
-                self.saved_macros.push(m);
-            }
-        }
-    }
-
-    /// Discovers and loads macros from standard user and workspace directories.
-    pub fn load_all_user_macros(&mut self, workspace_dir: Option<&Path>) {
-        if let Some(ws) = workspace_dir {
-            self.load_macros_from_dir(&ws.join(".lux").join("macros"));
-        }
-        if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-            self.load_macros_from_dir(&home.join(".lux").join("macros"));
-            self.load_macros_from_dir(&home.join(".config").join("lux").join("macros"));
-        }
-        if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from) {
-            self.load_macros_from_dir(&xdg.join("lux").join("macros"));
-        }
-    }
 }
 
 /// Returns the primary default directory where saved macros are placed (`~/.lux/macros/`).
-fn default_macros_dir() -> PathBuf {
+pub(super) fn default_macros_dir() -> PathBuf {
+    #[cfg(test)]
+    if let Some(dir) = test_dir() {
+        return dir;
+    }
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
         home.join(".lux").join("macros")
     } else {
         PathBuf::from(".lux").join("macros")
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_DIR: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Points this test thread's macro folder at `dir`, so tests never touch
+/// the real `~/.lux/macros`. Paths are picked on the calling thread.
+#[cfg(test)]
+pub(crate) fn set_test_dir(dir: Option<PathBuf>) {
+    TEST_DIR.with(|cell| *cell.borrow_mut() = dir);
+}
+
+#[cfg(test)]
+pub(super) fn test_dir() -> Option<PathBuf> {
+    TEST_DIR.with(|cell| cell.borrow().clone())
 }
 
 #[cfg(test)]

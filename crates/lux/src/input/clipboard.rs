@@ -125,6 +125,30 @@ impl App {
             self.insert_at_cursor(text);
             return;
         };
+        if self.ui.macros.is_recording {
+            self.ui
+                .macros
+                .record_command(crate::macros::MacroCommand::InsertPieces {
+                    pieces: pieces.clone(),
+                });
+        }
+        self.distribute(&pieces);
+    }
+
+    /// Macro playback of a distributed paste: piece i at caret i when the
+    /// counts match, otherwise all pieces, one per line, at every caret.
+    pub(crate) fn insert_pieces(&mut self, pieces: &[String]) {
+        if pieces.is_empty() || self.editing_blocked() || self.buffer.is_huge_file_mode() {
+            return;
+        }
+        if pieces.len() == self.cursors.count() {
+            self.distribute(pieces);
+        } else {
+            self.insert_at_cursor(&pieces.join("\n"));
+        }
+    }
+
+    fn distribute(&mut self, pieces: &[String]) {
         self.snippet_session = None;
         // `apply_to_each` visits carets back to front, so count down to
         // hand out the pieces in document order.

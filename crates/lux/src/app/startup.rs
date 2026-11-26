@@ -2,7 +2,7 @@
 //!
 //! Coverage fonts, the UI face, and the recovery-session scan are not
 //! needed to paint an ASCII frame. They start once, after that frame has
-//! been logged, on workers: coverage faces are tens to hundreds of MB, so
+//! been logged, on workers (saved macros too): coverage faces are tens to hundreds of MB, so
 //! reading them on the UI thread would stall input. The faces are installed
 //! when the worker hands them back.
 
@@ -54,6 +54,7 @@ impl App {
                 Self::recoverable_documents().into_iter().next(),
             ))
         });
+        crate::macros::library::start_loading(self, None);
     }
 }
 

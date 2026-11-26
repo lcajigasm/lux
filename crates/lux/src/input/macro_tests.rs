@@ -208,7 +208,8 @@ fn test_sublime_macro_file_save_and_load() {
 
     // Load macro back into another App
     let mut app2 = test_app("world\n");
-    app2.ui.macros.load_macros_from_dir(temp.path());
+    let found = crate::macros::library::read_macros(&[temp.path().to_path_buf()]);
+    app2.ui.macros.set_saved(found);
 
     assert_eq!(app2.ui.macros.saved_macros.len(), 1);
     let loaded = app2.ui.macros.saved_macros[0].clone();
@@ -241,3 +242,6 @@ fn test_macro_backspace_and_word_deletion() {
     playback_macro_key(&mut app);
     assert_eq!(app.buffer.text(), "foo \n");
 }
+
+#[path = "macro_library_tests.rs"]
+mod library;

@@ -33,14 +33,34 @@ pub fn playback_macro(app: &mut App) {
     }
 }
 
-/// Saves the last recorded macro as a `.sublime-macro` file under
-/// `~/.lux/macros/`. The write runs on a worker; `note_macro_saved` reports
-/// it when the worker finishes.
-pub fn save_macro_as(app: &mut App, name: &str) {
-    save_macro_to(app, name, None);
+/// Tools: Save Macro… — asks for a name in the command palette's prompt.
+/// Enter calls `save_macro_as` with what was typed.
+pub fn prompt_save_macro(app: &mut App) {
+    let macros = &app.ui.macros;
+    if macros.last_macro.is_none() && macros.current_recording.is_empty() {
+        app.documents.message = Some("No macro recorded to save".to_string());
+        return;
+    }
+    app.open_palette_prompt(crate::palette::PalettePrompt::SaveMacro, "");
 }
 
-pub(crate) fn save_macro_to(app: &mut App, name: &str, dir: Option<&std::path::Path>) {
+/// Saves the last recorded macro as `<name>.sublime-macro` under
+/// `~/.lux/macros/`. The write runs on a worker; `note_macro_saved` reports
+/// it when the worker finishes. A file of that name is never replaced
+/// silently: the worker reports it and the palette asks first.
+pub fn save_macro_as(app: &mut App, name: &str) {
+    save_macro_to(app, name, None, false);
+}
+
+/// Saves under `dir` (the default folder when `None`). With `replace`
+/// false an existing file is left alone and `Done::MacroExists` opens the
+/// palette's "replace it?" prompt.
+pub(crate) fn save_macro_to(
+    app: &mut App,
+    name: &str,
+    dir: Option<&std::path::Path>,
+    replace: bool,
+) {
     let (path, saved) = match app.ui.macros.prepare_save(name, dir) {
         Ok(prepared) => prepared,
         Err(e) => {
@@ -48,16 +68,43 @@ pub(crate) fn save_macro_to(app: &mut App, name: &str, dir: Option<&std::path::P
             return;
         }
     };
+    let dir = dir.map(std::path::Path::to_path_buf);
     crate::ui_io::spawn(app, None, move || {
-        Some(match saved.save_to_file(&path) {
+        let written = if replace {
+            saved.save_to_file(&path)
+        } else {
+            saved.save_to_new_file(&path)
+        };
+        Some(match written {
             Ok(()) => crate::ui_io::Done::MacroSaved { path, saved },
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                crate::ui_io::Done::MacroExists {
+                    name: saved.name.unwrap_or_default(),
+                    dir,
+                }
+            }
             Err(e) => crate::ui_io::Done::MacroFailed(e.to_string()),
         })
     });
 }
 
+/// A save found a macro file of the same name: ask before replacing it.
+pub(crate) fn note_macro_exists(app: &mut App, name: String, dir: Option<std::path::PathBuf>) {
+    app.documents.message = Some(format!(
+        "Macro '{name}' already exists: Enter replaces it, edit the name to keep both, Escape cancels"
+    ));
+    app.open_palette_prompt(
+        crate::palette::PalettePrompt::ReplaceMacro {
+            name: name.clone(),
+            dir,
+        },
+        &name,
+    );
+}
+
 pub(crate) fn note_macro_saved(app: &mut App, path: &std::path::Path, saved: super::Macro) {
     app.ui.macros.note_saved(saved);
+    super::library::start_loading(app, path.parent().map(std::path::Path::to_path_buf));
     let filename = path
         .file_name()
         .and_then(|f| f.to_str())
@@ -187,13 +234,16 @@ pub fn record_command_if_recording(app: &mut App, cmd: &str) {
         return;
     }
 
-    // Do not record macro meta commands
+    // Do not record macro meta commands. A paste records what it inserted
+    // (`insert` or `insert_pieces`), so the clipboard at playback time does
+    // not matter.
     if matches!(
         cmd,
         "toggle_record_macro"
             | "playback_macro"
             | "save_macro"
             | "save_macro_as"
+            | "paste"
             | "command_palette"
             | "quick_open"
     ) {

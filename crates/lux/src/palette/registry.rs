@@ -340,7 +340,7 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
             "Macros",
         ),
         ("macro.playback", "Macros: Playback Macro", "Macros"),
-        ("macro.save_as", "Macros: Save Macro As...", "Macros"),
+        ("macro.save_as", "Tools: Save Macro…", "Macros"),
         ("help.about", "Help: About Lux", "Help"),
     ];
 

@@ -752,7 +752,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-EXT-03 — Grabación y Serialización Completa de Macros (`.sublime-macro`)
 - Prioridad: `P2 (Sublime Parity)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: —
 - Objetivo: Grabación y repetición exhaustiva de secuencias complejas.
 - Alcance detallado:
