@@ -2,6 +2,11 @@
 //! moves to its opener's indentation, and a Python `else:`, `elif ...:`,
 //! `except ...:` or `finally:` moves to the header it continues. The dedent
 //! and the typed char are one edit, so one undo removes both.
+//!
+//! In a file with a syntax, the closer's opener comes from the parse tree of
+//! the enclosing top-level item with the closer typed in, so a bracket inside
+//! a string, char literal or comment is never counted. A file without a
+//! syntax has no strings or comments to misread and scans the text.
 
 use lux_core::buffer::Buffer;
 use lux_core::edit::Edit;
@@ -11,8 +16,8 @@ use lux_syntax::LanguageId;
 
 use crate::app::App;
 
-/// How far back a closer looks for its opener. Past this the line keeps
-/// the indentation it has.
+/// How far back a closer in a file without a syntax looks for its opener.
+/// Past this the line keeps the indentation it has.
 const MAX_SCAN_CHARS: usize = 256 * 1024;
 /// How many lines back a Python clause looks for its header.
 const MAX_SCAN_LINES: usize = 2_000;
@@ -23,9 +28,10 @@ pub(crate) fn handle_char_typed(app: &mut App, ch: char) -> bool {
     if app.editing_blocked() || app.buffer.is_huge_file_mode() || app.snippet_session.is_some() {
         return false;
     }
-    let python = app.documents.language() == Some(LanguageId::Python);
+    let language = app.documents.language();
+    let python = language == Some(LanguageId::Python);
     let rule = match ch {
-        '}' | ']' | ')' => Rule::Closer(ch),
+        '}' | ']' | ')' => Rule::Closer(ch, language),
         ':' if python => Rule::PythonClause,
         _ => return false,
     };
@@ -75,7 +81,8 @@ pub(crate) fn handle_char_typed(app: &mut App, ch: char) -> bool {
 
 #[derive(Clone, Copy)]
 enum Rule {
-    Closer(char),
+    /// A closer, and the syntax its opener is looked up with.
+    Closer(char, Option<LanguageId>),
     PythonClause,
 }
 
@@ -85,11 +92,14 @@ fn target(buffer: &Buffer, head: Position, rule: Rule, tab: usize) -> Option<Str
     let line = buffer.line_content(head.line)?;
     let prefix: String = line.chars().take(head.column).collect();
     let indent = match rule {
-        Rule::Closer(close) => {
+        Rule::Closer(close, language) => {
             if !prefix.chars().all(|c| c == ' ' || c == '\t') {
                 return None;
             }
-            opener_indent(buffer, head.char, close)?
+            match language {
+                Some(language) => tree_opener_indent(buffer, head, close, language)?,
+                None => opener_indent(buffer, head.char, close)?,
+            }
         }
         Rule::PythonClause => {
             let suffix: String = line.chars().skip(head.column).collect();
@@ -103,8 +113,35 @@ fn target(buffer: &Buffer, head: Position, rule: Rule, tab: usize) -> Option<Str
     (width(&indent, tab) < width(&leading(&prefix), tab)).then_some(indent)
 }
 
+/// The leading whitespace of the line holding the opener `close` pairs
+/// with when typed at `head`, by the parse tree of the enclosing top-level
+/// item with `close` spliced in. Brackets inside strings, char literals and
+/// comments are not tokens in the tree, so they never pair. `None`, so the
+/// line keeps its indentation, when the tree pairs the closer with nothing.
+fn tree_opener_indent(
+    buffer: &Buffer,
+    head: Position,
+    close: char,
+    language: LanguageId,
+) -> Option<String> {
+    let window = super::window::Window::around(buffer, head.line, head.line);
+    let at = head.char - window.start_char;
+    let source = super::splice_range(&window.text, at, at, close.encode_utf8(&mut [0; 4]));
+    let close_byte = source.char_indices().nth(at).map(|(byte, _)| byte)?;
+    #[cfg(test)]
+    super::PARSED_BYTES.with(|bytes| bytes.set(bytes.get() + source.len()));
+    let mut doc = lux_syntax::Document::new(language);
+    doc.set_text(&source);
+    let pairs = lux_syntax::brackets::bracket_pairs(&doc);
+    let pair = pairs.iter().find(|pair| pair.close.start == close_byte)?;
+    // The opener sits before `close`, so its offset is the same in the rope.
+    let open_char = window.start_char + source[..pair.open.start].chars().count();
+    let line = buffer.rope().char_to_line(open_char);
+    Some(leading(&buffer.line_content(line)?))
+}
+
 /// The leading whitespace of the line holding the unmatched opener of
-/// `close` before `before`.
+/// `close` before `before`, by counting brackets in the text.
 fn opener_indent(buffer: &Buffer, before: usize, close: char) -> Option<String> {
     let open = match close {
         '}' => '{',

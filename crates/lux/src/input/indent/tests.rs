@@ -240,3 +240,28 @@ fn enter_indents_after_column_zero_clauses_and_comments() {
         );
     }
 }
+
+#[test]
+fn a_closer_skips_brackets_inside_strings_chars_and_comments() {
+    let cases = [
+        "fn f() {\n    if x {\n        let s = \"}\";\n        ",
+        "fn f() {\n    if x {\n        let c = '{';\n        ",
+        "fn f() {\n    if x {\n        // }\n        ",
+        "fn f() {\n    if x {\n        /* } */ let s = \"{\";\n        ",
+    ];
+    for before in cases {
+        let mut app = editor(before, Some(LanguageId::Rust));
+        type_text(&mut app, "}");
+        let expected = format!("{}    }}", before.trim_end_matches(' '));
+        assert_eq!(app.buffer.text(), expected, "{before:?}");
+        assert_eq!(caret(&app), (3, 5), "{before:?}");
+    }
+}
+
+#[test]
+fn a_closer_the_tree_pairs_with_nothing_keeps_its_indentation() {
+    let before = "let s = \"{\";\n    ";
+    let mut app = editor(before, Some(LanguageId::Rust));
+    type_text(&mut app, "}");
+    assert_eq!(app.buffer.text(), "let s = \"{\";\n    }");
+}
