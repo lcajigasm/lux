@@ -246,6 +246,11 @@ fn overflow_list_filters_by_typing_and_enter_switches() {
     }
     let rows = super::list::rows(&app.documents, false).unwrap();
     assert_eq!(rows[0].title, "f27.txt");
+    assert_eq!(
+        rows[0].hits,
+        vec![0..1, 1..2, 2..3],
+        "the matched letters are lit"
+    );
     assert!(
         !app.buffer.text().contains("f27"),
         "typing went to the list"

@@ -25,6 +25,8 @@ pub(crate) struct TabRow {
     pub(crate) title: String,
     pub(crate) dirty: bool,
     pub(crate) active: bool,
+    /// Byte ranges of `title` the query matched; empty without a query.
+    pub(crate) hits: crate::overlay_list::Hits,
 }
 
 /// Rows of the open list in strip order, filtered by its query. `None`
@@ -52,6 +54,7 @@ pub(crate) fn rows(documents: &Documents, current_dirty: bool) -> Option<Vec<Tab
                 title: tab.title.clone(),
                 dirty,
                 active,
+                hits: Vec::new(),
             }
         })
         .collect();
@@ -62,7 +65,10 @@ pub(crate) fn rows(documents: &Documents, current_dirty: bool) -> Option<Vec<Tab
     Some(
         lux_search::fuzzy::rank_by(query, &all, |row| row.title.as_str())
             .into_iter()
-            .map(|(row, _)| row.clone())
+            .map(|ranked| TabRow {
+                hits: lux_search::fuzzy::char_spans(&ranked.item.title, &ranked.indices),
+                ..ranked.item.clone()
+            })
             .collect(),
     )
 }
