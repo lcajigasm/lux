@@ -19,8 +19,8 @@ use std::ops::Range;
 use fontique::Blob;
 use parley::setting::Tag;
 use parley::{
-    Alignment, AlignmentOptions, FontContext, FontFamily, FontFeature, FontFeatures, Layout,
-    LayoutContext, PositionedLayoutItem, StyleProperty,
+    Alignment, AlignmentOptions, FontContext, FontFeature, FontFeatures, Layout, LayoutContext,
+    PositionedLayoutItem, StyleProperty,
 };
 
 /// This crate has no rendering use for parley's `Brush` (glyph color is
@@ -169,8 +169,9 @@ impl LineLayout {
 /// meant to be long-lived, reused across every layout call (per `parley`'s
 /// own docs), not recreated per line.
 pub struct TextLayoutContext {
-    font_context: FontContext,
+    pub(crate) font_context: FontContext,
     layout_context: LayoutContext<NoBrush>,
+    pub(crate) fallback: crate::faces::DynamicFallback,
 }
 
 impl TextLayoutContext {
@@ -178,6 +179,7 @@ impl TextLayoutContext {
         Self {
             font_context: FontContext::new(),
             layout_context: LayoutContext::new(),
+            fallback: Default::default(),
         }
     }
 
@@ -197,35 +199,6 @@ impl TextLayoutContext {
             .collection
             .family_name(family_id)
             .map(str::to_owned)
-    }
-
-    /// Registers another face and appends it as a script or emoji fallback.
-    /// The primary monospace file stays the default; this only fills gaps
-    /// (Han, Hiragana, Katakana, Hangul, emoji) it cannot draw.
-    pub fn register_coverage_font(
-        &mut self,
-        font_bytes: &[u8],
-        scripts: &[[u8; 4]],
-        emoji: bool,
-    ) -> bool {
-        let blob = Blob::from(font_bytes.to_vec());
-        let registered = self.font_context.collection.register_fonts(blob, None);
-        if registered.is_empty() {
-            return false;
-        }
-        let ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
-        for script in scripts {
-            let key = fontique::FallbackKey::new(fontique::Script::from_bytes(*script), None);
-            self.font_context
-                .collection
-                .append_fallbacks(key, ids.iter().copied());
-        }
-        if emoji {
-            self.font_context
-                .collection
-                .append_generic_families(fontique::GenericFamily::Emoji, ids.into_iter());
-        }
-        true
     }
 
     /// Lays out one logical line of text: shapes it with `style.family` at
@@ -254,7 +227,9 @@ impl TextLayoutContext {
         let mut builder =
             self.layout_context
                 .ranged_builder(&mut self.font_context, text, 1.0, true);
-        builder.push_default(StyleProperty::FontFamily(FontFamily::named(style.family)));
+        builder.push_default(StyleProperty::FontFamily(
+            self.fallback.family(style.family),
+        ));
         builder.push_default(StyleProperty::FontSize(style.font_size));
         builder.push_default(ligature_feature_property(style.ligatures));
         for (range, enabled) in ligature_overrides {
@@ -262,6 +237,7 @@ impl TextLayoutContext {
         }
         let mut layout: Layout<NoBrush> = builder.build(text);
         layout.break_all_lines(max_width);
+        self.fallback.scan(&layout, text);
         layout.align(Alignment::Start, AlignmentOptions::default());
         LineLayout { layout }
     }
@@ -286,34 +262,9 @@ fn cached_face(blob: &Blob<u8>, index: u32) -> Option<swash::FontRef<'static>> {
     if let Some((_, _, face)) = faces.iter().find(|(i, x, _)| *i == id && *x == index) {
         return Some(*face);
     }
-    let face = swash::FontRef::from_index(leaked_font_bytes(blob), index as usize)?;
+    let face = swash::FontRef::from_index(crate::faces::leaked_font_bytes(blob), index as usize)?;
     faces.push((id, index, face));
     Some(face)
-}
-
-/// Keeps one process-lifetime copy of a shaped font's bytes so
-/// [`swash::FontRef`] can outlive the `parley` layout that owned the blob.
-fn leaked_font_bytes(blob: &Blob<u8>) -> &'static [u8] {
-    use std::sync::Mutex;
-    static CACHE: Mutex<Vec<(u64, &'static [u8])>> = Mutex::new(Vec::new());
-    let id = blob.id();
-    let mut cache = CACHE.lock().expect("font byte cache");
-    if let Some((_, bytes)) = cache.iter().find(|(cached, _)| *cached == id) {
-        return bytes;
-    }
-    let owned = blob.clone();
-    let ptr = owned.data().as_ptr();
-    let len = owned.data().len();
-    // The forgotten Arc is never dropped, so this allocation stays for the
-    // process. That is the same lifetime the primary monospace face already
-    // has (`Box::leak` in `App::new`).
-    std::mem::forget(owned);
-    // SAFETY: `owned` was the last Arc we hold and it was forgotten, so the
-    // allocation `ptr` addresses is not freed. `len` is that allocation's
-    // length. The slice is therefore valid for the rest of the process.
-    let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
-    cache.push((id, bytes));
-    bytes
 }
 
 /// `calt` (contextual alternates) and `liga` (standard ligatures) are the

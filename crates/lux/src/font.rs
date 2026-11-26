@@ -273,5 +273,7 @@ fn pick_ui_font<'a>(
     }
 }
 
+pub(crate) mod fallback;
+
 #[cfg(test)]
 mod tests;

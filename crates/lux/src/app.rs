@@ -433,7 +433,7 @@ impl PlatformEventHandler for App {
                 self.redraw(ctx);
                 crate::snapshot::capture_settled(self, ctx);
                 crate::probe::on_frame(self, frame_began.elapsed());
-                self.after_first_frame();
+                self.after_frame();
             }
             PlatformEvent::Keyboard(key_event) => {
                 if key_event.state == ElementState::Pressed

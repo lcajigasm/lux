@@ -643,7 +643,8 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-MAC-01 — Pipeline Tipográfico Avanzado y Cascada de Fuentes Fallback (Emojis/CJK)
 - Prioridad: `P1 (Calidad Gráfica)`
-- Estado: `OPEN`
+- Estado: `IN_PROGRESS`
+- Progress: CoreText dynamic fallback ships on a worker (STATUS ST-MAC-01); the crisp box-drawing and Japanese/emoji file criterion has no pixel check yet beyond the compare capture of `characters.txt`.
 - Dependencias: —
 - Problema actual:
   - Lux carga una única fuente monoespaciada fija (`SFNSMono.ttf`). Cualquier carácter ausente en esa fuente (emojis, caracteres CJK, iconos Unicode o cajas de dibujo) no se puede dibujar o genera fallos visuales.

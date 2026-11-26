@@ -8,6 +8,7 @@
 
 pub mod context;
 pub mod error;
+mod faces;
 pub mod glyph_atlas;
 pub mod pipeline;
 pub mod schedule;
