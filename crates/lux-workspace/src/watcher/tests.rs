@@ -95,6 +95,51 @@ fn detects_a_created_file() {
     fs::remove_dir_all(&dir).ok();
 }
 
+/// The window between the watch going live and the seeding scan: a file
+/// created there is seen by the scan and has a `Create` event on its way.
+/// It must not be seeded as known, or that event reads as a `Reload` and
+/// the sidebar never shows the file.
+#[test]
+fn a_file_created_while_the_seed_scan_runs_is_reported_as_created() {
+    let dir = temp_dir();
+    let old = dir.join("old.txt");
+    fs::write(&old, "old").unwrap();
+    // Birth times are compared against this; keep the old file clearly
+    // older on filesystems with coarse timestamps.
+    thread::sleep(Duration::from_millis(20));
+    let mut watcher = FileWatcher::new(DEBOUNCE).unwrap();
+    let root = normalize(&dir);
+    let since = SystemTime::now();
+    watcher
+        .debouncer
+        .lock()
+        .unwrap()
+        .watch(&root, RecursiveMode::Recursive)
+        .unwrap();
+    // Past any coarse timestamp granularity, so the new file's birth time
+    // is measurably after `since`.
+    thread::sleep(Duration::from_millis(20));
+    let raced = dir.join("raced.txt");
+    fs::write(&raced, "new").unwrap();
+    seed_known(&watcher.known, &root, since);
+    {
+        let known = watcher.known.lock().unwrap();
+        assert!(
+            known.contains(&old),
+            "a file from before the watch is known"
+        );
+        assert!(
+            !known.contains(&raced),
+            "seeded a file born after the watch"
+        );
+    }
+
+    let change = wait_for(&mut watcher, |c| c.path == raced);
+    assert_eq!(change.kind, ChangeKind::Created);
+
+    fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn detects_a_removed_file() {
     let dir = temp_dir();

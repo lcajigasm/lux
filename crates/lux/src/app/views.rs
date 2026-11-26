@@ -111,6 +111,7 @@ impl App {
     }
 
     pub(crate) fn open_workspace(&mut self, path: PathBuf) {
+        crate::session::leave_root(self);
         let restored = crate::session::readable_file(self, Some(&path))
             .is_some_and(|file| crate::session::restore_session(self, &file).unwrap_or(false));
         if !restored {
@@ -165,6 +166,7 @@ impl App {
         if let Some(sidebar) = &mut self.ui.sidebar {
             sidebar.visible = !sidebar.visible;
         } else {
+            crate::session::leave_root(self);
             let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
             self.ui.sidebar = crate::sidebar::SidebarState::open_folder(cwd);
         }

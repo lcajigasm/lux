@@ -238,6 +238,7 @@ impl App {
 
     /// Shows a project that `load_project` already read and parsed.
     pub(crate) fn apply_project(&mut self, path: &Path, workspace: Workspace) {
+        crate::session::leave_root(self);
         let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
 
         if let Some(first_root) = workspace.roots().first() {
@@ -382,6 +383,7 @@ impl App {
 
     /// Closes the current project workspace.
     pub(crate) fn close_project(&mut self) {
+        crate::session::leave_root(self);
         self.ui.project.active_project_path = None;
         self.ui.project.workspace = None;
         self.ui.sidebar = None;

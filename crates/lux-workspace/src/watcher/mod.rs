@@ -38,7 +38,11 @@
 //! a dirty file as a plain `Created` instead of a `Conflict`. `watch()`
 //! fixes this by snapshotting which files already exist under the root
 //! into `known` before returning; `classify` then treats a `Create` for an
-//! already-known path the same as a `Modify`.
+//! already-known path the same as a `Modify`. The watch is registered
+//! before the scan, so no change is missed, and the scan leaves out files
+//! born after the watch went live: such a file's own `Create` arrives
+//! after the scan and must still read as `Created`, or the sidebar never
+//! shows it.
 //!
 //! A second, sharper FSEvents particularity, also found by testing against
 //! the real backend: deleting a file shortly after it's created (even
@@ -68,7 +72,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use notify_debouncer_full::notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{
@@ -440,18 +444,47 @@ fn watch_root(
     root: &Path,
 ) -> notify::Result<()> {
     let root = normalize(root);
+    // Taken before the watch is registered: a file born after this moment
+    // gets its own `Create` once the watch is live, so it is not seeded.
+    let since = SystemTime::now();
     debouncer
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .watch(&root, RecursiveMode::Recursive)?;
+    seed_known(known, &root, since);
+    Ok(())
+}
+
+/// Records every file under `root` that existed before `since` (the
+/// moment just before the watch was registered). A file created between
+/// the watch going live and the scan reaching it is left out of `known`,
+/// so its `Create` event is classified as `Created`, not as macOS's
+/// spurious re-`Create` of an existing file (see module docs).
+fn seed_known(known: &Mutex<HashSet<PathBuf>>, root: &Path, since: SystemTime) {
     let mut found = HashSet::new();
-    scan_known(&root, &mut found);
+    scan_known(root, &mut found);
+    found.retain(|path| existed_before(path, since));
     known
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .extend(found);
-    Ok(())
 }
+
+/// Whether `path` was created before `since`, by its birth time where the
+/// filesystem keeps one, else its modification time. Without a birth time
+/// a file edited after `since` is left unseeded too; its `Modify` event
+/// is still classified by dirty state. A filesystem with one-second
+/// timestamps (HFS+) can still seed a file born in the same second.
+fn existed_before(path: &Path, since: SystemTime) -> bool {
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    match meta.created().or_else(|_| meta.modified()) {
+        Ok(born) => born < since,
+        Err(_) => true,
+    }
+}
+
 /// Resolves symlinks so paths compare consistently across `watch`,
 /// `mark_dirty`/`mark_clean`/`is_dirty`, and the paths backends actually
 /// report (see `watch`'s doc comment). Best-effort: a path that no longer
