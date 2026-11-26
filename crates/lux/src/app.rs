@@ -326,7 +326,7 @@ impl App {
         }
         self.save_recovery_snapshot();
         crate::git::note_edit(self);
-        crate::session::note_change();
+        crate::session::note_change(self);
         self.update_document_title();
         if self.ui.announcement.is_none() {
             let head = self.cursors.primary().head;
@@ -526,7 +526,7 @@ impl PlatformEventHandler for App {
                     crate::tab_strip::release_drag(self);
                     self.end_divider_drag();
                 }
-                crate::session::note_change();
+                crate::session::note_change(self);
                 self.refresh_accessibility();
                 if let Some(gpu_window) = &self.gpu_window {
                     gpu_window.window.request_redraw();

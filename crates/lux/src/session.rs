@@ -45,6 +45,9 @@ pub(crate) struct WorkspaceSession {
     /// Each open buffer's history as last handed to the session writer,
     /// so an unchanged history is shared rather than cloned again.
     pub(crate) histories: HashMap<u64, Arc<History>>,
+    /// A change was noted since the last session snapshot. Only set while
+    /// the event loop runs (a waker is registered), like the debounce.
+    unsaved: bool,
 }
 
 impl WorkspaceSession {
@@ -144,19 +147,35 @@ pub(crate) fn readable_file(app: &App, root: Option<&Path>) -> Option<PathBuf> {
 
 /// Writes the session now, on this thread. Only for the quit path.
 pub(crate) fn save_session(app: &mut App, clean: bool) -> std::io::Result<()> {
+    app.ui.session.unsaved = false;
     snapshot::write_now(app, clean)
 }
 
 /// Records a change worth persisting; the write follows once changes go
 /// quiet (see `debounce`).
-pub(crate) fn note_change() {
+pub(crate) fn note_change(app: &mut App) {
+    if app.ui.session.waker.is_some() {
+        app.ui.session.unsaved = true;
+    }
     debounce::SESSION.note_change();
+}
+
+/// Called before the folder that keys the session changes: another folder
+/// or project opens, or the last folder closes. A change still inside the
+/// quiet period belongs to the project being left, so its snapshot is
+/// queued now, for that project's file. The session writer keeps one job
+/// per file, so the next project's writes cannot replace it.
+pub(crate) fn leave_root(app: &mut App) {
+    if std::mem::take(&mut app.ui.session.unsaved) {
+        snapshot::submit(app);
+    }
 }
 
 /// Called from `background_event`: writes the session on the worker when
 /// the quiet period after the last change has passed.
 pub(crate) fn write_if_due(app: &mut App) {
     if debounce::SESSION.take_due() {
+        app.ui.session.unsaved = false;
         snapshot::submit(app);
     }
 }

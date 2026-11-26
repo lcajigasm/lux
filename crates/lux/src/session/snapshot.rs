@@ -42,9 +42,15 @@ pub(crate) struct Snapshot {
     clean: bool,
 }
 
-static SESSION_WRITER: LatestWorker<Snapshot> = LatestWorker::new("lux-session", |snapshot| {
-    let _ = write(snapshot);
-});
+/// Keyed by session file: a write still waiting for the project the user
+/// just left is never replaced by a write for the project now open.
+static SESSION_WRITER: LatestWorker<Snapshot> = LatestWorker::keyed(
+    "lux-session",
+    |snapshot| {
+        let _ = write(snapshot);
+    },
+    |a, b| a.file == b.file,
+);
 
 /// Queues a session write on the worker. Returns at once.
 pub(crate) fn submit(app: &mut App) {
@@ -57,7 +63,17 @@ pub(crate) fn submit(app: &mut App) {
 /// newest state is on disk.
 pub(crate) fn write_now(app: &mut App, clean: bool) -> std::io::Result<()> {
     let snapshot = take(app, clean);
-    SESSION_WRITER.run_now(|| write(snapshot))
+    SESSION_WRITER.run_now(snapshot, write)
+}
+
+/// Waits until every queued session write is on disk. Tests only.
+#[cfg(test)]
+pub(crate) fn wait_written() {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while SESSION_WRITER.busy() {
+        assert!(std::time::Instant::now() < deadline, "session writer stuck");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
 }
 
 /// The session file for the project open right now. Recomputed on every

@@ -72,6 +72,42 @@ fn opening_another_folder_writes_its_own_session_not_the_restored_one() {
     assert_eq!(open, vec![file_a]);
 }
 
+/// An edit made in project A inside the quiet period, right before the
+/// user opens project B, lands in A's session. Without the flush on the
+/// root change it was never written (the debounced write snapshots B), and
+/// a write still queued for A was replaced by B's.
+#[test]
+fn an_edit_just_before_switching_projects_is_written_to_the_old_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let root_a = dir.path().join("a");
+    let root_b = dir.path().join("b");
+    let file_a = project(&root_a, "a.txt", "alpha\n");
+    project(&root_b, "b.txt", "beta\n");
+
+    let mut app = new_app();
+    app.ui.session.data_dir = Some(data);
+    app.ui.sidebar = crate::sidebar::SidebarState::open_folder(root_a.clone());
+    app.ui.session.register_waker(Arc::new(|| {}));
+    open_file(&mut app, &file_a);
+    let session_a = crate::session::snapshot::current_file(&app);
+    type_text(&mut app, "late ");
+
+    app.open_workspace(root_b.clone());
+    assert_ne!(crate::session::snapshot::current_file(&app), session_a);
+    crate::session::snapshot::wait_written();
+
+    let written = Session::load(&session_a).expect("A's session was never written");
+    assert_eq!(written.folders, vec![root_a]);
+    let tab = written
+        .tabs
+        .iter()
+        .find(|tab| tab.path.as_deref() == Some(file_a.as_path()))
+        .expect("A's tab");
+    assert!(tab.is_dirty);
+    assert_eq!(tab.draft_text.as_deref(), Some("late alpha\n"));
+}
+
 /// Closing the last folder moves writes to the folderless session.
 #[test]
 fn closing_the_folder_moves_writes_to_the_folderless_session() {

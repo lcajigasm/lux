@@ -200,6 +200,10 @@ pub(crate) fn activate(
 }
 
 pub(crate) fn close(app: &mut crate::app::App, index: usize) {
+    if index == 0 && app.ui.sidebar.is_some() {
+        // The header folder keys the session; its writes go elsewhere next.
+        crate::session::leave_root(app);
+    }
     let removed = {
         let Some(sidebar) = app.ui.sidebar.as_mut() else {
             return;
