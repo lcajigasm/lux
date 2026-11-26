@@ -30,16 +30,21 @@ pub struct Root {
     pub name: String,
 }
 
-/// A custom build system command definition from a project file.
+/// A custom build system from a project file's `build_systems`. The
+/// other `.sublime-build` keys (`shell_cmd`, `working_dir`, `env`,
+/// `line_regex`, `variants`, ...) are kept verbatim in `extra`, so they
+/// round-trip and the editor can read them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectBuildSystem {
     pub name: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cmd: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_regex: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selector: Option<String>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// A multi-root workspace: an ordered set of folders opened together.

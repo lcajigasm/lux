@@ -415,10 +415,17 @@ fn coverage_fonts_and_recovery_scan_load_after_the_call_returns() {
     let _macros = MacroFolder::new();
     let ctx = Context::new(Dialogs::default());
     let mut app = app();
+    let config = tempfile::tempdir().unwrap();
+    app.ui.settings.settings_path = config.path().join("settings.json");
     app.ui.dialogs.jobs.set_wake(ctx.background_waker());
     let hold = app.ui.dialogs.jobs.hold();
     app.start_deferred_loads();
-    assert_eq!(app.ui.dialogs.jobs.in_flight(), 4, "reads ran inline");
+    // Fonts, recovery scan, saved macros and `.sublime-build` files.
+    assert_eq!(app.ui.dialogs.jobs.in_flight(), 5, "reads ran inline");
+    assert!(
+        !config.path().join("builds").exists(),
+        "no disk access inline"
+    );
 
     hold.release();
     ctx.settle(&mut app, 4);

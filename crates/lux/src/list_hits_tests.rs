@@ -43,6 +43,7 @@ fn build_picker(query: &str) -> crate::build::BuildPickerState {
             command: "make".into(),
             args: Vec::new(),
             file_regex: None,
+            ..Default::default()
         }],
         query: QueryField::from_text(query),
         selected: 0,

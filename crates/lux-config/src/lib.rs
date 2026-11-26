@@ -11,6 +11,7 @@
 //! completion — see `completion`'s module docs for why that was chosen
 //! over a preferences UI panel) are all implemented.
 
+pub mod build_system;
 pub mod completion;
 pub mod editorconfig;
 pub mod font_settings;

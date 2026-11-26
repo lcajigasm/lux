@@ -57,6 +57,7 @@ impl Default for Reloads {
 
 pub(crate) fn poll_file_watcher(app: &mut App) {
     crate::goto::symbols::poll(app);
+    crate::build::systems::poll(app);
     let mut repaint_needed = apply_reloads(app);
     if let Some(batch) = app.ui.session.watcher.as_mut().map(|w| w.try_recv()) {
         if let Some(error) = batch.errors.first() {
@@ -76,6 +77,7 @@ pub(crate) fn poll_file_watcher(app: &mut App) {
 pub(crate) fn apply_changes(app: &mut App, changes: Vec<FileChange>) -> bool {
     crate::goto::symbols::note_changes(app, &changes);
     crate::git::note_disk_changes(app, changes.iter().map(|change| &change.path));
+    crate::build::systems::note_disk_changes(app, &changes);
     let mut repaint_needed = false;
     for change in changes {
         match change.kind {

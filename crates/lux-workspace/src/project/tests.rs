@@ -128,6 +128,7 @@ fn project_file_round_trips_through_json() {
             cmd: vec!["cargo".to_owned(), "check".to_owned()],
             file_regex: None,
             selector: None,
+            extra: Map::new(),
         }],
     };
 

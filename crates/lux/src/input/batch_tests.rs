@@ -156,12 +156,14 @@ fn a2_arrows_and_enter_fire_once_per_press() {
                 command: "true".into(),
                 args: Vec::new(),
                 file_regex: None,
+                ..Default::default()
             },
             crate::build::BuildVariant {
                 name: "Two".into(),
                 command: "true".into(),
                 args: Vec::new(),
                 file_regex: None,
+                ..Default::default()
             },
         ],
         query: crate::field::QueryField::new(),
