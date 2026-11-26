@@ -108,3 +108,83 @@ fn the_source_of_a_rename_in_flight_is_not_marked_removed() {
     assert!(!app.document_dirty());
     assert!(app.documents.disk_snapshot.is_some());
 }
+
+/// Reloads `file` (already rewritten on disk) into `app` and waits for it.
+pub(crate) fn reload_and_wait(app: &mut App, file: &Path) {
+    let (wake_tx, woke) = mpsc::channel();
+    app.ui.session.register_waker(Arc::new(move || {
+        let _ = wake_tx.send(());
+    }));
+    apply_changes(app, vec![change(file, ChangeKind::Reload)]);
+    woke.recv_timeout(Duration::from_secs(5))
+        .expect("the read wakes the loop");
+    poll_file_watcher(app);
+}
+
+/// A clean tab with undo history, reloaded from disk: undo first brings
+/// back the text from before the reload, then the edits before it, each
+/// against the text it was recorded on.
+#[test]
+fn undo_after_a_reload_restores_the_previous_text_not_garbage() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("note.txt");
+    std::fs::write(&file, "one\n").unwrap();
+    let mut app = app_on(&file, b"one\n");
+    let caret = |buffer: &Buffer, at| Selection::cursor(Position::from_char(buffer, at));
+    let before = caret(&app.buffer, 3);
+    let edit = Edit::insert(3, " more");
+    edit.apply(&mut app.buffer);
+    let after = caret(&app.buffer, 8);
+    app.history
+        .record(Transaction::new(vec![edit], vec![before], vec![after]));
+    std::fs::write(&file, "one more\n").unwrap();
+    app.documents.saved_version = app.history.state_id();
+    assert!(!app.document_dirty());
+
+    std::fs::write(&file, "a different, longer file\nwith two lines\n").unwrap();
+    reload_and_wait(&mut app, &file);
+    assert_eq!(
+        app.buffer.text(),
+        "a different, longer file\nwith two lines\n"
+    );
+    assert!(!app.document_dirty());
+
+    crate::input::dispatch::execute_keymap_command(&mut app, "undo", None, None);
+    assert_eq!(app.buffer.text(), "one more\n");
+    assert!(app.document_dirty(), "the pre-reload text is not on disk");
+    crate::input::dispatch::execute_keymap_command(&mut app, "undo", None, None);
+    assert_eq!(app.buffer.text(), "one\n");
+    crate::input::dispatch::execute_keymap_command(&mut app, "redo", None, None);
+    crate::input::dispatch::execute_keymap_command(&mut app, "redo", None, None);
+    assert_eq!(
+        app.buffer.text(),
+        "a different, longer file\nwith two lines\n"
+    );
+    assert!(!app.document_dirty());
+}
+
+/// The same for a tab in the background: its own history gets the step.
+#[test]
+fn a_background_tab_reload_is_one_undo_step_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("note.txt");
+    std::fs::write(&file, "hello world\n").unwrap();
+    let mut app = app_on(&file, b"hello world\n");
+    let other = app.documents.tabs.open("other");
+    app.documents
+        .entries
+        .push(crate::document::DocumentEntry::new(
+            other,
+            None,
+            Buffer::from_bytes(b"").unwrap(),
+        ));
+    app.switch_to_tab(other);
+
+    std::fs::write(&file, "hello brave world\n").unwrap();
+    reload_and_wait(&mut app, &file);
+    let entry = &mut app.documents.entries[0];
+    assert_eq!(entry.buffer.text(), "hello brave world\n");
+    assert!(!entry.is_dirty());
+    assert!(entry.history.undo(&mut entry.buffer).is_some());
+    assert_eq!(entry.buffer.text(), "hello world\n");
+}

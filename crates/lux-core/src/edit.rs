@@ -59,9 +59,72 @@ impl Edit {
     }
 }
 
+/// The edits that turn `old` into `new`: one delete and one insert
+/// covering only the span between their common prefix and common suffix.
+/// Recorded as one transaction, they let undo bring back `old` after the
+/// text was replaced wholesale, as when a file is reloaded from disk.
+/// Empty when the texts are equal. O(n) in the text length.
+pub fn replace_edits(old: &Buffer, new: &Buffer) -> Vec<Edit> {
+    let (old_rope, new_rope) = (old.rope(), new.rope());
+    let shorter = old_rope.len_chars().min(new_rope.len_chars());
+    let prefix = old_rope
+        .chars()
+        .zip(new_rope.chars())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let suffix = old_rope
+        .chars_at(old_rope.len_chars())
+        .reversed()
+        .zip(new_rope.chars_at(new_rope.len_chars()).reversed())
+        .take(shorter - prefix)
+        .take_while(|(a, b)| a == b)
+        .count();
+    let removed = old.text_range(prefix..old_rope.len_chars() - suffix);
+    let added = new.text_range(prefix..new_rope.len_chars() - suffix);
+    let mut edits = Vec::with_capacity(2);
+    if !removed.is_empty() {
+        edits.push(Edit::Delete {
+            char_idx: prefix,
+            text: removed,
+        });
+    }
+    if !added.is_empty() {
+        edits.push(Edit::insert(prefix, added));
+    }
+    edits
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replace_edits_turn_old_into_new_and_undo_back() {
+        for (old, new) in [
+            ("hello world", "hello brave world"),
+            ("abc", "abc"),
+            ("", "fresh"),
+            ("gone", ""),
+            ("aaa", "aa"),
+            ("start middle end", "begin middle finish"),
+            ("ñandú\n", "ñu\n"),
+        ] {
+            let before = Buffer::from_bytes(old.as_bytes()).unwrap();
+            let after = Buffer::from_bytes(new.as_bytes()).unwrap();
+            let edits = replace_edits(&before, &after);
+            let mut buffer = before.clone();
+            for edit in &edits {
+                edit.apply(&mut buffer);
+            }
+            assert_eq!(buffer.text(), new, "{old:?} -> {new:?}");
+            for edit in edits.iter().rev() {
+                edit.invert().apply(&mut buffer);
+            }
+            assert_eq!(buffer.text(), old, "undo of {old:?} -> {new:?}");
+        }
+        let same = Buffer::from_bytes(b"same").unwrap();
+        assert!(replace_edits(&same, &same.clone()).is_empty());
+    }
 
     #[test]
     fn insert_then_apply_places_the_text() {
