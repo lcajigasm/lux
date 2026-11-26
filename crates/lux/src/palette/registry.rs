@@ -308,11 +308,6 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
             "Preferences: Import Settings from Sublime Text",
             "Preferences",
         ),
-        (
-            "preferences.import_jetbrains",
-            "Preferences: Import Settings from JetBrains",
-            "Preferences",
-        ),
         ("build.build", "Build: Build Project", "Build"),
         ("build.build_with", "Build: Build With...", "Build"),
         ("build.cancel", "Build: Cancel Build", "Build"),

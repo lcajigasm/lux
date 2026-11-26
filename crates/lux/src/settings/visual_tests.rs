@@ -262,6 +262,16 @@ fn settings_toggle_stepper_and_menu_change_the_stored_value() {
         _ => panic!("theme"),
     }
     assert!(app.ui.settings.panel.as_ref().unwrap().menu.is_none());
+    crate::ui_io::finish_all(&mut app, &Ctx);
+    let stored = std::fs::read_to_string(dir.path().join("settings.json")).unwrap();
+    assert!(
+        stored.contains(r#""editor.fontLigatures": false"#),
+        "{stored}"
+    );
+    assert!(
+        stored.contains(r#""workbench.colorTheme": "mariana""#),
+        "{stored}"
+    );
 }
 
 #[test]
@@ -348,9 +358,7 @@ fn reveal(app: &mut App, index: usize) {
 }
 
 fn click(app: &mut App, x: f32, y: f32) {
-    let mut settings = std::mem::take(&mut app.ui.settings);
-    settings.handle_click(app, x, y);
-    app.ui.settings = settings;
+    super::handle_click(app, x, y);
 }
 
 #[test]

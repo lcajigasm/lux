@@ -234,9 +234,7 @@ pub(crate) fn sync_document_open(
     text: &str,
 ) {
     if app.ui.settings.is_settings_path(path) {
-        let settings = std::mem::take(&mut app.ui.settings);
-        settings.validate_buffer(app, path, text);
-        app.ui.settings = settings;
+        crate::settings::SettingsState::validate_buffer(app, path, text);
     }
 
     let Some(lang) = lsp_language_for_path(path) else {
@@ -325,9 +323,7 @@ pub(crate) fn sync_document_open(
 
 pub(crate) fn sync_document_change(app: &mut App, path: &Path, text: &str) {
     if app.ui.settings.is_settings_path(path) {
-        let settings = std::mem::take(&mut app.ui.settings);
-        settings.validate_buffer(app, path, text);
-        app.ui.settings = settings;
+        crate::settings::SettingsState::validate_buffer(app, path, text);
     }
     let Some(sync) = &app.ui.lsp.sync else {
         return;
@@ -355,16 +351,7 @@ pub(crate) fn sync_document_change(app: &mut App, path: &Path, text: &str) {
 
 pub(crate) fn sync_document_save(app: &mut App, path: &Path) {
     if app.ui.settings.is_settings_path(path) {
-        let _ = app
-            .ui
-            .settings
-            .config
-            .lock()
-            .unwrap()
-            .reload_layer(lux_config::layering::Layer::User);
-        let settings = std::mem::take(&mut app.ui.settings);
-        settings.apply_to_app(app);
-        app.ui.settings = settings;
+        crate::settings::reload_user_settings(app);
     }
     let Some(sync) = &app.ui.lsp.sync else {
         return;

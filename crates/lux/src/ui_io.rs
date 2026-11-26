@@ -35,6 +35,9 @@ pub(crate) enum Done {
     Open(PathBuf),
     /// The user settings file was written and its layer reloaded.
     SettingsSaved,
+    /// An import from another editor finished; the report to show. Any
+    /// imported values are already written and reloaded.
+    Imported(String),
     MacroSaved {
         path: PathBuf,
         saved: crate::macros::Macro,
@@ -310,6 +313,10 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
         }
         Done::Open(path) => crate::document::open_queue::enqueue(app, ctx, path),
         Done::SettingsSaved => app.apply_user_settings(),
+        Done::Imported(report) => {
+            app.apply_user_settings();
+            app.ui.announcement = Some(report);
+        }
         Done::MacroSaved { path, saved } => {
             crate::macros::dispatch::note_macro_saved(app, &path, saved)
         }
@@ -338,5 +345,7 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
     }
 }
 
+#[cfg(test)]
+mod settings_tests;
 #[cfg(test)]
 mod tests;

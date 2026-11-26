@@ -431,23 +431,22 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
         "view.zoom_out" => app.zoom_font(-1.0),
         "view.zoom_reset" => app.reset_font_zoom(),
         "preferences.open_settings_ui" => {
-            let mut settings = std::mem::take(&mut app.ui.settings);
-            settings.open_settings_ui();
-            app.ui.settings = settings;
+            app.ui.settings.open_settings_ui();
             app.scheduler.invalidate_all();
         }
-        "preferences.import_vscode"
-        | "preferences.import_sublime"
-        | "preferences.import_jetbrains" => {
-            let mut settings = std::mem::take(&mut app.ui.settings);
-            let msg = match command_id {
-                "preferences.import_vscode" => settings.import_vscode(app),
-                "preferences.import_sublime" => settings.import_sublime(app),
-                _ => settings.import_jetbrains(app),
-            };
-            app.ui.settings = settings;
-            app.ui.announcement = Some(msg);
-            app.scheduler.invalidate_all();
+        "preferences.import_vscode" => {
+            crate::settings::importers::import(
+                app,
+                ctx,
+                crate::settings::importers::Source::VsCode,
+            );
+        }
+        "preferences.import_sublime" => {
+            crate::settings::importers::import(
+                app,
+                ctx,
+                crate::settings::importers::Source::Sublime,
+            );
         }
         "build.build" => {
             app.build(Some(ctx));

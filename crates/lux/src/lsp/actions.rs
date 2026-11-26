@@ -22,9 +22,7 @@ pub(crate) fn request_completion(app: &mut App, ctx: &dyn PlatformContext) {
     {
         let text = app.buffer.text();
         let byte_offset = position_to_byte_offset(&text, lsp_pos);
-        let settings = std::mem::take(&mut app.ui.settings);
-        let handled = settings.complete_buffer(app, &text, byte_offset);
-        app.ui.settings = settings;
+        let handled = crate::settings::SettingsState::complete_buffer(app, &text, byte_offset);
         if handled {
             return;
         }
