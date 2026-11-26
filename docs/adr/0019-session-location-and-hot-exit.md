@@ -42,7 +42,12 @@ Only after that do files the JSON no longer names get pruned.
 A helper thread, started on demand, sleeps until 750 ms pass with no
 change and wakes the event loop through the platform waker. The loop then
 takes one snapshot: rope clones, carets, and each history behind an `Arc`
-that is cloned only when its revision changed. The latest-only worker that
+that is cloned only when its revision changed. A history's undo steps are
+themselves shared, so that clone copies pointers, not edit text. The
+session file is derived from the workspace root at each snapshot, never
+pinned at restore, so a write always lands in the open project's session.
+A reload from disk is recorded as one undo step, so a persisted history
+always describes the text it is stored with. The latest-only worker that
 writes recovery snapshots also writes sessions: it encodes, writes, and
 prunes off the UI thread. A newer snapshot replaces one still waiting.
 Quit writes on the quitting thread, after the write in flight, and marks
