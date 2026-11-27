@@ -57,6 +57,7 @@ impl App {
             );
             Some(Done::Fonts(faces))
         });
+        crate::build::systems::reload(self);
         ui_io::spawn(self, None, || {
             Some(Done::Recovery(
                 Self::recoverable_documents().into_iter().next(),

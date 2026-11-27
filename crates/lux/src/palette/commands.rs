@@ -453,7 +453,7 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
             app.build(Some(ctx));
         }
         "build.build_with" => {
-            app.build_with();
+            app.build_with(Some(ctx));
         }
         "build.cancel" => {
             app.cancel_build();

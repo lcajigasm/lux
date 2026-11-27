@@ -266,6 +266,7 @@ fn test_build_picker_click_and_outside() {
             command: "cargo".into(),
             args: vec!["check".into()],
             file_regex: None,
+            ..Default::default()
         }],
         query: crate::field::QueryField::new(),
         selected: 0,

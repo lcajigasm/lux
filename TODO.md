@@ -595,7 +595,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-BUILD-01 — Soporte Extensible de Archivos `.sublime-build` y Captura de Errores con `F4`
 - Prioridad: `P1 (Sublime Parity)`
-- Estado: `OPEN`
+- Estado: `IN_PROGRESS` — implemented and covered by app-level tests (`crates/lux/src/build/tests.rs`, `crates/lux-config/src/build_system/tests.rs`); remaining: the interactive check in the macOS desktop window that rule 4 requires before `DONE`.
 - Dependencias: —
 - Problema actual:
   - La compilación actual tiene comandos predefinidos en código y el salto a errores con `F4` falla con patrones no estándar.

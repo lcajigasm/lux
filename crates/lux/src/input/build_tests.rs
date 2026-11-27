@@ -87,7 +87,7 @@ fn test_detect_build_variants_cargo() {
     let dir = tempdir().unwrap();
     std::fs::write(dir.path().join("Cargo.toml"), "[package]\nname=\"foo\"\n").unwrap();
 
-    let variants = detect_build_variants(Some(dir.path()), None, &[]);
+    let variants = detect_build_variants(Some(dir.path()), None);
     assert!(!variants.is_empty());
     let names: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
     assert!(names.contains(&"Cargo: Check"));
@@ -108,7 +108,7 @@ fn test_detect_build_variants_package_json_and_file_types() {
     let py_file = dir.path().join("script.py");
     std::fs::write(&py_file, "print('hi')").unwrap();
 
-    let variants = detect_build_variants(Some(dir.path()), Some(&py_file), &[]);
+    let variants = detect_build_variants(Some(dir.path()), Some(&py_file));
     let names: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
     assert!(names.contains(&"Python: Run File"));
     assert!(names.contains(&"npm: test"));
@@ -130,18 +130,21 @@ fn test_build_picker_filtering_and_navigation() {
             command: "cargo".into(),
             args: vec!["check".into()],
             file_regex: None,
+            ..Default::default()
         },
         BuildVariant {
             name: "Cargo: Test".into(),
             command: "cargo".into(),
             args: vec!["test".into()],
             file_regex: None,
+            ..Default::default()
         },
         BuildVariant {
             name: "Python: Run File".into(),
             command: "python3".into(),
             args: vec!["run.py".into()],
             file_regex: None,
+            ..Default::default()
         },
     ];
 
@@ -191,6 +194,7 @@ fn test_parse_build_errors_standard_and_custom() {
         command: "custom".into(),
         args: vec![],
         file_regex: Some(r"ERR \[([^:]+):([0-9]+):([0-9]+)\]".into()),
+        ..Default::default()
     };
     let locs2 = parse_build_errors(custom_output, Some(&variant));
     assert_eq!(locs2.len(), 1);
@@ -204,8 +208,9 @@ fn test_build_picker_key_handling_lifecycle() {
     let mut app = create_test_app();
     let ctx = DummyContext;
 
-    // Open Build With... modal picker
-    app.build_with();
+    // Open Build With... modal picker, once the marker probe lands.
+    app.build_with(Some(&ctx));
+    crate::ui_io::finish_all(&mut app, &ctx);
     assert!(app.ui.build.picker.is_some());
 
     // Type query
@@ -250,6 +255,7 @@ fn test_build_keymap_command_dispatch() {
 
     // Dispatch build_with command
     execute_keymap_command(&mut app, "build_with", Some(&ctx), None);
+    crate::ui_io::finish_all(&mut app, &ctx);
     assert!(app.ui.build.picker.is_some());
 
     // Cancel / dismiss via Escape

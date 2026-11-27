@@ -1,6 +1,17 @@
 //! Project Build System runner, build variants picker, and compiler error navigation (T05, ST13).
+//! Build systems come from `.sublime-build` files (`systems`), project
+//! `build_systems` and auto-detection (`detect`); `select` resolves them
+//! for the active buffer.
 
-use std::path::{Path, PathBuf};
+pub(crate) mod detect;
+pub(crate) mod request;
+pub(crate) mod select;
+pub(crate) mod systems;
+
+#[cfg(test)]
+pub(crate) use detect::detect_build_variants;
+
+use std::path::PathBuf;
 
 use lux_platform::event::KeyEvent;
 use lux_platform::{Key, NamedKey, PlatformContext};
@@ -8,12 +19,19 @@ use lux_term::{CommandBuilder, SourceLocation, TaskId, detect_links};
 
 use crate::app::App;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct BuildVariant {
     pub(crate) name: String,
     pub(crate) command: String,
     pub(crate) args: Vec<String>,
     pub(crate) file_regex: Option<String>,
+    pub(crate) line_regex: Option<String>,
+    /// Where the command runs and relative error paths resolve; `None`
+    /// is the workspace root.
+    pub(crate) working_dir: Option<PathBuf>,
+    pub(crate) env: Vec<(String, String)>,
+    /// The `selector` of the build system this came from, if any.
+    pub(crate) selector: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -90,186 +108,13 @@ pub(crate) struct BuildState {
     pub(crate) detected_errors: Vec<SourceLocation>,
     pub(crate) current_error_idx: Option<usize>,
     pub(crate) picker: Option<BuildPickerState>,
-}
-
-pub(crate) fn detect_build_variants(
-    workspace_root: Option<&Path>,
-    current_file: Option<&Path>,
-    custom_builds: &[lux_workspace::project::ProjectBuildSystem],
-) -> Vec<BuildVariant> {
-    let mut variants = Vec::new();
-
-    for cb in custom_builds {
-        if !cb.cmd.is_empty() {
-            variants.push(BuildVariant {
-                name: cb.name.clone(),
-                command: cb.cmd[0].clone(),
-                args: cb.cmd[1..].to_vec(),
-                file_regex: cb.file_regex.clone(),
-            });
-        }
-    }
-
-    let has_cargo = workspace_root.is_some_and(|r| r.join("Cargo.toml").exists())
-        || current_file.is_some_and(|f| has_ancestor_file(f, "Cargo.toml"));
-
-    if has_cargo {
-        variants.push(BuildVariant {
-            name: "Cargo: Check".into(),
-            command: "cargo".into(),
-            args: vec!["check".into()],
-            file_regex: None,
-        });
-        variants.push(BuildVariant {
-            name: "Cargo: Build".into(),
-            command: "cargo".into(),
-            args: vec!["build".into()],
-            file_regex: None,
-        });
-        variants.push(BuildVariant {
-            name: "Cargo: Test".into(),
-            command: "cargo".into(),
-            args: vec!["test".into()],
-            file_regex: None,
-        });
-        variants.push(BuildVariant {
-            name: "Cargo: Clippy".into(),
-            command: "cargo".into(),
-            args: vec!["clippy".into()],
-            file_regex: None,
-        });
-        variants.push(BuildVariant {
-            name: "Cargo: Run".into(),
-            command: "cargo".into(),
-            args: vec!["run".into()],
-            file_regex: None,
-        });
-    }
-
-    let has_package_json = workspace_root.is_some_and(|r| r.join("package.json").exists())
-        || current_file.is_some_and(|f| has_ancestor_file(f, "package.json"));
-
-    if has_package_json {
-        variants.push(BuildVariant {
-            name: "npm: test".into(),
-            command: "npm".into(),
-            args: vec!["test".into()],
-            file_regex: None,
-        });
-        variants.push(BuildVariant {
-            name: "npm: build".into(),
-            command: "npm".into(),
-            args: vec!["run".into(), "build".into()],
-            file_regex: None,
-        });
-    }
-
-    if let Some(file) = current_file {
-        let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("");
-        let file_str = file.to_string_lossy().to_string();
-
-        match ext {
-            "js" | "mjs" | "cjs" | "ts" => {
-                variants.push(BuildVariant {
-                    name: "Node: Run File".into(),
-                    command: "node".into(),
-                    args: vec![file_str],
-                    file_regex: None,
-                });
-            }
-            "py" => {
-                variants.push(BuildVariant {
-                    name: "Python: Run File".into(),
-                    command: "python3".into(),
-                    args: vec![file_str],
-                    file_regex: None,
-                });
-            }
-            "go" => {
-                variants.push(BuildVariant {
-                    name: "Go: Run File".into(),
-                    command: "go".into(),
-                    args: vec!["run".into(), file_str],
-                    file_regex: None,
-                });
-            }
-            "sh" | "bash" => {
-                variants.push(BuildVariant {
-                    name: "Bash: Run File".into(),
-                    command: "bash".into(),
-                    args: vec![file_str],
-                    file_regex: None,
-                });
-            }
-            "rs" => {
-                variants.push(BuildVariant {
-                    name: "Rust: Compile File".into(),
-                    command: "rustc".into(),
-                    args: vec![file_str],
-                    file_regex: None,
-                });
-            }
-            _ => {}
-        }
-    }
-
-    let has_pyproject = workspace_root
-        .is_some_and(|r| r.join("pyproject.toml").exists() || r.join("pytest.ini").exists());
-    if has_pyproject {
-        variants.push(BuildVariant {
-            name: "Python: Pytest".into(),
-            command: "pytest".into(),
-            args: vec![],
-            file_regex: None,
-        });
-    }
-
-    let has_go = workspace_root.is_some_and(|r| r.join("go.mod").exists())
-        || current_file.is_some_and(|f| has_ancestor_file(f, "go.mod"));
-    if has_go {
-        variants.push(BuildVariant {
-            name: "Go: Build".into(),
-            command: "go".into(),
-            args: vec!["build".into()],
-            file_regex: None,
-        });
-        variants.push(BuildVariant {
-            name: "Go: Test".into(),
-            command: "go".into(),
-            args: vec!["test".into(), "./...".into()],
-            file_regex: None,
-        });
-    }
-
-    let has_makefile =
-        workspace_root.is_some_and(|r| r.join("Makefile").exists() || r.join("makefile").exists());
-    if has_makefile {
-        variants.push(BuildVariant {
-            name: "Make".into(),
-            command: "make".into(),
-            args: vec![],
-            file_regex: None,
-        });
-        variants.push(BuildVariant {
-            name: "Make: Clean".into(),
-            command: "make".into(),
-            args: vec!["clean".into()],
-            file_regex: None,
-        });
-    }
-
-    variants
-}
-
-fn has_ancestor_file(path: &Path, file_name: &str) -> bool {
-    let mut current = path.parent();
-    while let Some(dir) = current {
-        if dir.join(file_name).exists() {
-            return true;
-        }
-        current = dir.parent();
-    }
-    false
+    /// The variant picked in Build With; `Cmd+B` reruns it while its
+    /// selector still matches the active buffer. `None` is automatic.
+    pub(crate) chosen: Option<BuildVariant>,
+    pub(crate) systems: systems::Registry,
+    /// Bumped by every `Cmd+B` / Build With; a marker probe landing for
+    /// an older one is dropped.
+    pub(crate) detect_generation: u64,
 }
 
 pub(crate) fn parse_build_errors(
@@ -279,21 +124,37 @@ pub(crate) fn parse_build_errors(
     if let Some(regex_str) = variant.and_then(|v| v.file_regex.as_deref())
         && let Ok(re) = regex::Regex::new(regex_str)
     {
+        // Sublime's `line_regex`: a line holding only a line (and column)
+        // belongs to the file the last `file_regex` match named.
+        let line_re = variant
+            .and_then(|v| v.line_regex.as_deref())
+            .and_then(|r| regex::Regex::new(r).ok());
+        let mut last_file: Option<PathBuf> = None;
         let mut locs = Vec::new();
         for line in text.lines() {
             if let Some(caps) = re.captures(line)
                 && let Some(p) = caps.get(1)
             {
                 let path = PathBuf::from(p.as_str());
-                let line_n: u32 = caps
-                    .get(2)
-                    .and_then(|m| m.as_str().parse().ok())
-                    .unwrap_or(1);
+                last_file = Some(path.clone());
+                let line_n: Option<u32> = caps.get(2).and_then(|m| m.as_str().parse().ok());
+                if line_n.is_none() && line_re.is_some() {
+                    continue;
+                }
                 let col_n: Option<u32> = caps.get(3).and_then(|m| m.as_str().parse().ok());
                 locs.push(SourceLocation {
                     path,
-                    line: line_n,
+                    line: line_n.unwrap_or(1),
                     column: col_n,
+                });
+            } else if let (Some(line_re), Some(path)) = (line_re.as_ref(), last_file.as_ref())
+                && let Some(caps) = line_re.captures(line)
+                && let Some(line_n) = caps.get(1).and_then(|m| m.as_str().parse().ok())
+            {
+                locs.push(SourceLocation {
+                    path: path.clone(),
+                    line: line_n,
+                    column: caps.get(2).and_then(|m| m.as_str().parse().ok()),
                 });
             }
         }
@@ -354,6 +215,7 @@ pub(crate) fn handle_build_key(app: &mut App, ctx: &dyn PlatformContext, event: 
             };
             app.ui.build.picker = None;
             if let Some(variant) = selected_variant {
+                app.ui.build.chosen = Some(variant.clone());
                 app.execute_build_variant(variant, Some(ctx));
             }
             app.scheduler.invalidate_all();
@@ -373,42 +235,16 @@ pub(crate) fn handle_build_key(app: &mut App, ctx: &dyn PlatformContext, event: 
 }
 
 impl App {
+    /// `Cmd+B`. The build starts once a worker has probed the marker
+    /// files (see `request`).
     pub(crate) fn build(&mut self, ctx: Option<&dyn PlatformContext>) -> bool {
-        let variant = self.ui.build.active_variant.clone().or_else(|| {
-            let root = self.workspace_root();
-            let cur = self.documents.path.as_deref();
-            let custom_builds = self.ui.project.custom_build_systems();
-            detect_build_variants(root.as_deref(), cur, custom_builds)
-                .into_iter()
-                .next()
-        });
-
-        let Some(variant) = variant else {
-            self.ui.announcement = Some("No build system found for this project".into());
-            self.scheduler.invalidate_all();
-            return false;
-        };
-
-        self.execute_build_variant(variant, ctx)
+        request::start(self, ctx, request::Request::Build);
+        true
     }
 
-    pub(crate) fn build_with(&mut self) -> bool {
-        let root = self.workspace_root();
-        let cur = self.documents.path.as_deref();
-        let custom_builds = self.ui.project.custom_build_systems();
-        let variants = detect_build_variants(root.as_deref(), cur, custom_builds);
-        if variants.is_empty() {
-            self.ui.announcement = Some("No build system variants found".into());
-            self.scheduler.invalidate_all();
-            return false;
-        }
-
-        self.ui.build.picker = Some(BuildPickerState {
-            variants,
-            query: crate::field::QueryField::new(),
-            selected: 0,
-        });
-        self.scheduler.invalidate_all();
+    /// Build With: the picker opens once the marker probe lands.
+    pub(crate) fn build_with(&mut self, ctx: Option<&dyn PlatformContext>) -> bool {
+        request::start(self, ctx, request::Request::BuildWith);
         true
     }
 
@@ -429,11 +265,17 @@ impl App {
         variant: BuildVariant,
         _ctx: Option<&dyn PlatformContext>,
     ) -> bool {
-        let root = self.workspace_root();
+        let cwd = variant
+            .working_dir
+            .clone()
+            .or_else(|| self.workspace_root());
         let mut cmd = CommandBuilder::new(&variant.command);
         cmd.args(&variant.args);
-        if let Some(r) = root.as_deref() {
-            cmd.cwd(r);
+        if let Some(dir) = cwd.as_deref() {
+            cmd.cwd(dir);
+        }
+        for (key, value) in &variant.env {
+            cmd.env(key, value);
         }
 
         let task_name = format!("Build: {}", variant.name);
@@ -526,9 +368,16 @@ impl App {
         loc: &SourceLocation,
         ctx: Option<&dyn PlatformContext>,
     ) {
+        let base = self
+            .ui
+            .build
+            .active_variant
+            .as_ref()
+            .and_then(|v| v.working_dir.clone())
+            .or_else(|| self.workspace_root());
         let path = if loc.path.is_absolute() {
             loc.path.clone()
-        } else if let Some(root) = self.workspace_root() {
+        } else if let Some(root) = base {
             root.join(&loc.path)
         } else {
             loc.path.clone()
@@ -555,3 +404,6 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

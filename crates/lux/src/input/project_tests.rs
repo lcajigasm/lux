@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::*;
-use crate::build::detect_build_variants;
 use crate::document::DocumentEntry;
 use crate::input::dispatch::execute_keymap_command;
 use crate::project::{ProjectSwitchState, RecentProjects, handle_project_switch_key};
@@ -124,10 +123,13 @@ fn test_open_sublime_project_loads_folders_and_settings() {
     let custom_builds = app.ui.project.custom_build_systems();
     assert_eq!(custom_builds.len(), 1);
     assert_eq!(custom_builds[0].name, "Custom Make");
-    assert_eq!(custom_builds[0].cmd, vec!["make", "check"]);
+    assert_eq!(
+        custom_builds[0].get("cmd"),
+        Some(&serde_json::json!(["make", "check"]))
+    );
 
-    // Test that the custom build system is picked up by build variant detection
-    let variants = detect_build_variants(app.workspace_root().as_deref(), None, custom_builds);
+    // The project's build system comes before the auto-detected ones.
+    let variants = crate::build::select::candidates(&app, &Default::default());
     assert!(!variants.is_empty());
     assert_eq!(variants[0].name, "Custom Make");
     assert_eq!(variants[0].command, "make");

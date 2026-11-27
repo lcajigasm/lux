@@ -63,6 +63,10 @@ pub(crate) enum Done {
     Recovery(Option<PathBuf>),
     /// A Goto Anything preview read finished.
     Preview(Box<crate::goto::preview::Loaded>),
+    /// `.sublime-build` files read from disk.
+    BuildSystems(Box<crate::build::systems::Loaded>),
+    /// Build marker files probed for `Cmd+B` / Build With.
+    BuildDetected(Box<crate::build::request::Detected>),
 }
 
 /// Blocks workers while a test holds it, so a test can observe the UI
@@ -255,6 +259,26 @@ pub(crate) fn cancel_latest(app: &mut App) {
     }
 }
 
+/// Waits for every job in flight and applies it, for tests that need a
+/// worker's result before they go on.
+#[cfg(test)]
+pub(crate) fn finish_all(app: &mut App, ctx: &dyn PlatformContext) {
+    while app.ui.dialogs.jobs.in_flight > 0 {
+        let done = app
+            .ui
+            .dialogs
+            .jobs
+            .receiver
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .expect("a worker must finish");
+        app.ui.dialogs.jobs.in_flight -= 1;
+        if let Some(done) = done {
+            apply(app, ctx, done);
+        }
+    }
+    app.scheduler.invalidate_all();
+}
+
 /// Applies every finished job. Called when a worker wakes the event loop.
 pub(crate) fn poll(app: &mut App, ctx: &dyn PlatformContext) {
     let mut applied = false;
@@ -307,6 +331,8 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
         }
         Done::UiFont => crate::font::install_ui_font(app.editor_view.text_layout_mut()),
         Done::EditorFont(requested, loaded) => app.install_editor_font(requested, loaded),
+        Done::BuildSystems(loaded) => crate::build::systems::apply_loaded(app, *loaded),
+        Done::BuildDetected(detected) => crate::build::request::finish(app, ctx, *detected),
         Done::Recovery(first) => crate::app::startup::note_recovery(app, first),
         Done::Preview(loaded) => crate::goto::preview::apply(app, *loaded),
     }

@@ -48,12 +48,16 @@ pub(crate) struct WorkspaceSession {
     /// A change was noted since the last session snapshot. Only set while
     /// the event loop runs (a waker is registered), like the debounce.
     unsaved: bool,
+    /// Bumped whenever the watched folders change, so state derived from
+    /// the open folders (build systems) knows to reload.
+    folder_epoch: u64,
 }
 
 impl WorkspaceSession {
     /// A fresh watcher on `root`. The watch and its seeding scan run on a
     /// worker, and the waker fires once the watch is in place.
     pub(crate) fn init_watcher(&mut self, root: &Path) {
+        self.folder_epoch += 1;
         self.symbols = Some(lux_workspace::SymbolIndexer::start(
             Some(root.to_path_buf()),
             self.waker.clone(),
@@ -72,6 +76,7 @@ impl WorkspaceSession {
     /// symbol indexer's first snapshot.
     #[cfg(test)]
     pub(crate) fn init_watcher_waking(&mut self, root: &Path, wake: Arc<dyn Fn() + Send + Sync>) {
+        self.folder_epoch += 1;
         self.symbols = Some(lux_workspace::SymbolIndexer::start(
             Some(root.to_path_buf()),
             None,
@@ -85,6 +90,7 @@ impl WorkspaceSession {
 
     /// Adds or drops one more sidebar folder. Off the UI thread.
     pub(crate) fn watch_folder(&mut self, root: &Path, watch: bool) {
+        self.folder_epoch += 1;
         match self.watcher.as_mut() {
             Some(watcher) if watch => watcher.watch_detached(root),
             Some(watcher) => watcher.unwatch_detached(root),
@@ -103,6 +109,10 @@ impl WorkspaceSession {
             symbols.set_waker(Arc::clone(&waker));
         }
         self.waker = Some(waker);
+    }
+
+    pub(crate) fn folder_epoch(&self) -> u64 {
+        self.folder_epoch
     }
 
     /// The platform waker registered in `resumed`, if the window exists yet.
