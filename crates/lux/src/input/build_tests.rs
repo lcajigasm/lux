@@ -276,3 +276,7 @@ fn test_build_keymap_command_dispatch() {
     execute_keymap_command(&mut app, "next_build_error", Some(&ctx), None);
     execute_keymap_command(&mut app, "prev_build_error", Some(&ctx), None);
 }
+
+#[cfg(unix)]
+#[path = "build_run_tests.rs"]
+mod run;

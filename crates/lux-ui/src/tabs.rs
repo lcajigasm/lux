@@ -12,6 +12,8 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TabId(u64);
 
+use std::collections::HashMap;
+
 impl TabId {
     pub const fn as_u64(self) -> u64 {
         self.0
@@ -35,6 +37,11 @@ pub struct TabBar {
     closed_stack: Vec<Tab>,
     next_id: u64,
     scroll: f32,
+    /// Each open tab's index in `tabs`, rebuilt on every change to the
+    /// order, so a lookup by id is O(1).
+    positions: HashMap<TabId, usize>,
+    /// Bumped on every change to which tabs are open or their order.
+    generation: u64,
 }
 
 impl TabBar {
@@ -60,11 +67,36 @@ impl TabBar {
     }
 
     fn find(&self, id: TabId) -> Option<&Tab> {
-        self.tabs.iter().find(|t| t.id == id)
+        self.get(id)
     }
 
     fn index_of(&self, id: TabId) -> Option<usize> {
-        self.tabs.iter().position(|t| t.id == id)
+        self.position(id)
+    }
+
+    /// The open tab `id`, in O(1).
+    pub fn get(&self, id: TabId) -> Option<&Tab> {
+        self.position(id).map(|index| &self.tabs[index])
+    }
+
+    /// Where `id` is in display order, in O(1). `None` if it isn't open.
+    pub fn position(&self, id: TabId) -> Option<usize> {
+        self.positions.get(&id).copied()
+    }
+
+    /// Changes whenever a tab opens, closes, or moves; titles and the
+    /// active tab do not change it. Lets callers skip work that depends
+    /// only on which tabs are open, in which order.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    fn reindex(&mut self) {
+        self.positions.clear();
+        for (index, tab) in self.tabs.iter().enumerate() {
+            self.positions.insert(tab.id, index);
+        }
+        self.generation += 1;
     }
 
     /// Opens a new, unpinned tab at the end of the strip and activates it.
@@ -76,6 +108,7 @@ impl TabBar {
             title: title.into(),
             pinned: false,
         });
+        self.reindex();
         self.active = Some(id);
         id
     }
@@ -88,6 +121,7 @@ impl TabBar {
             return false;
         };
         let removed = self.tabs.remove(index);
+        self.reindex();
         if self.active == Some(id) {
             self.active = self
                 .tabs
@@ -117,6 +151,7 @@ impl TabBar {
         let tab = self.closed_stack.pop()?;
         let id = tab.id;
         self.tabs.push(tab);
+        self.reindex();
         self.active = Some(id);
         Some(id)
     }
@@ -135,6 +170,7 @@ impl TabBar {
         tab.pinned = true;
         let insert_at = self.tabs.iter().take_while(|t| t.pinned).count();
         self.tabs.insert(insert_at, tab);
+        self.reindex();
         true
     }
 
@@ -151,6 +187,7 @@ impl TabBar {
         tab.pinned = false;
         let insert_at = self.tabs.iter().take_while(|t| t.pinned).count();
         self.tabs.insert(insert_at, tab);
+        self.reindex();
         true
     }
 
@@ -166,6 +203,7 @@ impl TabBar {
         let to_index = to_index.min(self.tabs.len() - 1);
         let tab = self.tabs.remove(from);
         self.tabs.insert(to_index, tab);
+        self.reindex();
         true
     }
 
@@ -191,6 +229,38 @@ impl TabBar {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lookups_follow_every_change_to_the_order() {
+        let mut bar = TabBar::new();
+        let a = bar.open("a");
+        let b = bar.open("b");
+        let c = bar.open("c");
+        let check = |bar: &TabBar| {
+            for (index, tab) in bar.tabs().iter().enumerate() {
+                assert_eq!(bar.position(tab.id), Some(index));
+                assert_eq!(bar.get(tab.id).map(|t| t.id), Some(tab.id));
+            }
+        };
+        let mut seen = bar.generation();
+        let mut step = |bar: &mut TabBar, op: &dyn Fn(&mut TabBar)| {
+            op(bar);
+            check(bar);
+            assert_ne!(bar.generation(), seen, "a change bumps the generation");
+            seen = bar.generation();
+        };
+        step(&mut bar, &|bar| assert!(bar.move_tab(c, 0)));
+        step(&mut bar, &|bar| assert!(bar.pin(b)));
+        step(&mut bar, &|bar| assert!(bar.unpin(b)));
+        step(&mut bar, &|bar| assert!(bar.close(a)));
+        assert_eq!(bar.position(a), None);
+        step(&mut bar, &|bar| assert!(bar.reopen_last_closed().is_some()));
+        step(&mut bar, &|bar| assert!(bar.discard(c)));
+        let before = bar.generation();
+        bar.activate(b);
+        bar.set_title(b, "renamed");
+        assert_eq!(bar.generation(), before, "titles and focus are not order");
+    }
 
     #[test]
     fn discard_closes_without_feeding_reopen() {

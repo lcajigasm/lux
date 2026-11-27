@@ -3,24 +3,44 @@
 
 use crate::app::SyntaxState;
 use crate::git::colors::{GutterKind, gutter_color};
-use crate::minimap::{MINIMAP_ROW_HEIGHT, SyntaxColors, drag};
+use crate::minimap::SyntaxColors;
+use crate::minimap::{MINIMAP_ROW_HEIGHT, MinimapState, drag};
 use crate::render::paint::color;
+use crate::search::SearchBarState;
 use crate::ui::UiOverlays;
 use lux_core::bookmarks::BookmarkState;
 use lux_core::buffer::Buffer;
 use lux_core::folding::FoldState;
-use lux_git::gutter::HunkKind;
+use lux_git::gutter::{GutterMarker, HunkKind};
 use lux_render::QuadInstance;
-use lux_ui::minimap::{MinimapFrame, row_for_buffer_line};
+use lux_ui::minimap::{LineColors, MinimapFrame, row_for_buffer_line};
 use lux_ui::{Theme, Viewport};
 
 /// The document the minimap shows.
 pub(crate) struct MinimapDoc<'a> {
     pub(crate) id: u64,
     pub(crate) buffer: &'a Buffer,
-    pub(crate) syntax: Option<&'a SyntaxState>,
+    pub(crate) colors: Option<&'a dyn LineColors>,
     pub(crate) bookmarks: &'a BookmarkState,
     pub(crate) folds: &'a FoldState,
+}
+
+/// Marks that belong to the focused file only: its git hunks and its
+/// Cmd+F matches.
+pub(crate) struct Marks<'a> {
+    pub(crate) git: &'a [GutterMarker],
+    pub(crate) search: Option<&'a SearchBarState>,
+}
+
+/// Where one minimap goes and which cache it reads.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Placement {
+    /// `[x, y, width, height]` in physical pixels.
+    pub(crate) rect: [f32; 4],
+    /// Split group index; the single layout is group 0.
+    pub(crate) group: usize,
+    pub(crate) scale_factor: f32,
+    pub(crate) line_height: f32,
 }
 
 /// Where the strip sits and how big one row is, in physical pixels.
@@ -43,49 +63,61 @@ impl Strip {
 /// Bookmark marks take the gutter's bookmark cyan.
 const BOOKMARK: [f32; 4] = [0.25, 0.70, 0.95, 0.95];
 
-#[allow(clippy::too_many_arguments)]
+impl Placement {
+    /// The single layout's minimap: the editor column's right edge, from
+    /// the tab row to the editor's bottom, above the find bar and the dock.
+    pub(crate) fn single(
+        minimap_w: f32,
+        window_w: f32,
+        (tab_bar_height, editor_bottom): (f32, f32),
+        scale_factor: f32,
+        line_height: f32,
+    ) -> Self {
+        let h = (editor_bottom - tab_bar_height).max(0.0);
+        Self {
+            rect: [window_w - minimap_w, tab_bar_height, minimap_w, h],
+            group: 0,
+            scale_factor,
+            line_height,
+        }
+    }
+}
+
 pub(crate) fn render_minimap(
-    ui: &mut UiOverlays,
+    minimap: &mut MinimapState,
     doc: &MinimapDoc<'_>,
+    marks: Option<&Marks<'_>>,
     viewport: &Viewport,
-    window_width: f32,
-    tab_bar_height: f32,
-    editor_bottom: f32,
-    scale_factor: f32,
-    line_height: f32,
+    at: Placement,
     theme: &Theme,
     quad_instances: &mut Vec<QuadInstance>,
 ) {
-    let minimap_w = ui.minimap.effective_width(scale_factor);
-    // The minimap is part of the editor column: it ends where the editor
-    // does, above the find bar and the dock.
-    let minimap_h = (editor_bottom - tab_bar_height).max(0.0);
-    let row_h = MINIMAP_ROW_HEIGHT * scale_factor;
+    let [x, y, minimap_w, minimap_h] = at.rect;
+    let row_h = MINIMAP_ROW_HEIGHT * at.scale_factor;
     let available_rows = (minimap_h / row_h).floor() as usize;
     if minimap_w <= 0.0 || available_rows == 0 {
         return;
     }
     let strip = Strip {
-        x: window_width - minimap_w,
-        y: tab_bar_height,
+        x,
+        y,
         w: minimap_w,
         h: minimap_h,
         row_h,
         rows: available_rows,
-        stroke: scale_factor,
+        stroke: at.scale_factor,
     };
+    let line_height = at.line_height;
     let visible_start = (viewport.scroll_y / line_height).floor() as usize;
     let visible_end = ((viewport.scroll_y + viewport.height) / line_height).ceil() as usize;
-    let colors = doc.syntax.map(SyntaxColors);
-    let Some(frame) = ui.minimap.frame(
+    let Some(frame) = minimap.group_frame(
+        at.group,
         doc.id,
         doc.buffer,
         visible_start..visible_end,
         available_rows,
         Some(doc.folds),
-        colors
-            .as_ref()
-            .map(|c| c as &dyn lux_ui::minimap::LineColors),
+        doc.colors,
     ) else {
         return;
     };
@@ -98,7 +130,43 @@ pub(crate) fn render_minimap(
     ));
     paint_strokes(&frame, &strip, theme, quad_instances);
     paint_viewport_box(doc, viewport, line_height, &strip, theme, quad_instances);
-    paint_marks(ui, doc, &strip, theme, quad_instances);
+    paint_marks(marks, doc, &strip, theme, quad_instances);
+}
+
+/// The focused document's minimap, with its git and search marks.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn paint_focused(
+    ui: &mut UiOverlays,
+    id: u64,
+    buffer: &Buffer,
+    syntax: Option<&SyntaxState>,
+    (bookmarks, folds): (&BookmarkState, &FoldState),
+    viewport: &Viewport,
+    at: Placement,
+    theme: &Theme,
+    quad_instances: &mut Vec<QuadInstance>,
+) {
+    let colors = syntax.map(SyntaxColors);
+    let doc = MinimapDoc {
+        id,
+        buffer,
+        colors: colors.as_ref().map(|c| c as &dyn LineColors),
+        bookmarks,
+        folds,
+    };
+    let marks = Marks {
+        git: &ui.git.markers,
+        search: ui.search_bar.as_ref(),
+    };
+    render_minimap(
+        &mut ui.minimap,
+        &doc,
+        Some(&marks),
+        viewport,
+        at,
+        theme,
+        quad_instances,
+    );
 }
 
 /// Each row's words, in their syntax colors, one column per 1.2 points. All
@@ -181,7 +249,7 @@ fn viewport_band(theme: &Theme) -> [f32; 4] {
 /// removed), bookmarks on the right edge, and Cmd+F matches as gold ticks
 /// across the strip.
 fn paint_marks(
-    ui: &UiOverlays,
+    marks: Option<&Marks<'_>>,
     doc: &MinimapDoc<'_>,
     strip: &Strip,
     theme: &Theme,
@@ -193,7 +261,8 @@ fn paint_marks(
             .filter(|row| *row < strip.rows)
     };
     let edge_w = 2.0 * strip.stroke;
-    for marker in &ui.git.markers {
+    let git = marks.map_or(&[][..], |m| m.git);
+    for marker in git {
         let Some(row) = row_of((marker.line as usize).saturating_sub(1)) else {
             continue;
         };
@@ -220,7 +289,7 @@ fn paint_marks(
             ));
         }
     }
-    let Some(search) = &ui.search_bar else {
+    let Some(search) = marks.and_then(|m| m.search) else {
         return;
     };
     let current = search.search_bar.current_index();

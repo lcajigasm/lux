@@ -154,7 +154,9 @@ fn a_mouse_click_is_a_step() {
         Modifiers::default(),
     );
     let y = app.tab_bar_height() as f64 + 2.0;
-    app.mouse.position = dpi::PhysicalPosition::new(app.scale_factor as f64 * 200.0, y);
+    // Inside "gamma", clear of the "beta" selection.
+    let x = app.text_left() + app.editor_view.reference_width("alpha beta gam");
+    app.mouse.position = dpi::PhysicalPosition::new(f64::from(x), y);
     app.mouse.placed = true;
     crate::edit_menu::press_editor(&mut app, &ctx, lux_platform::MouseButton::Left);
     app.mouse.selection_anchor = None;

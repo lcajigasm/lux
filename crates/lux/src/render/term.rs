@@ -14,6 +14,7 @@ use crate::term::dock;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_term(
     term: &mut TerminalState,
+    build: &crate::build::BuildState,
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
     editor_view: &mut EditorView,
@@ -217,10 +218,10 @@ pub(crate) fn render_term(
         );
     }
 
-    // 4. Content: Tasks or PTY Grid
-    if term.show_tasks {
+    // 4. Content: the shell grid, the active task's output, or the
+    // empty Tasks view.
+    if term.show_tasks && term.active_task_pty().is_none() {
         render_tasks_view(
-            term,
             quad_instances,
             glyph_instances,
             editor_view,
@@ -232,8 +233,14 @@ pub(crate) fn render_term(
             scale_factor,
         );
     } else {
+        let marks = if term.show_tasks && term.active_task == build.task_id {
+            Some(super::build_output::LineMarks::new(build))
+        } else {
+            None
+        };
         render_pty_grid(
             term,
+            marks.as_ref(),
             quad_instances,
             glyph_instances,
             editor_view,
@@ -250,10 +257,10 @@ pub(crate) fn render_term(
     clip_glyphs(glyph_instances, first_glyph, rect);
 }
 
+/// The Tasks view before any task has run.
 #[allow(clippy::too_many_arguments)]
 fn render_tasks_view(
-    term: &TerminalState,
-    quad_instances: &mut Vec<QuadInstance>,
+    _quad_instances: &mut [QuadInstance],
     glyph_instances: &mut Vec<GlyphInstance>,
     editor_view: &mut EditorView,
     atlas: &mut GlyphAtlas,
@@ -270,101 +277,24 @@ fn render_tasks_view(
         font_size,
         ligatures: false,
     };
+    // Empty state inside #164's dock rectangle, in the theme's hint ink.
     let grid_y = dock::grid_top(rect, scale_factor);
-    let text_x = rect[0] + 16.0 * scale_factor;
     let theme = &active_theme();
-    let page = color(theme.background);
-    let ink = super::panel::label_ink(theme, page);
-    let hint = super::panel::hint_ink(theme, page);
-    let mut text = |ev: &mut EditorView,
-                    text: &str,
-                    x: f32,
-                    y: f32,
-                    ink: [f32; 4],
-                    glyphs: &mut Vec<GlyphInstance>| {
-        let line = ev.text_layout_mut().layout_line(&style, text, &[]);
-        let base = line.baseline();
-        for cluster in line.clusters() {
-            push_glyph(
-                atlas,
-                atlas_dirty,
-                scale_cx,
-                font,
-                font_size,
-                &cluster,
-                x,
-                y + base,
-                ink,
-                glyphs,
-            );
-        }
-        x + line.width()
-    };
-
-    text(
-        editor_view,
-        "Background Project Tasks:",
-        text_x,
-        grid_y + 16.0 * scale_factor,
-        ink,
-        glyph_instances,
-    );
-    if term.task_ids.is_empty() {
-        let msg = "No project tasks running. Start a task with 'Terminal: Run Project Task'.";
-        text(
-            editor_view,
-            msg,
-            text_x,
-            grid_y + 40.0 * scale_factor,
+    let hint = super::panel::hint_ink(theme, color(theme.background));
+    let msg = "No project tasks running. Start a task with 'Terminal: Run Project Task'.";
+    let line = editor_view.text_layout_mut().layout_line(&style, msg, &[]);
+    let base = line.baseline();
+    for cluster in line.clusters() {
+        push_glyph(
+            atlas,
+            atlas_dirty,
+            scale_cx,
+            font,
+            font_size,
+            &cluster,
+            rect[0] + 16.0 * scale_factor,
+            grid_y + 16.0 * scale_factor + base,
             hint,
-            glyph_instances,
-        );
-        return;
-    }
-    let pad = 8.0 * scale_factor;
-    for (index, id) in term.task_ids.iter().enumerate() {
-        // Label left, status pill after it, Cancel flush right.
-        let row_y = dock::task_row_top(rect, index, scale_factor);
-        let name = term.tasks.name(*id).unwrap_or("Task");
-        let label_right = text(editor_view, name, text_x, row_y, ink, glyph_instances);
-        let status = "RUNNING";
-        let status_w = editor_view
-            .text_layout_mut()
-            .layout_line(&style, status, &[])
-            .width();
-        let pill =
-            dock::status_pill_rect(rect, index, label_right, status_w + 2.0 * pad, scale_factor);
-        let pill_fill = color(theme.chrome.panel_row);
-        quad_instances.push(QuadInstance::rounded(pill, pill_fill, pill[3] * 0.5));
-        let pill_ink = super::panel::label_ink(theme, pill_fill);
-        text(
-            editor_view,
-            status,
-            pill[0] + pad,
-            pill[1] + scale_factor,
-            pill_ink,
-            glyph_instances,
-        );
-
-        let cancel = dock::cancel_rect(rect, index, scale_factor);
-        let cancel_fill = color(theme.chrome.panel_input);
-        quad_instances.push(QuadInstance::rounded(
-            cancel,
-            cancel_fill,
-            3.0 * scale_factor,
-        ));
-        let cancel_ink = super::panel::label_ink(theme, cancel_fill);
-        let cancel_w = editor_view
-            .text_layout_mut()
-            .layout_line(&style, "Cancel", &[])
-            .width();
-        let cancel_x = cancel[0] + (cancel[2] - cancel_w) * 0.5;
-        text(
-            editor_view,
-            "Cancel",
-            cancel_x,
-            cancel[1] + scale_factor,
-            cancel_ink,
             glyph_instances,
         );
     }
@@ -373,6 +303,7 @@ fn render_tasks_view(
 #[allow(clippy::too_many_arguments)]
 fn render_pty_grid(
     term: &mut TerminalState,
+    marks: Option<&super::build_output::LineMarks<'_>>,
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
     editor_view: &mut EditorView,
@@ -395,7 +326,12 @@ fn render_pty_grid(
     let rows = ((grid_h - 8.0 * scale_factor) / row_h).floor().max(4.0) as u16;
     term.resize(rows, cols);
 
-    let Some(pty) = term.active_pty() else {
+    let pty = if marks.is_some() {
+        term.active_task_pty()
+    } else {
+        term.active_pty()
+    };
+    let Some(pty) = pty else {
         return;
     };
 
@@ -431,6 +367,7 @@ fn render_pty_grid(
             .text_layout_mut()
             .layout_line(&style, trimmed_text, &[]);
         let base = line.baseline();
+        let marked_ink = marks.and_then(|marks| marks.ink(trimmed_text, &active_theme()));
 
         for cluster in line.clusters() {
             let col_idx = (cluster.x / char_w).floor() as usize;
@@ -446,6 +383,7 @@ fn render_pty_grid(
             } else {
                 ([0.88, 0.88, 0.92, 1.0], None)
             };
+            let fg_color = marked_ink.unwrap_or(fg_color);
 
             if let Some(bg) = bg_color {
                 quad_instances.push(QuadInstance::solid(

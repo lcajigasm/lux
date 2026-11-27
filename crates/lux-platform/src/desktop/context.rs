@@ -53,9 +53,11 @@ impl PlatformContext for DesktopContext<'_> {
 
     fn background_dialogs(&self) -> std::sync::Arc<dyn FileDialogs> {
         let windows = self.windows.borrow();
+        // The focused window owns the sheet; with none focused, any window.
         let dialogs = windows
             .values()
-            .next()
+            .find(|record| record.window.has_focus())
+            .or_else(|| windows.values().next())
             .map(|record| RfdFileDialogs::with_parent(&record.window))
             .unwrap_or_default();
         std::sync::Arc::new(dialogs)

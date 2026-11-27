@@ -32,6 +32,13 @@ pub(crate) fn geometry(app: &App) -> Option<Geometry> {
     if width <= 0.0 {
         return None;
     }
+    if app.ui.split.is_active() {
+        // Each group has its own minimap; the focused group's is the one
+        // that scrolls the editor.
+        let groups = crate::split::groups::rects(app);
+        let [x, y, w, h] = groups.get(app.ui.split.active_pane)?.minimap?;
+        return group_geometry(app, [x, y, w, h]);
+    }
     let window_w = window_width(app);
     let top = app.tab_bar_height();
     // Painted the same way: the minimap ends where the editor does, above
@@ -47,6 +54,36 @@ pub(crate) fn geometry(app: &App) -> Option<Geometry> {
         row_h,
         rows,
     })
+}
+
+fn group_geometry(app: &App, [x, y, w, h]: [f32; 4]) -> Option<Geometry> {
+    let row_h = MINIMAP_ROW_HEIGHT * app.scale_factor;
+    let rows = (h / row_h).floor().max(0.0) as usize;
+    (rows > 0).then_some(Geometry {
+        left: x,
+        right: x + w,
+        top: y,
+        bottom: y + h,
+        row_h,
+        rows,
+    })
+}
+
+/// In a split, a press on another group's minimap focuses that group
+/// first, so the drag scrolls the file that minimap shows.
+fn focus_group_under(app: &mut App, x: f32, y: f32) {
+    if !app.ui.split.is_active() {
+        return;
+    }
+    let hit = crate::split::groups::rects(app).iter().position(|g| {
+        g.minimap
+            .is_some_and(|r| crate::split::groups::contains(r, x, y))
+    });
+    if let Some(group) = hit
+        && group != app.ui.split.active_pane
+    {
+        app.focus_group(group);
+    }
 }
 
 fn total_visual(app: &App) -> usize {
@@ -110,6 +147,7 @@ fn scroll_to(app: &mut App, scroll_y: f32) -> bool {
 
 /// A left press at `(x, y)`. Returns whether the minimap took it.
 pub(crate) fn press(app: &mut App, x: f32, y: f32) -> bool {
+    focus_group_under(app, x, y);
     let Some(geo) = geometry(app) else {
         return false;
     };

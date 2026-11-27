@@ -166,7 +166,9 @@ impl App {
             self.ui.split.panes[cur_pane].viewport.scroll_x = self.viewport.scroll_x;
             self.ui.split.panes[cur_pane].viewport.scroll_y = self.viewport.scroll_y;
             if let Some(syntax) = &self.syntax {
-                self.ui.split.panes[cur_pane].tokens = syntax.tokens.clone();
+                self.ui.split.panes[cur_pane]
+                    .tokens
+                    .replace(syntax.tokens.clone());
             }
         }
 
@@ -180,7 +182,9 @@ impl App {
             self.ui.split.panes[target].viewport.scroll_x = self.viewport.scroll_x;
             self.ui.split.panes[target].viewport.scroll_y = self.viewport.scroll_y;
             if let Some(syntax) = &self.syntax {
-                self.ui.split.panes[target].tokens = syntax.tokens.clone();
+                self.ui.split.panes[target]
+                    .tokens
+                    .replace(syntax.tokens.clone());
             }
         }
 

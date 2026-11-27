@@ -16,6 +16,11 @@ const WHEEL_SLOT: u8 = 12;
 pub(crate) struct TabListState {
     pub(crate) query: crate::field::QueryField,
     pub(crate) selected_index: usize,
+    /// The group's tabs, in its strip's order, when the list was opened
+    /// from a split group's `▼`; `None` lists every open tab.
+    pub(crate) ids: Option<Vec<TabId>>,
+    /// The strip whose `▼` opened it.
+    pub(crate) group: Option<usize>,
 }
 
 /// One open tab as the list shows it.
@@ -36,10 +41,16 @@ pub(crate) struct TabRow {
 /// active document, whose entry is only synced on switch.
 pub(crate) fn rows(documents: &Documents, current_dirty: bool) -> Option<Vec<TabRow>> {
     let state = documents.strip.list.as_ref()?;
-    let all: Vec<TabRow> = documents
-        .tabs
-        .tabs()
-        .iter()
+    let open = documents.tabs.tabs();
+    let listed: Vec<&lux_ui::tabs::Tab> = match &state.ids {
+        Some(ids) => ids
+            .iter()
+            .filter_map(|id| open.iter().find(|t| t.id == *id))
+            .collect(),
+        None => open.iter().collect(),
+    };
+    let all: Vec<TabRow> = listed
+        .into_iter()
         .map(|tab| {
             let active = documents.active_tab == Some(tab.id);
             let dirty = if active {
@@ -97,18 +108,23 @@ fn app_rows(app: &App) -> Option<Vec<TabRow>> {
     rows(&app.documents, app.document_dirty())
 }
 
-/// Opens the list with the active tab selected.
+/// Opens the focused strip's list with its shown tab selected.
+#[cfg(test)]
 pub(crate) fn open(app: &mut App) {
-    let selected_index = app
-        .documents
-        .tabs
-        .tabs()
-        .iter()
-        .position(|t| Some(t.id) == app.documents.active_tab)
-        .unwrap_or(0);
+    let group = super::strips::focused(app).and_then(|s| s.group);
+    open_for(app, group);
+}
+
+/// Opens the list of `group`'s tabs (every tab for `None`).
+pub(crate) fn open_for(app: &mut App, group: Option<usize>) {
+    let order = super::strips::order(app, group);
+    let shown = super::strips::shown(app, group);
+    let selected_index = order.iter().position(|t| Some(*t) == shown).unwrap_or(0);
     app.documents.strip.list = Some(TabListState {
         query: crate::field::QueryField::new(),
         selected_index,
+        ids: group.map(|_| order),
+        group,
     });
     app.scheduler.invalidate_all();
 }

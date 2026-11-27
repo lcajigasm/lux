@@ -29,6 +29,11 @@ pub struct PaneState {
     pub cursors: Vec<CursorState>,
     #[serde(default)]
     pub scroll_line: usize,
+    /// The group's own tabs in its strip's order, as indexes into
+    /// `Session::tabs`. Empty in sessions written before groups had their
+    /// own tabs; those put every tab no group lists in the first group.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tabs: Vec<usize>,
 }
 
 /// The split editor layout. `preset` is the layout's name as the editor
