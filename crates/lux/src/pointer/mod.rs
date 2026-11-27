@@ -28,6 +28,11 @@ pub(crate) fn probe_lines(app: &App) -> String {
         app.viewport.width,
         app.viewport.height,
     );
+    let strip = crate::tab_strip::layout(app);
+    out.push_str(&format!(
+        "tab_strip={:.1},{:.1},{:.1}\n",
+        strip.left, strip.visible_width, strip.tab_width
+    ));
     if let Some((x, width)) = preview_pane(app) {
         out.push_str(&format!("preview_pane={x:.1},{width:.1}\n"));
     }
