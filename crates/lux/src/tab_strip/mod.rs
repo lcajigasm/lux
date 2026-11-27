@@ -6,6 +6,8 @@ pub(crate) mod list;
 pub(crate) mod title;
 
 #[cfg(test)]
+mod hover_tests;
+#[cfg(test)]
 mod inset_tests;
 #[cfg(test)]
 mod tests;
@@ -36,7 +38,9 @@ pub(crate) struct StripState {
     /// (macOS traffic lights; zero in fullscreen and on other platforms).
     pub(crate) controls_inset: f32,
     /// The tab under the pointer, and whether the pointer is on its close
-    /// mark. Updated on pointer moves only, never by a timer.
+    /// mark. Set on pointer moves, and re-derived from the last pointer
+    /// position before each frame, so a wheel scroll, a close, or a
+    /// reorder never leaves it naming a tab that moved away. Never timed.
     pub(crate) hover: Option<(TabId, bool)>,
 }
 
@@ -208,6 +212,12 @@ pub(crate) fn follow_active(app: &mut App) {
     if app.documents.tabs.scroll() > max_scroll {
         app.documents.tabs.set_scroll(max_scroll);
     }
+    // The frame is about to be painted, so no invalidation is needed.
+    app.documents.strip.hover = if app.mouse.placed {
+        hover_at_pointer(app)
+    } else {
+        None
+    };
 }
 
 /// Left press on a tab body: remember it as a possible drag.
@@ -232,13 +242,18 @@ pub(crate) fn pointer_moved(app: &mut App) -> bool {
 
 /// Which tab the pointer is over, and whether it is on the close mark.
 fn update_hover(app: &mut App) -> bool {
-    let (x, y) = (app.mouse.position.x as f32, app.mouse.position.y as f32);
-    let hover = if y >= 0.0 && y < app.tab_bar_height() {
-        tab_at(app, x).map(|(index, on_close)| (app.documents.tabs.tabs()[index].id, on_close))
-    } else {
-        None
-    };
+    let hover = hover_at_pointer(app);
     set_hover(app, hover)
+}
+
+/// The tab under the last pointer position in the current strip, or
+/// `None` while the pointer is outside the tab row.
+fn hover_at_pointer(app: &App) -> Option<(TabId, bool)> {
+    let (x, y) = (app.mouse.position.x as f32, app.mouse.position.y as f32);
+    if y < 0.0 || y >= app.tab_bar_height() {
+        return None;
+    }
+    tab_at(app, x).map(|(index, on_close)| (app.documents.tabs.tabs()[index].id, on_close))
 }
 
 /// The pointer left the window: nothing is hovered.
