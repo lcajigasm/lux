@@ -91,3 +91,49 @@ fn shutdown_all_cleans_up_all_children() {
     assert_eq!(state.session_ids.len(), 0);
     assert_eq!(state.session_names.len(), 0);
 }
+
+#[cfg(unix)]
+#[test]
+fn cancel_task_returns_at_once_and_the_child_is_reaped_off_thread() {
+    let mut state = TerminalState::new();
+    let mut cmd = CommandBuilder::new("/bin/sh");
+    cmd.args(["-c", "trap '' HUP; sleep 30"]);
+    let id = state.run_task("stubborn", cmd).expect("start task");
+    let pid = state.tasks.get(id).and_then(lux_term::Pty::pid).unwrap();
+    let asked = std::time::Instant::now();
+    assert!(state.cancel_task(id));
+    assert!(asked.elapsed() < std::time::Duration::from_millis(100));
+    assert!(state.tasks.get(id).is_none());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let alive = || {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    };
+    while alive() {
+        assert!(std::time::Instant::now() < deadline, "task survived");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn resize_touches_only_the_terminal_the_dock_shows() {
+    let mut state = TerminalState::new();
+    let _ = state.ensure_session(None).expect("spawn session");
+    let mut cmd = CommandBuilder::new("/bin/sh");
+    cmd.args(["-c", "sleep 30"]);
+    let task = state.run_task("t", cmd).expect("start task");
+    assert!(state.show_tasks);
+    let session_size = state.active_pty().unwrap().size();
+    state.resize(17, 61);
+    assert_eq!(state.tasks.get(task).unwrap().size(), (17, 61));
+    assert_eq!(state.active_pty().unwrap().size(), session_size);
+    state.show_tasks = false;
+    state.resize(17, 61);
+    assert_eq!(state.active_pty().unwrap().size(), (17, 61));
+    state.shutdown_all();
+}

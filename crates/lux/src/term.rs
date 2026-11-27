@@ -9,7 +9,8 @@ mod tests;
 use std::path::Path;
 
 use lux_term::{
-    CommandBuilder, Pty, PtyError, PtySize, ShellProfile, TaskId, TaskPanel, TerminalId, Terminals,
+    CommandBuilder, Pty, PtyError, PtyNotify, PtySize, ShellProfile, TaskId, TaskPanel, TerminalId,
+    Terminals,
 };
 
 pub(crate) const DEFAULT_TERM_HEIGHT: f32 = 240.0;
@@ -66,6 +67,11 @@ impl TerminalState {
     pub(crate) fn active_pty_mut(&mut self) -> Option<&mut Pty> {
         let id = self.active_id()?;
         self.terminals.get_mut(id)
+    }
+
+    /// The task shown in the Tasks view, if it is still in the panel.
+    pub(crate) fn active_task_pty(&self) -> Option<&Pty> {
+        self.tasks.get(self.active_task?)
     }
 
     #[cfg(test)]
@@ -142,7 +148,10 @@ impl TerminalState {
         true
     }
 
-    /// Resizes the active PTY (and remembers the dimensions for future sessions).
+    /// Resizes the terminal the dock shows (the active task in the Tasks
+    /// view, else the active shell session) and remembers the size for
+    /// new ones. Called every frame, so an unchanged size costs nothing,
+    /// and hidden terminals are resized when they are shown.
     pub(crate) fn resize(&mut self, rows: u16, cols: u16) {
         if rows == 0 || cols == 0 {
             return;
@@ -154,10 +163,15 @@ impl TerminalState {
             pixel_height: 0,
         };
         self.last_size = Some(size);
-        for id in &self.session_ids {
-            if let Some(pty) = self.terminals.get(*id) {
-                let _ = pty.resize(size);
-            }
+        let shown = if self.show_tasks {
+            self.active_task_pty()
+        } else {
+            self.active_pty()
+        };
+        if let Some(pty) = shown
+            && pty.size() != (rows as usize, cols as usize)
+        {
+            let _ = pty.resize(size);
         }
     }
 
@@ -167,8 +181,18 @@ impl TerminalState {
         name: &str,
         command: CommandBuilder,
     ) -> Result<TaskId, PtyError> {
+        self.run_task_with(name, command, |_| PtyNotify::default())
+    }
+
+    /// `run_task`, reporting the task's output and exit through `notify`.
+    pub(crate) fn run_task_with(
+        &mut self,
+        name: &str,
+        command: CommandBuilder,
+        notify: impl FnOnce(TaskId) -> PtyNotify,
+    ) -> Result<TaskId, PtyError> {
         let size = self.default_size();
-        let id = self.tasks.start(name, command, size)?;
+        let id = self.tasks.start_with(name, command, size, notify)?;
         self.task_ids.push(id);
         self.active_task = Some(id);
         self.show_tasks = true;
@@ -177,17 +201,18 @@ impl TerminalState {
         Ok(id)
     }
 
-    /// Cancels a running task and reaps its child.
+    /// Cancels a task: drops it from the panel at once and stops and
+    /// reaps its child on a worker, so the UI thread never waits.
     pub(crate) fn cancel_task(&mut self, id: TaskId) -> bool {
-        if let Ok(_status) = self.tasks.cancel(id) {
-            self.task_ids.retain(|&t| t != id);
-            if self.active_task == Some(id) {
-                self.active_task = self.task_ids.last().copied();
-            }
-            true
-        } else {
-            false
+        let Some(pty) = self.tasks.remove(id) else {
+            return false;
+        };
+        reap_detached(pty);
+        self.task_ids.retain(|&t| t != id);
+        if self.active_task == Some(id) {
+            self.active_task = self.task_ids.last().copied();
         }
+        true
     }
 
     /// Cancels the currently active task.
@@ -199,15 +224,53 @@ impl TerminalState {
         }
     }
 
-    /// Shuts down all terminals and tasks cleanly, killing and reaping all child processes.
+    /// Shuts down all terminals and tasks: every child is stopped and
+    /// reaped on its own worker, all at once, and quitting waits for them
+    /// at most `SHUTDOWN_WAIT` in total, never unbounded.
     pub(crate) fn shutdown_all(&mut self) {
+        let mut ptys = Vec::new();
         for id in self.session_ids.drain(..) {
-            let _ = self.terminals.kill(id);
+            ptys.extend(self.terminals.remove(id));
         }
         self.session_names.clear();
         for id in self.task_ids.drain(..) {
-            let _ = self.tasks.cancel(id);
+            ptys.extend(self.tasks.remove(id));
         }
         self.active_task = None;
+        let (done, reaped) = std::sync::mpsc::channel();
+        let mut count = 0;
+        for pty in ptys {
+            let done = done.clone();
+            let spawned = std::thread::Builder::new()
+                .name("lux-pty-reap".into())
+                .spawn(move || {
+                    let _ = pty.kill_and_wait();
+                    let _ = done.send(());
+                });
+            // A reaper that could not start dropped its PTY: nothing to wait for.
+            count += usize::from(spawned.is_ok());
+        }
+        let deadline = std::time::Instant::now() + SHUTDOWN_WAIT;
+        for _ in 0..count {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if reaped.recv_timeout(left).is_err() {
+                break;
+            }
+        }
+    }
+}
+
+/// The longest quitting waits for terminal and task children to be reaped.
+const SHUTDOWN_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Stops and reaps `pty`'s child on a worker thread.
+fn reap_detached(pty: Pty) {
+    let spawned = std::thread::Builder::new()
+        .name("lux-pty-reap".into())
+        .spawn(move || {
+            let _ = pty.kill_and_wait();
+        });
+    if let Err(error) = spawned {
+        eprintln!("lux: cannot reap a task: {error}");
     }
 }

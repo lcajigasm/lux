@@ -349,6 +349,7 @@ impl PlatformEventHandler for App {
         crate::menu::poll_and_dispatch(self, ctx);
         self.finish_document_operation(ctx);
         crate::ui_io::poll(self, ctx);
+        crate::build::poll(self);
         crate::session::write_if_due(self);
         crate::lsp::poll_lsp_events(self, ctx);
         self.poll_syntax_highlighter();

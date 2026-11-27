@@ -13,5 +13,5 @@ anyhow = "1"
 portable-pty = "0.9"
 thiserror = "2"
 
-[target."cfg(unix)".dev-dependencies]
+[target."cfg(unix)".dependencies]
 libc = "0.2"

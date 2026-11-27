@@ -136,6 +136,11 @@ impl Jobs {
         self.wake = Some(wake);
     }
 
+    /// The event-loop waker registered at startup, for other workers.
+    pub(crate) fn waker(&self) -> Option<Wake> {
+        self.wake.clone()
+    }
+
     /// Jobs started and not yet applied by `poll`.
     #[cfg(test)]
     pub(crate) fn in_flight(&self) -> usize {
