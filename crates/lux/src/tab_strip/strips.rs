@@ -48,7 +48,7 @@ fn strip(app: &App, group: Option<usize>, [x, top, w, h]: [f32; 4]) -> Strip {
         x
     };
     let width = (x + w - left).max(0.0);
-    let count = order(app, group).len();
+    let count = count(app, group);
     let scale = app.scale_factor;
     Strip {
         group,
@@ -93,11 +93,36 @@ pub(crate) fn focused(app: &App) -> Option<Strip> {
         .copied()
 }
 
-/// A strip's tabs, in its order.
+/// A strip's tabs, in its order. Allocates: per-event paths use
+/// [`count`], [`tab_at_index`], and [`position`] instead.
 pub(crate) fn order(app: &App, group: Option<usize>) -> Vec<TabId> {
     match group.and_then(|g| app.ui.split.panes.get(g)) {
         Some(pane) => pane.tabs.clone(),
         None => app.documents.tabs.tabs().iter().map(|t| t.id).collect(),
+    }
+}
+
+/// How many tabs a strip holds, without copying them.
+pub(crate) fn count(app: &App, group: Option<usize>) -> usize {
+    match group.and_then(|g| app.ui.split.panes.get(g)) {
+        Some(pane) => pane.tabs.len(),
+        None => app.documents.tabs.tabs().len(),
+    }
+}
+
+/// The tab at `index` in a strip's order.
+pub(crate) fn tab_at_index(app: &App, group: Option<usize>, index: usize) -> Option<TabId> {
+    match group.and_then(|g| app.ui.split.panes.get(g)) {
+        Some(pane) => pane.tabs.get(index).copied(),
+        None => app.documents.tabs.tabs().get(index).map(|t| t.id),
+    }
+}
+
+/// Where `id` is in a strip's order.
+pub(crate) fn position(app: &App, group: Option<usize>, id: TabId) -> Option<usize> {
+    match group.and_then(|g| app.ui.split.panes.get(g)) {
+        Some(pane) => pane.tabs.iter().position(|t| *t == id),
+        None => app.documents.tabs.position(id),
     }
 }
 

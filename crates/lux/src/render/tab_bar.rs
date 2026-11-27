@@ -348,9 +348,13 @@ fn paint_strip(painter: &mut Painter, documents: &Documents, view: &StripPaint, 
     let strip_right = layout.right();
     let drag = documents.strip.drag.filter(|d| d.moving);
     let (quads_from, glyphs_from) = (painter.quads.len(), painter.glyphs.len());
-    let tab = |id| documents.tabs.tabs().iter().find(|t| t.id == id);
+    let tab = |id| documents.tabs.get(id);
+    // Only the tabs the strip's window shows: the rest cost nothing.
+    let width = tab_width.max(1.0);
+    let first = (view.scroll / width).floor().max(0.0) as usize;
+    let last = (((view.scroll + layout.visible_width) / width).ceil() as usize).min(view.ids.len());
 
-    for (i, id) in view.ids.iter().enumerate() {
+    for (i, id) in view.ids.iter().enumerate().take(last).skip(first) {
         let tab_x = origin + i as f32 * tab_width;
         // A dragged tab's slot stays empty; the tab follows the pointer.
         let lifted = drag.is_some_and(|d| d.id == *id && d.group == strip.group);

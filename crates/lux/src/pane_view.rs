@@ -1,5 +1,7 @@
 //! Multi-pane editor view state (ST-SPLIT-01).
 
+use std::sync::Arc;
+
 use lux_core::bookmarks::BookmarkState;
 use lux_core::folding::FoldState;
 use lux_core::multicursor::MultiCursor;
@@ -95,16 +97,17 @@ impl PaneView {
 /// A pane's cached highlight tokens, with a generation that changes every
 /// time they are replaced. Caches keyed on them (the minimap's colors)
 /// compare generations, never addresses: a freed and reallocated vector
-/// can come back at the same address with the same length.
+/// can come back at the same address with the same length. Cloning a
+/// pane shares the tokens instead of copying them (they can be megabytes).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct PaneTokens {
-    tokens: Vec<lux_syntax::Token>,
+    tokens: Arc<Vec<lux_syntax::Token>>,
     generation: u64,
 }
 
 impl PaneTokens {
     pub(crate) fn replace(&mut self, tokens: Vec<lux_syntax::Token>) {
-        self.tokens = tokens;
+        self.tokens = Arc::new(tokens);
         self.generation = next_generation();
     }
 
@@ -147,5 +150,18 @@ mod tests {
         }
         tokens.clear();
         assert!(!seen.contains(&tokens.generation()));
+    }
+
+    #[test]
+    fn a_cloned_pane_shares_its_tokens() {
+        let mut tokens = PaneTokens::default();
+        tokens.replace(vec![lux_syntax::Token {
+            start_byte: 0,
+            end_byte: 2,
+            kind: "keyword".into(),
+        }]);
+        let copy = tokens.clone();
+        assert!(std::ptr::eq(copy.as_slice(), tokens.as_slice()));
+        assert_eq!(copy.generation(), tokens.generation());
     }
 }
