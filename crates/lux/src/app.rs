@@ -30,7 +30,7 @@ pub(crate) const ATLAS_SIDE: u32 = 1024;
 /// their own shaping pass; see the receipt), only their reserved width.
 pub(crate) const TEXT_LEFT_PADDING: f32 = 8.0;
 pub(crate) const TAB_BAR_HEIGHT: f32 = 32.0;
-pub(crate) const TAB_MIN_WIDTH: f32 = 120.0;
+pub(crate) const TAB_MIN_WIDTH: f32 = 100.0;
 pub(crate) const TAB_MAX_WIDTH: f32 = 200.0;
 pub(crate) const TAB_CLOSE_BTN_WIDTH: f32 = 24.0;
 
@@ -478,7 +478,7 @@ impl PlatformEventHandler for App {
                 {
                     gpu_window.window.request_redraw();
                 }
-                if crate::tab_strip::drag_tab(self)
+                if crate::tab_strip::pointer_moved(self)
                     && let Some(gpu_window) = &self.gpu_window
                 {
                     gpu_window.window.request_redraw();

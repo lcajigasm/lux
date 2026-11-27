@@ -1,6 +1,7 @@
 //! Render pass for the top multi-document tab bar.
 
 use crate::document::Documents;
+use crate::render::clip::{clip_glyphs, clip_rect};
 use crate::render::paint::{color, push_glyph};
 use crate::tab_strip::StripLayout;
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
@@ -8,6 +9,11 @@ use lux_ui::tabs::Tab;
 use lux_ui::{EditorView, Theme};
 use swash::FontRef;
 use swash::scale::ScaleContext;
+
+/// Tab titles are the system UI face at 12 pt, like Sublime Text's.
+const TAB_FONT_PT: f32 = 12.0;
+/// Diameter of the unsaved dot that stands in for a dirty tab's `×`.
+const DIRTY_DOT_PT: f32 = 8.0;
 
 /// How one tab is drawn besides its title.
 #[derive(Clone, Copy)]
@@ -18,12 +24,16 @@ struct Look {
     /// and the text pipeline cannot slant glyphs, so the title is
     /// underlined with a dashed rule instead.
     transient: bool,
+    /// The pointer is on this tab's close mark: a dirty tab shows `×`
+    /// there instead of its dot.
+    close_hovered: bool,
 }
 
 /// Everything one tab, the `▼` button, or the context menu draws into.
 struct Painter<'a> {
     theme: &'a Theme,
     stroke: f32,
+    scale_factor: f32,
     height: f32,
     font_size: f32,
     family: String,
@@ -69,11 +79,25 @@ impl Painter<'_> {
         }
     }
 
+    /// Advance width of `text` in the painter's face.
+    fn measure(&mut self, text: &str) -> f32 {
+        let style = lux_render::LineStyle {
+            family: &self.family,
+            font_size: self.font_size,
+            ligatures: false,
+        };
+        self.editor_view
+            .text_layout_mut()
+            .layout_line(&style, text, &[])
+            .width()
+    }
+
     fn tab(&mut self, tab: &Tab, x: f32, width: f32, look: Look, close_w: f32) {
         let Look {
             active,
             dirty,
             transient,
+            close_hovered,
         } = look;
         let stroke = self.stroke;
         let height = self.height;
@@ -101,17 +125,14 @@ impl Painter<'_> {
         // fill is about 2.5:1, so the title and the close mark use the
         // foreground. The well and the accent bar distinguish the active tab.
         let foreground = color(theme.foreground);
-        let max_title_w = (width - close_w - 18.0 * stroke).max(0.0) - 8.0 * stroke;
-        self.text(
-            &tab.title,
-            x + 8.0 * stroke,
-            0.0,
-            height,
-            max_title_w,
-            foreground,
-        );
+        let title_x = x + 10.0 * stroke;
+        let max_title_w = (width - close_w - 14.0 * stroke).max(0.0);
+        let title =
+            crate::tab_strip::title::elide(&tab.title, max_title_w, &mut |text| self.measure(text));
+        self.text(&title, title_x, 0.0, height, max_title_w, foreground);
         if transient {
-            self.dashed_rule(x + 8.0 * stroke, height - 7.0 * stroke, max_title_w);
+            let underline = self.measure(&title).min(max_title_w);
+            self.dashed_rule(title_x, height - 7.0 * stroke, underline);
         }
         if tab.pinned {
             self.quads.push(QuadInstance::solid(
@@ -124,22 +145,28 @@ impl Painter<'_> {
                 color(theme.accent),
             ));
         }
-        if dirty {
-            let dot = 5.0 * stroke;
-            let dot_x = x + width - close_w - dot - 2.0 * stroke;
-            self.quads.push(QuadInstance::solid(
-                [dot_x, (height - dot) * 0.5, dot, dot],
-                color(theme.accent),
+        let close_center = x + width - close_w * 0.5;
+        if dirty && !close_hovered {
+            // Sublime's unsaved dot takes the close mark's place; hovering
+            // it shows the `×` that closes (with the unsaved prompt).
+            let dot = DIRTY_DOT_PT * self.scale_factor;
+            let [r, g, b, a] = foreground;
+            self.quads.push(QuadInstance::rounded(
+                [close_center - dot * 0.5, (height - dot) * 0.5, dot, dot],
+                [r, g, b, a * 0.7],
+                dot * 0.5,
             ));
+        } else {
+            let mark_w = self.measure("×");
+            self.text(
+                "×",
+                close_center - mark_w * 0.5,
+                0.0,
+                height,
+                f32::MAX,
+                foreground,
+            );
         }
-        self.text(
-            "×",
-            x + width - close_w * 0.7,
-            0.0,
-            height,
-            f32::MAX,
-            foreground,
-        );
     }
 
     /// A one-stroke dashed rule from `x`, `width` long.
@@ -194,6 +221,7 @@ fn look(documents: &Documents, tab: &Tab, is_current_dirty: bool) -> Look {
         active,
         dirty: tab_dirty(documents, tab, active, is_current_dirty),
         transient: crate::goto::preview::is_transient(documents, tab.id),
+        close_hovered: documents.strip.hover == Some((tab.id, true)),
     }
 }
 
@@ -218,7 +246,6 @@ pub(crate) fn render_tab_bar(
     tab_bar_height: f32,
     scale_factor: f32,
     stroke: f32,
-    font_size: f32,
     font: FontRef<'static>,
     editor_view: &mut EditorView,
     atlas: &mut GlyphAtlas,
@@ -228,12 +255,13 @@ pub(crate) fn render_tab_bar(
     quad_instances: &mut Vec<QuadInstance>,
     glyph_instances: &mut Vec<GlyphInstance>,
 ) {
-    let family = editor_view.family().to_string();
+    let (font, family) = crate::font::ui_font(font, editor_view.family());
     let mut painter = Painter {
         theme,
         stroke,
+        scale_factor,
         height: tab_bar_height,
-        font_size: font_size * 0.82,
+        font_size: TAB_FONT_PT * scale_factor,
         family,
         font,
         editor_view,
@@ -250,6 +278,7 @@ pub(crate) fn render_tab_bar(
     let origin = strip_left - scroll;
     let strip_right = strip.right();
     let drag = documents.strip.drag.filter(|d| d.moving);
+    let (quads_from, glyphs_from) = (painter.quads.len(), painter.glyphs.len());
 
     for (i, tab) in tabs.iter().enumerate() {
         let tab_x = origin + i as f32 * tab_width;
@@ -280,6 +309,11 @@ pub(crate) fn render_tab_bar(
             color(theme.accent),
         ));
     }
+    // A tab scrolled half out of the strip is cut at the strip's edges, so
+    // it never covers the sidebar column, the window controls, or `▼`.
+    let bounds = [strip_left, 0.0, strip.visible_width, tab_bar_height];
+    clip_quads(painter.quads, quads_from, bounds);
+    clip_glyphs(painter.glyphs, glyphs_from, bounds);
 
     if let Some(button) = strip.button {
         painter.overflow_button(button, documents.strip.list.is_some());
@@ -316,3 +350,22 @@ pub(crate) fn render_tab_bar(
         }
     }
 }
+
+fn clip_quads(quads: &mut Vec<QuadInstance>, start: usize, bounds: [f32; 4]) {
+    let mut index = start;
+    while index < quads.len() {
+        match clip_rect(quads[index].rect, bounds) {
+            Some(rect) => {
+                quads[index].rect = rect;
+                index += 1;
+            }
+            None => {
+                quads.remove(index);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "tab_bar_tests.rs"]
+mod tests;

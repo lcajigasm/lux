@@ -395,10 +395,21 @@ py() {
   python3 -c "print(round($origin_y + $1))"
 }
 
-tab_w="$(python3 -c "print(min(200, max(120, $view_w / 3)))")"
+# The strip's left edge and tab width come from the probe (physical
+# pixels); the formula is the fallback for a build without the field.
+strip="$(drive_field tab_strip || true)"
+if [[ -n "$strip" && -n "${app_scale:-}" ]]; then
+  IFS=',' read -r strip_px _strip_w tab_px <<< "$strip"
+  strip_left="$(python3 -c "print($strip_px / $app_scale)")"
+  tab_w="$(python3 -c "print($tab_px / $app_scale)")"
+else
+  strip_left="$sidebar"
+  tab_w="$(python3 -c "print(min(200, max(100, $view_w / 3)))")"
+fi
+log "tab_strip=${strip:-absent} strip_left=$strip_left"
 log "origin=$origin_x,$origin_y content=${content_w}x${content_h} sidebar=$sidebar view=${view_w}x${view_h} tab_w=$tab_w"
 
-tab_x="$(python3 -c "print($sidebar + 40)")"
+tab_x="$(python3 -c "print($strip_left + 40)")"
 drive_key click "$(pt "$tab_x")" "$(py 16)"
 sleep 0.5
 drive_dump || true
@@ -416,7 +427,7 @@ sample editor-text ibeam "$(pt "$text_x")" "$(py 72)"
 
 sample gutter arrow "$(pt "$gutter_x")" "$(py 72)"
 
-close_x="$(python3 -c "print($sidebar + $tab_w - 12)")"
+close_x="$(python3 -c "print($strip_left + $tab_w - 12)")"
 sample tab hand "$(pt "$tab_x")" "$(py 16)"
 shot tab
 sample tab-close hand "$(pt "$close_x")" "$(py 16)"
@@ -456,7 +467,9 @@ sample outside arrow "$out_x" "$((frame_y + 8))"
 
 drive_key tap 19 "cmd,alt"
 sleep 0.4
-div_x="$(python3 -c "print($sidebar + $view_w / 2)")"
+# Groups divide the editor and its minimap column: each group keeps its
+# own minimap, so the divider is at the middle of both.
+div_x="$(python3 -c "print($sidebar + ($view_w + $minimap) / 2)")"
 div_y="$(python3 -c "print(32 + $view_h / 2)")"
 sample column-divider ew "$(pt "$div_x")" "$(py "$div_y")"
 shot column-divider
@@ -528,7 +541,7 @@ preview_at() {
   fi
 }
 
-md_tab="$(python3 -c "print($sidebar + $tab_w * 1.5)")"
+md_tab="$(python3 -c "print($strip_left + $tab_w * 1.5)")"
 drive_key click "$(pt "$md_tab")" "$(py 16)"
 sleep 0.4
 drive_dump || true
@@ -539,7 +552,7 @@ drive_dump || true
 log "markdown preview=$(drive_field preview || true)"
 preview_at markdown
 
-html_tab="$(python3 -c "print($sidebar + $tab_w * 2.5)")"
+html_tab="$(python3 -c "print($strip_left + $tab_w * 2.5)")"
 drive_key click "$(pt "$html_tab")" "$(py 16)"
 sleep 0.4
 drive_dump || true

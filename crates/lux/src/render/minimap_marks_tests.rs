@@ -26,12 +26,16 @@ fn marks(app: &App, theme: &Theme) -> Vec<QuadInstance> {
     let doc = MinimapDoc {
         id: 1,
         buffer: &app.buffer,
-        syntax: app.syntax.as_ref(),
+        colors: None,
         bookmarks: &app.bookmarks,
         folds: &app.fold_state,
     };
     let mut quads = Vec::new();
-    paint_marks(&app.ui, &doc, &strip(), theme, &mut quads);
+    let marks = Marks {
+        git: &app.ui.git.markers,
+        search: app.ui.search_bar.as_ref(),
+    };
+    paint_marks(Some(&marks), &doc, &strip(), theme, &mut quads);
     quads
 }
 

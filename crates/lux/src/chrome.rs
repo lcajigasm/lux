@@ -187,14 +187,7 @@ pub(crate) fn handle_mouse_click_on_chrome(
     }
 
     if app.ui.split.is_active() && button == MouseButton::Left {
-        let sidebar_w = app.sidebar_width();
-        let editor_top = app.tab_bar_height();
-        let primary_rect = [
-            sidebar_w,
-            editor_top,
-            app.viewport.width,
-            app.viewport.height,
-        ];
+        let primary_rect = crate::split::groups::editor_area(app);
         if let Some(div) = crate::split::hit_test_divider(
             &app.ui.split,
             primary_rect,
@@ -225,13 +218,7 @@ pub(crate) fn handle_mouse_click_on_chrome(
             }
             return true;
         }
-        if let Some(pane_idx) = crate::split::hit_test_pane(
-            &app.ui.split,
-            primary_rect,
-            app.scale_factor,
-            mouse_x,
-            mouse_y,
-        ) {
+        if let Some(pane_idx) = crate::split::groups::group_at(app, mouse_x, mouse_y) {
             if pane_idx != app.ui.split.active_pane {
                 app.focus_group(pane_idx);
             }

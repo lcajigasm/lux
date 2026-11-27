@@ -198,7 +198,7 @@ fn restore_layout(
             pane.cursors = cursors;
         }
         pane.viewport.scroll_y = saved.scroll_line as f32 * line_height;
-        pane.tokens = tokens;
+        pane.tokens.replace(tokens);
     }
     let active = layout.active_pane.min(count.saturating_sub(1));
     if let Some(pane) = app.ui.split.panes.get(active).cloned() {

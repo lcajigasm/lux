@@ -177,40 +177,32 @@ impl App {
             }
             return;
         }
-        if self.ui.split.is_active() {
-            let primary_rect = [
-                self.sidebar_width(),
-                self.tab_bar_height(),
-                self.viewport.width,
-                self.viewport.height,
-            ];
-            if let Some(pane_idx) = crate::split::hit_test_pane(
-                &self.ui.split,
-                primary_rect,
-                self.scale_factor,
+        if self.ui.split.is_active()
+            && let Some(pane_idx) = crate::split::groups::group_at(
+                self,
                 self.mouse.position.x as f32,
                 self.mouse.position.y as f32,
-            ) {
-                if pane_idx == self.ui.split.active_pane {
-                    self.apply_scroll_delta(dx, dy);
-                    if pane_idx < self.ui.split.panes.len() {
-                        self.ui.split.panes[pane_idx].viewport.scroll_x = self.viewport.scroll_x;
-                        self.ui.split.panes[pane_idx].viewport.scroll_y = self.viewport.scroll_y;
-                    }
-                } else if pane_idx < self.ui.split.panes.len() {
-                    let pane = &mut self.ui.split.panes[pane_idx].viewport;
-                    pane.scroll_x = (pane.scroll_x - dx).max(0.0);
-                    pane.scroll_y = (pane.scroll_y - dy).max(0.0);
-                    if pane_idx == 1 {
-                        self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
-                    }
+            )
+        {
+            if pane_idx == self.ui.split.active_pane {
+                self.apply_scroll_delta(dx, dy);
+                if pane_idx < self.ui.split.panes.len() {
+                    self.ui.split.panes[pane_idx].viewport.scroll_x = self.viewport.scroll_x;
+                    self.ui.split.panes[pane_idx].viewport.scroll_y = self.viewport.scroll_y;
                 }
-                self.scheduler.invalidate_all();
-                if let Some(gpu_window) = &self.gpu_window {
-                    gpu_window.window.request_redraw();
+            } else if pane_idx < self.ui.split.panes.len() {
+                let pane = &mut self.ui.split.panes[pane_idx].viewport;
+                pane.scroll_x = (pane.scroll_x - dx).max(0.0);
+                pane.scroll_y = (pane.scroll_y - dy).max(0.0);
+                if pane_idx == 1 {
+                    self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
                 }
-                return;
             }
+            self.scheduler.invalidate_all();
+            if let Some(gpu_window) = &self.gpu_window {
+                gpu_window.window.request_redraw();
+            }
+            return;
         }
         self.apply_scroll_delta(dx, dy);
         self.scheduler.invalidate_all();

@@ -28,6 +28,11 @@ pub(crate) fn probe_lines(app: &App) -> String {
         app.viewport.width,
         app.viewport.height,
     );
+    let strip = crate::tab_strip::layout(app);
+    out.push_str(&format!(
+        "tab_strip={:.1},{:.1},{:.1}\n",
+        strip.left, strip.visible_width, strip.tab_width
+    ));
     if let Some((x, width)) = preview_pane(app) {
         out.push_str(&format!("preview_pane={x:.1},{width:.1}\n"));
     }
@@ -73,6 +78,11 @@ pub(crate) fn sync(app: &mut App) {
 
 pub(crate) fn leave(app: &mut App) {
     app.mouse.placed = false;
+    if crate::tab_strip::clear_hover(app)
+        && let Some(gpu) = &app.gpu_window
+    {
+        gpu.window.request_redraw();
+    }
     // The button may come up outside the window, where no release arrives.
     crate::minimap::drag::release(app);
     if let Some(sidebar) = &mut app.ui.sidebar {
@@ -232,13 +242,7 @@ fn divider(app: &App, x: f32, y: f32) -> Option<CursorShape> {
     if !app.ui.split.is_active() {
         return None;
     }
-    let sidebar = app.sidebar_width();
-    let rect = [
-        sidebar,
-        app.tab_bar_height(),
-        app.viewport.width,
-        app.viewport.height,
-    ];
+    let rect = crate::split::groups::editor_area(app);
     crate::split::hit_test_divider(&app.ui.split, rect, app.scale_factor, x, y).map(divider_shape)
 }
 
@@ -250,17 +254,9 @@ fn divider_shape(divider: crate::split::DraggingDivider) -> CursorShape {
 }
 
 fn split_pane(app: &mut App, x: f32, y: f32) -> CursorShape {
-    let sidebar = app.sidebar_width();
-    let rect = [
-        sidebar,
-        app.tab_bar_height(),
-        app.viewport.width,
-        app.viewport.height,
-    ];
-    let geom = crate::split::compute_layout_geometry(&app.ui.split, rect, app.scale_factor);
-    for pane in geom.pane_rects {
-        if contains(pane[0], pane[1], pane[2], pane[3], x, y) {
-            return editor_zone(app, x, y, pane);
+    for group in crate::split::groups::rects(app) {
+        if crate::split::groups::contains(group.text, x, y) {
+            return editor_zone(app, x, y, group.text);
         }
     }
     CursorShape::Arrow
@@ -449,9 +445,16 @@ mod tests {
     fn split_dividers_use_the_resize_arrows() {
         let mut app = app();
         app.set_layout(crate::split::LayoutPreset::Columns2);
-        assert_eq!(at(&mut app, 500.0, 200.0), CursorShape::ResizeEastWest);
+        let [x, y, w, h] = crate::split::groups::editor_area(&app);
+        assert_eq!(
+            at(&mut app, x + w * 0.5, 200.0),
+            CursorShape::ResizeEastWest
+        );
         app.set_layout(crate::split::LayoutPreset::Rows2);
-        assert_eq!(at(&mut app, 200.0, 354.0), CursorShape::ResizeNorthSouth);
+        assert_eq!(
+            at(&mut app, 200.0, y + h * 0.5),
+            CursorShape::ResizeNorthSouth
+        );
     }
 
     #[test]

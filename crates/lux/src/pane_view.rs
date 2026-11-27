@@ -56,7 +56,7 @@ pub(crate) struct PaneView {
     pub(crate) cursors: MultiCursor,
     pub(crate) fold_state: FoldState,
     pub(crate) bookmarks: BookmarkState,
-    pub(crate) tokens: Vec<lux_syntax::Token>,
+    pub(crate) tokens: PaneTokens,
 }
 
 impl PaneView {
@@ -68,7 +68,7 @@ impl PaneView {
             cursors: MultiCursor::new(Selection::cursor(Position::document_start())),
             fold_state: FoldState::new(),
             bookmarks: BookmarkState::new(),
-            tokens: Vec::new(),
+            tokens: PaneTokens::default(),
         }
     }
 
@@ -79,5 +79,63 @@ impl PaneView {
         pane.viewport.width = rect[2];
         pane.viewport.height = rect[3];
         pane
+    }
+}
+
+/// A pane's cached highlight tokens, with a generation that changes every
+/// time they are replaced. Caches keyed on them (the minimap's colors)
+/// compare generations, never addresses: a freed and reallocated vector
+/// can come back at the same address with the same length.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) struct PaneTokens {
+    tokens: Vec<lux_syntax::Token>,
+    generation: u64,
+}
+
+impl PaneTokens {
+    pub(crate) fn replace(&mut self, tokens: Vec<lux_syntax::Token>) {
+        self.tokens = tokens;
+        self.generation = next_generation();
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.replace(Vec::new());
+    }
+
+    pub(crate) fn as_slice(&self) -> &[lux_syntax::Token] {
+        &self.tokens
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.tokens.is_empty()
+    }
+
+    /// Unique across every pane's replacements; 0 only before the first.
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+}
+
+fn next_generation() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PaneTokens;
+
+    #[test]
+    fn every_replacement_gets_a_new_generation() {
+        let mut tokens = PaneTokens::default();
+        let mut seen = vec![tokens.generation()];
+        for _ in 0..3 {
+            tokens.replace(Vec::new());
+            assert!(!seen.contains(&tokens.generation()));
+            seen.push(tokens.generation());
+        }
+        tokens.clear();
+        assert!(!seen.contains(&tokens.generation()));
     }
 }

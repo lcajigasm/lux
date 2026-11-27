@@ -13,7 +13,7 @@ mod ime;
 mod language_picker;
 mod lsp;
 pub(crate) mod markdown;
-mod minimap;
+pub(crate) mod minimap;
 mod modals;
 pub(crate) mod overlay_list;
 pub(crate) mod paint;
@@ -70,6 +70,8 @@ impl App {
         let editor_top = tab_bar_height;
 
         let minimap_document = self.minimap_document();
+        let minimap_w = self.minimap_width();
+        let sidebar_width = layout.editor[0];
         let App {
             gpu_window,
             editor_view,
@@ -104,7 +106,6 @@ impl App {
         let elapsed = Instant::now().duration_since(*start);
         let frame = editor_view.build_frame(buffer, cursors, viewport, elapsed, Some(fold_state));
         let is_df = ui.distraction_free.is_some();
-        let sidebar_width = layout.editor[0];
         let window_width = extent.width;
         let window_height = extent.height;
         let gutter_total_width = if is_df {
@@ -146,7 +147,13 @@ impl App {
             let params = split::SplitRenderParams {
                 split: &ui.split,
                 documents,
-                primary_rect: [sidebar_width, editor_top, viewport.width, viewport.height],
+                area: [
+                    sidebar_width,
+                    editor_top,
+                    viewport.width + minimap_w,
+                    viewport.height,
+                ],
+                minimap_w,
                 scale_factor: *scale_factor,
                 stroke,
                 font_size,
@@ -166,8 +173,16 @@ impl App {
                 ),
                 gutter_hover: self.mouse.gutter_hover,
             };
+            let minimap = split::SplitMinimap {
+                state: &mut ui.minimap,
+                marks: minimap::Marks {
+                    git: &ui.git.markers,
+                    search: ui.search_bar.as_ref(),
+                },
+            };
             split::render_split_layout(
                 &params,
+                Some(minimap),
                 editor_view,
                 atlas_state,
                 &mut quad_instances,
@@ -221,7 +236,6 @@ impl App {
                 tab_bar_height,
                 *scale_factor,
                 stroke,
-                font_size,
                 font,
                 editor_view,
                 &mut atlas_state.atlas,
@@ -312,27 +326,27 @@ impl App {
             ui.status_bar.layout = crate::status_bar::StatusBarLayout::default();
         }
 
-        if !is_df {
-            let doc = minimap::MinimapDoc {
-                id: minimap_document,
-                buffer,
-                syntax: syntax.as_ref(),
-                bookmarks,
-                folds: fold_state,
-            };
-            minimap::render_minimap(
-                ui,
-                &doc,
-                viewport,
+        if !is_df && !ui.split.is_active() {
+            let place = minimap::Placement::single(
+                minimap_w,
                 window_width,
-                tab_bar_height,
-                editor_top + viewport.height,
+                (tab_bar_height, editor_top + viewport.height),
                 *scale_factor,
                 line_height,
+            );
+            minimap::paint_focused(
+                ui,
+                minimap_document,
+                buffer,
+                syntax.as_ref(),
+                (bookmarks, fold_state),
+                viewport,
+                place,
                 &chrome.theme,
                 &mut quad_instances,
             );
         }
+        ui.minimap.end_frame();
         let tab_list = crate::tab_strip::list::view(documents, is_current_dirty);
         modals::render_all_modals(
             ui,

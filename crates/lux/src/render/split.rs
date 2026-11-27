@@ -10,8 +10,11 @@ use swash::FontRef;
 
 use crate::app::{AtlasState, BLINK_INTERVAL, SyntaxState};
 use crate::document::Documents;
+use crate::minimap::{MinimapState, SyntaxColors, TokenColors};
 use crate::pane_view::PaneView;
+use crate::render::minimap::{Marks, MinimapDoc, Placement, render_minimap};
 use crate::render::paint::{color, faint_rule, push_glyph, syntax_color};
+use crate::split::groups::GroupRects;
 use crate::split::{SplitLayout, compute_layout_geometry};
 
 /// Strictly clamps a quad instance within a bounding rectangle.
@@ -24,7 +27,10 @@ pub(crate) fn clamp_quad_to_rect(rect: [f32; 4], bounds: [f32; 4]) -> Option<[f3
 pub(crate) struct SplitRenderParams<'a> {
     pub(crate) split: &'a SplitLayout,
     pub(crate) documents: &'a Documents,
-    pub(crate) primary_rect: [f32; 4],
+    /// The rectangle the groups divide, minimap columns included.
+    pub(crate) area: [f32; 4],
+    /// Each group's minimap width; zero when the minimap is off.
+    pub(crate) minimap_w: f32,
     pub(crate) scale_factor: f32,
     pub(crate) stroke: f32,
     pub(crate) font_size: f32,
@@ -43,8 +49,17 @@ pub(crate) struct SplitRenderParams<'a> {
     pub(crate) gutter_hover: Option<[f32; 2]>,
 }
 
+/// The minimap cache and the focused file's marks, for each group's own
+/// minimap.
+pub(crate) struct SplitMinimap<'a> {
+    pub(crate) state: &'a mut MinimapState,
+    pub(crate) marks: Marks<'a>,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_split_layout(
     params: &SplitRenderParams,
+    mut minimap: Option<SplitMinimap<'_>>,
     editor_view: &mut EditorView,
     atlas_state: &mut AtlasState,
     quad_instances: &mut Vec<QuadInstance>,
@@ -56,7 +71,9 @@ pub(crate) fn render_split_layout(
         return;
     }
 
-    let geom = compute_layout_geometry(params.split, params.primary_rect, params.stroke);
+    let geom = compute_layout_geometry(params.split, params.area, params.stroke);
+    let groups =
+        crate::split::groups::layout(params.split, params.area, params.stroke, params.minimap_w);
 
     // 1. Render all dividers between panes
     for (rect, div_type) in &geom.dividers {
@@ -78,14 +95,15 @@ pub(crate) fn render_split_layout(
         return;
     };
 
-    for (i, &pane_rect) in geom.pane_rects.iter().enumerate() {
-        let default_pane = PaneView::with_geometry(fallback_tab, pane_rect);
+    for (i, group) in groups.iter().enumerate() {
+        let default_pane = PaneView::with_geometry(fallback_tab, group.text);
         let pane = params.split.panes.get(i).unwrap_or(&default_pane);
         let is_active_pane = i == params.split.active_pane;
 
         render_single_pane(
             pane,
-            pane_rect,
+            (i, group),
+            minimap.as_mut(),
             is_active_pane,
             params,
             editor_view,
@@ -101,7 +119,8 @@ pub(crate) fn render_split_layout(
 #[allow(clippy::too_many_arguments)]
 fn render_single_pane(
     pane: &PaneView,
-    bounds: [f32; 4],
+    (group_index, group): (usize, &GroupRects),
+    minimap: Option<&mut SplitMinimap<'_>>,
     is_active_pane: bool,
     params: &SplitRenderParams,
     editor_view: &mut EditorView,
@@ -111,6 +130,7 @@ fn render_single_pane(
     gutter_quads: &mut Vec<QuadInstance>,
     gutter_glyphs: &mut Vec<GlyphInstance>,
 ) {
+    let bounds = group.text;
     let [px, py, pw, ph] = bounds;
 
     // Pane background
@@ -206,6 +226,51 @@ fn render_single_pane(
     let mut pane_viewport = pane.viewport.to_editor_viewport();
     pane_viewport.scroll_x = scroll_x;
     pane_viewport.scroll_y = scroll_y;
+    // The group's rectangle this frame, not the one stored when the
+    // layout was chosen: the window or the sidebar may have moved since.
+    pane_viewport.width = pw;
+    pane_viewport.height = ph;
+
+    if let (Some(minimap), Some(rect)) = (minimap, group.minimap) {
+        let live = (is_active_pane || is_cloned_active_buffer)
+            .then_some(params.active_syntax)
+            .flatten()
+            .map(SyntaxColors);
+        let cached = TokenColors {
+            tokens,
+            generation: pane.tokens.generation(),
+            theme: params.syntax_theme,
+            buffer_id: entry_match.map_or(0, |e| e.buffer_id),
+        };
+        let colors: Option<&dyn lux_ui::minimap::LineColors> = match &live {
+            Some(live) => Some(live),
+            None if !tokens.is_empty() => Some(&cached),
+            None => None,
+        };
+        let doc = MinimapDoc {
+            id: pane.tab_id.as_u64(),
+            buffer,
+            colors,
+            bookmarks,
+            folds: fold_state,
+        };
+        let at = Placement {
+            rect,
+            group: group_index,
+            scale_factor: params.scale_factor,
+            line_height: params.line_height,
+        };
+        let marks = is_active_pane.then_some(&minimap.marks);
+        render_minimap(
+            minimap.state,
+            &doc,
+            marks,
+            &pane_viewport,
+            at,
+            params.theme,
+            quad_instances,
+        );
+    }
     let frame = editor_view.build_frame(
         buffer,
         cursors,
@@ -418,7 +483,8 @@ mod tests {
         let params = SplitRenderParams {
             split: &app.ui.split,
             documents: &app.documents,
-            primary_rect: [0.0, 0.0, 800.0, 600.0],
+            area: [0.0, 0.0, 800.0, 600.0],
+            minimap_w: 0.0,
             scale_factor: 1.0,
             stroke: 1.0,
             font_size: 14.0,
@@ -441,6 +507,7 @@ mod tests {
         let mut gutter_glyphs = Vec::new();
         render_split_layout(
             &params,
+            None,
             &mut app.editor_view,
             &mut app.atlas_state,
             &mut quad_instances,
