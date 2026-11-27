@@ -143,7 +143,6 @@ fn read_tabs(
     tabs: Vec<TabState>,
     history_dir: PathBuf,
 ) {
-    let count = tabs.len();
     let jobs = tabs
         .into_iter()
         .enumerate()
@@ -154,13 +153,12 @@ fn read_tabs(
             })
         })
         .collect();
-    if !crate::ui_io::spawn_each(app, Some(ctx), jobs) {
-        // No worker will report: every tab lands empty, so the restore
-        // still ends instead of waiting forever.
-        for index in 0..count {
-            apply_tab(app, generation, index, None);
-        }
-    }
+    // If the reader thread cannot start, nothing lands and the restore
+    // stays pending: saves keep writing the session's own tabs, drafts and
+    // layout, so the next launch can still restore them. Landing every tab
+    // empty instead would make the next save forget them, unsaved text
+    // included. `spawn_each` already reports the failure to the user.
+    crate::ui_io::spawn_each(app, Some(ctx), jobs);
 }
 
 /// The job that reads one tab. A read that panics lands as an empty tab,
