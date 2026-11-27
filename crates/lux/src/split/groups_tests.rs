@@ -169,6 +169,7 @@ fn each_group_paints_its_minimap_inside_its_own_rect() {
         active_scroll: (0.0, 0.0),
         theme: &app.chrome.theme,
         syntax_theme: &lux_syntax::theme::LUX_DARK,
+        gutter_hover: None,
     };
     let minimap = SplitMinimap {
         state: &mut app.ui.minimap,
