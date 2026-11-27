@@ -118,53 +118,33 @@ pub(crate) fn handle_term_click(app: &mut App, x: f32, y: f32) -> bool {
     let scale = app.scale_factor;
     let header_h = super::dock::HEADER_HEIGHT * scale;
     if y < term_top + header_h {
-        // Click on header bar: tabs, +, Tasks, Close
-        let mut tab_x = dock_x + 8.0 * scale;
-        let tab_w = 90.0 * scale;
-
-        for (i, _) in app.ui.term.session_ids.iter().enumerate() {
-            if x >= tab_x && x < tab_x + tab_w {
-                // Check if close 'x' clicked (right side of tab)
-                if x >= tab_x + tab_w - 20.0 * scale {
-                    app.ui.term.close_session(i);
-                } else {
-                    app.ui.term.active_tab = i;
-                    app.ui.term.show_tasks = false;
-                    app.ui.term.focused = true;
-                }
-                app.scheduler.invalidate_all();
-                return true;
+        // Same slots the painter draws.
+        let slots = super::dock::header_slots(dock_rect, app.ui.term.session_ids.len(), scale);
+        match super::dock::header_hit(&slots, scale, x) {
+            super::dock::HeaderHit::CloseTab(i) => {
+                app.ui.term.close_session(i);
             }
-            tab_x += tab_w + 4.0 * scale;
+            super::dock::HeaderHit::Tab(i) => {
+                app.ui.term.active_tab = i;
+                app.ui.term.show_tasks = false;
+                app.ui.term.focused = true;
+            }
+            super::dock::HeaderHit::NewTab => {
+                let root = app.workspace_root();
+                let _ = app.ui.term.spawn_session(None, None, root.as_deref());
+                app.ui.term.focused = true;
+            }
+            super::dock::HeaderHit::Tasks => {
+                app.ui.term.show_tasks = !app.ui.term.show_tasks;
+            }
+            super::dock::HeaderHit::ClosePanel => {
+                app.ui.term.visible = false;
+                app.ui.term.focused = false;
+                app.update_viewport_dimensions();
+            }
+            super::dock::HeaderHit::Nothing => return true,
         }
-
-        // '+' new tab button
-        if x >= tab_x && x < tab_x + 28.0 * scale {
-            let root = app.workspace_root();
-            let _ = app.ui.term.spawn_session(None, None, root.as_deref());
-            app.ui.term.focused = true;
-            app.scheduler.invalidate_all();
-            return true;
-        }
-        tab_x += 32.0 * scale;
-
-        // 'Tasks' button
-        if x >= tab_x && x < tab_x + 60.0 * scale {
-            app.ui.term.show_tasks = !app.ui.term.show_tasks;
-            app.scheduler.invalidate_all();
-            return true;
-        }
-
-        // Close panel 'x' button (top right)
-        let close_x = dock_x + dock_w - 28.0 * scale;
-        if x >= close_x {
-            app.ui.term.visible = false;
-            app.ui.term.focused = false;
-            app.update_viewport_dimensions();
-            app.scheduler.invalidate_all();
-            return true;
-        }
-
+        app.scheduler.invalidate_all();
         return true;
     }
 

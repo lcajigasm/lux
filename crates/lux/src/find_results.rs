@@ -2,7 +2,13 @@
 
 use lux_platform::PlatformContext;
 use lux_search::find_in_files::SearchMatch;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+pub(crate) mod decor;
+pub(crate) mod header;
+
+/// Title of the results tab.
+pub(crate) const TAB_TITLE: &str = "Find Results";
 
 #[derive(Debug, Default)]
 pub(crate) struct FindResultsNav {
@@ -10,18 +16,49 @@ pub(crate) struct FindResultsNav {
     pub(crate) active_index: Option<usize>,
     /// The search still streaming into the tab, if any.
     pub(crate) run: Option<crate::find_stream::FindRun>,
+    /// The tab's first line and the matcher compiled from it, for the
+    /// match boxes.
+    pub(crate) highlight: Option<(String, Option<regex::Regex>)>,
+}
+
+/// The `N matches across M files (K files searched)` line.
+pub(crate) fn is_summary(trimmed: &str) -> bool {
+    trimmed.contains(" across ") && trimmed.ends_with(" searched)")
+}
+
+/// Folder relative result paths are read against: the absolute root the
+/// tab's own header records, so a restored tab resolves against the folder
+/// it was searched in whatever folders are open now. Tabs from before the
+/// root was recorded hold absolute paths, which `header_path` keeps, so
+/// the workspace fallback only matters for them.
+fn results_root(app: &crate::app::App) -> PathBuf {
+    find_results_buffer(app)
+        .and_then(|buffer| buffer.line_content(1))
+        .and_then(|line| header::root(&line))
+        .unwrap_or_else(|| crate::project_search::workspace_root(app))
+}
+
+/// A header line's path. Older tabs hold absolute paths, which `join`
+/// keeps as they are.
+fn header_path(root: &Path, header: &str) -> PathBuf {
+    root.join(header.trim_end_matches(':').trim())
 }
 
 #[cfg(test)]
 /// The complete tab text for a finished search, built from the same pieces
 /// the streaming run appends one batch at a time.
-pub(crate) fn format_find_results(query: &str, matches: &[SearchMatch], searched: usize) -> String {
-    use crate::find_stream::{header, push_match, summary};
-    let mut out = header(query);
+pub(crate) fn format_find_results(
+    query: &str,
+    root: Option<&Path>,
+    matches: &[SearchMatch],
+    searched: usize,
+) -> String {
+    use crate::find_stream::{push_match, summary};
+    let mut out = header::header(query, root, true);
     let mut last_path: Option<PathBuf> = None;
     let mut files = 0;
     for m in matches {
-        if push_match(&mut out, &mut last_path, m) {
+        if push_match(&mut out, &mut last_path, root, m) {
             files += 1;
         }
     }
@@ -118,6 +155,7 @@ pub(crate) fn open_find_result_at_line(
 ) -> bool {
     let line_content = app.buffer.line_content(line_idx).unwrap_or_default();
     let trimmed = line_content.trim();
+    let root = results_root(app);
 
     if let Some((num_str, _)) = trimmed.split_once(':')
         && let Ok(line_num) = num_str.trim().parse::<u32>()
@@ -127,10 +165,9 @@ pub(crate) fn open_find_result_at_line(
             let prev_trimmed = prev_line.trim();
             if prev_trimmed.ends_with(':')
                 && !prev_trimmed.starts_with("Searching ")
-                && !prev_trimmed.contains(" matches across ")
+                && !is_summary(prev_trimmed)
             {
-                let path_str = prev_trimmed.trim_end_matches(':').trim();
-                let path = PathBuf::from(path_str);
+                let path = header_path(&root, prev_trimmed);
                 open_match_in_editor(
                     app,
                     ctx,
@@ -145,12 +182,8 @@ pub(crate) fn open_find_result_at_line(
         }
     }
 
-    if trimmed.ends_with(':')
-        && !trimmed.starts_with("Searching ")
-        && !trimmed.contains(" matches across ")
-    {
-        let path_str = trimmed.trim_end_matches(':').trim();
-        let path = PathBuf::from(path_str);
+    if trimmed.ends_with(':') && !trimmed.starts_with("Searching ") && !is_summary(trimmed) {
+        let path = header_path(&root, trimmed);
         open_match_in_editor(
             app,
             ctx,
@@ -166,7 +199,10 @@ pub(crate) fn open_find_result_at_line(
     false
 }
 
-pub(crate) fn parse_matches_from_buffer(buffer: &lux_core::buffer::Buffer) -> Vec<SearchMatch> {
+pub(crate) fn parse_matches_from_buffer(
+    buffer: &lux_core::buffer::Buffer,
+    root: &Path,
+) -> Vec<SearchMatch> {
     let mut matches = Vec::new();
     let mut current_path: Option<PathBuf> = None;
     let lines_count = buffer.len_lines();
@@ -174,15 +210,11 @@ pub(crate) fn parse_matches_from_buffer(buffer: &lux_core::buffer::Buffer) -> Ve
     for i in 0..lines_count {
         let line = buffer.line_content(i).unwrap_or_default();
         let trimmed = line.trim();
-        if trimmed.starts_with("Searching ")
-            || trimmed.contains(" matches across ")
-            || trimmed.is_empty()
-        {
+        if trimmed.starts_with("Searching ") || is_summary(trimmed) || trimmed.is_empty() {
             continue;
         }
-        if trimmed.ends_with(':') {
-            let path_str = trimmed.trim_end_matches(':').trim();
-            current_path = Some(PathBuf::from(path_str));
+        if trimmed.ends_with(':') && !line.starts_with(' ') {
+            current_path = Some(header_path(root, trimmed));
             continue;
         }
         if let Some(path) = &current_path
@@ -204,7 +236,7 @@ pub(crate) fn next_result(app: &mut crate::app::App, ctx: Option<&dyn PlatformCo
     if app.ui.find_results_nav.matches.is_empty()
         && let Some(buf) = app.find_results_buffer()
     {
-        app.ui.find_results_nav.matches = parse_matches_from_buffer(&buf);
+        app.ui.find_results_nav.matches = parse_matches_from_buffer(&buf, &results_root(app));
     }
     if app.ui.find_results_nav.matches.is_empty() {
         return;
@@ -233,7 +265,7 @@ pub(crate) fn prev_result(app: &mut crate::app::App, ctx: Option<&dyn PlatformCo
     if app.ui.find_results_nav.matches.is_empty()
         && let Some(buf) = app.find_results_buffer()
     {
-        app.ui.find_results_nav.matches = parse_matches_from_buffer(&buf);
+        app.ui.find_results_nav.matches = parse_matches_from_buffer(&buf, &results_root(app));
     }
     if app.ui.find_results_nav.matches.is_empty() {
         return;

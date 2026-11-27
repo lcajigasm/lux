@@ -3,6 +3,8 @@
 
 use lux_render::QuadInstance;
 
+pub(crate) mod chrome_text;
+
 /// Resting geometry. The open animation offsets `top` while drawing and
 /// does not move the hit target.
 pub(crate) struct SelectorBox {
@@ -38,12 +40,16 @@ pub(crate) fn field_fill(theme: &lux_ui::Theme) -> [f32; 4] {
     color(theme.background)
 }
 
+#[cfg(test)]
 pub(crate) fn selected_fill(theme: &lux_ui::Theme) -> [f32; 4] {
     color(theme.chrome.panel_row)
 }
 
+/// Selected settings row: the theme's selection color painted on the
+/// page, moved off the page only when the two would quantize together.
 pub(crate) fn settings_selection(theme: &lux_ui::Theme) -> [f32; 4] {
-    contrasting_fill(selected_fill(theme), color(theme.chrome.sidebar))
+    let painted = lux_ui::theme::composite(theme.selection, theme.chrome.panel);
+    distinct_fill(color(painted), color(theme.chrome.panel))
 }
 
 fn mix_toward(from: [f32; 4], to: [f32; 4], t: f32) -> [f32; 4] {
@@ -323,12 +329,12 @@ mod contrast_tests {
             let value = label_ink(theme, selection);
             let chip = selection_chip(selection, value);
             let mark = label_ink(theme, chip);
+            assert!(
+                quant_gap(selection, page) > 18,
+                "{} selection/page",
+                scheme.name
+            );
             let pairs = [
-                (
-                    contrast_ratio(selection, color(theme.chrome.sidebar)),
-                    3.0,
-                    "selection/sidebar",
-                ),
                 (contrast_ratio(off, page), 3.0, "track-off/page"),
                 (contrast_ratio(on, page), 3.0, "track-on/page"),
                 (contrast_ratio(knob, off), 3.0, "knob/track"),

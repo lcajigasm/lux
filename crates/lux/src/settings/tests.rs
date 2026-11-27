@@ -218,3 +218,50 @@ fn the_font_family_row_lists_the_system_face_and_every_bundled_family() {
     let row = items.iter().find(|i| i.key == "editor.fontFamily").unwrap();
     assert!(matches!(&row.kind, SettingKind::Enum { value, .. } if value == "system"));
 }
+
+#[test]
+fn settings_rows_pad_16_pt_and_the_title_row_has_a_close_button() {
+    use super::layout::{
+        CLOSE, ControlGeom, ROW_PAD, SettingsBounds, SettingsHit, layout_settings,
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let mut state = SettingsState::new(temp.path().join("settings.json"));
+    state.open_settings_ui();
+    let panel = state.panel.as_ref().unwrap();
+    for scale in [1.0_f32, 2.0] {
+        let layout = layout_settings(
+            panel,
+            SettingsBounds {
+                window_width: 1000.0 * scale,
+                window_height: 700.0 * scale,
+                tab_bar: 32.0 * scale,
+                status_bar: 22.0 * scale,
+                scale,
+            },
+        );
+        assert!(!layout.rows.is_empty());
+        for row in &layout.rows {
+            // The selection is the row; text and control sit inside it.
+            assert_eq!(row.selection, row.row);
+            assert!((row.label.x - row.row.x - ROW_PAD * scale).abs() < 0.01);
+            if !matches!(row.kind, ControlGeom::None) {
+                let inset = row.row.right() - row.control.right();
+                assert!(
+                    (inset - ROW_PAD * scale).abs() < 0.01,
+                    "control inset {inset}"
+                );
+            }
+        }
+        let close = layout.close;
+        assert_eq!(close.w, CLOSE * scale);
+        assert!(close.right() <= layout.page.right());
+        assert!(
+            close.bottom() <= layout.search.y,
+            "close sits in the title row"
+        );
+        assert_eq!(
+            layout.hit(close.x + close.w * 0.5, close.y + close.h * 0.5),
+            SettingsHit::Close
+        );
+    }
+}

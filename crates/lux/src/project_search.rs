@@ -185,12 +185,15 @@ impl ProjectSearchState {
     }
 }
 
-fn workspace_root(app: &crate::app::App) -> PathBuf {
+pub(crate) fn workspace_root(app: &crate::app::App) -> PathBuf {
     app.ui
         .sidebar
         .as_ref()
         .and_then(|s| s.workspace_root.clone())
-        .unwrap_or_else(|| PathBuf::from("."))
+        // With no folder open, search the process's working directory,
+        // made absolute so the Find Results tab records a root that still
+        // means the same folder after a project opens or a restart.
+        .unwrap_or_else(|| std::path::absolute(".").unwrap_or_else(|_| PathBuf::from(".")))
 }
 
 /// Closes the panel and streams a fresh search into the `Find Results` tab.
@@ -442,14 +445,14 @@ mod tests {
             },
         ];
 
-        let formatted = format_find_results("test1", &matches, 7);
+        let formatted = format_find_results("test1", None, &matches, 7);
         assert!(formatted.starts_with("Searching files for \"test1\"\n\n"));
         assert!(formatted.contains("/path/to/file1.rs:"));
         assert!(formatted.contains("    10: pub fn test1() {}"));
         assert!(formatted.contains("\n3 matches across 2 files (7 files searched)\n"));
 
         let buffer = lux_core::buffer::Buffer::from_bytes(formatted.as_bytes()).unwrap();
-        let parsed = parse_matches_from_buffer(&buffer);
+        let parsed = parse_matches_from_buffer(&buffer, std::path::Path::new("/"));
         assert_eq!(parsed.len(), 3);
         assert_eq!(parsed[0].line_number, 10);
         assert_eq!(parsed[1].line_number, 25);

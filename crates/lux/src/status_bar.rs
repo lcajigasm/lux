@@ -5,7 +5,7 @@ use lux_core::position::Position;
 use lux_syntax::LanguageId;
 use lux_ui::status_bar::{self, StatusBar};
 
-pub(crate) const STATUS_BAR_HEIGHT: f32 = 24.0;
+pub(crate) const STATUS_BAR_HEIGHT: f32 = 22.0;
 pub(crate) const STATUS_BAR_PADDING: f32 = 12.0;
 pub(crate) const STATUS_BAR_ITEM_SPACING: f32 = 16.0;
 

@@ -18,6 +18,8 @@ pub(super) struct SinglePane<'a> {
     pub frame: &'a EditorViewFrame,
     pub buffer: &'a Buffer,
     pub syntax: Option<&'a SyntaxState>,
+    /// Styling of the `Find Results` tab, when it is the active buffer.
+    pub find_decor: Option<&'a text::find_decor::FindDecor>,
     pub viewport: &'a Viewport,
     pub bookmarks: &'a BookmarkState,
     pub documents: &'a crate::document::Documents,
@@ -118,6 +120,7 @@ impl SinglePane<'_> {
             frame,
             buffer,
             self.syntax,
+            self.find_decor,
             &editor_viewport,
             editor_top,
             line_height,

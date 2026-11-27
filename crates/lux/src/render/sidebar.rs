@@ -3,7 +3,8 @@
 use swash::FontRef;
 use swash::scale::ScaleContext;
 
-use crate::render::paint::{color, push_glyph};
+use super::panel::chrome_text::{self, ChromePen};
+use crate::render::paint::color;
 use crate::sidebar::{SIDEBAR_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT, SidebarState};
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::editor_view::EditorView;
@@ -17,7 +18,6 @@ pub(crate) fn render_sidebar(
     content_height: f32,
     scale_factor: f32,
     stroke: f32,
-    font_size: f32,
     font: FontRef<'static>,
     editor_view: &mut EditorView,
     atlas: &mut GlyphAtlas,
@@ -42,30 +42,24 @@ pub(crate) fn render_sidebar(
         return;
     };
 
-    let foreground = color(theme.foreground);
-    let muted = color(theme.muted);
+    let sidebar_fill = color(theme.chrome.sidebar);
     let accent = color(theme.accent);
+    let selection_fill = chrome_text::sidebar_selection(theme);
+    let size = chrome_text::SIDEBAR_PT * scale_factor;
+    let mut pen = ChromePen::new(
+        editor_view,
+        atlas,
+        atlas_dirty,
+        scale_cx,
+        font,
+        glyph_instances,
+    );
 
-    let sidebar_font_size = font_size * 0.80;
-    let family = editor_view.family().to_string();
-    let style = lux_render::LineStyle {
-        family: &family,
-        font_size: sidebar_font_size,
-        ligatures: false,
-    };
-
-    // 1. Sidebar Background
+    // 1. Background and the separator on the right.
     quad_instances.push(QuadInstance::solid(
         [0.0, tab_bar_height, sidebar_width, content_height],
-        color(theme.chrome.sidebar),
+        sidebar_fill,
     ));
-
-    // 2. Right Separator Border
-    let border_color = if sidebar.focused {
-        accent
-    } else {
-        color(theme.chrome.border)
-    };
     quad_instances.push(QuadInstance::solid(
         [
             sidebar_width - stroke,
@@ -73,24 +67,12 @@ pub(crate) fn render_sidebar(
             stroke,
             content_height,
         ],
-        border_color,
-    ));
-
-    // 3. Header: Project Root
-    let header_h = SIDEBAR_HEADER_HEIGHT * scale_factor;
-    quad_instances.push(QuadInstance::solid(
-        [0.0, tab_bar_height, sidebar_width - stroke, header_h],
-        color(theme.chrome.sidebar),
-    ));
-    quad_instances.push(QuadInstance::solid(
-        [
-            0.0,
-            tab_bar_height + header_h - stroke,
-            sidebar_width,
-            stroke,
-        ],
         color(theme.chrome.border),
     ));
+
+    // 2. Header: the folder name, small caps style.
+    let header_h = SIDEBAR_HEADER_HEIGHT * scale_factor;
+    let header_mid = tab_bar_height + header_h * 0.5;
     if drop_target == Some(root_id) {
         quad_instances.push(QuadInstance::solid(
             [
@@ -102,45 +84,26 @@ pub(crate) fn render_sidebar(
             accent,
         ));
     }
+    let header_ink = chrome_text::sidebar_header(theme);
+    let header_size = chrome_text::HEADER_PT * scale_factor;
+    pen.draw_tracked(
+        header_size,
+        chrome_text::HEADER_TRACKING_EM * header_size,
+        &root_title,
+        ROW_LEFT * scale_factor,
+        header_mid,
+        header_ink,
+    );
+    pen.draw(
+        size,
+        "×",
+        sidebar_width - stroke - 18.0 * scale_factor,
+        header_mid,
+        header_ink,
+    );
 
-    let header_line = editor_view
-        .text_layout_mut()
-        .layout_line(&style, &root_title, &[]);
-    let header_x = 12.0 * scale_factor;
-    let header_y = tab_bar_height + (header_h - sidebar_font_size) * 0.5;
-    for c in header_line.clusters() {
-        push_glyph(
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            font,
-            sidebar_font_size,
-            &c,
-            header_x,
-            header_y + header_line.baseline(),
-            muted,
-            glyph_instances,
-        );
-    }
-    let close_line = editor_view.text_layout_mut().layout_line(&style, "×", &[]);
-    let close_x = sidebar_width - stroke - 18.0 * scale_factor;
-    for c in close_line.clusters() {
-        push_glyph(
-            atlas,
-            atlas_dirty,
-            scale_cx,
-            font,
-            sidebar_font_size,
-            &c,
-            close_x,
-            header_y + close_line.baseline(),
-            muted,
-            glyph_instances,
-        );
-    }
-
-    // 4. File Tree Rows. The header above stays put. Rows are scissored to
-    // the list, so a scrolled name cannot cover the title or the status bar.
+    // 3. Rows. The header above stays put. Rows are scissored to the
+    // list, so a scrolled name cannot cover the title or the status bar.
     let rows_top = tab_bar_height + header_h;
     let list_bottom = tab_bar_height + content_height;
     let tree_bounds = [
@@ -150,9 +113,8 @@ pub(crate) fn render_sidebar(
         (list_bottom - rows_top).max(0.0),
     ];
     let row_quads = quad_instances.len();
-    let row_glyphs = glyph_instances.len();
+    let row_glyphs = pen.glyphs.len();
     let row_h = SIDEBAR_ROW_HEIGHT * scale_factor;
-    let baseline = (row_h - sidebar_font_size) * 0.5;
 
     let rows = crate::sidebar::folders::slots(sidebar);
     let selected_id = sidebar.selected_node;
@@ -163,21 +125,30 @@ pub(crate) fn render_sidebar(
 
     for (i, row) in rows.iter().enumerate() {
         let row_y = rows_top + i as f32 * row_h - sidebar.scroll_y;
-        if row_y + row_h < rows_top || row_y > tab_bar_height + content_height {
+        if row_y + row_h < rows_top || row_y > list_bottom {
             continue;
         }
+        let mid = row_y + row_h * 0.5;
 
-        let is_selected = selected_id == Some(row.id);
-        if is_selected {
+        let is_selected = match selected_id {
+            Some(id) => id == row.id && row.root == 0,
+            None => sidebar.followed_extra == Some((row.root, row.id)) && !row.title,
+        };
+        let row_fill = if is_selected {
             quad_instances.push(QuadInstance::solid(
                 [0.0, row_y, sidebar_width - stroke, row_h],
-                color(theme.chrome.panel_row),
+                selection_fill,
             ));
-            quad_instances.push(QuadInstance::solid(
-                [0.0, row_y, 2.0 * stroke, row_h],
-                accent,
-            ));
-        }
+            if sidebar.focused {
+                quad_instances.push(QuadInstance::solid(
+                    [0.0, row_y, 2.0 * stroke, row_h],
+                    accent,
+                ));
+            }
+            selection_fill
+        } else {
+            sidebar_fill
+        };
         if drop_target == Some(row.id) && row.root == 0 {
             quad_instances.push(QuadInstance::solid(
                 [
@@ -190,29 +161,60 @@ pub(crate) fn render_sidebar(
             ));
         }
 
-        let indent = 8.0 * scale_factor + (row.depth as f32 * 14.0 * scale_factor);
-        let icon_size = 22.0 * scale_factor;
-        let icon_color = match row.kind {
-            NodeKind::Directory => accent,
-            NodeKind::File => muted,
+        let geometry = row_geometry(row.depth, scale_factor);
+        let git = (row.root == 0).then(|| git_mark(sidebar, row.id)).flatten();
+        let label_ink = match git {
+            // Ignored paths are dimmed on purpose; they keep the muted ink.
+            Some(mark @ crate::git::marks::GitMark::Ignored) => {
+                color(crate::git::colors::mark_color(mark, theme))
+            }
+            Some(mark) => chrome_text::sidebar_label(
+                color(crate::git::colors::mark_color(mark, theme)),
+                row_fill,
+            ),
+            None => chrome_text::sidebar_label(color(theme.foreground), row_fill),
         };
-        super::icons::push_tree_icon(
-            quad_instances,
-            indent,
-            row_y + (row_h - icon_size) * 0.5,
-            icon_size,
-            icon_color,
-            row.kind == NodeKind::Directory,
-            row.expanded,
-        );
+        let outline_ink = chrome_text::outline_ink(theme, row_fill);
+        let icon = ICON_PT * scale_factor;
+        let icon_y = mid - icon * 0.5;
+        if row.kind == NodeKind::Directory {
+            let chevron = CHEVRON_PT * scale_factor;
+            super::icons::push_disclosure(
+                quad_instances,
+                geometry.chevron_x,
+                mid - chevron * 0.5,
+                chevron,
+                chrome_text::chevron_ink(
+                    chrome_text::sidebar_label(color(theme.foreground), row_fill),
+                    row_fill,
+                ),
+                row.expanded,
+                stroke,
+            );
+            super::icons::push_folder_outline(
+                quad_instances,
+                geometry.icon_x,
+                icon_y,
+                icon,
+                outline_ink,
+                stroke,
+            );
+        } else {
+            super::icons::push_document_outline(
+                quad_instances,
+                geometry.icon_x,
+                icon_y,
+                icon,
+                outline_ink,
+                stroke,
+            );
+        }
 
-        // Node Name or Inline Input
-        let name_x = indent + icon_size + 4.0 * scale_factor;
+        let name_x = geometry.name_x;
         let editing = sidebar
             .inline_input
             .as_ref()
             .filter(|_| editing_slot == Some(i));
-
         if let Some(input) = editing {
             let input_text = input.field.as_str();
             let input_box_w = sidebar_width - stroke - name_x - 8.0 * scale_factor;
@@ -240,11 +242,7 @@ pub(crate) fn render_sidebar(
                     .char_indices()
                     .nth(chars)
                     .map_or(input_text.len(), |(byte, _)| byte);
-                name_x
-                    + editor_view
-                        .text_layout_mut()
-                        .layout_line(&style, &input_text[..end], &[])
-                        .width()
+                name_x + pen.width(size, 0.0, &input_text[..end])
             };
             let (sel_start, sel_end) = input.field.selection();
             let caret_x = x_at(input.field.caret());
@@ -261,23 +259,9 @@ pub(crate) fn render_sidebar(
                     color(theme.selection),
                 ));
             }
-            let edit_line = editor_view
-                .text_layout_mut()
-                .layout_line(&style, input_text, &[]);
-            for c in edit_line.clusters() {
-                push_glyph(
-                    atlas,
-                    atlas_dirty,
-                    scale_cx,
-                    font,
-                    sidebar_font_size,
-                    &c,
-                    name_x,
-                    row_y + baseline + edit_line.baseline(),
-                    foreground,
-                    glyph_instances,
-                );
-            }
+            let field_ink =
+                chrome_text::sidebar_label(color(theme.foreground), color(theme.chrome.panel_row));
+            pen.draw(size, input_text, name_x, mid, field_ink);
             quad_instances.push(QuadInstance::solid(
                 [
                     caret_x,
@@ -288,69 +272,18 @@ pub(crate) fn render_sidebar(
                 accent,
             ));
         } else {
-            let name_line = editor_view
-                .text_layout_mut()
-                .layout_line(&style, &row.name, &[]);
-            let git_mark = (row.root == 0).then(|| git_mark(sidebar, row.id)).flatten();
-            let text_color = git_mark.map_or(foreground, |mark| {
-                color(crate::git::colors::mark_color(mark, theme))
-            });
-            for c in name_line.clusters() {
-                push_glyph(
-                    atlas,
-                    atlas_dirty,
-                    scale_cx,
-                    font,
-                    sidebar_font_size,
-                    &c,
-                    name_x,
-                    row_y + baseline + name_line.baseline(),
-                    text_color,
-                    glyph_instances,
-                );
-            }
+            pen.draw(size, &row.name, name_x, mid, label_ink);
+            let mark_x = sidebar_width - stroke - 18.0 * scale_factor;
             if row.title {
-                let mark = editor_view.text_layout_mut().layout_line(&style, "×", &[]);
-                let mark_x = sidebar_width - stroke - 18.0 * scale_factor;
-                for cluster in mark.clusters() {
-                    push_glyph(
-                        atlas,
-                        atlas_dirty,
-                        scale_cx,
-                        font,
-                        sidebar_font_size,
-                        &cluster,
-                        mark_x,
-                        row_y + baseline + mark.baseline(),
-                        muted,
-                        glyph_instances,
-                    );
-                }
-            } else if let Some(letter) = git_mark.and_then(|mark| mark.letter()) {
-                let label = letter.to_string();
-                let mark = editor_view
-                    .text_layout_mut()
-                    .layout_line(&style, &label, &[]);
-                let mark_x = sidebar_width - stroke - 16.0 * scale_factor;
-                for cluster in mark.clusters() {
-                    push_glyph(
-                        atlas,
-                        atlas_dirty,
-                        scale_cx,
-                        font,
-                        sidebar_font_size,
-                        &cluster,
-                        mark_x,
-                        row_y + baseline + mark.baseline(),
-                        text_color,
-                        glyph_instances,
-                    );
-                }
+                let ink = chrome_text::sidebar_label(color(theme.muted), row_fill);
+                pen.draw(size, "×", mark_x, mid, ink);
+            } else if let Some(letter) = git.and_then(|mark| mark.letter()) {
+                pen.draw(size, &letter.to_string(), mark_x, mid, label_ink);
             }
         }
     }
     super::clip::clip_quads(quad_instances, row_quads, tree_bounds);
-    super::clip::clip_glyphs(glyph_instances, row_glyphs, tree_bounds);
+    super::clip::clip_glyphs(pen.glyphs, row_glyphs, tree_bounds);
 
     if let Some(menu) = &sidebar.context_menu {
         let [mx, my, mw, mh] = menu.rect;
@@ -363,33 +296,52 @@ pub(crate) fn render_sidebar(
             ],
             color(theme.chrome.panel),
         ));
-        quad_instances.push(QuadInstance::solid(
-            [mx, my, mw, mh],
-            color(theme.chrome.panel_input),
-        ));
+        let menu_fill = color(theme.chrome.panel_input);
+        quad_instances.push(QuadInstance::solid([mx, my, mw, mh], menu_fill));
+        let ink = chrome_text::sidebar_label(color(theme.foreground), menu_fill);
         let item_h = crate::sidebar::menu::SIDEBAR_MENU_ITEM_HEIGHT * scale_factor;
         for (idx, item) in menu.items.iter().enumerate() {
             let item_y = my + 4.0 * scale_factor + idx as f32 * item_h;
-            let label = item.label();
-            let layout = editor_view
-                .text_layout_mut()
-                .layout_line(&style, label, &[]);
-            let text_y = item_y + (item_h - sidebar_font_size) * 0.5;
-            for cluster in layout.clusters() {
-                push_glyph(
-                    atlas,
-                    atlas_dirty,
-                    scale_cx,
-                    font,
-                    sidebar_font_size,
-                    &cluster,
-                    mx + 10.0 * stroke,
-                    text_y + layout.baseline(),
-                    foreground,
-                    glyph_instances,
-                );
-            }
+            pen.draw(
+                size,
+                item.label(),
+                mx + 10.0 * stroke,
+                item_y + item_h * 0.5,
+                ink,
+            );
         }
+    }
+}
+
+/// Left edge of a depth-0 row's chevron, in points.
+pub(crate) const ROW_LEFT: f32 = 8.0;
+/// Indent per nesting level, in points.
+pub(crate) const INDENT_PT: f32 = 16.0;
+/// Disclosure triangle width, in points.
+pub(crate) const CHEVRON_PT: f32 = 8.0;
+/// Folder and document outline slot, in points.
+pub(crate) const ICON_PT: f32 = 14.0;
+const CHEVRON_SLOT_PT: f32 = 12.0;
+const ICON_GAP_PT: f32 = 6.0;
+
+/// Horizontal placement of one row's marks and name, in physical pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct RowGeometry {
+    pub chevron_x: f32,
+    pub icon_x: f32,
+    pub name_x: f32,
+}
+
+/// Every row at `depth` puts its marks and name in the same columns, so
+/// file names line up with folder names at the same depth.
+pub(crate) fn row_geometry(depth: usize, scale: f32) -> RowGeometry {
+    let left = (ROW_LEFT + depth as f32 * INDENT_PT) * scale;
+    let chevron_x = left + (CHEVRON_SLOT_PT - CHEVRON_PT) * 0.5 * scale;
+    let icon_x = left + CHEVRON_SLOT_PT * scale;
+    RowGeometry {
+        chevron_x,
+        icon_x,
+        name_x: icon_x + (ICON_PT + ICON_GAP_PT) * scale,
     }
 }
 
