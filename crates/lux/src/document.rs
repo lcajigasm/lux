@@ -5,6 +5,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 
 mod io;
 pub(crate) mod open_queue;
+mod pending;
 mod save_ops;
 pub(crate) mod tab_ops;
 
@@ -16,6 +17,7 @@ use lux_core::{
 use lux_platform::event::KeyEvent;
 use lux_platform::{ElementState, ImeComposition, Key, NamedKey, PlatformContext};
 use lux_ui::tabs::TabId;
+use pending::{Focus, Pending};
 
 use crate::app::App;
 
@@ -35,13 +37,6 @@ pub(crate) enum Request {
     SaveAll(Vec<NamedSave>),
     New,
     Close,
-}
-
-struct Pending {
-    request: Request,
-    version: u64,
-    /// Undo on-save whitespace edits when the worker rejects the save.
-    revert_transform: bool,
 }
 
 #[derive(Clone)]
@@ -328,6 +323,9 @@ impl App {
         if self.documents.active_tab == Some(target_id) {
             return true;
         }
+        if let Some(switched) = crate::split::tabs::redirect(self, target_id) {
+            return switched;
+        }
         self.sync_active_document_to_entry();
         let Some(entry) = self
             .documents
@@ -340,13 +338,7 @@ impl App {
         };
         self.documents.active_tab = Some(target_id);
         self.documents.tabs.activate(target_id);
-        if self.ui.split.is_active() && self.ui.split.active_pane < self.ui.split.panes.len() {
-            self.ui.split.panes[self.ui.split.active_pane].tab_id = target_id;
-            self.ui.split.panes[self.ui.split.active_pane].active_tab = target_id;
-            if self.ui.split.active_pane == 1 {
-                self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
-            }
-        }
+        crate::split::tabs::show_in_active_pane(self, target_id);
         self.documents.path = entry.path;
         self.buffer = entry.buffer;
         self.cursors = entry.cursors;
@@ -379,18 +371,6 @@ impl App {
         true
     }
 
-    /// Drops on-save whitespace edits when the worker did not write the file.
-    fn revert_rejected_save_transform(&mut self, pending: &Pending) {
-        if !pending.revert_transform || self.history.state_id() != pending.version {
-            return;
-        }
-        if let Some(selections) = self.history.undo(&mut self.buffer) {
-            self.cursors = MultiCursor::from_cursors(selections);
-            self.reset_goal_columns();
-            self.sync_syntax_full();
-        }
-    }
-
     pub(crate) fn request_document(&mut self, ctx: &dyn PlatformContext, request: Request) {
         // An empty New has no disk work, so the tab exists before the next frame.
         let Some(request) = io::accept(self, request) else {
@@ -413,6 +393,7 @@ impl App {
             request: request.clone(),
             version,
             revert_transform,
+            tab: self.documents.active_tab,
         });
         self.documents.message = None;
         let sender = self.documents.sender.clone();
@@ -431,7 +412,7 @@ impl App {
             });
         if let Err(error) = spawned {
             if let Some(pending) = self.documents.pending.take() {
-                self.revert_rejected_save_transform(&pending);
+                self.revert_rejected_save_transform(&pending, false);
             }
             self.documents.message = Some(format!("Cannot start file operation: {error}"));
         }
@@ -447,14 +428,18 @@ impl App {
         };
         self.presentation.set_hidden(false);
         self.scheduler.invalidate_all();
+        let focus = self.focus_pending_owner(&pending);
+        let owner_gone = matches!(focus, Focus::OwnerGone);
+        let mut opened_any = false;
+        let mut follow_up = None;
         match outcome {
             Ok(Outcome::Cancelled) => {
-                self.revert_rejected_save_transform(&pending);
+                self.revert_rejected_save_transform(&pending, owner_gone);
                 crate::cli::note_open_failed(&pending.request);
                 self.documents.follow_up = None;
             }
             Err(error) => {
-                self.revert_rejected_save_transform(&pending);
+                self.revert_rejected_save_transform(&pending, owner_gone);
                 crate::cli::note_open_failed(&pending.request);
                 self.documents.message = Some(error);
                 self.documents.follow_up = None;
@@ -466,6 +451,14 @@ impl App {
                 saved_paths,
             }) => {
                 self.mark_named_saves(&pending, &saved_paths);
+                // The file is written either way; a closed tab has no title,
+                // history or close to update.
+                let (saved, close) = if owner_gone {
+                    (None, false)
+                } else {
+                    (saved, close)
+                };
+                opened_any = opened.is_some();
                 if let Some((path, snapshot)) = saved {
                     if let Some(store) = recovery_store() {
                         let _ = store.clear(&path);
@@ -544,37 +537,15 @@ impl App {
                     open_queue::note_opened(self);
                 }
                 if close {
-                    if self.documents.tabs.tabs().len() > 1 {
-                        if let Some(active_id) = self.documents.active_tab {
-                            crate::cli::release_tab(active_id);
-                            self.documents.tabs.close(active_id);
-                            if let Some(pos) = self
-                                .documents
-                                .entries
-                                .iter()
-                                .position(|e| e.tab_id == active_id)
-                            {
-                                let removed = self.documents.entries.remove(pos);
-                                self.documents.closed_entries.push(removed);
-                            }
-                            if let Some(new_active) = self.documents.tabs.active() {
-                                let new_id = new_active.id;
-                                self.documents.active_tab = None;
-                                self.switch_to_tab(new_id);
-                            }
-                        }
-                    } else {
-                        if let Some(active) = self.documents.tabs.active() {
-                            crate::cli::release_tab(active.id);
-                            self.documents.tabs.close(active.id);
-                        }
-                        crate::cli::release_all();
-                        ctx.exit();
-                    }
-                } else if let Some(next) = self.documents.follow_up.take() {
-                    self.request_document(ctx, next);
+                    self.close_finished_tab(ctx);
+                } else {
+                    follow_up = self.documents.follow_up.take();
                 }
             }
+        }
+        self.restore_focus(focus, opened_any);
+        if let Some(next) = follow_up {
+            self.request_document(ctx, next);
         }
         crate::menu::note(self.documents.path.as_deref());
         self.update_document_title();

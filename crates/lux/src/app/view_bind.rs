@@ -215,7 +215,7 @@ fn sync_pane_tokens(app: &mut App) {
         .map(|pane| tokens_for(app, app.documents.buffer_id_for_tab(pane.tab_id), active))
         .collect();
     for (pane, tokens) in app.ui.split.panes.iter_mut().zip(planned) {
-        pane.tokens = tokens;
+        pane.tokens.replace(tokens);
     }
     let secondary_tokens = app.ui.split.secondary.as_ref().map(|secondary| {
         tokens_for(
@@ -227,7 +227,7 @@ fn sync_pane_tokens(app: &mut App) {
     if let Some(tokens) = secondary_tokens
         && let Some(secondary) = &mut app.ui.split.secondary
     {
-        secondary.tokens = tokens;
+        secondary.tokens.replace(tokens);
     }
 }
 

@@ -171,23 +171,19 @@ pub(crate) fn handle_term_click(app: &mut App, x: f32, y: f32) -> bool {
     // Clicked in grid area: focus terminal and check for link jumps
     app.ui.term.focused = true;
 
-    if app.ui.term.show_tasks {
-        // Only a row's own Cancel button cancels that task.
-        let rows = app.ui.term.task_ids.len();
-        if let Some(row) = super::dock::cancel_hit(dock_rect, rows, scale, x, y) {
-            let task_id = app.ui.term.task_ids[row];
-            app.ui.term.cancel_task(task_id);
-            app.scheduler.invalidate_all();
-        }
-        return true;
-    }
-
-    // Detect clickable error links on clicked line
+    // Detect clickable error links on the clicked line of the shell or, in
+    // the Tasks view, of the task's output. (A click used to cancel the
+    // task; Cancel Build is `Cmd+Alt+C` / palette "Build: Cancel Build".)
     let row_h = 18.0 * scale;
     let grid_y = y - (term_top + header_h);
     let clicked_row = (grid_y / row_h).floor() as usize;
 
-    if let Some(pty) = app.ui.term.active_pty() {
+    let pty = if app.ui.term.show_tasks {
+        app.ui.term.active_task_pty()
+    } else {
+        app.ui.term.active_pty()
+    };
+    if let Some(pty) = pty {
         let links = pty.detect_links();
         let snap = pty.snapshot();
         let lines: Vec<&str> = snap.lines().collect();

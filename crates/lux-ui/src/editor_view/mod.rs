@@ -10,18 +10,23 @@
 
 // The accessibility tree still uses this historical snapshot index; frame
 // construction now uses Buffer's indexed line access directly.
+mod guides;
 mod hit;
 pub(crate) mod line_index;
 mod ranges;
+mod visible;
 mod wrap;
+
+pub use guides::{GuideLine, active_guides};
 
 use std::ops::Range;
 use std::time::Duration;
 
-use lux_core::buffer::{Buffer, Indent};
+use lux_core::buffer::Buffer;
 use lux_core::multicursor::MultiCursor;
 use lux_core::position::Position;
 use lux_render::{LineLayout, LineStyle, TextLayoutContext};
+use visible::{cursor_blink_visible, visible_range};
 
 /// Visible viewport geometry in pixels, plus current scroll offsets — what
 /// a real resize/scroll event updates every frame.
@@ -56,6 +61,9 @@ pub struct VisibleLine {
     pub number_layout: LineLayout,
     pub layout: LineLayout,
     pub indent_guides: Vec<f32>,
+    /// Index into `indent_guides` of the caret block's guide, drawn
+    /// stronger than the rest.
+    pub active_guide: Option<usize>,
     /// Pixel offset of this line from the top of the document.
     pub top: f32,
 }
@@ -210,6 +218,7 @@ impl EditorView {
         };
 
         let mut lines = Vec::with_capacity(placed.len());
+        let mut guide_lines = Vec::with_capacity(placed.len());
         for (visual_idx, top) in placed {
             let line_idx = folds.map_or(visual_idx, |f| {
                 f.visual_to_buffer_line(visual_idx, total_lines)
@@ -234,7 +243,11 @@ impl EditorView {
             let layout = self
                 .text_layout
                 .layout_line_wrapped(&style, shaped, max_w, &[]);
-            let indent_guides = indent_guide_x(&layout, shaped, indent);
+            let indent_guides = guides::indent_guide_x(&layout, shaped, indent);
+            guide_lines.push(GuideLine {
+                levels: indent_guides.len(),
+                blank: line_text.trim().is_empty(),
+            });
             let number = format!("{:>gutter_digits$}", line_idx + 1);
             let number_layout = self.text_layout.layout_line(&style, &number, &[]);
             lines.push(VisibleLine {
@@ -246,8 +259,15 @@ impl EditorView {
                 number_layout,
                 layout,
                 indent_guides,
+                active_guide: None,
                 top,
             });
+        }
+        let caret_row = lines
+            .iter()
+            .position(|l| l.index == cursors.primary().head.line);
+        for (line, active) in lines.iter_mut().zip(active_guides(&guide_lines, caret_row)) {
+            line.active_guide = active;
         }
 
         let mut cursor_glyphs = Vec::new();
@@ -364,22 +384,6 @@ impl EditorView {
     }
 }
 
-/// The first and last (exclusive) line indices intersecting `viewport`,
-/// clamped to `total_lines` — the whole point of this deliverable: nothing
-/// outside this range gets shaped.
-fn visible_range(viewport: &Viewport, line_height: f32, total_lines: usize) -> Range<usize> {
-    if total_lines == 0 || viewport.height <= 0.0 {
-        return 0..0;
-    }
-    let line_height = line_height.max(1.0);
-    let first = ((viewport.scroll_y.max(0.0) / line_height).floor() as usize).min(total_lines - 1);
-    // +1 so a line only partially scrolled into view at the bottom edge is
-    // still shaped (better than a visible gap while scrolling).
-    let visible_count = (viewport.height / line_height).ceil() as usize + 1;
-    let last = first.saturating_add(visible_count).min(total_lines);
-    first..last
-}
-
 /// A caret's x position within its line's shaped layout, given its byte
 /// offset from the line's start. Interpolates linearly across a cluster
 /// when `byte_in_line` lands inside one instead of exactly at its start
@@ -389,95 +393,4 @@ fn visible_range(viewport: &Viewport, line_height: f32, total_lines: usize) -> R
 /// (see the receipt).
 fn x_for_byte(layout: &LineLayout, byte_in_line: usize) -> f32 {
     wrap::place_byte(layout, byte_in_line).0
-}
-
-/// Indent-guide x-positions for one line: one guide per full indent level
-/// of leading whitespace, using `Buffer::indent()`'s detected width.
-///
-/// ponytail: treats every leading space or tab as one column (matching
-/// `lux_core::Position::column`'s current grapheme-count semantics, which
-/// don't expand tabs either) rather than expanding a tab to its visual
-/// width. Upgrade to real tab-expansion once `lux-config` defines a visual
-/// tab-width setting; until then this is consistent with the rest of the
-/// codebase, not a shortcut only taken here.
-fn indent_guide_x(layout: &LineLayout, line_text: &str, indent: Indent) -> Vec<f32> {
-    let width = indent.width.max(1) as usize;
-    let leading = line_text
-        .bytes()
-        .take_while(|&b| b == b' ' || b == b'\t')
-        .count();
-    let levels = leading / width;
-    (1..=levels)
-        .map(|level| x_for_byte(layout, level * width))
-        .collect()
-}
-
-/// Whether a blinking caret is in its "on" phase at `elapsed` — a pure
-/// function of time, not a timer: the actual blink redraw is driven by a
-/// future event/timer in the real render loop (golden rule #5, no
-/// polling), not by this function, which only answers "on or off right
-/// now" for a given instant.
-fn cursor_blink_visible(elapsed: Duration, interval: Duration) -> bool {
-    if interval.is_zero() {
-        return true;
-    }
-    let interval_ms = interval.as_millis().max(1);
-    (elapsed.as_millis() / interval_ms).is_multiple_of(2)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn visible_range_clamps_to_document_length() {
-        let viewport = Viewport {
-            width: 800.0,
-            height: 40.0,
-            scroll_x: 0.0,
-            scroll_y: 0.0,
-        };
-        assert_eq!(visible_range(&viewport, 20.0, 3), 0..3);
-    }
-
-    #[test]
-    fn visible_range_scrolls_the_window_forward() {
-        let viewport = Viewport {
-            width: 800.0,
-            height: 40.0,
-            scroll_x: 0.0,
-            scroll_y: 100.0,
-        };
-        // 100px / 20px line height = line 5 onward, 40px/20px + 1 = 3 lines.
-        assert_eq!(visible_range(&viewport, 20.0, 1000), 5..8);
-    }
-
-    #[test]
-    fn visible_range_of_an_empty_document_is_empty() {
-        let viewport = Viewport {
-            width: 800.0,
-            height: 40.0,
-            scroll_x: 0.0,
-            scroll_y: 0.0,
-        };
-        assert_eq!(visible_range(&viewport, 20.0, 0), 0..0);
-    }
-
-    #[test]
-    fn blink_alternates_every_interval() {
-        let interval = Duration::from_millis(500);
-        assert!(cursor_blink_visible(Duration::from_millis(0), interval));
-        assert!(cursor_blink_visible(Duration::from_millis(499), interval));
-        assert!(!cursor_blink_visible(Duration::from_millis(500), interval));
-        assert!(!cursor_blink_visible(Duration::from_millis(999), interval));
-        assert!(cursor_blink_visible(Duration::from_millis(1000), interval));
-    }
-
-    #[test]
-    fn blink_is_always_visible_when_interval_is_zero() {
-        assert!(cursor_blink_visible(
-            Duration::from_millis(12345),
-            Duration::ZERO
-        ));
-    }
 }

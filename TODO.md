@@ -454,8 +454,8 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-TAB-02 — Reordenación de Pestañas por Arrastre (Drag-and-Drop)
 - Prioridad: `P1 (Ergonomía)`
-- Estado: `IN_PROGRESS`
-- Remaining: dragging a tab to another split pane; it needs a tab strip per pane, which the app does not have yet.
+- Estado: `DONE`
+- Cross-pane drag: each split group has its own strip (ST-SPLIT-05); dropping a tab on another group's strip moves it there at the marker and focuses that group.
 - Dependencias: ST-TAB-01
 - Objetivo: Organización visual manual de documentos.
 - Alcance detallado:
@@ -625,7 +625,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-BUILD-02 — Panel Docked de Salida de Compilación y Terminal PTY
 - Prioridad: `P2 (Ergonomía)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: ST-BUILD-01
 - Objetivo: Visualización limpia de la salida de procesos y terminal integrado.
 - Alcance detallado:
@@ -707,6 +707,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
   - Asegurar que la apertura de diálogos no congele el pintado de la ventana ni provoque cuelgues del hilo principal.
 - Criterios de aceptación:
   - "File -> Open Folder..." abre el selector nativo de carpetas de macOS y carga el proyecto seleccionado en la barra lateral.
+- Note: on macOS the panels and the alerts (unsaved changes, Move to Trash) are sheets (`beginSheetModalForWindow`) on the focused window with no nested modal loop; `scripts/sheet-repaint.sh` checks that the editor keeps painting behind the Cmd+O sheet.
 
 ---
 

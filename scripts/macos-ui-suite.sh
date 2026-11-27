@@ -41,6 +41,7 @@ scenarios=(
   selection-contrast.sh
   selection-drag.sh
   settings-e2e.sh
+  sheet-repaint.sh
   sidebar-clip.sh
   tab-view-audit.sh
   theme-break.sh

@@ -5,11 +5,13 @@
 
 pub(crate) mod detect;
 pub(crate) mod request;
+mod run;
 pub(crate) mod select;
 pub(crate) mod systems;
 
 #[cfg(test)]
 pub(crate) use detect::detect_build_variants;
+pub(crate) use run::poll;
 
 use std::path::PathBuf;
 
@@ -115,6 +117,13 @@ pub(crate) struct BuildState {
     /// Bumped by every `Cmd+B` / Build With; a marker probe landing for
     /// an older one is dropped.
     pub(crate) detect_generation: u64,
+    /// When the running build started, for `[Finished in X.Xs]`.
+    pub(crate) started: Option<std::time::Instant>,
+    /// Cancel Build asked the child to stop; its exit prints `[Cancelled]`.
+    pub(crate) cancelling: bool,
+    pub(crate) events: run::BuildEvents,
+    /// The running variant's `file_regex`, compiled once for the panel.
+    pub(crate) output_regex: Option<regex::Regex>,
 }
 
 pub(crate) fn parse_build_errors(
@@ -248,22 +257,10 @@ impl App {
         true
     }
 
-    pub(crate) fn cancel_build(&mut self) -> bool {
-        if let Some(task_id) = self.ui.build.task_id {
-            self.ui.term.cancel_task(task_id);
-            self.ui.build.task_id = None;
-            self.ui.build.is_running = false;
-            self.ui.announcement = Some("Build cancelled".into());
-            self.scheduler.invalidate_all();
-            return true;
-        }
-        false
-    }
-
     pub(crate) fn execute_build_variant(
         &mut self,
         variant: BuildVariant,
-        _ctx: Option<&dyn PlatformContext>,
+        ctx: Option<&dyn PlatformContext>,
     ) -> bool {
         let cwd = variant
             .working_dir
@@ -279,11 +276,19 @@ impl App {
         }
 
         let task_name = format!("Build: {}", variant.name);
-        match self.ui.term.run_task(&task_name, cmd) {
+        let wake = ctx
+            .map(|ctx| ctx.background_waker())
+            .or_else(|| self.ui.dialogs.jobs.waker());
+        self.retire_previous_build();
+        let notify = self.ui.build.events.notify(wake);
+        match self.ui.term.run_task_with(&task_name, cmd, notify) {
             Ok(task_id) => {
+                self.ui.build.output_regex = variant
+                    .file_regex
+                    .as_deref()
+                    .and_then(|re| regex::Regex::new(re).ok());
                 self.ui.build.active_variant = Some(variant);
-                self.ui.build.task_id = Some(task_id);
-                self.ui.build.is_running = true;
+                self.note_build_started(task_id);
                 self.ui.build.detected_errors.clear();
                 self.ui.build.current_error_idx = None;
                 self.ui.build.picker = None;

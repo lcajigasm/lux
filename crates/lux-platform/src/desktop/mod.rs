@@ -9,6 +9,8 @@ mod context;
 mod convert;
 mod dialog;
 #[cfg(target_os = "macos")]
+mod dialog_sheet;
+#[cfg(target_os = "macos")]
 mod macos_title_bar;
 mod run;
 mod window;

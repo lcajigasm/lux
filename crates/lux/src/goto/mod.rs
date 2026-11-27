@@ -55,6 +55,8 @@ pub(crate) struct GotoItem {
 #[derive(Debug, Clone)]
 pub(crate) struct GotoSnapshot {
     pub(crate) active_tab: Option<TabId>,
+    /// The focused split group, which dismissing focuses again.
+    pub(crate) group: usize,
     pub(crate) cursors: lux_core::multicursor::MultiCursor,
     pub(crate) scroll_x: f32,
     pub(crate) scroll_y: f32,
@@ -66,6 +68,7 @@ impl GotoSnapshot {
     fn take(app: &crate::app::App) -> Self {
         Self {
             active_tab: app.documents.active_tab,
+            group: app.ui.split.active_pane,
             cursors: app.cursors.clone(),
             scroll_x: app.viewport.scroll_x,
             scroll_y: app.viewport.scroll_y,

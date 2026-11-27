@@ -32,5 +32,6 @@ pub use i18n::Locale;
 pub use motion::Motion;
 pub use rtl::{Direction, direction_for};
 pub use theme::{
-    ChromeColors, Color, SELECTION_CONTRAST_MIN, Theme, composite, contrast_ratio, shift,
+    ChromeColors, Color, SELECTION_CONTRAST_MIN, Theme, composite, contrast_ratio,
+    fit_line_highlight, shift,
 };

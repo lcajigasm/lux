@@ -129,6 +129,15 @@ def rule_color(rows, channels, y, width):
     return None
 
 
+def text_column_end(rows, channels, y, width, background):
+    """One past the rightmost page-colored pixel on row `y`, a row below
+    the text. Everything right of it (the minimap) is not the editor."""
+    for x in range(width - 1, -1, -1):
+        if pixel(rows, channels, x, y) == background:
+            return x + 1
+    return width
+
+
 def measure(path):
     width, height, channels, rows = load_png(path)
     background_samples = []
@@ -136,6 +145,12 @@ def measure(path):
         for x in range(int(width * 0.30), int(width * 0.80)):
             background_samples.append(pixel(rows, channels, x, y))
     background, _ = mode(background_samples)
+    # Measure the text column only. The minimap at the right edge sits on
+    # its own darker well, and its visible-region band is a faint
+    # foreground tint 180 columns wide: wider than a selected word, and in
+    # the same distance range, so it would win the mode. The text column
+    # ends where an empty row of the page stops being the page color.
+    width = text_column_end(rows, channels, int(height * 0.60), width, background)
     # Skip the tab strip and the status bar. The status bar (#414339) is
     # close to the selection and would otherwise win the row search.
     y0 = int(height * 0.04)

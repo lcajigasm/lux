@@ -141,9 +141,12 @@ impl App {
     /// sits in the strip's rectangle, so a wheel that arrives first scrolls
     /// the editor.
     pub(crate) fn wheel_targets_tabs(&self) -> bool {
-        self.mouse.placed
-            && self.mouse.position.y < self.tab_bar_height() as f64
-            && self.mouse.position.x >= self.sidebar_width() as f64
+        self.mouse.placed && self.strip_under_pointer().is_some()
+    }
+
+    fn strip_under_pointer(&self) -> Option<crate::tab_strip::Strip> {
+        let (x, y) = (self.mouse.position.x as f32, self.mouse.position.y as f32);
+        crate::tab_strip::strips::at(self, x, y)
     }
 
     pub(crate) fn on_wheel(&mut self, delta: ScrollDelta) {
@@ -153,7 +156,12 @@ impl App {
             && self.documents.strip.list.is_none()
         {
             let pixels = match delta {
-                ScrollDelta::Lines { x, y } => (x + y) * self.tab_width(),
+                ScrollDelta::Lines { x, y } => {
+                    let tab_width = self
+                        .strip_under_pointer()
+                        .map_or(0.0, |s| s.layout.tab_width);
+                    (x + y) * tab_width
+                }
                 ScrollDelta::Pixels(position) => position.x as f32 + position.y as f32,
             };
             crate::tab_strip::scroll_tabs(self, pixels);
@@ -177,40 +185,32 @@ impl App {
             }
             return;
         }
-        if self.ui.split.is_active() {
-            let primary_rect = [
-                self.sidebar_width(),
-                self.tab_bar_height(),
-                self.viewport.width,
-                self.viewport.height,
-            ];
-            if let Some(pane_idx) = crate::split::hit_test_pane(
-                &self.ui.split,
-                primary_rect,
-                self.scale_factor,
+        if self.ui.split.is_active()
+            && let Some(pane_idx) = crate::split::groups::group_at(
+                self,
                 self.mouse.position.x as f32,
                 self.mouse.position.y as f32,
-            ) {
-                if pane_idx == self.ui.split.active_pane {
-                    self.apply_scroll_delta(dx, dy);
-                    if pane_idx < self.ui.split.panes.len() {
-                        self.ui.split.panes[pane_idx].viewport.scroll_x = self.viewport.scroll_x;
-                        self.ui.split.panes[pane_idx].viewport.scroll_y = self.viewport.scroll_y;
-                    }
-                } else if pane_idx < self.ui.split.panes.len() {
-                    let pane = &mut self.ui.split.panes[pane_idx].viewport;
-                    pane.scroll_x = (pane.scroll_x - dx).max(0.0);
-                    pane.scroll_y = (pane.scroll_y - dy).max(0.0);
-                    if pane_idx == 1 {
-                        self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
-                    }
+            )
+        {
+            if pane_idx == self.ui.split.active_pane {
+                self.apply_scroll_delta(dx, dy);
+                if pane_idx < self.ui.split.panes.len() {
+                    self.ui.split.panes[pane_idx].viewport.scroll_x = self.viewport.scroll_x;
+                    self.ui.split.panes[pane_idx].viewport.scroll_y = self.viewport.scroll_y;
                 }
-                self.scheduler.invalidate_all();
-                if let Some(gpu_window) = &self.gpu_window {
-                    gpu_window.window.request_redraw();
+            } else if pane_idx < self.ui.split.panes.len() {
+                let pane = &mut self.ui.split.panes[pane_idx].viewport;
+                pane.scroll_x = (pane.scroll_x - dx).max(0.0);
+                pane.scroll_y = (pane.scroll_y - dy).max(0.0);
+                if pane_idx == 1 {
+                    self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
                 }
-                return;
             }
+            self.scheduler.invalidate_all();
+            if let Some(gpu_window) = &self.gpu_window {
+                gpu_window.window.request_redraw();
+            }
+            return;
         }
         self.apply_scroll_delta(dx, dy);
         self.scheduler.invalidate_all();
