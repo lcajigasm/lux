@@ -196,7 +196,12 @@ impl Theme {
         accent: Color::rgb(0x5F, 0xB3, 0xB3),
         selection: Color::rgba(0x4F, 0x5B, 0x66, 0x88),
         muted: Color::rgb(0xA7, 0xAD, 0xBA),
-        chrome: derived_chrome(Color::rgb(0x30, 0x38, 0x41)),
+        // The derived `#3C444D` crowds the selection; this is it faded by
+        // `fit_line_highlight` so the selection clears the floor over it.
+        chrome: ChromeColors {
+            line_highlight: Color::rgb(0x32, 0x3A, 0x43),
+            ..derived_chrome(Color::rgb(0x30, 0x38, 0x41))
+        },
     };
 
     /// Sublime Text high-contrast ocean theme (ST15).
@@ -277,51 +282,9 @@ pub const ALL_THEMES: &[Theme] = &[
     Theme::LUX_DARK_HIGH_CONTRAST,
 ];
 
-/// Straight-alpha composite of `over` onto `under`, in sRGB. An opaque
-/// source is returned with alpha 255. This is the color a selection quad
-/// paints on the editor background.
-pub fn composite(over: Color, under: Color) -> Color {
-    if over.a == 255 {
-        return Color::rgb(over.r, over.g, over.b);
-    }
-    let alpha = f64::from(over.a) / 255.0;
-    let mix = |src: u8, dst: u8| -> u8 {
-        let mixed = (f64::from(src) * alpha + f64::from(dst) * (1.0 - alpha)).round();
-        mixed.clamp(0.0, 255.0) as u8
-    };
-    Color::rgb(
-        mix(over.r, under.r),
-        mix(over.g, under.g),
-        mix(over.b, under.b),
-    )
-}
+mod contrast;
 
-/// Painted selection against the editor background. Sublime Monokai
-/// `#49483E` on `#272822` is 1.61. The same RGB at alpha `0x88` paints
-/// 1.28. VS Code Monokai `#878b9180` paints about 2.13. 1.30 is above
-/// that invisible band and below the other bundled themes that were
-/// already distinct.
-pub const SELECTION_CONTRAST_MIN: f64 = 1.30;
-
-/// Relative-luminance contrast ratio (WCAG 2).
-pub fn contrast_ratio(a: Color, b: Color) -> f64 {
-    let l1 = relative_luminance(a);
-    let l2 = relative_luminance(b);
-    let (hi, lo) = if l1 > l2 { (l1, l2) } else { (l2, l1) };
-    (hi + 0.05) / (lo + 0.05)
-}
-
-fn relative_luminance(c: Color) -> f64 {
-    fn chan(u: u8) -> f64 {
-        let s = f64::from(u) / 255.0;
-        if s <= 0.03928 {
-            s / 12.92
-        } else {
-            ((s + 0.055) / 1.055).powf(2.4)
-        }
-    }
-    0.2126 * chan(c.r) + 0.7152 * chan(c.g) + 0.0722 * chan(c.b)
-}
+pub use contrast::{SELECTION_CONTRAST_MIN, composite, contrast_ratio, fit_line_highlight};
 
 /// Side length, in pixels, of each solid color square in [`capture_swatch`].
 pub const SWATCH_SIZE: u32 = 8;
@@ -474,6 +437,30 @@ mod tests {
         let t = Theme::LUX_DARK_HIGH_CONTRAST;
         assert!(contrast_ratio(t.foreground, t.background) >= 4.5);
         assert!(contrast_ratio(t.muted, t.background) >= 4.5);
+    }
+
+    /// Built-in themes are constants, so their highlights are authored
+    /// already fitted: `fit_line_highlight` leaves every one unchanged and
+    /// nothing is computed while painting.
+    #[test]
+    fn built_in_line_highlights_already_clear_the_selection_floor() {
+        for t in [
+            Theme::LUX_DARK,
+            Theme::LUX_LIGHT,
+            Theme::LUX_DARK_HIGH_CONTRAST,
+            Theme::MONOKAI,
+            Theme::MARIANA,
+            Theme::BREAKERS,
+            Theme::CELESTE,
+        ] {
+            let line = t.chrome.line_highlight;
+            assert_eq!(
+                fit_line_highlight(t.selection, line, t.background),
+                line,
+                "{}",
+                t.name
+            );
+        }
     }
 
     #[test]

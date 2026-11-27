@@ -286,8 +286,12 @@ fn test_split_click_focus_and_interactive_editing() {
     let ctx = DummyContext;
     let top = app.tab_bar_height();
 
-    // 1. Click in right pane (pane 1) at x = 600.0, y = top + 20.0
-    app.mouse.position = dpi::PhysicalPosition::new(600.0, top as f64 + 20.0);
+    // 1. Click in right pane (pane 1) on `// content 1`, right after `//`
+    let digits = app.editor_view.reference_width("0");
+    let text_x =
+        crate::render::text::gutter_total_width(digits, app.scale_factor) + 6.0 * app.scale_factor;
+    let click_x = app.ui.split.panes[1].viewport.x + text_x + app.editor_view.reference_width("//");
+    app.mouse.position = dpi::PhysicalPosition::new(f64::from(click_x), top as f64 + 20.0);
     let handled = app.handle_mouse_click_on_chrome(&ctx, MouseButton::Left);
     assert!(!handled, "click in pane must not be swallowed by chrome");
     assert_eq!(
@@ -313,8 +317,8 @@ fn test_split_click_focus_and_interactive_editing() {
     }
     assert!(app.buffer.text().contains("RIGHT_ "));
 
-    // 4. Click back in left pane (pane 0) at x = 40.0, y = top + 20.0 (at start of text)
-    app.mouse.position = dpi::PhysicalPosition::new(40.0, top as f64 + 20.0);
+    // 4. Click back in left pane (pane 0) at the start of its text
+    app.mouse.position = dpi::PhysicalPosition::new(f64::from(text_x), top as f64 + 20.0);
     let handled_left = app.handle_mouse_click_on_chrome(&ctx, MouseButton::Left);
     assert!(!handled_left);
     assert_eq!(
@@ -449,6 +453,7 @@ fn test_split_visual_focus_indicator_and_static_cursors() {
         theme: &app.chrome.theme,
         syntax_theme: lux_syntax::theme::by_name(app.chrome.theme.name)
             .unwrap_or(&lux_syntax::theme::LUX_DARK),
+        gutter_hover: None,
     };
 
     let mut gutter_quads = Vec::new();

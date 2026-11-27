@@ -45,6 +45,10 @@ pub(crate) struct MouseState {
     pub(crate) shape: lux_platform::CursorShape,
     /// The trackpad pinch in progress, if any.
     pub(crate) pinch: Option<crate::pinch::PinchZoom>,
+    /// Top-left corner of the pane whose gutter is under the pointer, which
+    /// tells stacked panes (2 Rows, Grid) apart. Fold markers on open
+    /// regions show only there; it changes on pointer events.
+    pub(crate) gutter_hover: Option<[f32; 2]>,
 }
 
 pub(crate) struct SyntaxState {

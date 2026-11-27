@@ -396,3 +396,57 @@ fn an_unwrapped_long_line_shapes_only_the_visible_columns() {
     assert!(clusters.len() > 10, "shaped {}", clusters.len());
     assert_eq!(clusters[0].byte_range.start, 0);
 }
+
+/// UI review item 8: the deepest guide used to land on the first glyph,
+/// so it touched the text and picked up its syntax color. Every guide now
+/// sits at the start of an indent level, left of the text.
+#[test]
+fn indent_guides_never_sit_on_the_first_glyph() {
+    let source = source_lines();
+    let text = source.join("\n");
+    let buffer = Buffer::from_bytes(text.as_bytes()).unwrap();
+    let mut view = build_view();
+    let caret = Position::from_char(&buffer, text.find("return").unwrap());
+    let cursors = MultiCursor::new(Selection::cursor(caret));
+    let viewport = Viewport {
+        width: 800.0,
+        height: 120.0,
+        scroll_x: 0.0,
+        scroll_y: 0.0,
+    };
+    let frame = view.build_frame(&buffer, &cursors, &viewport, Duration::ZERO, None);
+    let mut checked = 0;
+    for line in &frame.lines {
+        let Some(first) = line
+            .layout
+            .clusters()
+            .into_iter()
+            .find(|c| !source[line.index][c.byte_range.clone()].trim().is_empty())
+        else {
+            continue;
+        };
+        for guide in &line.indent_guides {
+            assert!(
+                *guide < first.x - TOLERANCE,
+                "line {}: guide at {guide} touches the first glyph at {}",
+                line.index,
+                first.x
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked >= 4, "the fixture draws guides on lines 1 to 4");
+    let line1 = frame.lines.iter().find(|l| l.index == 1).unwrap();
+    assert!(
+        line1.indent_guides[0].abs() < TOLERANCE,
+        "level 0 is column 0"
+    );
+    // The caret sits in the `if` body at level 2, so guide 1 is active
+    // there and nowhere outside that block.
+    let line3 = frame.lines.iter().find(|l| l.index == 3).unwrap();
+    assert_eq!(line3.active_guide, Some(1));
+    for index in [1, 2, 4] {
+        let line = frame.lines.iter().find(|l| l.index == index).unwrap();
+        assert_eq!(line.active_guide, None, "line {index}");
+    }
+}

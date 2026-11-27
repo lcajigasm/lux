@@ -123,7 +123,6 @@ impl App {
         } else {
             sidebar_width + gutter_total_width + 6.0 * *scale_factor
         };
-        let foreground = color(chrome.theme.foreground);
 
         let mut quad_instances = Vec::new();
         if tab_bar_height > 0.0 {
@@ -165,6 +164,7 @@ impl App {
                     &ui.settings.schemes,
                     chrome.theme.name,
                 ),
+                gutter_hover: self.mouse.gutter_hover,
             };
             split::render_split_layout(
                 &params,
@@ -200,6 +200,7 @@ impl App {
                 gutter_total_width,
                 window_width,
                 distraction_free: is_df,
+                gutter_hover: self.mouse.gutter_hover,
             };
             let mut out = pane::PaneOutput {
                 quads: &mut quad_instances,
@@ -242,7 +243,7 @@ impl App {
             font_size,
             line_height,
             stroke,
-            foreground,
+            color(chrome.theme.foreground),
             color(chrome.theme.accent),
             &mut quad_instances,
             &mut glyph_instances,

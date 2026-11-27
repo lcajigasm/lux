@@ -50,7 +50,8 @@ impl App {
         let digits = self.buffer.len_lines().max(1).to_string().len();
         let gutter_w = self.editor_view.reference_width(&"0".repeat(digits));
         let left_padding = if self.ui.split.is_active() {
-            crate::render::text::gutter_number_pad(self.scale_factor) + 22.0 * self.scale_factor
+            crate::render::text::gutter_total_width(gutter_w, self.scale_factor) - gutter_w
+                + 6.0 * self.scale_factor
         } else {
             self.text_left() - self.sidebar_width() - gutter_w
         };

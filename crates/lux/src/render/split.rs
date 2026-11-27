@@ -39,6 +39,8 @@ pub(crate) struct SplitRenderParams<'a> {
     pub(crate) active_scroll: (f32, f32),
     pub(crate) theme: &'a Theme,
     pub(crate) syntax_theme: &'static lux_syntax::theme::SyntaxTheme,
+    /// Left edge of the pane gutter under the pointer, if any.
+    pub(crate) gutter_hover: Option<[f32; 2]>,
 }
 
 pub(crate) fn render_split_layout(
@@ -239,7 +241,6 @@ fn render_single_pane(
     }
 
     // Column rulers
-    let muted_col = color(params.theme.muted);
     let rule = faint_rule(params.theme);
     for ruler_x in &frame.column_ruler_x {
         let rx = text_left + ruler_x - scroll_x;
@@ -251,12 +252,13 @@ fn render_single_pane(
     // Indent guides and selections
     for line in &frame.lines {
         let y = py + line.top - scroll_y;
-        for guide_x in &line.indent_guides {
+        for (level, guide_x) in line.indent_guides.iter().enumerate() {
             let gx = text_left + guide_x - scroll_x;
-            if let Some(g_rect) =
-                clamp_quad_to_rect([gx, y, params.stroke, params.line_height], text_bounds)
-            {
-                quad_instances.push(QuadInstance::solid(g_rect, muted_col));
+            let active = line.active_guide == Some(level);
+            let (rect, ink) =
+                super::text::guide_quad(gx, y, params.line_height, active, params.theme);
+            if let Some(g_rect) = clamp_quad_to_rect(rect, text_bounds) {
+                quad_instances.push(QuadInstance::solid(g_rect, ink));
             }
         }
     }
@@ -318,7 +320,7 @@ fn render_single_pane(
     pane_viewport.height = ph;
     super::text::render_gutter(
         &frame,
-        Some(bookmarks),
+        super::text::GutterMarks::new(Some(bookmarks), params.gutter_hover, [px, py]),
         &pane_viewport,
         py,
         params.line_height,
@@ -432,6 +434,7 @@ mod tests {
             theme: &app.chrome.theme,
             syntax_theme: lux_syntax::theme::by_name(app.chrome.theme.name)
                 .unwrap_or(&lux_syntax::theme::LUX_DARK),
+            gutter_hover: None,
         };
 
         let mut gutter_quads = Vec::new();
