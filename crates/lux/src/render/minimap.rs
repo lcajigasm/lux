@@ -155,7 +155,7 @@ fn paint_viewport_box(
     let sel = color(theme.selection);
     quad_instances.push(QuadInstance::solid(
         [strip.x, vy, strip.w, vh],
-        [sel[0], sel[1], sel[2], 0.18],
+        viewport_band(theme),
     ));
     for edge in [vy, (vy + vh - strip.stroke).max(vy)] {
         quad_instances.push(QuadInstance::solid(
@@ -163,6 +163,16 @@ fn paint_viewport_box(
             sel,
         ));
     }
+}
+
+/// The visible-region band: the foreground at 8% on a dark page and 6%
+/// on a light one. An 18% tint of Lux Dark's amber selection painted a
+/// strong brown block over the top of the strip.
+fn viewport_band(theme: &Theme) -> [f32; 4] {
+    let ink = color(theme.foreground);
+    let page = color(theme.background);
+    let dark = page[0] + page[1] + page[2] < 1.5;
+    [ink[0], ink[1], ink[2], if dark { 0.08 } else { 0.06 }]
 }
 
 /// Git changes on the left edge (green added, orange modified, red
@@ -278,7 +288,7 @@ fn composited_gap(bar: [f32; 4], background: [f32; 4]) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{composited_gap, density_bar};
+    use super::{composited_gap, density_bar, viewport_band};
     use crate::render::paint::color;
 
     fn rgba(hex: &str) -> [f32; 4] {
@@ -303,6 +313,29 @@ mod tests {
     fn monokai_keeps_the_soft_bar() {
         let bar = density_bar(rgba("f8f8f2"), rgba("272822"));
         assert!((bar[3] - 0.28).abs() < 0.001);
+    }
+
+    #[test]
+    fn the_viewport_band_is_a_faint_foreground_on_every_theme() {
+        let schemes = crate::color_scheme::bundled_schemes();
+        for name in crate::color_scheme::theme_names(schemes) {
+            let theme = crate::color_scheme::theme_for(schemes, name);
+            let band = viewport_band(&theme);
+            let ink = color(theme.foreground);
+            assert_eq!(&band[..3], &ink[..3], "{name}");
+            let page = color(theme.background);
+            let dark = page[0] + page[1] + page[2] < 1.5;
+            assert_eq!(band[3], if dark { 0.08 } else { 0.06 }, "{name}");
+            // Subtle but present: two to thirty 8-bit levels off the well.
+            let shift = (0..3)
+                .map(|c| {
+                    let well = page[c] * 0.95;
+                    let mixed = band[c] * band[3] + well * (1.0 - band[3]);
+                    ((mixed - well) * 255.0).abs()
+                })
+                .fold(0.0_f32, f32::max);
+            assert!((2.0..=30.0).contains(&shift), "{name}: band shifts {shift}");
+        }
     }
 }
 

@@ -275,7 +275,7 @@ unified floating command palette (`Cmd+Shift+P`) with fuzzy search and execution
 Goto Anything (`Cmd+P`) with `:line` jump navigation (`crates/lux/src/goto.rs`),
 docked in-buffer Find and Replace bar (`Cmd+F` / `Cmd+H`) with match highlights and transactional edits (`crates/lux/src/search/`),
 workspace folder tree sidebar (`Cmd+B` / `Cmd+K, Cmd+B`) with lazy node expansion and tab activation (`crates/lux/src/sidebar.rs`),
-right-edge minimap overview (`crates/lux/src/minimap.rs`, `crates/lux/src/minimap/drag.rs`, `crates/lux/src/render/minimap.rs`, `crates/lux-ui/src/minimap.rs`): each row is drawn as word strokes (one per run of non-blank characters of one color) in the syntax colors the editor's highlighter already computed, plain foreground without a language or in huge-file mode; when several lines share a row the longest line is drawn; strokes are cached per minimap row and keyed on the buffer revision and the highlighter's parse generation, so a scroll does no work, a typed character re-measures and re-inks only its line, and a new parse re-inks at most one line per row (`minimap::model_tests::a_fifty_thousand_line_file_builds_incrementally`, `cargo bench -p lux-benches --bench minimap`); folded lines are skipped; a translucent viewport box that follows the scroll continuously; clicking outside the box centers the editor there, and pressing on the box and dragging scrolls the editor in proportion to the pointer (clamped to the document); marks: git added/modified/removed on the left edge from the live gutter diff, bookmarks (`Cmd+F2`) in cyan on the right edge, and Cmd+F matches as gold ticks,
+right-edge minimap overview (`crates/lux/src/minimap.rs`, `crates/lux/src/minimap/drag.rs`, `crates/lux/src/render/minimap.rs`, `crates/lux-ui/src/minimap.rs`): each row is drawn as word strokes (one per run of non-blank characters of one color) in the syntax colors the editor's highlighter already computed, plain foreground without a language or in huge-file mode; when several lines share a row the longest line is drawn; strokes are cached per minimap row and keyed on the buffer revision and the highlighter's parse generation, so a scroll does no work, a typed character re-measures and re-inks only its line, and a new parse re-inks at most one line per row (`minimap::model_tests::a_fifty_thousand_line_file_builds_incrementally`, `cargo bench -p lux-benches --bench minimap`); folded lines are skipped; a faint viewport box (the foreground at 8% on a dark page, 6% on a light one, edged by the selection color) that follows the scroll continuously; clicking outside the box centers the editor there, and pressing on the box and dragging scrolls the editor in proportion to the pointer (clamped to the document); marks: git added/modified/removed on the left edge from the live gutter diff, bookmarks (`Cmd+F2`) in cyan on the right edge, and Cmd+F matches as gold ticks,
 in-process Git integration (`crates/lux/src/git.rs`) with gutter change indicators, floating hunk diff cards, file staging, and commit execution,
 non-blocking LSP client (`crates/lux/src/lsp.rs`) with diagnostics squiggles, floating autocompletion popup, hover documentation tooltip, and problems dock,
 integrated PTY terminal panel (`crates/lux/src/term.rs`) with color VT grid, named shells, background task panel, and compiler error link detection,
@@ -910,8 +910,11 @@ the shared card uses 28 pt one-line rows and starts its text, and the query,
 at one 22 pt inset; rows carry no decorative icons (completion keeps a
 12 pt muted kind icon). A match is the theme accent where it clears 3:1
 against the row, otherwise the row's text in bold; the selected row is the
-theme's selection color (moved off the card to at least 1.4:1) with
-foreground text and bold matches, checked on all 14 bundled themes. The
+theme's selection color flattened onto the card (a translucent selection,
+such as Lux Dark's 20% amber, is judged as the color actually painted) and
+moved off the card to at least 1.4:1, with text and bold matches at 4.5:1
+or more against that painted fill, checked on the seven built-in themes and
+all 14 bundled schemes. The
 color scheme picker rims each swatch with 20% foreground and marks the
 active scheme with a check. Gate: `cargo test -p lux palette::`,
 `cargo test -p lux overlay_list`.
