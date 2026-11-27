@@ -454,8 +454,8 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-TAB-02 — Reordenación de Pestañas por Arrastre (Drag-and-Drop)
 - Prioridad: `P1 (Ergonomía)`
-- Estado: `IN_PROGRESS`
-- Remaining: dragging a tab to another split pane; it needs a tab strip per pane, which the app does not have yet.
+- Estado: `DONE`
+- Cross-pane drag: each split group has its own strip (ST-SPLIT-05); dropping a tab on another group's strip moves it there at the marker and focuses that group.
 - Dependencias: ST-TAB-01
 - Objetivo: Organización visual manual de documentos.
 - Alcance detallado:
