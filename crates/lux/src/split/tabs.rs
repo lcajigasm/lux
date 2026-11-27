@@ -294,6 +294,81 @@ pub(crate) fn after_active_closed(app: &mut App, closed: TabId) -> bool {
     true
 }
 
+/// A click on tab `tab` in the strip of `group`: shows it there and
+/// focuses that group.
+pub(crate) fn select(app: &mut App, group: Option<usize>, tab: TabId) {
+    match group {
+        Some(g)
+            if split_on(app) && g != app.ui.split.active_pane && g < app.ui.split.panes.len() =>
+        {
+            if app.ui.split.panes[g].tab_id != tab {
+                app.sync_active_document_to_entry();
+                show_in(app, g, tab);
+            }
+            app.focus_group(g);
+        }
+        _ => {
+            app.switch_to_tab(tab);
+        }
+    }
+}
+
+/// The close mark of `tab` in the strip of `group`. A tab that another
+/// group also shows (a cloned view) only leaves this group; otherwise the
+/// tab closes, asking first when it has unsaved changes.
+pub(crate) fn close_in_group(
+    app: &mut App,
+    ctx: &dyn lux_platform::PlatformContext,
+    group: Option<usize>,
+    tab: TabId,
+) {
+    let elsewhere = group.is_some_and(|g| {
+        app.ui
+            .split
+            .panes
+            .iter()
+            .enumerate()
+            .any(|(i, p)| i != g && p.tabs.contains(&tab))
+    });
+    match group {
+        Some(g) if elsewhere && split_on(app) => drop_view(app, g, tab),
+        _ => app.close_tab(ctx, tab),
+    }
+}
+
+/// Takes `tab` out of group `g` only; the document stays open in the
+/// other group that lists it.
+fn drop_view(app: &mut App, g: usize, tab: TabId) {
+    let pane = &mut app.ui.split.panes[g];
+    let at = pane.tabs.iter().position(|id| *id == tab).unwrap_or(0);
+    pane.tabs.retain(|id| *id != tab);
+    if pane.tab_id != tab {
+        app.scheduler.invalidate_all();
+        return;
+    }
+    let focused = g == app.ui.split.active_pane;
+    match neighbor(&app.ui.split.panes[g].tabs, at) {
+        Some(next) if focused => {
+            app.ui.split.panes[g].tab_id = next;
+            app.switch_to_tab(next);
+        }
+        Some(next) => {
+            app.sync_active_document_to_entry();
+            show_in(app, g, next);
+        }
+        None => {
+            app.sync_active_document_to_entry();
+            remove_group(app, g);
+            if focused && split_on(app) {
+                app.documents.active_tab = None;
+                let next = app.ui.split.active_pane.min(app.ui.split.panes.len() - 1);
+                enter_pane(app, next);
+            }
+        }
+    }
+    app.scheduler.invalidate_all();
+}
+
 /// The preset with `count` groups in the same arrangement as `preset`.
 fn preset_for(preset: LayoutPreset, count: usize) -> LayoutPreset {
     let rows = matches!(preset, LayoutPreset::Rows2 | LayoutPreset::Rows3);

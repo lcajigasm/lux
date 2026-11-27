@@ -443,6 +443,7 @@ fn test_split_visual_focus_indicator_and_static_cursors() {
         documents: &app.documents,
         area: bounds,
         minimap_w: 0.0,
+        tab_h: 0.0,
         scale_factor: 1.0,
         stroke: 1.0,
         font_size: 14.0,

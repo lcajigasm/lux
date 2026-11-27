@@ -60,27 +60,34 @@ pub(crate) fn handle_mouse_click_on_chrome(
         app.scheduler.invalidate_all();
     }
 
-    if mouse_y < app.tab_bar_height() {
-        let hit = crate::tab_strip::row_hit(app, mouse_x);
+    if let Some((strip, hit)) = crate::tab_strip::hit(app, mouse_x, mouse_y) {
+        let group = strip.and_then(|s| s.group);
         if button == MouseButton::Left && hit == RowHit::Overflow {
-            crate::tab_strip::list::open(app);
+            crate::tab_strip::list::open_for(app, group);
         } else if button == MouseButton::Left && hit == RowHit::Empty {
-            crate::title_bar::press_empty(app);
-        } else if let RowHit::Tab(index, on_close) = hit {
-            let tab_id = app.documents.tabs.tabs()[index].id;
-            let pinned = app.documents.tabs.tabs()[index].pinned;
+            if mouse_y < app.tab_bar_height() {
+                crate::title_bar::press_empty(app);
+            }
+        } else if let (RowHit::Tab(index, on_close), Some(strip)) = (hit, strip)
+            && let Some(tab_id) = crate::tab_strip::tab_id(app, &strip, index)
+        {
+            let pinned = app
+                .documents
+                .tabs
+                .tabs()
+                .iter()
+                .any(|t| t.id == tab_id && t.pinned);
             match button {
+                MouseButton::Left if on_close => {
+                    crate::split::tabs::close_in_group(app, ctx, group, tab_id);
+                    app.documents.strip.drag = None;
+                }
                 MouseButton::Left => {
-                    if on_close {
-                        app.close_tab(ctx, tab_id);
-                        app.documents.strip.drag = None;
-                    } else {
-                        app.switch_to_tab(tab_id);
-                        crate::tab_strip::press_tab(app, tab_id, index, mouse_x);
-                    }
+                    crate::split::tabs::select(app, group, tab_id);
+                    crate::tab_strip::press_tab(app, tab_id, index, mouse_x);
                 }
                 MouseButton::Middle => {
-                    app.close_tab(ctx, tab_id);
+                    crate::split::tabs::close_in_group(app, ctx, group, tab_id);
                     app.documents.strip.drag = None;
                 }
                 MouseButton::Right => {

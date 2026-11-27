@@ -30,18 +30,16 @@ fn app(scale: f64, tabs: usize) -> (App, Vec<TabId>) {
     (app, ids)
 }
 
-/// Paints the strip from `strip_left` the way `redraw` does.
-fn paint(app: &mut App, strip_left: f32) -> (Vec<QuadInstance>, Vec<GlyphInstance>) {
-    let width = app.viewport.width + 220.0 * app.scale_factor - strip_left;
-    let tab_width = app.tab_width();
+/// Paints the strips the way `redraw` does, the single strip starting at
+/// `strip_left` (as if the window controls took that much).
+pub(super) fn paint(app: &mut App, strip_left: f32) -> (Vec<QuadInstance>, Vec<GlyphInstance>) {
+    app.documents.strip.controls_inset = strip_left;
+    let strips = crate::tab_strip::strips::paint_list(app);
     let (mut quads, mut glyphs) = (Vec::new(), Vec::new());
     render_tab_bar(
         &app.documents,
+        &strips,
         false,
-        strip_left,
-        width,
-        tab_width,
-        app.tab_bar_height(),
         app.scale_factor,
         app.scale_factor,
         app.font,
@@ -61,6 +59,7 @@ fn a_scrolled_strip_paints_nothing_left_of_its_span() {
     for scale in [1.0, 2.0] {
         let (mut app, _) = app(scale, 30);
         let left = 220.0 * app.scale_factor;
+        app.documents.strip.controls_inset = left;
         let tab_width = app.tab_width();
         // Half a tab scrolled off the left end.
         app.documents.tabs.set_scroll(tab_width * 2.5);
@@ -83,6 +82,14 @@ fn tabs_shrink_to_100_points_before_scrolling() {
         assert_eq!(app.tab_width(), 100.0 * app.scale_factor);
         let (few, _) = self::app(scale, 2);
         assert!(few.tab_width() > 100.0 * few.scale_factor);
+    }
+}
+
+fn hover(tab: TabId, on_close: bool) -> crate::tab_strip::Hover {
+    crate::tab_strip::Hover {
+        group: None,
+        tab,
+        on_close,
     }
 }
 
@@ -129,13 +136,13 @@ fn a_dirty_tab_shows_a_dot_until_its_close_mark_is_hovered() {
         let ink = crate::render::paint::color(app.chrome.theme.foreground)[3];
         assert!((alpha - 0.7 * ink).abs() < 0.001);
 
-        app.documents.strip.hover = Some((dirty, false));
+        app.documents.strip.hover = Some(hover(dirty, false));
         assert_eq!(
             dots(&paint(&mut app, left).0, s).len(),
             1,
             "body hover keeps it"
         );
-        app.documents.strip.hover = Some((dirty, true));
+        app.documents.strip.hover = Some(hover(dirty, true));
         assert!(dots(&paint(&mut app, left).0, s).is_empty(), "× on hover");
     }
 }
@@ -148,7 +155,7 @@ fn hover_follows_pointer_moves_and_clears_on_leave() {
     let first = app.documents.tabs.tabs()[0].id;
     app.mouse.position = dpi::PhysicalPosition::new(f64::from(tab_width - close * 0.5), 10.0);
     assert!(crate::tab_strip::pointer_moved(&mut app));
-    assert_eq!(app.documents.strip.hover, Some((first, true)));
+    assert_eq!(app.documents.strip.hover, Some(hover(first, true)));
     assert!(
         !crate::tab_strip::pointer_moved(&mut app),
         "no change, no redraw"
@@ -156,7 +163,7 @@ fn hover_follows_pointer_moves_and_clears_on_leave() {
     app.mouse.position.x = f64::from(tab_width + 5.0);
     assert!(crate::tab_strip::pointer_moved(&mut app));
     let second = app.documents.tabs.tabs()[1].id;
-    assert_eq!(app.documents.strip.hover, Some((second, false)));
+    assert_eq!(app.documents.strip.hover, Some(hover(second, false)));
     app.mouse.position.y = 300.0;
     assert!(crate::tab_strip::pointer_moved(&mut app));
     assert_eq!(app.documents.strip.hover, None);

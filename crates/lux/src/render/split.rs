@@ -31,6 +31,8 @@ pub(crate) struct SplitRenderParams<'a> {
     pub(crate) area: [f32; 4],
     /// Each group's minimap width; zero when the minimap is off.
     pub(crate) minimap_w: f32,
+    /// Height of a group's tab strip; zero when the tab row is hidden.
+    pub(crate) tab_h: f32,
     pub(crate) scale_factor: f32,
     pub(crate) stroke: f32,
     pub(crate) font_size: f32,
@@ -72,8 +74,13 @@ pub(crate) fn render_split_layout(
     }
 
     let geom = compute_layout_geometry(params.split, params.area, params.stroke);
-    let groups =
-        crate::split::groups::layout(params.split, params.area, params.stroke, params.minimap_w);
+    let groups = crate::split::groups::layout(
+        params.split,
+        params.area,
+        params.stroke,
+        params.minimap_w,
+        params.tab_h,
+    );
 
     // 1. Render all dividers between panes
     for (rect, div_type) in &geom.dividers {
@@ -485,6 +492,7 @@ mod tests {
             documents: &app.documents,
             area: [0.0, 0.0, 800.0, 600.0],
             minimap_w: 0.0,
+            tab_h: 0.0,
             scale_factor: 1.0,
             stroke: 1.0,
             font_size: 14.0,

@@ -141,9 +141,12 @@ impl App {
     /// sits in the strip's rectangle, so a wheel that arrives first scrolls
     /// the editor.
     pub(crate) fn wheel_targets_tabs(&self) -> bool {
-        self.mouse.placed
-            && self.mouse.position.y < self.tab_bar_height() as f64
-            && self.mouse.position.x >= self.sidebar_width() as f64
+        self.mouse.placed && self.strip_under_pointer().is_some()
+    }
+
+    fn strip_under_pointer(&self) -> Option<crate::tab_strip::Strip> {
+        let (x, y) = (self.mouse.position.x as f32, self.mouse.position.y as f32);
+        crate::tab_strip::strips::at(self, x, y)
     }
 
     pub(crate) fn on_wheel(&mut self, delta: ScrollDelta) {
@@ -153,7 +156,12 @@ impl App {
             && self.documents.strip.list.is_none()
         {
             let pixels = match delta {
-                ScrollDelta::Lines { x, y } => (x + y) * self.tab_width(),
+                ScrollDelta::Lines { x, y } => {
+                    let tab_width = self
+                        .strip_under_pointer()
+                        .map_or(0.0, |s| s.layout.tab_width);
+                    (x + y) * tab_width
+                }
                 ScrollDelta::Pixels(position) => position.x as f32 + position.y as f32,
             };
             crate::tab_strip::scroll_tabs(self, pixels);
