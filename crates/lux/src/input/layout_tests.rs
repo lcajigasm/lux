@@ -137,6 +137,9 @@ fn test_focus_group_and_move_to_group() {
 #[test]
 fn test_divider_hit_test_and_mouse_drag_resize() {
     let mut app = create_test_app_with_tabs(2);
+    // The literal x positions below assume the groups split exactly the
+    // 800 px viewport; with the minimap on, each group adds its own.
+    app.ui.minimap.toggle();
     app.set_layout(LayoutPreset::Columns2);
     app.ui.split.ratio = 0.5;
 
@@ -277,6 +280,7 @@ fn test_close_split() {
 #[test]
 fn test_split_click_focus_and_interactive_editing() {
     let mut app = create_test_app_with_tabs(3);
+    app.ui.minimap.toggle();
     app.insert_at_cursor("left initial");
 
     app.set_layout(LayoutPreset::Columns2);
@@ -437,7 +441,8 @@ fn test_split_visual_focus_indicator_and_static_cursors() {
     let params = crate::render::split::SplitRenderParams {
         split: &app.ui.split,
         documents: &app.documents,
-        primary_rect: bounds,
+        area: bounds,
+        minimap_w: 0.0,
         scale_factor: 1.0,
         stroke: 1.0,
         font_size: 14.0,
@@ -460,6 +465,7 @@ fn test_split_visual_focus_indicator_and_static_cursors() {
     let mut gutter_glyphs = Vec::new();
     crate::render::split::render_split_layout(
         &params,
+        None,
         &mut app.editor_view,
         &mut app.atlas_state,
         &mut quad_instances,

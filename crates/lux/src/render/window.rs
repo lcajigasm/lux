@@ -178,16 +178,8 @@ impl App {
             return;
         }
         if self.ui.split.is_active() {
-            let primary_rect = [
-                self.sidebar_width(),
-                self.tab_bar_height(),
-                self.viewport.width,
-                self.viewport.height,
-            ];
-            if let Some(pane_idx) = crate::split::hit_test_pane(
-                &self.ui.split,
-                primary_rect,
-                self.scale_factor,
+            if let Some(pane_idx) = crate::split::groups::group_at(
+                self,
                 self.mouse.position.x as f32,
                 self.mouse.position.y as f32,
             ) {

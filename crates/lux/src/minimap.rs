@@ -3,7 +3,7 @@
 mod colors;
 pub(crate) mod drag;
 
-pub(crate) use colors::SyntaxColors;
+pub(crate) use colors::{SyntaxColors, TokenColors};
 use lux_core::buffer::Buffer;
 use lux_core::folding::FoldState;
 use lux_core::multicursor::MultiCursor;
@@ -19,6 +19,9 @@ pub(crate) struct MinimapState {
     pub(crate) width: f32,
     pub(crate) edit: Option<LineEdit>,
     pub(crate) model: lux_ui::minimap::MinimapModel,
+    /// One cache per split group after the first, so groups showing
+    /// different files do not rebuild each other's bars every frame.
+    pub(crate) group_models: Vec<lux_ui::minimap::MinimapModel>,
     /// While the viewport box is held: the pointer's offset below its top.
     pub(crate) drag: Option<f32>,
 }
@@ -30,6 +33,7 @@ impl Default for MinimapState {
             width: MINIMAP_WIDTH,
             edit: None,
             model: lux_ui::minimap::MinimapModel::default(),
+            group_models: Vec::new(),
             drag: None,
         }
     }
@@ -69,6 +73,7 @@ impl MinimapState {
     /// The minimap frame for `buffer` in tab `document`, reusing cached bars
     /// while the buffer revision is unchanged and cached strokes while the
     /// syntax colors are unchanged.
+    #[cfg(test)]
     pub(crate) fn frame(
         &mut self,
         document: u64,
@@ -78,8 +83,36 @@ impl MinimapState {
         folds: Option<&FoldState>,
         colors: Option<&dyn lux_ui::minimap::LineColors>,
     ) -> Option<MinimapFrame> {
-        let edit = self.edit.take();
-        self.model.frame(
+        let frame = self.group_frame(0, document, buffer, visible, available_rows, folds, colors);
+        self.edit = None;
+        frame
+    }
+
+    /// The frame for split group `group`, from that group's own cache. The
+    /// pending one-line edit is offered to every group; call
+    /// [`Self::end_frame`] once all groups are painted.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn group_frame(
+        &mut self,
+        group: usize,
+        document: u64,
+        buffer: &Buffer,
+        visible: Range<usize>,
+        available_rows: usize,
+        folds: Option<&FoldState>,
+        colors: Option<&dyn lux_ui::minimap::LineColors>,
+    ) -> Option<MinimapFrame> {
+        let edit = self.edit;
+        let model = match group.checked_sub(1) {
+            None => &mut self.model,
+            Some(extra) => {
+                if self.group_models.len() <= extra {
+                    self.group_models.resize_with(extra + 1, Default::default);
+                }
+                &mut self.group_models[extra]
+            }
+        };
+        model.frame(
             &self.inner,
             MinimapSample {
                 revision: buffer.revision(),
@@ -92,6 +125,11 @@ impl MinimapState {
                 colors,
             },
         )
+    }
+
+    /// The pending edit has been offered to every group painted this frame.
+    pub(crate) fn end_frame(&mut self) {
+        self.edit = None;
     }
 
     pub(crate) fn effective_width(&self, scale_factor: f32) -> f32 {

@@ -32,6 +32,7 @@ pub(crate) enum SplitDirection {
 }
 
 pub(crate) mod clone_view;
+pub(crate) mod groups;
 pub(crate) use crate::pane_view::PaneView;
 #[allow(unused_imports)]
 pub(crate) use crate::pane_view::PaneViewport;
@@ -236,6 +237,7 @@ pub(crate) fn hit_test_divider(
     None
 }
 
+#[cfg(test)]
 pub(crate) fn hit_test_pane(
     split: &SplitLayout,
     primary_rect: [f32; 4],
@@ -335,14 +337,8 @@ impl App {
             new_panes.push(pane);
         }
 
-        let sb_w = self.sidebar_width();
-        let top = self.tab_bar_height();
-        let geom = compute_layout_geometry(
-            &self.ui.split,
-            [sb_w, top, self.viewport.width, self.viewport.height],
-            self.scale_factor,
-        );
-        for (pane, &rect) in new_panes.iter_mut().zip(geom.pane_rects.iter()) {
+        for (pane, group) in new_panes.iter_mut().zip(groups::rects(self)) {
+            let rect = group.text;
             pane.viewport.x = rect[0];
             pane.viewport.y = rect[1];
             pane.viewport.width = rect[2];
@@ -504,15 +500,13 @@ impl App {
 
     pub(crate) fn handle_divider_drag(&mut self, mouse_x: f32, mouse_y: f32) {
         if let Some(div) = self.ui.split.dragging_divider {
-            let sb_w = self.sidebar_width();
-            let top = self.tab_bar_height();
+            let [left, top, width, height] = groups::editor_area(self);
             match div {
                 DraggingDivider::Vertical(_) => {
-                    self.ui.split.ratio = ((mouse_x - sb_w) / self.viewport.width).clamp(0.1, 0.9);
+                    self.ui.split.ratio = ((mouse_x - left) / width.max(1.0)).clamp(0.1, 0.9);
                 }
                 DraggingDivider::Horizontal(_) => {
-                    self.ui.split.ratio_y =
-                        ((mouse_y - top) / self.viewport.height).clamp(0.1, 0.9);
+                    self.ui.split.ratio_y = ((mouse_y - top) / height.max(1.0)).clamp(0.1, 0.9);
                 }
             }
             self.scheduler.invalidate_all();
