@@ -22,7 +22,13 @@ fn each_column_keeps_its_minimap_at_its_own_right_edge() {
     for scale in [1.0, 2.0] {
         let area = [220.0 * scale, 32.0 * scale, 780.0 * scale, 600.0 * scale];
         let minimap_w = 90.0 * scale;
-        let groups = layout(&split(LayoutPreset::Columns2), area, scale, minimap_w);
+        let groups = layout(
+            &split(LayoutPreset::Columns2),
+            area,
+            scale,
+            minimap_w,
+            32.0 * scale,
+        );
         assert_eq!(groups.len(), 2);
         for g in &groups {
             let map = g.minimap.expect("room for a minimap");
@@ -44,7 +50,7 @@ fn each_column_keeps_its_minimap_at_its_own_right_edge() {
 #[test]
 fn rows_each_get_a_full_height_minimap_of_their_own() {
     let area = [0.0, 32.0, 1000.0, 600.0];
-    let groups = layout(&split(LayoutPreset::Rows2), area, 1.0, 90.0);
+    let groups = layout(&split(LayoutPreset::Rows2), area, 1.0, 90.0, 32.0);
     let [top, bottom] = [groups[0], groups[1]];
     let (top_map, bottom_map) = (top.minimap.unwrap(), bottom.minimap.unwrap());
     assert_eq!(top_map[1], top.editor[1]);
@@ -59,6 +65,7 @@ fn a_narrow_group_or_a_hidden_minimap_keeps_all_its_width_for_text() {
         [0.0, 0.0, 600.0, 400.0],
         1.0,
         90.0,
+        32.0,
     );
     for g in &groups {
         assert_eq!(g.minimap, None, "150 px is under two minimaps wide");
@@ -69,6 +76,7 @@ fn a_narrow_group_or_a_hidden_minimap_keeps_all_its_width_for_text() {
         [0.0, 0.0, 1000.0, 400.0],
         1.0,
         0.0,
+        32.0,
     );
     assert!(off.iter().all(|g: &GroupRects| g.minimap.is_none()));
 }
@@ -155,6 +163,7 @@ fn each_group_paints_its_minimap_inside_its_own_rect() {
         documents: &app.documents,
         area,
         minimap_w,
+        tab_h: app.tab_bar_height(),
         scale_factor: 1.0,
         stroke: 1.0,
         font_size: 14.0,

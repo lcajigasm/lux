@@ -18,6 +18,10 @@ pub(crate) struct GroupRects {
     pub(crate) text: [f32; 4],
     /// The group's minimap, when the minimap is on and there is room.
     pub(crate) minimap: Option<[f32; 4]>,
+    /// The group's own tab strip. Groups along the top use the window's
+    /// tab row above them; a group below another has its strip at its own
+    /// top, and its editor column starts under it.
+    pub(crate) strip: [f32; 4],
 }
 
 /// The rectangle the groups divide: right of the sidebar, below the tab
@@ -32,30 +36,40 @@ pub(crate) fn editor_area(app: &App) -> [f32; 4] {
 }
 
 /// Pure layout: the groups of `split` inside `area`, each with a minimap
-/// `minimap_w` wide at its right edge. A group narrower than twice the
-/// minimap keeps all of its width for text.
+/// `minimap_w` wide at its right edge and a tab strip `tab_h` tall. A
+/// group narrower than twice the minimap keeps all of its width for text.
 pub(crate) fn layout(
     split: &SplitLayout,
     area: [f32; 4],
     stroke: f32,
     minimap_w: f32,
+    tab_h: f32,
 ) -> Vec<GroupRects> {
     compute_layout_geometry(split, area, stroke)
         .pane_rects
         .into_iter()
-        .map(|editor| {
+        .map(|[x, y, w, h]| {
+            let top_row = (y - area[1]).abs() < 0.5;
+            let (strip, editor) = if top_row {
+                ([x, y - tab_h, w, tab_h], [x, y, w, h])
+            } else {
+                let body = tab_h.min(h);
+                ([x, y, w, body], [x, y + body, w, h - body])
+            };
             let [x, y, w, h] = editor;
             if minimap_w <= 0.0 || w < 2.0 * minimap_w {
                 return GroupRects {
                     editor,
                     text: editor,
                     minimap: None,
+                    strip,
                 };
             }
             GroupRects {
                 editor,
                 text: [x, y, w - minimap_w, h],
                 minimap: Some([x + w - minimap_w, y, minimap_w, h]),
+                strip,
             }
         })
         .collect()
@@ -68,6 +82,7 @@ pub(crate) fn rects(app: &App) -> Vec<GroupRects> {
         editor_area(app),
         app.scale_factor,
         app.minimap_width(),
+        app.tab_bar_height(),
     )
 }
 

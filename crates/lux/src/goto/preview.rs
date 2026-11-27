@@ -195,6 +195,15 @@ fn show(app: &mut App, path: PathBuf, buffer: Buffer) {
     });
 }
 
+/// Tests: marks open tab `id` as the transient preview, as `show` does.
+#[cfg(test)]
+pub(crate) fn mark_transient(app: &mut App, id: TabId) {
+    app.documents.strip.preview.transient = Some(Transient {
+        id,
+        baseline: app.history.state_id(),
+    });
+}
+
 /// The transient tab becomes an ordinary tab.
 pub(crate) fn promote(app: &mut App) {
     if app.documents.strip.preview.transient.take().is_some() {
@@ -259,11 +268,14 @@ pub(crate) fn discard(app: &mut App) {
     };
     app.documents.strip.preview.transient = None;
     let was_active = app.documents.active_tab == Some(id);
+    // In a split, the preview's neighbor in its own group, so focus does
+    // not jump to the group of its neighbor in the global order.
+    let in_group = crate::split::tabs::focused_neighbor(app, id);
     app.documents.tabs.discard(id);
     app.documents.entries.retain(|e| e.tab_id != id);
     if was_active {
         app.documents.active_tab = None;
-        if let Some(next) = app.documents.tabs.active().map(|t| t.id) {
+        if let Some(next) = in_group.or_else(|| app.documents.tabs.active().map(|t| t.id)) {
             app.switch_to_tab(next);
         }
     }
@@ -305,12 +317,18 @@ pub(crate) fn note_touched(app: &mut App, id: TabId) {
 /// The panel closed without Enter: back to the tab, carets and scroll
 /// from before the panel opened, with the transient tab gone. Callers go
 /// through `goto::close`.
-pub(super) fn dismiss(app: &mut App, mut goto: super::GotoState) {
+pub(crate) fn dismiss(app: &mut App, mut goto: super::GotoState) {
     crate::ui_io::cancel_latest(app);
     let Some(snapshot) = goto.snapshot.take() else {
         discard(app);
         return;
     };
+    if app.ui.split.is_active()
+        && snapshot.group != app.ui.split.active_pane
+        && snapshot.group < app.ui.split.panes.len()
+    {
+        app.focus_group(snapshot.group);
+    }
     if let Some(origin) = snapshot.active_tab
         && app.documents.active_tab != Some(origin)
     {

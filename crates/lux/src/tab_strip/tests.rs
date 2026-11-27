@@ -36,12 +36,12 @@ impl FileDialogs for Dialogs {
     }
 }
 
-struct Ctx {
+pub(crate) struct Ctx {
     dialogs: Arc<Dialogs>,
     exited: Cell<bool>,
 }
 impl Ctx {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             dialogs: Arc::new(Dialogs),
             exited: Cell::new(false),
@@ -110,7 +110,7 @@ fn overflow_scroll_moves_which_tab_the_pointer_hits() {
 
 /// Opens `count` documents as their own tabs, like File > Open does, and
 /// returns their ids in strip order.
-fn open_tabs(app: &mut App, count: usize) -> Vec<TabId> {
+pub(crate) fn open_tabs(app: &mut App, count: usize) -> Vec<TabId> {
     (0..count)
         .map(|index| {
             let id = app.documents.tabs.open(format!("f{index}.txt"));

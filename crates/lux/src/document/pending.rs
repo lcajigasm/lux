@@ -96,7 +96,9 @@ impl App {
             let removed = self.documents.entries.remove(pos);
             self.documents.closed_entries.push(removed);
         }
-        if let Some(new_active) = self.documents.tabs.active() {
+        if !crate::split::tabs::after_active_closed(self, active_id)
+            && let Some(new_active) = self.documents.tabs.active()
+        {
             let new_id = new_active.id;
             self.documents.active_tab = None;
             self.switch_to_tab(new_id);

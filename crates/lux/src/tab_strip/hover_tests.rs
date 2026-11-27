@@ -27,6 +27,14 @@ fn point_at_close(app: &mut App, index: usize) {
     pointer_moved(app);
 }
 
+fn hovered(tab: lux_ui::tabs::TabId) -> Option<super::Hover> {
+    Some(super::Hover {
+        group: None,
+        tab,
+        on_close: true,
+    })
+}
+
 fn id_at(app: &App, index: usize) -> lux_ui::tabs::TabId {
     app.documents.tabs.tabs()[index].id
 }
@@ -38,11 +46,11 @@ fn a_wheel_scroll_moves_the_hover_to_the_tab_under_the_pointer() {
     follow_active(&mut app);
     app.documents.tabs.set_scroll(0.0);
     point_at_close(&mut app, 0);
-    assert_eq!(app.documents.strip.hover, Some((id_at(&app, 0), true)));
+    assert_eq!(app.documents.strip.hover, hovered(id_at(&app, 0)));
     let width = layout(&app).tab_width;
     scroll_tabs(&mut app, -width);
     follow_active(&mut app);
-    assert_eq!(app.documents.strip.hover, Some((id_at(&app, 1), true)));
+    assert_eq!(app.documents.strip.hover, hovered(id_at(&app, 1)));
 }
 
 #[test]
@@ -50,10 +58,10 @@ fn closing_the_hovered_tab_hovers_the_one_that_slides_under_the_pointer() {
     let mut app = app(4);
     point_at_close(&mut app, 1);
     let closed = id_at(&app, 1);
-    assert_eq!(app.documents.strip.hover, Some((closed, true)));
+    assert_eq!(app.documents.strip.hover, hovered(closed));
     app.documents.tabs.close(closed);
     follow_active(&mut app);
-    assert_eq!(app.documents.strip.hover, Some((id_at(&app, 1), true)));
+    assert_eq!(app.documents.strip.hover, hovered(id_at(&app, 1)));
 }
 
 #[test]
@@ -73,7 +81,7 @@ fn a_reorder_hovers_the_tab_now_at_the_pointer() {
     let first = id_at(&app, 0);
     assert!(app.reorder_tab(first, 2));
     follow_active(&mut app);
-    assert_eq!(app.documents.strip.hover, Some((id_at(&app, 0), true)));
+    assert_eq!(app.documents.strip.hover, hovered(id_at(&app, 0)));
     assert_ne!(id_at(&app, 0), first);
 }
 

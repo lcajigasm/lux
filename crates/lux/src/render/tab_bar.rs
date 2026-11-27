@@ -1,9 +1,10 @@
-//! Render pass for the top multi-document tab bar.
+//! Render pass for the tab strips: the window's tab row, and in a split
+//! one strip per group over that group's column.
 
 use crate::document::Documents;
 use crate::render::clip::{clip_glyphs, clip_rect};
 use crate::render::paint::{color, push_glyph};
-use crate::tab_strip::StripLayout;
+use crate::tab_strip::strips::StripPaint;
 use lux_render::{GlyphAtlas, GlyphInstance, QuadInstance};
 use lux_ui::tabs::Tab;
 use lux_ui::{EditorView, Theme};
@@ -18,7 +19,10 @@ const DIRTY_DOT_PT: f32 = 8.0;
 /// How one tab is drawn besides its title.
 #[derive(Clone, Copy)]
 struct Look {
+    /// The tab its strip shows.
     active: bool,
+    /// The shown tab of the focused strip: it carries the accent bar.
+    accent: bool,
     dirty: bool,
     /// Goto Anything's transient preview. The tab font has no italic face
     /// and the text pipeline cannot slant glyphs, so the title is
@@ -34,6 +38,8 @@ struct Painter<'a> {
     theme: &'a Theme,
     stroke: f32,
     scale_factor: f32,
+    /// The strip being painted: its top edge and height.
+    top: f32,
     height: f32,
     font_size: f32,
     family: String,
@@ -95,12 +101,13 @@ impl Painter<'_> {
     fn tab(&mut self, tab: &Tab, x: f32, width: f32, look: Look, close_w: f32) {
         let Look {
             active,
+            accent,
             dirty,
             transient,
             close_hovered,
         } = look;
         let stroke = self.stroke;
-        let height = self.height;
+        let (top, height) = (self.top, self.height);
         let theme = self.theme;
         let fill = if active {
             theme.background
@@ -108,17 +115,17 @@ impl Painter<'_> {
             theme.chrome.tab_inactive
         };
         self.quads.push(QuadInstance::solid(
-            [x, 0.0, width, height - stroke],
+            [x, top, width, height - stroke],
             color(fill),
         ));
-        if active {
+        if accent {
             self.quads.push(QuadInstance::solid(
-                [x, 0.0, width, 2.0 * stroke],
+                [x, top, width, 2.0 * stroke],
                 color(theme.accent),
             ));
         }
         self.quads.push(QuadInstance::solid(
-            [x + width - stroke, 0.0, stroke, height - stroke],
+            [x + width - stroke, top, stroke, height - stroke],
             color(theme.chrome.border),
         ));
         // Inactive wells are `#34352F`. Monokai muted (`#75715E`) on that
@@ -129,16 +136,16 @@ impl Painter<'_> {
         let max_title_w = (width - close_w - 14.0 * stroke).max(0.0);
         let title =
             crate::tab_strip::title::elide(&tab.title, max_title_w, &mut |text| self.measure(text));
-        self.text(&title, title_x, 0.0, height, max_title_w, foreground);
+        self.text(&title, title_x, top, height, max_title_w, foreground);
         if transient {
             let underline = self.measure(&title).min(max_title_w);
-            self.dashed_rule(title_x, height - 7.0 * stroke, underline);
+            self.dashed_rule(title_x, top + height - 7.0 * stroke, underline);
         }
         if tab.pinned {
             self.quads.push(QuadInstance::solid(
                 [
                     x + 2.0 * stroke,
-                    4.0 * stroke,
+                    top + 4.0 * stroke,
                     3.0 * stroke,
                     height - 8.0 * stroke,
                 ],
@@ -152,7 +159,12 @@ impl Painter<'_> {
             let dot = DIRTY_DOT_PT * self.scale_factor;
             let [r, g, b, a] = foreground;
             self.quads.push(QuadInstance::rounded(
-                [close_center - dot * 0.5, (height - dot) * 0.5, dot, dot],
+                [
+                    close_center - dot * 0.5,
+                    top + (height - dot) * 0.5,
+                    dot,
+                    dot,
+                ],
                 [r, g, b, a * 0.7],
                 dot * 0.5,
             ));
@@ -161,7 +173,7 @@ impl Painter<'_> {
             self.text(
                 "×",
                 close_center - mark_w * 0.5,
-                0.0,
+                top,
                 height,
                 f32::MAX,
                 foreground,
@@ -187,24 +199,24 @@ impl Painter<'_> {
     /// it does not depend on the editor font having the glyph.
     fn overflow_button(&mut self, [x, width]: [f32; 2], open: bool) {
         let stroke = self.stroke;
-        let height = self.height;
+        let (top, height) = (self.top, self.height);
         let fill = if open {
             self.theme.background
         } else {
             self.theme.chrome.tab_inactive
         };
         self.quads.push(QuadInstance::solid(
-            [x, 0.0, width, height - stroke],
+            [x, top, width, height - stroke],
             color(fill),
         ));
         self.quads.push(QuadInstance::solid(
-            [x, 0.0, stroke, height - stroke],
+            [x, top, stroke, height - stroke],
             color(self.theme.chrome.border),
         ));
         let ink = color(self.theme.foreground);
         let unit = stroke.max(1.0);
         let center = x + width * 0.5;
-        let top = (height - 4.0 * unit) * 0.5;
+        let top = top + (height - 4.0 * unit) * 0.5;
         for row in 0..4 {
             let half = (4 - row) as f32 * unit;
             self.quads.push(QuadInstance::solid(
@@ -215,13 +227,21 @@ impl Painter<'_> {
     }
 }
 
-fn look(documents: &Documents, tab: &Tab, is_current_dirty: bool) -> Look {
-    let active = Some(tab.id) == documents.active_tab;
+fn look(documents: &Documents, strip: &StripPaint, tab: &Tab, is_current_dirty: bool) -> Look {
+    let active = strip.shown == Some(tab.id);
+    let hover = documents.strip.hover;
     Look {
         active,
-        dirty: tab_dirty(documents, tab, active, is_current_dirty),
+        accent: active && strip.focused,
+        dirty: tab_dirty(
+            documents,
+            tab,
+            documents.active_tab == Some(tab.id),
+            is_current_dirty,
+        ),
         transient: crate::goto::preview::is_transient(documents, tab.id),
-        close_hovered: documents.strip.hover == Some((tab.id, true)),
+        close_hovered: hover
+            .is_some_and(|h| h.tab == tab.id && h.on_close && h.group == strip.strip.group),
     }
 }
 
@@ -239,11 +259,8 @@ fn tab_dirty(documents: &Documents, tab: &Tab, active: bool, is_current_dirty: b
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_tab_bar(
     documents: &Documents,
+    strips: &[StripPaint],
     is_current_dirty: bool,
-    strip_left: f32,
-    strip_width: f32,
-    tab_width: f32,
-    tab_bar_height: f32,
     scale_factor: f32,
     stroke: f32,
     font: FontRef<'static>,
@@ -260,7 +277,8 @@ pub(crate) fn render_tab_bar(
         theme,
         stroke,
         scale_factor,
-        height: tab_bar_height,
+        top: 0.0,
+        height: 0.0,
         font_size: TAB_FONT_PT * scale_factor,
         family,
         font,
@@ -271,54 +289,9 @@ pub(crate) fn render_tab_bar(
         quads: quad_instances,
         glyphs: glyph_instances,
     };
-    let close_w = crate::app::TAB_CLOSE_BTN_WIDTH * scale_factor;
-    let tabs = documents.tabs.tabs();
-    let strip = StripLayout::new(strip_left, strip_width, tab_width, tabs.len(), scale_factor);
-    let scroll = documents.tabs.scroll();
-    let origin = strip_left - scroll;
-    let strip_right = strip.right();
-    let drag = documents.strip.drag.filter(|d| d.moving);
-    let (quads_from, glyphs_from) = (painter.quads.len(), painter.glyphs.len());
-
-    for (i, tab) in tabs.iter().enumerate() {
-        let tab_x = origin + i as f32 * tab_width;
-        // A dragged tab's slot stays empty; the tab follows the pointer.
-        if drag.is_some_and(|d| d.id == tab.id)
-            || tab_x + tab_width <= strip_left
-            || tab_x >= strip_right
-        {
-            continue;
-        }
-        let look = look(documents, tab, is_current_dirty);
-        painter.tab(tab, tab_x, tab_width, look, close_w);
+    for strip in strips {
+        paint_strip(&mut painter, documents, strip, is_current_dirty);
     }
-
-    if let Some(drag) = drag {
-        let slot = strip.drop_slot(scroll, drag.pointer_x);
-        let marker_w = 2.0 * stroke.max(1.0);
-        let marker_x = (origin + slot as f32 * tab_width - marker_w * 0.5)
-            .clamp(strip_left, (strip_right - marker_w).max(strip_left));
-        if let Some(tab) = tabs.iter().find(|t| t.id == drag.id) {
-            let x = (drag.pointer_x - drag.grab_offset)
-                .clamp(strip_left, (strip_right - tab_width).max(strip_left));
-            let look = look(documents, tab, is_current_dirty);
-            painter.tab(tab, x, tab_width, look, close_w);
-        }
-        painter.quads.push(QuadInstance::solid(
-            [marker_x, 0.0, marker_w, tab_bar_height - stroke],
-            color(theme.accent),
-        ));
-    }
-    // A tab scrolled half out of the strip is cut at the strip's edges, so
-    // it never covers the sidebar column, the window controls, or `▼`.
-    let bounds = [strip_left, 0.0, strip.visible_width, tab_bar_height];
-    clip_quads(painter.quads, quads_from, bounds);
-    clip_glyphs(painter.glyphs, glyphs_from, bounds);
-
-    if let Some(button) = strip.button {
-        painter.overflow_button(button, documents.strip.list.is_some());
-    }
-
     if let Some(menu) = &documents.tab_context_menu {
         let [mx, my, mw, mh] = menu.rect;
         painter.quads.push(QuadInstance::solid(
@@ -348,6 +321,81 @@ pub(crate) fn render_tab_bar(
                 foreground,
             );
         }
+    }
+}
+
+fn paint_strip(painter: &mut Painter, documents: &Documents, view: &StripPaint, dirty: bool) {
+    let strip = view.strip;
+    let layout = strip.layout;
+    let stroke = painter.stroke;
+    painter.top = strip.top;
+    painter.height = strip.height;
+    if strip.top > 0.0 {
+        // A group below another: its strip sits on its own background.
+        let [x, y, w, h] = [layout.left, strip.top, strip.width, strip.height];
+        painter.quads.push(QuadInstance::solid(
+            [x, y, w, h],
+            color(painter.theme.chrome.tab_bar),
+        ));
+        painter.quads.push(QuadInstance::solid(
+            [x, y + h - stroke, w, stroke],
+            color(painter.theme.chrome.border),
+        ));
+    }
+    let close_w = crate::app::TAB_CLOSE_BTN_WIDTH * painter.scale_factor;
+    let tab_width = layout.tab_width;
+    let origin = layout.left - view.scroll;
+    let strip_right = layout.right();
+    let drag = documents.strip.drag.filter(|d| d.moving);
+    let (quads_from, glyphs_from) = (painter.quads.len(), painter.glyphs.len());
+    let tab = |id| documents.tabs.get(id);
+    // Only the tabs the strip's window shows: the rest cost nothing.
+    let width = tab_width.max(1.0);
+    let first = (view.scroll / width).floor().max(0.0) as usize;
+    let last = (((view.scroll + layout.visible_width) / width).ceil() as usize).min(view.ids.len());
+
+    for (i, id) in view.ids.iter().enumerate().take(last).skip(first) {
+        let tab_x = origin + i as f32 * tab_width;
+        // A dragged tab's slot stays empty; the tab follows the pointer.
+        let lifted = drag.is_some_and(|d| d.id == *id && d.group == strip.group);
+        if lifted || tab_x + tab_width <= layout.left || tab_x >= strip_right {
+            continue;
+        }
+        if let Some(tab) = tab(*id) {
+            let look = look(documents, view, tab, dirty);
+            painter.tab(tab, tab_x, tab_width, look, close_w);
+        }
+    }
+
+    if let (Some(drag), Some(slot)) = (drag, view.drop_slot) {
+        let marker_w = 2.0 * stroke.max(1.0);
+        let marker_x = (origin + slot as f32 * tab_width - marker_w * 0.5)
+            .clamp(layout.left, (strip_right - marker_w).max(layout.left));
+        if let Some(tab) = tab(drag.id) {
+            let x = (drag.pointer_x - drag.grab_offset)
+                .clamp(layout.left, (strip_right - tab_width).max(layout.left));
+            let look = look(documents, view, tab, dirty);
+            painter.tab(tab, x, tab_width, look, close_w);
+        }
+        painter.quads.push(QuadInstance::solid(
+            [marker_x, strip.top, marker_w, strip.height - stroke],
+            color(painter.theme.accent),
+        ));
+    }
+    // A tab scrolled half out of the strip is cut at the strip's edges, so
+    // it never covers the sidebar column, the window controls, a
+    // neighboring group, or `▼`.
+    let bounds = [layout.left, strip.top, layout.visible_width, strip.height];
+    clip_quads(painter.quads, quads_from, bounds);
+    clip_glyphs(painter.glyphs, glyphs_from, bounds);
+
+    if let Some(button) = layout.button {
+        let open = documents
+            .strip
+            .list
+            .as_ref()
+            .is_some_and(|list| list.group == strip.group);
+        painter.overflow_button(button, open);
     }
 }
 

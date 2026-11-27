@@ -130,8 +130,8 @@ pub(crate) fn decide(app: &mut App) -> CursorShape {
     if let Some(shape) = overlay(app, x, y) {
         return shape;
     }
-    if y < app.tab_bar_height() {
-        return if crate::tab_strip::tab_at(app, x).is_some() {
+    if let Some((_, hit)) = crate::tab_strip::hit(app, x, y) {
+        return if matches!(hit, crate::tab_strip::RowHit::Tab(..)) {
             CursorShape::Hand
         } else {
             CursorShape::Arrow

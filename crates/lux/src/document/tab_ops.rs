@@ -104,18 +104,19 @@ impl TabContextMenu {
 
 impl App {
     /// Switches to the tab at display index (0-indexed).
+    /// In a split, the focused group's tabs.
     pub(crate) fn switch_to_tab_index(&mut self, index: usize) -> bool {
-        let tabs = self.documents.tabs.tabs();
+        let tabs = crate::split::tabs::focused_order(self);
         if tabs.is_empty() {
             return false;
         }
         let target_idx = index.min(tabs.len() - 1);
-        self.switch_to_tab(tabs[target_idx].id)
+        self.switch_to_tab(tabs[target_idx])
     }
 
     /// Switches to the very last tab in the tab bar.
     pub(crate) fn switch_to_last_tab(&mut self) -> bool {
-        let count = self.documents.tabs.tabs().len();
+        let count = crate::split::tabs::focused_order(self).len();
         if count == 0 {
             return false;
         }
@@ -124,13 +125,13 @@ impl App {
 
     /// Cycles tab activation forward or backward.
     pub(crate) fn cycle_tab(&mut self, forward: bool) -> bool {
-        let tabs = self.documents.tabs.tabs();
+        let tabs = crate::split::tabs::focused_order(self);
         if tabs.len() <= 1 {
             return false;
         }
         let Some(pos) = tabs
             .iter()
-            .position(|t| Some(t.id) == self.documents.active_tab)
+            .position(|t| Some(*t) == self.documents.active_tab)
         else {
             return false;
         };
@@ -139,7 +140,7 @@ impl App {
         } else {
             (pos + tabs.len() - 1) % tabs.len()
         };
-        self.switch_to_tab(tabs[next].id)
+        self.switch_to_tab(tabs[next])
     }
 
     pub(crate) fn switch_to_next_tab(&mut self) -> bool {
@@ -374,6 +375,7 @@ impl App {
             crate::app::view_bind::forget(self, removed.buffer_id, removed.path.as_deref());
             self.documents.closed_entries.push(removed);
         }
+        crate::split::tabs::forget(self, target_id);
         self.scheduler.invalidate_all();
         if let Some(gpu) = &self.gpu_window {
             gpu.window.request_redraw();
@@ -412,21 +414,7 @@ impl App {
                 crate::app::view_bind::forget(self, removed.buffer_id, removed.path.as_deref());
                 self.documents.closed_entries.push(removed);
             }
-            if self.ui.split.is_active() {
-                let fallback = self
-                    .documents
-                    .active_tab
-                    .or_else(|| self.documents.tabs.tabs().first().map(|t| t.id));
-                if let Some(fb) = fallback {
-                    for pane in &mut self.ui.split.panes {
-                        if pane.tab_id == target_id {
-                            pane.tab_id = fb;
-                            pane.active_tab = fb;
-                        }
-                    }
-                    self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
-                }
-            }
+            crate::split::tabs::forget(self, target_id);
             self.scheduler.invalidate_all();
             if let Some(gpu) = &self.gpu_window {
                 gpu.window.request_redraw();

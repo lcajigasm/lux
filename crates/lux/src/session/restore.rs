@@ -191,15 +191,24 @@ fn restore_layout(
         };
         let cursors = multi_cursor(&entry.buffer, &saved.cursors);
         let tokens = super::pane_tokens(entry);
+        let listed: Vec<TabId> = saved
+            .tabs
+            .iter()
+            .filter_map(|index| tab_ids.get(*index).copied().flatten())
+            .collect();
         let pane = &mut app.ui.split.panes[idx];
         pane.tab_id = tab_id;
         pane.active_tab = tab_id;
+        pane.tabs = listed;
         if let Some(cursors) = cursors {
             pane.cursors = cursors;
         }
         pane.viewport.scroll_y = saved.scroll_line as f32 * line_height;
         pane.tokens.replace(tokens);
     }
+    // Older sessions list no group tabs: every tab joins the first group,
+    // and each other group keeps the tab it shows.
+    crate::split::tabs::restored(app);
     let active = layout.active_pane.min(count.saturating_sub(1));
     if let Some(pane) = app.ui.split.panes.get(active).cloned() {
         // Load the pane straight into the editor. `focus_group` would first

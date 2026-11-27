@@ -2,15 +2,24 @@
 //! geometry, keeping the active tab in view, the drag gesture with its
 //! insertion marker, and the `▼` list of open tabs (ST-TAB-01, ST-TAB-02).
 
+mod drag;
 pub(crate) mod list;
+pub(crate) mod strips;
 pub(crate) mod title;
 
+#[cfg(test)]
+pub(crate) use drag::drop_slot;
+pub(crate) use drag::{drag_tab, drop_target, press_tab, release_drag};
+pub(crate) use strips::Strip;
+
+#[cfg(test)]
+mod group_tests;
 #[cfg(test)]
 mod hover_tests;
 #[cfg(test)]
 mod inset_tests;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use lux_platform::event::KeyEvent;
 use lux_platform::{Key, NamedKey};
@@ -20,8 +29,6 @@ use crate::app::{App, TAB_CLOSE_BTN_WIDTH};
 
 /// Width of the `▼` button at the right end of an overflowing strip.
 pub(crate) const OVERFLOW_BUTTON_WIDTH: f32 = 28.0;
-/// Pointer travel before a press on a tab becomes a drag.
-const DRAG_THRESHOLD: f32 = 6.0;
 
 /// Strip state that lives beside the tab order itself.
 #[derive(Default)]
@@ -37,17 +44,29 @@ pub(crate) struct StripState {
     /// Physical pixels the window controls take at the row's leading end
     /// (macOS traffic lights; zero in fullscreen and on other platforms).
     pub(crate) controls_inset: f32,
-    /// The tab under the pointer, and whether the pointer is on its close
-    /// mark. Set on pointer moves, and re-derived from the last pointer
-    /// position before each frame, so a wheel scroll, a close, or a
-    /// reorder never leaves it naming a tab that moved away. Never timed.
-    pub(crate) hover: Option<(TabId, bool)>,
+    /// The tab under the pointer. Set on pointer moves, and re-derived
+    /// from the last pointer position before each frame, so a wheel
+    /// scroll, a close, or a reorder never leaves it naming a tab that
+    /// moved away. Never timed.
+    pub(crate) hover: Option<Hover>,
+}
+
+/// The tab under the pointer: in which strip, and whether the pointer is
+/// on its close mark.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Hover {
+    pub(crate) group: Option<usize>,
+    pub(crate) tab: TabId,
+    pub(crate) on_close: bool,
 }
 
 /// A press on a tab, and the drag it becomes once the pointer moves.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct TabDrag {
     pub(crate) id: TabId,
+    /// The strip the tab was pressed in.
+    pub(crate) group: Option<usize>,
+    pub(crate) pointer_y: f32,
     pub(crate) press_x: f32,
     pub(crate) pointer_x: f32,
     /// Pointer x minus the tab's left edge at the press.
@@ -113,7 +132,8 @@ impl StripLayout {
     }
 }
 
-/// `(left, width)` of the strip, after the sidebar and window controls.
+/// `(left, width)` of the single strip, after the sidebar and window
+/// controls.
 pub(crate) fn span(app: &App) -> (f32, f32) {
     crate::title_bar::strip_span(
         app.sidebar_width(),
@@ -122,7 +142,11 @@ pub(crate) fn span(app: &App) -> (f32, f32) {
     )
 }
 
+/// The focused strip's layout (the only strip without a split).
 pub(crate) fn layout(app: &App) -> StripLayout {
+    if let Some(strip) = strips::focused(app) {
+        return strip.layout;
+    }
     let (left, width) = span(app);
     StripLayout::new(
         left,
@@ -133,36 +157,56 @@ pub(crate) fn layout(app: &App) -> StripLayout {
     )
 }
 
-/// What a press at `mouse_x` in the tab row lands on.
+/// What a press in a tab row lands on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RowHit {
     Overflow,
-    /// Tab index, and whether the press is on its close mark.
+    /// Tab index in its strip, and whether the press is on its close mark.
     Tab(usize, bool),
     /// No tab and no button: title-bar space.
     Empty,
 }
 
-pub(crate) fn row_hit(app: &App, mouse_x: f32) -> RowHit {
-    if layout(app).on_button(mouse_x) {
-        RowHit::Overflow
-    } else if let Some((index, on_close)) = tab_at(app, mouse_x) {
-        RowHit::Tab(index, on_close)
-    } else {
-        RowHit::Empty
+/// What `(x, y)` lands on, if it is in a tab row at all: the strip (none
+/// for the window's title row outside every strip) and the hit.
+pub(crate) fn hit(app: &App, x: f32, y: f32) -> Option<(Option<Strip>, RowHit)> {
+    if let Some(strip) = strips::at(app, x, y) {
+        let hit = if strip.layout.on_button(x) {
+            RowHit::Overflow
+        } else if let Some((index, on_close)) = tab_in(app, &strip, x) {
+            RowHit::Tab(index, on_close)
+        } else {
+            RowHit::Empty
+        };
+        return Some((Some(strip), hit));
     }
+    (y >= 0.0 && y < app.tab_bar_height()).then_some((None, RowHit::Empty))
 }
 
-/// The tab under `mouse_x`, and whether the pointer is on its close mark.
+/// The hit at `mouse_x` in the window's tab row.
+#[cfg(test)]
+pub(crate) fn row_hit(app: &App, mouse_x: f32) -> RowHit {
+    hit(app, mouse_x, 1.0).map_or(RowHit::Empty, |(_, hit)| hit)
+}
+
+/// The tab under `mouse_x` in the window's tab row, and whether the
+/// pointer is on its close mark.
+#[cfg(test)]
 pub(crate) fn tab_at(app: &App, mouse_x: f32) -> Option<(usize, bool)> {
-    let strip = layout(app);
-    if strip.count == 0 || mouse_x < strip.left || mouse_x >= strip.right() {
+    let strip = strips::at(app, mouse_x, 1.0)?;
+    tab_in(app, &strip, mouse_x)
+}
+
+/// The tab of `strip` under `mouse_x`, and whether it is on the close mark.
+pub(crate) fn tab_in(app: &App, strip: &Strip, mouse_x: f32) -> Option<(usize, bool)> {
+    let layout = strip.layout;
+    if layout.count == 0 || mouse_x < layout.left || mouse_x >= layout.right() {
         return None;
     }
-    let width = strip.tab_width.max(1.0);
-    let local = mouse_x - strip.left + app.documents.tabs.scroll();
+    let width = layout.tab_width.max(1.0);
+    let local = mouse_x - layout.left + strips::scroll(app, strip.group);
     let index = (local / width) as usize;
-    if index >= strip.count {
+    if index >= layout.count {
         return None;
     }
     let close_w = TAB_CLOSE_BTN_WIDTH * app.scale_factor;
@@ -170,47 +214,59 @@ pub(crate) fn tab_at(app: &App, mouse_x: f32) -> Option<(usize, bool)> {
     Some((index, on_close))
 }
 
+/// The tab id at `index` in `strip`.
+pub(crate) fn tab_id(app: &App, strip: &Strip, index: usize) -> Option<TabId> {
+    strips::tab_at_index(app, strip.group, index)
+}
+
+/// The wheel over a strip scrolls that strip.
 pub(crate) fn scroll_tabs(app: &mut App, delta_x: f32) {
-    let max_scroll = layout(app).max_scroll();
-    let next = (app.documents.tabs.scroll() - delta_x).clamp(0.0, max_scroll);
-    app.documents.tabs.set_scroll(next);
+    let (x, y) = (app.mouse.position.x as f32, app.mouse.position.y as f32);
+    let Some(strip) = strips::at(app, x, y).or_else(|| strips::focused(app)) else {
+        return;
+    };
+    let max_scroll = strip.layout.max_scroll();
+    let next = (strips::scroll(app, strip.group) - delta_x).clamp(0.0, max_scroll);
+    strips::set_scroll(app, strip.group, next);
     app.scheduler.invalidate_all();
 }
 
-/// Scrolls the strip the least distance that shows all of tab `id`.
-pub(crate) fn reveal(app: &mut App, id: TabId) {
-    let strip = layout(app);
-    let Some(index) = app.documents.tabs.tabs().iter().position(|t| t.id == id) else {
+/// Scrolls `strip` the least distance that shows all of tab `id`.
+fn reveal_in(app: &mut App, strip: &Strip, id: TabId) {
+    let Some(index) = strips::position(app, strip.group, id) else {
         return;
     };
-    let left = index as f32 * strip.tab_width;
-    let right = left + strip.tab_width;
-    let mut scroll = app.documents.tabs.scroll();
+    let layout = strip.layout;
+    let left = index as f32 * layout.tab_width;
+    let right = left + layout.tab_width;
+    let mut scroll = strips::scroll(app, strip.group);
     if left < scroll {
         scroll = left;
-    } else if right > scroll + strip.visible_width {
-        scroll = right - strip.visible_width;
+    } else if right > scroll + layout.visible_width {
+        scroll = right - layout.visible_width;
     }
-    app.documents
-        .tabs
-        .set_scroll(scroll.clamp(0.0, strip.max_scroll()));
+    strips::set_scroll(app, strip.group, scroll.clamp(0.0, layout.max_scroll()));
 }
 
-/// Run before each frame is painted. Every path that activates a tab
-/// (shortcuts, Goto Anything, opening a file, closing a neighbor, the
-/// `▼` list) ends here, so none of them has to remember to scroll. Also
-/// clamps a scroll left past the end by closed tabs or a wider window.
+/// Run before each frame is painted. Every path that changes the tab a
+/// strip shows (shortcuts, Goto Anything, opening a file, closing a
+/// neighbor, the `▼` list, a click in another group) ends here, so none
+/// of them has to remember to scroll. Also clamps a scroll left past the
+/// end by closed tabs or a wider window.
 pub(crate) fn follow_active(app: &mut App) {
-    let active = app.documents.active_tab;
-    if active != app.documents.strip.revealed {
-        if let Some(id) = active {
-            reveal(app, id);
+    crate::split::tabs::reconcile(app);
+    for strip in strips::all(app) {
+        let shown = strips::shown(app, strip.group);
+        if shown != strips::revealed(app, strip.group) {
+            if let Some(id) = shown {
+                reveal_in(app, &strip, id);
+            }
+            strips::set_revealed(app, strip.group, shown);
         }
-        app.documents.strip.revealed = active;
-    }
-    let max_scroll = layout(app).max_scroll();
-    if app.documents.tabs.scroll() > max_scroll {
-        app.documents.tabs.set_scroll(max_scroll);
+        let max_scroll = strip.layout.max_scroll();
+        if strips::scroll(app, strip.group) > max_scroll {
+            strips::set_scroll(app, strip.group, max_scroll);
+        }
     }
     // The frame is about to be painted, so no invalidation is needed.
     app.documents.strip.hover = if app.mouse.placed {
@@ -220,40 +276,29 @@ pub(crate) fn follow_active(app: &mut App) {
     };
 }
 
-/// Left press on a tab body: remember it as a possible drag.
-pub(crate) fn press_tab(app: &mut App, id: TabId, index: usize, mouse_x: f32) {
-    let strip = layout(app);
-    let tab_left = strip.left + index as f32 * strip.tab_width - app.documents.tabs.scroll();
-    app.documents.strip.drag = Some(TabDrag {
-        id,
-        press_x: mouse_x,
-        pointer_x: mouse_x,
-        grab_offset: mouse_x - tab_left,
-        moving: false,
-    });
-}
-
 /// A pointer move: updates the hovered tab and any tab drag. Returns
-/// whether the strip needs a redraw.
+/// whether a strip needs a redraw.
 pub(crate) fn pointer_moved(app: &mut App) -> bool {
     let hover_changed = update_hover(app);
     drag_tab(app) || hover_changed
 }
 
-/// Which tab the pointer is over, and whether it is on the close mark.
 fn update_hover(app: &mut App) -> bool {
     let hover = hover_at_pointer(app);
     set_hover(app, hover)
 }
 
-/// The tab under the last pointer position in the current strip, or
-/// `None` while the pointer is outside the tab row.
-fn hover_at_pointer(app: &App) -> Option<(TabId, bool)> {
+/// The tab under the last pointer position in the strips as they are
+/// now, or `None` while the pointer is on no tab.
+fn hover_at_pointer(app: &App) -> Option<Hover> {
     let (x, y) = (app.mouse.position.x as f32, app.mouse.position.y as f32);
-    if y < 0.0 || y >= app.tab_bar_height() {
-        return None;
-    }
-    tab_at(app, x).map(|(index, on_close)| (app.documents.tabs.tabs()[index].id, on_close))
+    let strip = strips::at(app, x, y)?;
+    let (index, on_close) = tab_in(app, &strip, x)?;
+    Some(Hover {
+        group: strip.group,
+        tab: tab_id(app, &strip, index)?,
+        on_close,
+    })
 }
 
 /// The pointer left the window: nothing is hovered.
@@ -261,61 +306,13 @@ pub(crate) fn clear_hover(app: &mut App) -> bool {
     set_hover(app, None)
 }
 
-fn set_hover(app: &mut App, hover: Option<(TabId, bool)>) -> bool {
+fn set_hover(app: &mut App, hover: Option<Hover>) -> bool {
     if app.documents.strip.hover == hover {
         return false;
     }
     app.documents.strip.hover = hover;
     app.scheduler.invalidate_all();
     true
-}
-
-/// Pointer moved with a tab pressed. The order does not change until
-/// release; the strip only redraws the floating tab and the marker.
-pub(crate) fn drag_tab(app: &mut App) -> bool {
-    let mouse_x = app.mouse.position.x as f32;
-    let Some(drag) = app.documents.strip.drag.as_mut() else {
-        return false;
-    };
-    if !drag.moving && (mouse_x - drag.press_x).abs() < DRAG_THRESHOLD {
-        return false;
-    }
-    drag.moving = true;
-    drag.pointer_x = mouse_x;
-    app.scheduler.invalidate_all();
-    true
-}
-
-/// Insertion gap of the current drag, if the pointer has moved.
-pub(crate) fn drop_slot(app: &App) -> Option<usize> {
-    let drag = app.documents.strip.drag.filter(|d| d.moving)?;
-    Some(layout(app).drop_slot(app.documents.tabs.scroll(), drag.pointer_x))
-}
-
-/// Button released: a moving drag commits at its marker.
-pub(crate) fn release_drag(app: &mut App) {
-    let slot = drop_slot(app);
-    let Some(drag) = app.documents.strip.drag.take() else {
-        return;
-    };
-    let Some(slot) = slot else {
-        return;
-    };
-    let Some(from) = app
-        .documents
-        .tabs
-        .tabs()
-        .iter()
-        .position(|t| t.id == drag.id)
-    else {
-        return;
-    };
-    let to = if slot > from { slot - 1 } else { slot };
-    if to != from {
-        app.reorder_tab(drag.id, to);
-    } else {
-        app.scheduler.invalidate_all();
-    }
 }
 
 /// Escape cancels a moving drag; the open `▼` list owns the keyboard.
