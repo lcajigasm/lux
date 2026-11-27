@@ -73,6 +73,11 @@ pub(crate) fn sync(app: &mut App) {
 
 pub(crate) fn leave(app: &mut App) {
     app.mouse.placed = false;
+    if crate::tab_strip::clear_hover(app)
+        && let Some(gpu) = &app.gpu_window
+    {
+        gpu.window.request_redraw();
+    }
     // The button may come up outside the window, where no release arrives.
     crate::minimap::drag::release(app);
     if let Some(sidebar) = &mut app.ui.sidebar {

@@ -102,3 +102,36 @@ fn a_drop_before_the_first_tab_lands_after_the_inset() {
     drag.pointer_x = inset + width * 1.1;
     assert_eq!(drop_slot(&app), Some(1));
 }
+
+#[test]
+fn activation_reveals_the_tab_between_the_sidebar_and_the_button() {
+    for scale in [1.0, 2.0] {
+        for with_sidebar in [false, true] {
+            let mut app = app(scale, 30);
+            let dir = tempfile::tempdir().expect("tempdir");
+            if with_sidebar {
+                app.ui.sidebar =
+                    crate::sidebar::SidebarState::open_folder(dir.path().to_path_buf());
+                app.viewport.width -= app.sidebar_width();
+            }
+            controls(&mut app, scale, false);
+            for index in [29, 0, 17] {
+                let id = app.documents.tabs.tabs()[index].id;
+                app.documents.active_tab = Some(id);
+                super::follow_active(&mut app);
+                let strip = layout(&app);
+                assert_eq!(
+                    strip.left,
+                    app.sidebar_width().max(app.documents.strip.controls_inset)
+                );
+                let x = strip.left + index as f32 * strip.tab_width - app.documents.tabs.scroll();
+                assert!(x >= strip.left - 0.01, "{index}: tab starts at {x}");
+                assert!(
+                    x + strip.tab_width <= strip.right() + 0.01,
+                    "{index}: tab ends past the strip"
+                );
+                assert_eq!(row_hit(&app, x + 2.0), RowHit::Tab(index, false));
+            }
+        }
+    }
+}

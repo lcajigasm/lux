@@ -70,6 +70,8 @@ impl App {
         let editor_top = tab_bar_height;
 
         let minimap_document = self.minimap_document();
+        let minimap_w = self.minimap_width();
+        let sidebar_width = layout.editor[0];
         let App {
             gpu_window,
             editor_view,
@@ -104,7 +106,6 @@ impl App {
         let elapsed = Instant::now().duration_since(*start);
         let frame = editor_view.build_frame(buffer, cursors, viewport, elapsed, Some(fold_state));
         let is_df = ui.distraction_free.is_some();
-        let sidebar_width = layout.editor[0];
         let window_width = extent.width;
         let window_height = extent.height;
         let gutter_total_width = if is_df {
@@ -149,14 +150,10 @@ impl App {
                 area: [
                     sidebar_width,
                     editor_top,
-                    viewport.width + ui.minimap.effective_width(*scale_factor),
+                    viewport.width + minimap_w,
                     viewport.height,
                 ],
-                minimap_w: if is_df {
-                    0.0
-                } else {
-                    ui.minimap.effective_width(*scale_factor)
-                },
+                minimap_w,
                 scale_factor: *scale_factor,
                 stroke,
                 font_size,
@@ -239,7 +236,6 @@ impl App {
                 tab_bar_height,
                 *scale_factor,
                 stroke,
-                font_size,
                 font,
                 editor_view,
                 &mut atlas_state.atlas,
@@ -331,17 +327,13 @@ impl App {
         }
 
         if !is_df && !ui.split.is_active() {
-            let place = minimap::Placement {
-                rect: minimap::window_rect(
-                    ui.minimap.effective_width(*scale_factor),
-                    window_width,
-                    tab_bar_height,
-                    editor_top + viewport.height,
-                ),
-                group: 0,
-                scale_factor: *scale_factor,
+            let place = minimap::Placement::single(
+                minimap_w,
+                window_width,
+                (tab_bar_height, editor_top + viewport.height),
+                *scale_factor,
                 line_height,
-            };
+            );
             minimap::paint_focused(
                 ui,
                 minimap_document,

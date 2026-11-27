@@ -3,6 +3,7 @@
 //! insertion marker, and the `▼` list of open tabs (ST-TAB-01, ST-TAB-02).
 
 pub(crate) mod list;
+pub(crate) mod title;
 
 #[cfg(test)]
 mod inset_tests;
@@ -34,6 +35,9 @@ pub(crate) struct StripState {
     /// Physical pixels the window controls take at the row's leading end
     /// (macOS traffic lights; zero in fullscreen and on other platforms).
     pub(crate) controls_inset: f32,
+    /// The tab under the pointer, and whether the pointer is on its close
+    /// mark. Updated on pointer moves only, never by a timer.
+    pub(crate) hover: Option<(TabId, bool)>,
 }
 
 /// A press on a tab, and the drag it becomes once the pointer moves.
@@ -217,6 +221,38 @@ pub(crate) fn press_tab(app: &mut App, id: TabId, index: usize, mouse_x: f32) {
         grab_offset: mouse_x - tab_left,
         moving: false,
     });
+}
+
+/// A pointer move: updates the hovered tab and any tab drag. Returns
+/// whether the strip needs a redraw.
+pub(crate) fn pointer_moved(app: &mut App) -> bool {
+    let hover_changed = update_hover(app);
+    drag_tab(app) || hover_changed
+}
+
+/// Which tab the pointer is over, and whether it is on the close mark.
+fn update_hover(app: &mut App) -> bool {
+    let (x, y) = (app.mouse.position.x as f32, app.mouse.position.y as f32);
+    let hover = if y >= 0.0 && y < app.tab_bar_height() {
+        tab_at(app, x).map(|(index, on_close)| (app.documents.tabs.tabs()[index].id, on_close))
+    } else {
+        None
+    };
+    set_hover(app, hover)
+}
+
+/// The pointer left the window: nothing is hovered.
+pub(crate) fn clear_hover(app: &mut App) -> bool {
+    set_hover(app, None)
+}
+
+fn set_hover(app: &mut App, hover: Option<(TabId, bool)>) -> bool {
+    if app.documents.strip.hover == hover {
+        return false;
+    }
+    app.documents.strip.hover = hover;
+    app.scheduler.invalidate_all();
+    true
 }
 
 /// Pointer moved with a tab pressed. The order does not change until

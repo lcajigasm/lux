@@ -63,16 +63,24 @@ impl Strip {
 /// Bookmark marks take the gutter's bookmark cyan.
 const BOOKMARK: [f32; 4] = [0.25, 0.70, 0.95, 0.95];
 
-/// The single layout's minimap: the editor column's right edge, from the
-/// tab row to the editor's bottom, above the find bar and the dock.
-pub(crate) fn window_rect(
-    minimap_w: f32,
-    window_width: f32,
-    tab_bar_height: f32,
-    editor_bottom: f32,
-) -> [f32; 4] {
-    let h = (editor_bottom - tab_bar_height).max(0.0);
-    [window_width - minimap_w, tab_bar_height, minimap_w, h]
+impl Placement {
+    /// The single layout's minimap: the editor column's right edge, from
+    /// the tab row to the editor's bottom, above the find bar and the dock.
+    pub(crate) fn single(
+        minimap_w: f32,
+        window_w: f32,
+        (tab_bar_height, editor_bottom): (f32, f32),
+        scale_factor: f32,
+        line_height: f32,
+    ) -> Self {
+        let h = (editor_bottom - tab_bar_height).max(0.0);
+        Self {
+            rect: [window_w - minimap_w, tab_bar_height, minimap_w, h],
+            group: 0,
+            scale_factor,
+            line_height,
+        }
+    }
 }
 
 pub(crate) fn render_minimap(
