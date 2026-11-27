@@ -93,19 +93,7 @@ pub(super) fn click_goto_anything(
     let geom = geom_goto(m, goto);
 
     if !geom.contains(mx, my) {
-        if let Some(mut g) = app.ui.goto_anything.take()
-            && let Some(snap) = g.snapshot.take()
-        {
-            if let Some(orig_tab) = snap.active_tab
-                && app.documents.active_tab != Some(orig_tab)
-            {
-                app.switch_to_tab(orig_tab);
-            }
-            app.cursors = snap.cursors;
-            app.viewport.scroll_x = snap.scroll_x;
-            app.viewport.scroll_y = snap.scroll_y;
-            app.reset_goal_columns();
-        }
+        crate::goto::close(app);
         crate::focus::focus_editor(app);
         app.scheduler.invalidate_all();
         return true;

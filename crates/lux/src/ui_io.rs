@@ -13,6 +13,8 @@ use lux_platform::PlatformContext;
 
 use crate::app::App;
 
+mod latest;
+
 type Wake = Arc<dyn Fn() + Send + Sync>;
 type Task = Box<dyn FnOnce() + Send>;
 
@@ -57,6 +59,8 @@ pub(crate) enum Done {
     Fonts(Vec<crate::font::CoverageFace>),
     /// First document with an unsaved recovery snapshot, if any.
     Recovery(Option<PathBuf>),
+    /// A Goto Anything preview read finished.
+    Preview(Box<crate::goto::preview::Loaded>),
 }
 
 /// Blocks workers while a test holds it, so a test can observe the UI
@@ -87,6 +91,8 @@ pub(crate) struct Jobs {
     wake: Option<Wake>,
     /// Settings writes are read-modify-write; one thread keeps them in order.
     serial: Option<Sender<Task>>,
+    /// Goto Anything previews: only the newest request is read.
+    latest: latest::Latest,
     in_flight: usize,
     gate: Arc<Gate>,
 }
@@ -99,6 +105,7 @@ impl Default for Jobs {
             receiver,
             wake: None,
             serial: None,
+            latest: latest::Latest::default(),
             in_flight: 0,
             gate: Arc::new(Gate::default()),
         }
@@ -218,6 +225,34 @@ pub(crate) fn spawn_serial(
     }
 }
 
+/// Runs `work` on the one latest-wins worker. A job still waiting there
+/// when the next one arrives is dropped without running, so a burst of
+/// requests costs one thread and one run, not one of each per request.
+pub(crate) fn spawn_latest(
+    app: &mut App,
+    ctx: Option<&dyn PlatformContext>,
+    work: impl FnOnce() -> Option<Done> + Send + 'static,
+) {
+    note_wake(app, ctx);
+    let jobs = &mut app.ui.dialogs.jobs;
+    let task = jobs.task(work);
+    match jobs.latest.post(task, &jobs.gate) {
+        Ok(true) => jobs.in_flight += 1,
+        Ok(false) => {}
+        Err(error) => {
+            app.documents.message = Some(format!("Cannot start file operation: {error}"));
+        }
+    }
+}
+
+/// Drops the latest-wins job that has not started yet, if any.
+pub(crate) fn cancel_latest(app: &mut App) {
+    let jobs = &mut app.ui.dialogs.jobs;
+    if jobs.latest.clear() {
+        jobs.in_flight = jobs.in_flight.saturating_sub(1);
+    }
+}
+
 /// Applies every finished job. Called when a worker wakes the event loop.
 pub(crate) fn poll(app: &mut App, ctx: &dyn PlatformContext) {
     let mut applied = false;
@@ -268,6 +303,7 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
         Done::UiFont => crate::font::install_ui_font(app.editor_view.text_layout_mut()),
         Done::EditorFont(requested, loaded) => app.install_editor_font(requested, loaded),
         Done::Recovery(first) => crate::app::startup::note_recovery(app, first),
+        Done::Preview(loaded) => crate::goto::preview::apply(app, *loaded),
     }
 }
 

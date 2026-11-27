@@ -72,6 +72,8 @@ impl App {
 
     /// Keeps remembered selections on the same text after `edits`.
     pub(crate) fn note_edit_for_soft_undo(&mut self, edits: &[Edit]) {
+        // An edit makes a previewed file an ordinary tab (ST-NAV-01).
+        crate::goto::preview::settle(self);
         self.follow_active_tab();
         let current = self.selection_snapshot();
         let version = self.history.state_id();

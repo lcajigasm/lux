@@ -76,7 +76,7 @@ pub(crate) fn escape_to_editor(app: &mut App) -> bool {
     if app.ui.command_palette.take().is_some() {
         changed = true;
     }
-    if app.ui.goto_anything.take().is_some() {
+    if crate::goto::close(app) {
         changed = true;
     }
     if app.ui.search_bar.take().is_some() {

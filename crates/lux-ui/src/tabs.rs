@@ -99,6 +99,17 @@ impl TabBar {
         true
     }
 
+    /// Closes `id` like [`Self::close`] but leaves no trace on the reopen
+    /// stack: for a tab that only ever showed a transient preview.
+    /// `false` if `id` isn't open.
+    pub fn discard(&mut self, id: TabId) -> bool {
+        if !self.close(id) {
+            return false;
+        }
+        self.closed_stack.pop();
+        true
+    }
+
     /// Reopens the most recently closed tab (LIFO — closing A then B and
     /// reopening twice gives B back first, then A), appended at the end of
     /// the strip and activated. `None` if nothing has been closed.
@@ -180,6 +191,18 @@ impl TabBar {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discard_closes_without_feeding_reopen() {
+        let mut bar = TabBar::new();
+        let a = bar.open("a");
+        let b = bar.open("b");
+        bar.close(a);
+        assert!(bar.discard(b));
+        assert!(bar.tabs().is_empty());
+        assert_eq!(bar.reopen_last_closed(), Some(a));
+        assert!(!bar.discard(b));
+    }
 
     fn titles(bar: &TabBar) -> Vec<&str> {
         bar.tabs().iter().map(|t| t.title.as_str()).collect()

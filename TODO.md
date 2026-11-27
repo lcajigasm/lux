@@ -319,7 +319,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
 
 ### ST-NAV-01 — Previsualización Transitoria Real en Goto Anything (`Cmd+P`)
 - Prioridad: `P0 (Core Sublime)`
-- Estado: `OPEN`
+- Estado: `DONE`
 - Dependencias: ST-FIX-01
 - Problema actual:
   - Al desplazarse por los resultados de `Cmd+P`, la vista previa muta destructivamente el documento activo o abre pestañas permanentes en el strip superior.

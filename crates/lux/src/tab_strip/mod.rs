@@ -27,6 +27,8 @@ pub(crate) struct StripState {
     /// active tab is revealed on the next frame; the same one is left
     /// wherever the wheel put it.
     revealed: Option<TabId>,
+    /// Goto Anything's transient preview tab (ST-NAV-01).
+    pub(crate) preview: crate::goto::preview::PreviewTab,
 }
 
 /// A press on a tab, and the drag it becomes once the pointer moves.

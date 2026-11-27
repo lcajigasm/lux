@@ -81,6 +81,10 @@ pub(super) fn accept(app: &mut crate::app::App, request: super::Request) -> Opti
         open_untitled(app);
         return None;
     }
+    if matches!(request, super::Request::Save { .. }) {
+        // Saving a previewed file keeps it (ST-NAV-01).
+        crate::goto::preview::promote_active(app);
+    }
     Some(request)
 }
 

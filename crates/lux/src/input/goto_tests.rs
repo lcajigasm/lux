@@ -277,3 +277,4 @@ fn goto_symbol_in_project_opens_modal_immediately() {
 }
 
 mod project_symbols;
+mod transient;

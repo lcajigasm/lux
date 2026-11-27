@@ -5,6 +5,14 @@ use super::{GotoItem, GotoItemKind};
 use lux_search::fuzzy::{char_spans, substring_span};
 use lux_ui::goto_anything::{self, RecentFiles};
 
+/// Item paths that name the current document when it has no file.
+const CURRENT: &str = "current";
+const CURRENT_DOCUMENT: &str = "Current document";
+
+pub(super) fn names_unsaved_current(path: &str) -> bool {
+    path == CURRENT || path == CURRENT_DOCUMENT
+}
+
 pub(super) fn collect_candidates(app: &crate::app::App) -> Vec<String> {
     let mut list = Vec::new();
     // An open tab under the folder is listed by its folder-relative path,
@@ -132,7 +140,7 @@ fn compute_symbol_results(
             .path
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|| "current".to_string());
+            .unwrap_or_else(|| CURRENT.to_string());
         let lang = app
             .syntax
             .as_ref()
@@ -205,7 +213,7 @@ fn compute_term_results(
             .path
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|| "current".to_string());
+            .unwrap_or_else(|| CURRENT.to_string());
         (path, app.buffer.text())
     } else {
         let best_file = best_file_candidate(file_filter, cached_candidates);
@@ -267,7 +275,7 @@ fn compute_line_results(
             .path
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|| "Current document".to_string());
+            .unwrap_or_else(|| CURRENT_DOCUMENT.to_string());
         let detail = match (query.line, query.col) {
             (Some(l), Some(c)) => format!(":line {l}:{c}"),
             (Some(l), None) => format!(":line {l}"),

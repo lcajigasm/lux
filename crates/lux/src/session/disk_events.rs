@@ -227,6 +227,7 @@ fn apply_reloads(app: &mut App) -> bool {
         if active {
             app.update_syntax_on_open();
         }
+        crate::goto::preview::note_reload(app, path);
         changed = true;
     }
     changed
