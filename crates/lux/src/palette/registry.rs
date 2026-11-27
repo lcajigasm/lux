@@ -187,6 +187,11 @@ pub(super) fn populate_registry(registry: &mut CommandRegistry) {
         ("view.toggle_minimap", "View: Toggle Minimap", "View"),
         ("view.toggle_word_wrap", "View: Toggle Word Wrap", "View"),
         (
+            "view.toggle_full_screen",
+            "View: Toggle Full Screen",
+            "View",
+        ),
+        (
             "view.toggle_distraction_free",
             "View: Toggle Distraction Free Mode",
             "View",

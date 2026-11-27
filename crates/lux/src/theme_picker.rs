@@ -168,6 +168,7 @@ impl App {
             }
         }
         self.sync_editor_clear_color();
+        crate::title_bar::sync_color(self);
         self.scheduler.invalidate_all();
         if let Some(gpu) = &self.gpu_window {
             gpu.window.request_redraw();

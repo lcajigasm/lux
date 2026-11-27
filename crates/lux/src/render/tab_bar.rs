@@ -212,7 +212,7 @@ fn tab_dirty(documents: &Documents, tab: &Tab, active: bool, is_current_dirty: b
 pub(crate) fn render_tab_bar(
     documents: &Documents,
     is_current_dirty: bool,
-    sidebar_width: f32,
+    strip_left: f32,
     strip_width: f32,
     tab_width: f32,
     tab_bar_height: f32,
@@ -245,15 +245,9 @@ pub(crate) fn render_tab_bar(
     };
     let close_w = crate::app::TAB_CLOSE_BTN_WIDTH * scale_factor;
     let tabs = documents.tabs.tabs();
-    let strip = StripLayout::new(
-        sidebar_width,
-        strip_width,
-        tab_width,
-        tabs.len(),
-        scale_factor,
-    );
+    let strip = StripLayout::new(strip_left, strip_width, tab_width, tabs.len(), scale_factor);
     let scroll = documents.tabs.scroll();
-    let origin = sidebar_width - scroll;
+    let origin = strip_left - scroll;
     let strip_right = strip.right();
     let drag = documents.strip.drag.filter(|d| d.moving);
 
@@ -261,7 +255,7 @@ pub(crate) fn render_tab_bar(
         let tab_x = origin + i as f32 * tab_width;
         // A dragged tab's slot stays empty; the tab follows the pointer.
         if drag.is_some_and(|d| d.id == tab.id)
-            || tab_x + tab_width <= sidebar_width
+            || tab_x + tab_width <= strip_left
             || tab_x >= strip_right
         {
             continue;
@@ -274,10 +268,10 @@ pub(crate) fn render_tab_bar(
         let slot = strip.drop_slot(scroll, drag.pointer_x);
         let marker_w = 2.0 * stroke.max(1.0);
         let marker_x = (origin + slot as f32 * tab_width - marker_w * 0.5)
-            .clamp(sidebar_width, (strip_right - marker_w).max(sidebar_width));
+            .clamp(strip_left, (strip_right - marker_w).max(strip_left));
         if let Some(tab) = tabs.iter().find(|t| t.id == drag.id) {
             let x = (drag.pointer_x - drag.grab_offset)
-                .clamp(sidebar_width, (strip_right - tab_width).max(sidebar_width));
+                .clamp(strip_left, (strip_right - tab_width).max(strip_left));
             let look = look(documents, tab, is_current_dirty);
             painter.tab(tab, x, tab_width, look, close_w);
         }

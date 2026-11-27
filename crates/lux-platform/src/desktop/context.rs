@@ -72,6 +72,10 @@ impl PlatformContext for DesktopContext<'_> {
             // so every window is created invisible and made visible right
             // after the adapter attaches, regardless of what was requested.
             .with_visible(false);
+        #[cfg(target_os = "macos")]
+        {
+            winit_attrs = super::macos_title_bar::unified(winit_attrs);
+        }
         if let Some(size) = attrs.physical_inner_size {
             winit_attrs = winit_attrs.with_inner_size(size);
         } else if let Some(size) = attrs.inner_size {
@@ -105,6 +109,9 @@ impl PlatformContext for DesktopContext<'_> {
             self.accessibility_proxy.clone(),
         );
         let accessibility = Rc::new(RefCell::new(adapter));
+        #[cfg(target_os = "macos")]
+        let title_bar =
+            super::macos_title_bar::TitleBar::attach(&window, self.accessibility_proxy.clone());
 
         self.windows.borrow_mut().insert(
             window.id(),
@@ -133,6 +140,8 @@ impl PlatformContext for DesktopContext<'_> {
             window,
             id,
             accessibility,
+            #[cfg(target_os = "macos")]
+            title_bar,
         }))
     }
 

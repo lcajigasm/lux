@@ -59,6 +59,7 @@ mod status_bar;
 mod tab_strip;
 mod term;
 mod theme_picker;
+mod title_bar;
 mod ui;
 mod ui_io;
 

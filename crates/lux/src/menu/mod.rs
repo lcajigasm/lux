@@ -103,7 +103,16 @@ pub(crate) enum MenuAction {
     ReopenClosedTab = 211,
     NewWindow = 212,
     ClearRecent = 213,
+    ToggleFullScreen = 214,
 }
+
+/// View > Enter Full Screen: title, key equivalent, and modifier mask
+/// (Control-Command), matching the `toggle_full_screen` macOS binding. The
+/// item is `MenuAction::ToggleFullScreen`, so the menu and the keymap claim
+/// the same press and only one of them toggles.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) const FULL_SCREEN_ITEM: (&str, &str, usize) =
+    ("Enter Full Screen", "f", (1 << 18) | (1 << 20));
 
 impl MenuAction {
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -341,6 +350,9 @@ pub(crate) fn handle_menu_action(app: &mut App, ctx: &dyn PlatformContext, actio
             #[cfg(target_os = "macos")]
             macos::update_view_checkmarks(app);
         }
+        // The item retitles when the transition finishes
+        // (`title_bar::fullscreen_changed`).
+        MenuAction::ToggleFullScreen => app.toggle_full_screen(),
         MenuAction::SplitRight => {
             app.split_editor_right();
         }

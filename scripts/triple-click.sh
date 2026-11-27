@@ -55,13 +55,6 @@ capture() {
   exit 1
 }
 
-window_origin() {
-  local line x y w h
-  line="$(swift /tmp/lux-find-window.swift "$DRIVE_OWNER")"
-  read -r x y w h <<<"$line"
-  echo "$x $y"
-}
-
 selected_line() {
   local sel start end text
   sel="$(drive_field sel)"
@@ -94,14 +87,17 @@ raise SystemExit(1)
 PY
 }
 
-read -r origin_x origin_y <<<"$(window_origin)"
+# Click offsets are measured from the editor's top-left (content origin
+# plus the tab row, from the probe), not the window frame: under the
+# unified title bar the content view starts at the frame's top edge.
+drive_geometry
 picked=""
 click_x=""
 click_y=""
-for dy in 70 88 106 124 142; do
+for dy in 10 28 46 64 82; do
   for dx in 90 130 170 210; do
-    click_x=$((origin_x + dx))
-    click_y=$((origin_y + dy))
+    click_x=$((DRIVE_CONTENT_X + dx))
+    click_y=$((DRIVE_EDITOR_Y + dy))
     drive_key triple "$click_x" "$click_y"
     sleep 0.3
     drive_dump || true

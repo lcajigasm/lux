@@ -220,6 +220,8 @@ mod keymap {
             "toggle_distraction_free",
             "cmd+ctrl+shift+f",
         );
+        assert_binding(&preset, Platform::Windows, "toggle_full_screen", "f11");
+        assert_binding(&preset, Platform::Mac, "toggle_full_screen", "cmd+ctrl+f");
         assert_binding(&preset, Platform::Windows, "save_all", "ctrl+alt+s");
         assert_binding(&preset, Platform::Mac, "save_all", "cmd+alt+s");
         assert_binding(

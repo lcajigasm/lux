@@ -48,6 +48,7 @@ scenarios=(
   tree-drag.sh
   tree-watch.sh
   triple-click.sh
+  unified-title-bar.sh
   unstage-shot.sh
   window-restore.sh
 )

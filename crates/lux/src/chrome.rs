@@ -1,7 +1,7 @@
 //! Mouse click handling on desktop window chrome (tabs, sidebar, minimap, status bar).
 
 use crate::app::App;
-use crate::tab_strip::tab_at;
+use crate::tab_strip::RowHit;
 use lux_platform::{MouseButton, PlatformContext};
 
 pub(crate) fn handle_mouse_click_on_chrome(
@@ -63,9 +63,12 @@ pub(crate) fn handle_mouse_click_on_chrome(
     }
 
     if mouse_y < app.tab_bar_height() {
-        if button == MouseButton::Left && crate::tab_strip::layout(app).on_button(mouse_x) {
+        let hit = crate::tab_strip::row_hit(app, mouse_x);
+        if button == MouseButton::Left && hit == RowHit::Overflow {
             crate::tab_strip::list::open(app);
-        } else if let Some((index, on_close)) = tab_at(app, mouse_x) {
+        } else if button == MouseButton::Left && hit == RowHit::Empty {
+            crate::title_bar::press_empty(app);
+        } else if let RowHit::Tab(index, on_close) = hit {
             let tab_id = app.documents.tabs.tabs()[index].id;
             let pinned = app.documents.tabs.tabs()[index].pinned;
             match button {

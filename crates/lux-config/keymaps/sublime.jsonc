@@ -104,6 +104,7 @@
   { "command": "toggle_sidebar", "key": "ctrl+k ctrl+b", "mac": "cmd+k cmd+b" },
   { "command": "quick_switch_project", "key": "ctrl+alt+p", "mac": "cmd+ctrl+p" },
   { "command": "toggle_distraction_free", "key": "shift+f11", "mac": "cmd+ctrl+shift+f" },
+  { "command": "toggle_full_screen", "key": "f11", "mac": "cmd+ctrl+f" },
   { "command": "insert_snippet", "key": "ctrl+alt+j", "mac": "cmd+alt+j" },
   { "command": "toggle_record_macro", "key": "ctrl+q", "mac": "ctrl+q" },
   { "command": "playback_macro", "key": "ctrl+shift+q", "mac": "cmd+shift+q" },

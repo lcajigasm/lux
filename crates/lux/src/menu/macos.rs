@@ -19,17 +19,28 @@ define_class!(
     pub(crate) struct MenuTarget;
 
     impl MenuTarget {
+        /// View > Enter Full Screen carries AppKit's selector so AppKit
+        /// does not insert a second full-screen item; it is still a tagged
+        /// `MenuAction`.
+        #[unsafe(method(toggleFullScreen:))]
+        fn toggle_full_screen(&self, sender: &NSMenuItem) {
+            post_tag(sender.tag());
+        }
+
         #[unsafe(method(onMenuAction:))]
         fn on_menu_action(&self, sender: &NSMenuItem) {
-            let tag = sender.tag();
-            if let Some(index) = super::recent::index_from_tag(tag) {
-                super::queue::post_recent(index);
-            } else if let Some(action) = MenuAction::from_tag(tag) {
-                post_action(action);
-            }
+            post_tag(sender.tag());
         }
     }
 );
+
+fn post_tag(tag: isize) {
+    if let Some(index) = super::recent::index_from_tag(tag) {
+        super::queue::post_recent(index);
+    } else if let Some(action) = MenuAction::from_tag(tag) {
+        post_action(action);
+    }
+}
 
 static TARGET: OnceLock<Retained<MenuTarget>> = OnceLock::new();
 
@@ -109,6 +120,17 @@ pub(crate) fn update_view_checkmarks(app: &App) {
         } else {
             NSControlStateValueOff
         });
+    }
+    let full_screen = app
+        .gpu_window
+        .as_ref()
+        .is_some_and(|gpu| gpu.window.is_fullscreen());
+    if let Some(item) = main_menu.itemWithTag(MenuAction::ToggleFullScreen.tag()) {
+        item.setTitle(&NSString::from_str(if full_screen {
+            "Exit Full Screen"
+        } else {
+            "Enter Full Screen"
+        }));
     }
     let df_active = app.is_distraction_free();
     if let Some(item) = main_menu.itemWithTag(MenuAction::ToggleDistractionFree.tag()) {

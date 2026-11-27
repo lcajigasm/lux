@@ -14,6 +14,7 @@ pub mod dialog;
 pub mod error;
 pub mod event;
 pub mod ime;
+pub mod title_bar;
 pub mod uikit;
 pub mod window;
 

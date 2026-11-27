@@ -190,6 +190,9 @@ pub(crate) fn execute_command(app: &mut App, ctx: &dyn PlatformContext, command_
             #[cfg(target_os = "macos")]
             crate::menu::macos::update_view_checkmarks(app);
         }
+        "view.toggle_full_screen" => {
+            app.toggle_full_screen();
+        }
         "view.toggle_distraction_free" => {
             app.toggle_distraction_free();
             #[cfg(target_os = "macos")]
