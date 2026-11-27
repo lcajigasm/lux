@@ -86,14 +86,25 @@ pub(crate) fn saved_view(
         let before = restoring.pending[..index].iter().flatten().count();
         Some(landed + before)
     };
+    let active = restoring.active.and_then(map);
     let layout = restoring.layout.clone().and_then(|mut layout| {
         for pane in &mut layout.panes {
-            pane.tab = map(pane.tab)?;
             pane.tabs = pane.tabs.iter().filter_map(|index| map(*index)).collect();
+            if let Some(tab) = map(pane.tab) {
+                pane.tab = tab;
+                continue;
+            }
+            // The group's shown tab failed to read or was closed. The
+            // layout stands; that group shows another tab, as a full
+            // restore leaves it, without the gone tab's carets and scroll.
+            let any = || (0..restoring.tab_ids.len()).find_map(map);
+            pane.tab = pane.tabs.first().copied().or(active).or_else(any)?;
+            pane.cursors.clear();
+            pane.scroll_line = 0;
         }
         Some(layout)
     });
-    Some((layout, restoring.active.and_then(map)))
+    Some((layout, active))
 }
 
 /// A new restore generation; results of older restores are dropped.
@@ -132,22 +143,44 @@ fn read_tabs(
     tabs: Vec<TabState>,
     history_dir: PathBuf,
 ) {
+    let count = tabs.len();
     let jobs = tabs
         .into_iter()
         .enumerate()
         .map(|(index, state)| {
             let history_dir = history_dir.clone();
-            Box::new(move || {
-                let tab = super::restore::read_tab(state, &history_dir).map(Box::new);
-                Some(crate::ui_io::Done::Session(Landed::Tab {
-                    generation,
-                    index,
-                    tab,
-                }))
-            }) as crate::ui_io::Job
+            tab_job(generation, index, move || {
+                super::restore::read_tab(state, &history_dir)
+            })
         })
         .collect();
-    crate::ui_io::spawn_each(app, Some(ctx), jobs);
+    if !crate::ui_io::spawn_each(app, Some(ctx), jobs) {
+        // No worker will report: every tab lands empty, so the restore
+        // still ends instead of waiting forever.
+        for index in 0..count {
+            apply_tab(app, generation, index, None);
+        }
+    }
+}
+
+/// The job that reads one tab. A read that panics lands as an empty tab,
+/// like a file that is gone, so the restore still counts it and ends.
+pub(crate) fn tab_job(
+    generation: u64,
+    index: usize,
+    read: impl FnOnce() -> Option<RestoredTab> + Send + 'static,
+) -> crate::ui_io::Job {
+    Box::new(move || {
+        let tab = std::panic::catch_unwind(std::panic::AssertUnwindSafe(read))
+            .ok()
+            .flatten()
+            .map(Box::new);
+        Some(crate::ui_io::Done::Session(Landed::Tab {
+            generation,
+            index,
+            tab,
+        }))
+    })
 }
 
 /// Opens the session's folder and records the restore. Returns the
@@ -242,16 +275,22 @@ pub(crate) fn apply_tab(
         app.scheduler.invalidate_all();
         return None;
     }
-    let first = restoring.tab_ids.iter().flatten().next().copied();
-    let any = first.is_some();
-    if !restoring.shown
-        && !restoring.declined
-        && let Some(first) = restoring
+    let any = restoring.tab_ids.iter().flatten().next().is_some();
+    if !restoring.shown && !restoring.declined {
+        // The session's active tab never showed (its read failed): show
+        // it, or the first restored tab, whichever the user has not
+        // closed since it landed.
+        let session_active = restoring
             .active
-            .and_then(|idx| restoring.tab_ids.get(idx).copied().flatten())
-            .or(first)
-    {
-        show(app, &mut restoring, first);
+            .and_then(|idx| restoring.tab_ids.get(idx).copied().flatten());
+        let still_open = |id: &TabId| app.documents.entries.iter().any(|e| e.tab_id == *id);
+        let fallback = session_active
+            .into_iter()
+            .chain(restoring.tab_ids.iter().flatten().copied())
+            .find(still_open);
+        if let Some(tab_id) = fallback {
+            show(app, &mut restoring, tab_id);
+        }
     }
     if restoring.shown
         && !restoring.declined
@@ -362,8 +401,15 @@ fn show(app: &mut App, restoring: &mut Restoring, tab_id: TabId) {
         restoring.declined = true;
         return;
     }
+    // The launch's untitled tab goes only once the restored tab is in
+    // front: removing it first and then failing to switch would leave the
+    // editor on a tab that no longer exists.
+    if !app.switch_to_tab(tab_id) {
+        return;
+    }
     restoring.shown = true;
     if let Some(initial) = restoring.initial.take()
+        && initial != tab_id
         && let Some(position) = app
             .documents
             .entries
@@ -373,7 +419,6 @@ fn show(app: &mut App, restoring: &mut Restoring, tab_id: TabId) {
         app.documents.entries.remove(position);
         app.documents.tabs.close(initial);
     }
-    app.switch_to_tab(tab_id);
     // Switching reveals the caret; the restored scroll wins, even when the
     // caret was scrolled out of view.
     if let Some(entry) = app.documents.entries.iter().find(|e| e.tab_id == tab_id) {

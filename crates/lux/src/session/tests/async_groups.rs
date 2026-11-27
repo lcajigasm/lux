@@ -131,3 +131,43 @@ fn a_tab_that_lands_last_keeps_its_place_and_group() {
 
     assert_groups_restored(&app, &paths);
 }
+
+/// A save while tabs are still landing keeps the session's split when one
+/// group's shown tab failed to read: that group shows another of its
+/// tabs, and the other group keeps its own.
+#[test]
+fn a_save_mid_restore_keeps_the_split_when_a_shown_tab_failed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (data, paths) = quit_with_two_groups(dir.path());
+    let file = lux_workspace::session_store::session_file(&data, None);
+    let plan = restore::read_plan(&file).unwrap().expect("a session");
+    let mut app = new_app();
+    app.ui.session.data_dir = Some(data);
+    let generation = restore_apply::next_generation(&mut app);
+    let (generation, tabs, history_dir) = restore_apply::begin(&mut app, generation, plan).unwrap();
+    let index_of = |path: &PathBuf| {
+        tabs.iter()
+            .position(|t| t.path.as_ref() == Some(path))
+            .unwrap()
+    };
+    let [a, b, c, d] = &paths;
+    // `c`, the first group's shown tab, fails to read; `a` is still landing.
+    restore_apply::apply_tab(&mut app, generation, index_of(c), None);
+    for path in [b, d] {
+        let index = index_of(path);
+        let tab = restore::read_tab(tabs[index].clone(), &history_dir).map(Box::new);
+        restore_apply::apply_tab(&mut app, generation, index, tab);
+    }
+    assert!(app.ui.session.restoring.is_some(), "a has not landed");
+
+    save_session(&mut app, false).unwrap();
+    let written = Session::load(crate::session::snapshot::current_file(&app)).unwrap();
+    let layout = written.layout.expect("the split was kept");
+    let path_at = |index: usize| written.tabs[index].path.clone().unwrap();
+    assert_eq!(layout.panes.len(), 2);
+    assert_eq!(path_at(layout.panes[0].tab), *a);
+    assert_eq!(path_at(layout.panes[1].tab), *d);
+    let second: Vec<_> = layout.panes[1].tabs.iter().map(|i| path_at(*i)).collect();
+    assert_eq!(second, vec![b.clone(), d.clone()]);
+    assert_eq!(layout.active_pane, 1);
+}

@@ -312,3 +312,91 @@ fn unlanded_histories_follow_the_session_to_its_folder() {
     };
     assert!(can_undo, "a's undo history was carried over");
 }
+
+/// The session's active tab is gone, and the first restored tab was
+/// closed before the rest landed: the restore shows a tab still open, and
+/// the launch's untitled tab goes only once that tab is in front.
+#[test]
+fn a_tab_closed_before_the_rest_landed_is_not_shown() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ["a.txt", "b.txt", "gone.txt"].map(|name| {
+        let path = dir.path().join(name);
+        std::fs::write(&path, format!("{name}\n")).unwrap();
+        path
+    });
+    let [a, b, gone] = &paths;
+    let data = dir.path().join("data");
+    let mut first = new_app();
+    first.ui.session.data_dir = Some(data.clone());
+    let untitled = first.documents.entries[0].tab_id;
+    for path in &paths {
+        open_file(&mut first, path);
+    }
+    first.documents.entries.retain(|e| e.tab_id != untitled);
+    first.documents.tabs.close(untitled);
+    PlatformEventHandler::exiting(&mut first, &Ctx);
+    std::fs::remove_file(gone).unwrap();
+
+    let file = lux_workspace::session_store::session_file(&data, None);
+    let plan = restore::read_plan(&file).unwrap().unwrap();
+    let mut app = new_app();
+    let generation = restore_apply::next_generation(&mut app);
+    let (generation, tabs, history_dir) = restore_apply::begin(&mut app, generation, plan).unwrap();
+    let paths: Vec<_> = tabs.iter().map(|t| t.path.clone().unwrap()).collect();
+    assert_eq!(paths, [a.clone(), b.clone(), gone.clone()]);
+    let land = |app: &mut App, index: usize| {
+        let tab = restore::read_tab(tabs[index].clone(), &history_dir).map(Box::new);
+        restore_apply::apply_tab(app, generation, index, tab)
+    };
+    land(&mut app, 0);
+    let a_tab = app
+        .documents
+        .entries
+        .iter()
+        .find(|e| e.path.as_ref() == Some(a))
+        .unwrap()
+        .tab_id;
+    app.close_tab(&Ctx, a_tab);
+    land(&mut app, 1);
+    assert_eq!(land(&mut app, 2), Some(true));
+
+    assert_eq!(app.documents.path.as_deref(), Some(b.as_path()));
+    let active = app.documents.active_tab.expect("a tab in front");
+    assert!(
+        app.documents.entries.iter().any(|e| e.tab_id == active),
+        "the tab in front has no document"
+    );
+    assert_eq!(tab_paths(&app), vec![Some(b.clone())]);
+}
+
+/// A tab read that panics lands as an empty tab: the restore still ends,
+/// so the split comes back and later saves describe the window.
+#[test]
+fn a_tab_read_that_panics_still_ends_the_restore() {
+    let dir = tempfile::tempdir().unwrap();
+    let (data, a, b, _) = quit_with_two_tabs(dir.path());
+    let file = lux_workspace::session_store::session_file(&data, None);
+    let plan = restore::read_plan(&file).unwrap().unwrap();
+    let mut app = new_app();
+    app.ui.session.data_dir = Some(data);
+    let generation = restore_apply::next_generation(&mut app);
+    let (generation, tabs, history_dir) = restore_apply::begin(&mut app, generation, plan).unwrap();
+    let jobs = tabs
+        .into_iter()
+        .enumerate()
+        .map(|(index, state)| {
+            let history_dir = history_dir.clone();
+            let fails = state.path.as_ref() == Some(&a);
+            restore_apply::tab_job(generation, index, move || {
+                assert!(!fails, "the read of a panics");
+                restore::read_tab(state, &history_dir)
+            })
+        })
+        .collect();
+    assert!(crate::ui_io::spawn_each(&mut app, Some(&Ctx), jobs));
+    crate::ui_io::finish_all(&mut app, &Ctx);
+
+    assert!(app.ui.session.restoring.is_none(), "the restore ended");
+    assert_eq!(app.documents.path.as_deref(), Some(b.as_path()));
+    assert_eq!(app.ui.split.panes.len(), 2, "the split came back");
+}

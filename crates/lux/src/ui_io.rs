@@ -182,10 +182,13 @@ impl Jobs {
         Box::new(move || {
             gate.wait();
             let done = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).unwrap_or(None);
-            let wake = wake.lock().ok().and_then(|slot| slot.clone());
-            if sender.send(done).is_ok()
-                && let Some(wake) = wake
-            {
+            if sender.send(done).is_err() {
+                return;
+            }
+            // The waker is read after the send: one registered between a
+            // read and the send would otherwise be missed, and its own
+            // wake-up could run `poll` before the result was there.
+            if let Some(wake) = wake.lock().ok().and_then(|slot| slot.clone()) {
                 wake();
             }
         })
@@ -240,8 +243,9 @@ pub(crate) fn spawn(
 }
 
 /// Runs `jobs` one after another on one new thread, applying each result
-/// as soon as it is ready, in order.
-pub(crate) fn spawn_each(app: &mut App, ctx: Option<&dyn PlatformContext>, jobs: Vec<Job>) {
+/// as soon as it is ready, in order. `false` when the thread could not be
+/// started: none of the jobs will run or report.
+pub(crate) fn spawn_each(app: &mut App, ctx: Option<&dyn PlatformContext>, jobs: Vec<Job>) -> bool {
     note_wake(app, ctx);
     let count = jobs.len();
     let tasks: Vec<Task> = jobs
@@ -256,9 +260,13 @@ pub(crate) fn spawn_each(app: &mut App, ctx: Option<&dyn PlatformContext>, jobs:
             }
         });
     match spawned {
-        Ok(_) => app.ui.dialogs.jobs.in_flight += count,
+        Ok(_) => {
+            app.ui.dialogs.jobs.in_flight += count;
+            true
+        }
         Err(error) => {
             app.documents.message = Some(format!("Cannot start file operation: {error}"));
+            false
         }
     }
 }
@@ -424,3 +432,5 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
 mod settings_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wake_tests;
