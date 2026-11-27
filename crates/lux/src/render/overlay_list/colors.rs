@@ -5,6 +5,12 @@
 //! flat `#8A8A80` slab with dark text in Monokai. Matches use the theme
 //! accent wherever it clears 3:1 against the row; where it cannot, they
 //! fall back to the row's text color in bold.
+//!
+//! A translucent theme selection (Lux Dark's is amber at 20%) is flattened
+//! onto the card first. Every ink below is chosen against the color the
+//! GPU actually paints, not against the selection's opaque RGB: judged
+//! against solid amber, Lux Dark's row text went near-black on what is
+//! really a dark brown row.
 
 use crate::render::paint::color;
 use crate::render::panel::{
@@ -15,6 +21,9 @@ use crate::render::panel::{
 pub(crate) const MATCH_FLOOR: f32 = 3.0;
 /// The selection fill is moved off the card until it clears this.
 pub(crate) const SELECTION_FLOOR: f32 = 1.4;
+/// Matches on the selected row are bold text: the accent is kept there
+/// only when it reads as body text (WCAG AA) on the painted row.
+pub(crate) const SELECTED_MATCH_FLOOR: f32 = 4.5;
 
 pub(crate) struct OverlayColors {
     pub card: [f32; 4],
@@ -35,7 +44,8 @@ pub(crate) struct OverlayColors {
 
 pub(crate) fn overlay_colors(theme: &lux_ui::Theme) -> OverlayColors {
     let card = card_fill(theme);
-    let selection = visible_fill(color(theme.selection), card, SELECTION_FLOOR);
+    let painted = lux_ui::composite(theme.selection, theme.chrome.panel_input);
+    let selection = visible_fill(color(painted), card, SELECTION_FLOOR);
     let accent = color(theme.accent);
     let text_card = label_ink(theme, card);
     let text_selection = label_ink(theme, selection);
@@ -45,7 +55,7 @@ pub(crate) fn overlay_colors(theme: &lux_ui::Theme) -> OverlayColors {
     } else {
         (text_card, true)
     };
-    let match_selection = if accent_on(selection) {
+    let match_selection = if contrast_ratio(accent, selection) >= SELECTED_MATCH_FLOOR {
         accent
     } else {
         text_selection
@@ -78,32 +88,52 @@ pub(crate) fn overlay_colors(theme: &lux_ui::Theme) -> OverlayColors {
 mod tests {
     use super::*;
 
-    #[test]
-    fn every_bundled_theme_keeps_matches_and_selection_readable() {
+    /// Every theme the picker and settings can show: the seven built-ins
+    /// and each bundled scheme, resolved the way the app resolves them.
+    fn every_shown_theme() -> Vec<lux_ui::Theme> {
         let schemes = crate::color_scheme::bundled_schemes();
         assert!(schemes.len() >= 14, "{} schemes", schemes.len());
-        for scheme in schemes.iter() {
-            let theme = &scheme.theme;
-            let c = overlay_colors(theme);
-            let name = scheme.name;
+        let names = crate::color_scheme::theme_names(schemes);
+        assert!(names.contains(&"Lux Dark"), "{names:?}");
+        names
+            .iter()
+            .map(|name| crate::color_scheme::theme_for(schemes, name))
+            .collect()
+    }
+
+    /// The row as the GPU blends it: the pushed fill over the card. Row
+    /// text and matches are judged against this, never the fill's RGB.
+    fn painted(fill: [f32; 4], card: [f32; 4]) -> [f32; 4] {
+        let a = fill[3];
+        [
+            fill[0] * a + card[0] * (1.0 - a),
+            fill[1] * a + card[1] * (1.0 - a),
+            fill[2] * a + card[2] * (1.0 - a),
+            1.0,
+        ]
+    }
+
+    #[test]
+    fn every_shown_theme_keeps_matches_and_selection_readable() {
+        for theme in every_shown_theme() {
+            let c = overlay_colors(&theme);
+            let name = theme.name;
+            assert_eq!(c.card[3], 1.0, "{name} card is opaque");
+            let row = painted(c.selection, c.card);
             let at_least = |ratio: f32, floor: f32, what: &str| {
                 println!("{name} {what} {ratio:.2}");
                 assert!(ratio >= floor - 0.01, "{name} {what} {ratio:.2} < {floor}");
             };
             at_least(contrast_ratio(c.text_card, c.card), 4.5, "text/card");
-            at_least(
-                contrast_ratio(c.text_selection, c.selection),
-                4.5,
-                "text/selection",
-            );
+            at_least(contrast_ratio(c.text_selection, row), 4.5, "text/selection");
             at_least(contrast_ratio(c.detail_card, c.card), 4.5, "hint/card");
             at_least(
-                contrast_ratio(c.detail_selection, c.selection),
+                contrast_ratio(c.detail_selection, row),
                 4.5,
                 "hint/selection",
             );
             at_least(
-                contrast_ratio(c.selection, c.card),
+                contrast_ratio(row, c.card),
                 SELECTION_FLOOR,
                 "selection/card",
             );
@@ -113,9 +143,10 @@ mod tests {
                 MATCH_FLOOR,
                 "match/card",
             );
+            // Matches on the selected row are bold and must read as text.
             at_least(
-                contrast_ratio(c.match_selection, c.selection),
-                MATCH_FLOOR,
+                contrast_ratio(c.match_selection, row),
+                SELECTED_MATCH_FLOOR,
                 "match/selection",
             );
             // The accent is used exactly when it clears the floor.
@@ -132,6 +163,17 @@ mod tests {
             }
             assert!(c.chip_border != c.card, "{name} chip rim is visible");
         }
+    }
+
+    #[test]
+    fn lux_dark_selected_row_has_light_text_on_its_painted_fill() {
+        let c = overlay_colors(&lux_ui::Theme::LUX_DARK);
+        // The amber selection is 20% alpha; flattened onto the card it is
+        // a dark row, so its text stays the light theme foreground.
+        assert_eq!(c.selection[3], 1.0);
+        let luminance = |v: [f32; 4]| v[0] + v[1] + v[2];
+        assert!(luminance(c.selection) < 1.0, "{:?}", c.selection);
+        assert_eq!(c.text_selection, color(lux_ui::Theme::LUX_DARK.foreground));
     }
 
     #[test]
