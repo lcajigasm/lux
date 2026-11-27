@@ -157,8 +157,10 @@ fn the_panel_header_is_flat_with_one_accent_underline_under_the_active_tab() {
     term.show_tasks = true;
     let dock = [0.0, 400.0, 1000.0, 260.0];
     let (mut quads, mut glyphs) = (Vec::new(), Vec::new());
+    let build = crate::build::BuildState::default();
     crate::render::term::render_term(
         &mut term,
+        &build,
         &mut quads,
         &mut glyphs,
         &mut app.editor_view,
