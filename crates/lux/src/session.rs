@@ -170,11 +170,13 @@ pub(crate) fn pane_tokens(entry: &DocumentEntry) -> Vec<lux_syntax::Token> {
 ///    unlanded tabs and saved layout to that snapshot.
 /// 2. A session restore still landing is dropped: its tabs, layout and
 ///    later writes belong to the old root, not the new one.
-/// 3. Per-folder state keyed by an epoch (such as the build system's
-///    `folder_epoch`, once it exists) is bumped here, after the restore.
+/// 3. `folder_epoch` is bumped, so state derived from the open folders
+///    (build systems) reloads even when the change opens no new watcher
+///    (closing the project or the header folder).
 pub(crate) fn root_changing(app: &mut App) {
     leave_root(app);
     restore_apply::next_generation(app);
+    app.ui.session.folder_epoch += 1;
 }
 
 /// Restores the folderless session when the window first appears, on

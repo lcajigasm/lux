@@ -250,3 +250,13 @@ fn a_project_that_lands_after_open_folder_is_dropped() {
     assert_eq!(app.workspace_root(), Some(folder));
     assert!(!app.ui.project.opening);
 }
+
+/// Closing a project opens no new watcher, yet the folders that build
+/// systems derive from changed: `root_changing` bumps the epoch.
+#[test]
+fn closing_a_project_bumps_the_folder_epoch() {
+    let mut app = new_app();
+    let before = app.ui.session.folder_epoch();
+    app.close_project();
+    assert!(app.ui.session.folder_epoch() > before);
+}
