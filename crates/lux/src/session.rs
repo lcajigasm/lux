@@ -135,6 +135,12 @@ impl WorkspaceSession {
 
 /// Syntax tokens for a pane showing `entry` while it is not the active
 /// document.
+/// The session file `app` writes to.
+#[cfg(test)]
+pub(crate) fn current_file_for_tests(app: &App) -> std::path::PathBuf {
+    snapshot::current_file(app)
+}
+
 pub(crate) fn pane_tokens(entry: &DocumentEntry) -> Vec<lux_syntax::Token> {
     let lang = entry
         .language

@@ -64,6 +64,7 @@ pub(crate) fn drop_target(app: &App) -> Option<(Strip, usize)> {
 }
 
 /// Insertion gap of the current drag, if the pointer has moved.
+#[cfg(test)]
 pub(crate) fn drop_slot(app: &App) -> Option<usize> {
     drop_target(app).map(|(_, slot)| slot)
 }

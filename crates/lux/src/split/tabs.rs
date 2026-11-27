@@ -25,10 +25,10 @@ fn split_on(app: &App) -> bool {
 /// The tabs of the focused group, or every tab without a split: what
 /// Command+1..9 and Control+Tab walk.
 pub(crate) fn focused_order(app: &App) -> Vec<TabId> {
-    if split_on(app) {
-        if let Some(pane) = app.ui.split.panes.get(app.ui.split.active_pane) {
-            return pane.tabs.clone();
-        }
+    if split_on(app)
+        && let Some(pane) = app.ui.split.panes.get(app.ui.split.active_pane)
+    {
+        return pane.tabs.clone();
     }
     open_tabs(app)
 }
@@ -197,7 +197,9 @@ pub(crate) fn reconcile(app: &mut App) {
     let mut idx = app.ui.split.panes.len();
     while idx > 0 {
         idx -= 1;
-        let pane = &app.ui.split.panes[idx];
+        let Some(pane) = app.ui.split.panes.get(idx) else {
+            continue;
+        };
         if open.contains(&pane.tab_id) {
             continue;
         }
@@ -238,7 +240,10 @@ pub(crate) fn forget(app: &mut App, closed: TabId) {
     let mut idx = app.ui.split.panes.len();
     while idx > 0 {
         idx -= 1;
-        let pane = &mut app.ui.split.panes[idx];
+        // A closed group may have taken the split down to one group.
+        let Some(pane) = app.ui.split.panes.get_mut(idx) else {
+            continue;
+        };
         let Some(at) = pane.tabs.iter().position(|id| *id == closed) else {
             continue;
         };

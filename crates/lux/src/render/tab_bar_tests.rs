@@ -173,3 +173,36 @@ fn hover_follows_pointer_moves_and_clears_on_leave() {
     assert_eq!(app.documents.strip.hover, None);
     assert!(ids.len() == 3);
 }
+
+#[test]
+fn each_group_paints_its_strip_inside_its_own_column() {
+    for scale in [1.0, 2.0] {
+        let (mut app, _) = app(scale, 20);
+        app.set_layout(crate::split::LayoutPreset::Rows2);
+        app.set_layout(crate::split::LayoutPreset::Grid2x2);
+        let strips = crate::tab_strip::strips::all(&app);
+        assert_eq!(strips.len(), 4);
+        let (quads, glyphs) = paint(&mut app, 0.0);
+        let inside = |r: [f32; 4]| {
+            strips.iter().any(|s| {
+                r[0] >= s.layout.left - 0.01
+                    && r[0] + r[2] <= s.layout.left + s.width + 0.01
+                    && r[1] >= s.top - 0.01
+                    && r[1] + r[3] <= s.top + s.height + 0.01
+            })
+        };
+        for q in &quads {
+            assert!(inside(q.rect), "quad {:?} outside every strip", q.rect);
+        }
+        for g in &glyphs {
+            assert!(inside(g.rect), "glyph {:?} outside every strip", g.rect);
+        }
+        // Only the focused group's shown tab carries the accent bar.
+        let accent = crate::render::paint::color(app.chrome.theme.accent);
+        let bars = quads
+            .iter()
+            .filter(|q| q.color == accent && (q.rect[3] - 2.0 * app.scale_factor).abs() < 0.01)
+            .count();
+        assert_eq!(bars, 1);
+    }
+}

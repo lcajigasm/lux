@@ -109,6 +109,7 @@ fn app_rows(app: &App) -> Option<Vec<TabRow>> {
 }
 
 /// Opens the focused strip's list with its shown tab selected.
+#[cfg(test)]
 pub(crate) fn open(app: &mut App) {
     let group = super::strips::focused(app).and_then(|s| s.group);
     open_for(app, group);

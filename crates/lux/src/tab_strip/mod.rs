@@ -7,9 +7,13 @@ pub(crate) mod list;
 pub(crate) mod strips;
 pub(crate) mod title;
 
-pub(crate) use drag::{drag_tab, drop_slot, drop_target, press_tab, release_drag};
+#[cfg(test)]
+pub(crate) use drag::drop_slot;
+pub(crate) use drag::{drag_tab, drop_target, press_tab, release_drag};
 pub(crate) use strips::Strip;
 
+#[cfg(test)]
+mod group_tests;
 #[cfg(test)]
 mod hover_tests;
 #[cfg(test)]
@@ -180,12 +184,14 @@ pub(crate) fn hit(app: &App, x: f32, y: f32) -> Option<(Option<Strip>, RowHit)> 
 }
 
 /// The hit at `mouse_x` in the window's tab row.
+#[cfg(test)]
 pub(crate) fn row_hit(app: &App, mouse_x: f32) -> RowHit {
     hit(app, mouse_x, 1.0).map_or(RowHit::Empty, |(_, hit)| hit)
 }
 
 /// The tab under `mouse_x` in the window's tab row, and whether the
 /// pointer is on its close mark.
+#[cfg(test)]
 pub(crate) fn tab_at(app: &App, mouse_x: f32) -> Option<(usize, bool)> {
     let strip = strips::at(app, mouse_x, 1.0)?;
     tab_in(app, &strip, mouse_x)
@@ -225,18 +231,7 @@ pub(crate) fn scroll_tabs(app: &mut App, delta_x: f32) {
     app.scheduler.invalidate_all();
 }
 
-/// Scrolls the strip that holds tab `id` the least distance that shows
-/// all of it.
-pub(crate) fn reveal(app: &mut App, id: TabId) {
-    let Some(strip) = strips::all(app)
-        .into_iter()
-        .find(|s| strips::order(app, s.group).contains(&id))
-    else {
-        return;
-    };
-    reveal_in(app, &strip, id);
-}
-
+/// Scrolls `strip` the least distance that shows all of tab `id`.
 fn reveal_in(app: &mut App, strip: &Strip, id: TabId) {
     let Some(index) = strips::order(app, strip.group)
         .iter()
