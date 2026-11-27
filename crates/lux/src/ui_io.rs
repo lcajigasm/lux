@@ -160,7 +160,7 @@ impl Jobs {
 
     /// The event-loop waker registered at startup, for other workers.
     pub(crate) fn waker(&self) -> Option<Wake> {
-        self.wake.clone()
+        self.wake.lock().ok().and_then(|slot| slot.clone())
     }
 
     /// Jobs started and not yet applied by `poll`.
