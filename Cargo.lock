@@ -3207,7 +3207,7 @@ dependencies = [
 
 [[package]]
 name = "lux"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "accesskit",
  "accesskit_consumer",
@@ -3240,7 +3240,7 @@ dependencies = [
 
 [[package]]
 name = "lux-benches"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "criterion",
  "lux-core",
@@ -3255,7 +3255,7 @@ dependencies = [
 
 [[package]]
 name = "lux-config"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "bstr",
  "ec4rs",
@@ -3269,7 +3269,7 @@ dependencies = [
 
 [[package]]
 name = "lux-core"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "proptest",
  "regex",
@@ -3280,14 +3280,14 @@ dependencies = [
 
 [[package]]
 name = "lux-core-cli"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "lux-core",
 ]
 
 [[package]]
 name = "lux-git"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "gix",
  "tempfile",
@@ -3295,7 +3295,7 @@ dependencies = [
 
 [[package]]
 name = "lux-lsp"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "async-lsp",
  "async-process",
@@ -3311,7 +3311,7 @@ dependencies = [
 
 [[package]]
 name = "lux-pack"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "ed25519-dalek",
  "thiserror 2.0.19",
@@ -3319,7 +3319,7 @@ dependencies = [
 
 [[package]]
 name = "lux-platform"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -3335,7 +3335,7 @@ dependencies = [
 
 [[package]]
 name = "lux-plugin"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "serde",
  "serde_json",
@@ -3347,7 +3347,7 @@ dependencies = [
 
 [[package]]
 name = "lux-render"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "bytemuck",
  "criterion",
@@ -3363,7 +3363,7 @@ dependencies = [
 
 [[package]]
 name = "lux-search"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "grep-regex",
  "grep-searcher",
@@ -3374,7 +3374,7 @@ dependencies = [
 
 [[package]]
 name = "lux-syntax"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "cc",
  "crossbeam-channel",
@@ -3385,7 +3385,7 @@ dependencies = [
 
 [[package]]
 name = "lux-term"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -3396,7 +3396,7 @@ dependencies = [
 
 [[package]]
 name = "lux-ui"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -3412,7 +3412,7 @@ dependencies = [
 
 [[package]]
 name = "lux-workspace"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "ignore",
  "lux-syntax",
@@ -6710,7 +6710,7 @@ checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
 
 [[package]]
 name = "xtask"
-version = "1.5.12"
+version = "1.5.13"
 
 [[package]]
 name = "yazi"

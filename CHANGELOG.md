@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+## 1.5.13 — 2026-11-27
+
+Test build. Not a closed release.
+
+### Added
+
+- Five free developer fonts ship with Lux: JetBrains Mono, Fira Code, IBM Plex Mono, Source Code Pro, and Cascadia Code. `editor.fontFamily` selects one; the system face stays the default (#161).
+- On macOS the tab row is the title bar, and fullscreen uses native Spaces (#162).
+- On macOS, Open, Save, and alert dialogs are sheets on the editor window (#159).
+- On macOS, characters missing from the editor font are drawn with a CoreText fallback face, including Thai, Arabic, Hebrew, and Devanagari (#160).
+- Each split group has its own tabs and tab strip, and tabs drag between groups (#170). Each group has its own minimap (#169).
+- Quitting asks nothing: the next launch restores every tab, unsaved text, undo history, selections, and the split layout (#146).
+- Build systems: `.sublime-build` files with variables, variants, and selectors (#151). The build output dock shows a finish or cancel line and links errors to their files (#153).
+- Goto Anything opens a preview tab that becomes a regular tab once edited or kept (#150).
+- The minimap draws syntax-colored words, a draggable viewport box, and git and bookmark marks (#155).
+- Find in Files streams its results into a Find Results tab (#132). The find bar has Preserve Case and In Selection (#140).
+- Paste puts one copied piece at each caret (#131). Ctrl+T transposes (#135). Cmd+U undoes the last selection change (#138).
+- Typing a closing bracket or a Python clause dedents the line, and Reindent fixes a selection (#144).
+- Up and Down move by visual row when word wrap is on (#143).
+- Saved macros have names and play from the command palette (#149).
+- The tab strip scrolls to the active tab, lists hidden tabs, and shows where a dragged tab lands (#141).
+- Git status in the file tree and the gutter updates without a refresh (#145).
+- The sidebar watches every open folder, and file operations run in the background (#137).
+
+### Changed
+
+- Fuzzy matches highlight the characters that actually matched, and results are ranked in tiers of match quality (#142).
+- Every list popup uses the same card. Goto Anything rows are easier to read, and highlights use the theme's colors (#65, #163).
+- Indent guides, the minimap band, the selection, and the gutter follow the theme more closely (#165).
+- The tab strip clips long titles and marks unsaved tabs with a dot (#169).
+- Settings apply in place (#152).
+
+### Fixed
+
+- The selected row in the Lux Dark palette is readable (#168).
+- The bottom dock, the find bar, and match highlights share one layout, so they no longer overlap (#164).
+- Opening a project, reading sidebar folders, the conflict bar, language-server jumps, and the session restore no longer read files on the UI thread (#156, #157, #158). Dialogs, settings writes, and other small file reads moved off it too (#134, #152).
+- The project symbol index is built in the background (#133).
+- The minimap no longer copies the whole buffer every frame (#70).
+- A file created while a folder is first scanned shows up as new, and switching projects saves the session first (#154).
+
 ## 1.5.12 — 2026-11-25
 
 Test build. Not a closed release.
