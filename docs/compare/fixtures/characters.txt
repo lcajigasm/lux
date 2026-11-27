@@ -2,3 +2,6 @@
 emoji: 😀 🎉 ✅
 CJK: 日本語 中文 한글
 combining: é ñ
+scripts: สวัสดี مرحبا שלום नमस्ते ሰላም
+math: ∮ ⨁ 𝔸 ⟦x⟧
+boxes: ┌─┐ └─┘

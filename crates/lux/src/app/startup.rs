@@ -23,7 +23,15 @@ impl App {
         self.ui.dialogs.jobs.set_wake(ctx.background_waker());
     }
 
-    pub(crate) fn after_first_frame(&mut self) {
+    /// Runs after every frame. Characters that frame drew as `.notdef` go
+    /// to a worker that finds and reads a face for them.
+    pub(crate) fn after_frame(&mut self) {
+        if let Some(job) = crate::font::fallback::take_job(self.editor_view.text_layout_mut()) {
+            let job = job.with_family(self.editor_view.family());
+            ui_io::spawn(self, None, move || {
+                Some(Done::FallbackFaces(job.run(&|path| std::fs::read(path))))
+            });
+        }
         static DONE: AtomicBool = AtomicBool::new(false);
         if DONE.swap(true, Ordering::Relaxed) {
             return;

@@ -57,6 +57,8 @@ pub(crate) enum Done {
     EditorFont(&'static str, Option<crate::font::editor::LoadedFont>),
     /// Coverage font faces read from disk.
     Fonts(Vec<crate::font::CoverageFace>),
+    /// Faces the system picked for characters nothing else covers.
+    FallbackFaces(Vec<crate::font::fallback::FallbackFace>),
     /// First document with an unsaved recovery snapshot, if any.
     Recovery(Option<PathBuf>),
     /// A Goto Anything preview read finished.
@@ -299,6 +301,9 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
         Done::Fonts(faces) => {
             let layout = app.editor_view.text_layout_mut();
             crate::font::install_coverage_faces(layout, &faces);
+        }
+        Done::FallbackFaces(faces) => {
+            crate::font::fallback::install(app.editor_view.text_layout_mut(), faces);
         }
         Done::UiFont => crate::font::install_ui_font(app.editor_view.text_layout_mut()),
         Done::EditorFont(requested, loaded) => app.install_editor_font(requested, loaded),

@@ -290,7 +290,9 @@ echo "--> Opening the character fixture in Lux"
 "$bin" "$characters" >"$log" 2>&1 &
 lux_pid=$!
 wait_window lux "$lux_pid" >/dev/null
-sleep 1
+# Coverage faces, then the CoreText fallback faces, load on workers after
+# the first frame; give both time to land before the capture.
+sleep 2
 shoot lux "$out/characters.png"
 echo "--> wrote $out/characters.png"
 
