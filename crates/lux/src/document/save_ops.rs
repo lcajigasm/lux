@@ -214,6 +214,8 @@ impl App {
             request: Request::SaveAll(files.clone()),
             version,
             revert_transform: false,
+            // Applied by path to every tab it wrote, not to one tab.
+            tab: None,
         });
         let sender = self.documents.sender.clone();
         let wake = ctx.background_waker();

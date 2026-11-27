@@ -27,6 +27,7 @@ struct Slot {
     key_us: Vec<u64>,
     scrolling: bool,
     frame_us: Vec<u64>,
+    redraws: u64,
 }
 
 impl Slot {
@@ -42,6 +43,7 @@ impl Slot {
             key_us: Vec::new(),
             scrolling: false,
             frame_us: Vec::new(),
+            redraws: 0,
         }
     }
 }
@@ -212,6 +214,7 @@ pub(crate) fn on_frame(app: &App, frame: Duration) {
     let Some(slot) = guard.as_mut() else {
         return;
     };
+    slot.redraws += 1;
     if !slot.first_logged {
         slot.first_logged = true;
         let start = PROCESS_START.get().copied().unwrap_or(app.start);
@@ -509,11 +512,12 @@ fn render_dump(app: &App, slot: &Slot) -> String {
     out.push_str(&escape(&tab_paths.join("|")));
     out.push('\n');
     out.push_str(&format!(
-        "key_n={}\nkey_p99_us={}\nframe_n={}\nframe_max_us={}\n",
+        "key_n={}\nkey_p99_us={}\nframe_n={}\nframe_max_us={}\nredraws={}\n",
         slot.key_us.len(),
         percentile_99(&slot.key_us).unwrap_or(0),
         slot.frame_us.len(),
         slot.frame_us.iter().copied().max().unwrap_or(0),
+        slot.redraws,
     ));
     let input = LAST_INPUT
         .lock()

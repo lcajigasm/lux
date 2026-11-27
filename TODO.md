@@ -707,6 +707,7 @@ Este backlog reescribe y amplía el plan de trabajo con **requisitos exhaustivos
   - Asegurar que la apertura de diálogos no congele el pintado de la ventana ni provoque cuelgues del hilo principal.
 - Criterios de aceptación:
   - "File -> Open Folder..." abre el selector nativo de carpetas de macOS y carga el proyecto seleccionado en la barra lateral.
+- Note: on macOS the panels and the alerts (unsaved changes, Move to Trash) are sheets (`beginSheetModalForWindow`) on the focused window with no nested modal loop; `scripts/sheet-repaint.sh` checks that the editor keeps painting behind the Cmd+O sheet.
 
 ---
 

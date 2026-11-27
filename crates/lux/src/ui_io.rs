@@ -185,7 +185,8 @@ fn note_wake(app: &mut App, ctx: Option<&dyn PlatformContext>) {
     }
 }
 
-/// Runs `work` on its own thread.
+/// Runs `work` on its own thread. Dialog jobs (Open Folder, Open Project,
+/// Save Project As) use this, so a sheet left open blocks nothing else.
 pub(crate) fn spawn(
     app: &mut App,
     ctx: Option<&dyn PlatformContext>,
@@ -204,7 +205,10 @@ pub(crate) fn spawn(
     }
 }
 
-/// Runs `work` after every earlier serial job has finished.
+/// Runs `work` after every earlier serial job has finished. Never for a
+/// dialog: a sheet waits on the user and would hold every later job (font
+/// loads, settings writes) behind it. Dialogs go through [`spawn`], one
+/// thread each.
 pub(crate) fn spawn_serial(
     app: &mut App,
     ctx: Option<&dyn PlatformContext>,
