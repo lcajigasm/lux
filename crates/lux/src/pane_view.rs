@@ -57,6 +57,13 @@ pub(crate) struct PaneView {
     pub(crate) fold_state: FoldState,
     pub(crate) bookmarks: BookmarkState,
     pub(crate) tokens: PaneTokens,
+    /// The group's own tabs, in its strip's order. `tab_id` is one of
+    /// them; a tab shown in two groups (a cloned view) is in both.
+    pub(crate) tabs: Vec<TabId>,
+    /// Horizontal scroll of the group's strip, in physical pixels.
+    pub(crate) strip_scroll: f32,
+    /// The shown tab the strip last scrolled into view.
+    pub(crate) revealed: Option<TabId>,
 }
 
 impl PaneView {
@@ -69,6 +76,9 @@ impl PaneView {
             fold_state: FoldState::new(),
             bookmarks: BookmarkState::new(),
             tokens: PaneTokens::default(),
+            tabs: vec![tab_id],
+            strip_scroll: 0.0,
+            revealed: None,
         }
     }
 

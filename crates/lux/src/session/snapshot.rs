@@ -271,6 +271,11 @@ fn layout_state(
             tab,
             cursors: cursor_states(cursors),
             scroll_line: (scroll_y / line_height).floor() as usize,
+            tabs: pane
+                .tabs
+                .iter()
+                .filter_map(|id| index_of_tab.get(id).copied())
+                .collect(),
         });
     }
     Some(LayoutState {

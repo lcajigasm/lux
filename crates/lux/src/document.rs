@@ -323,6 +323,9 @@ impl App {
         if self.documents.active_tab == Some(target_id) {
             return true;
         }
+        if let Some(switched) = crate::split::tabs::redirect(self, target_id) {
+            return switched;
+        }
         self.sync_active_document_to_entry();
         let Some(entry) = self
             .documents
@@ -335,13 +338,7 @@ impl App {
         };
         self.documents.active_tab = Some(target_id);
         self.documents.tabs.activate(target_id);
-        if self.ui.split.is_active() && self.ui.split.active_pane < self.ui.split.panes.len() {
-            self.ui.split.panes[self.ui.split.active_pane].tab_id = target_id;
-            self.ui.split.panes[self.ui.split.active_pane].active_tab = target_id;
-            if self.ui.split.active_pane == 1 {
-                self.ui.split.secondary = self.ui.split.panes.get(1).cloned();
-            }
-        }
+        crate::split::tabs::show_in_active_pane(self, target_id);
         self.documents.path = entry.path;
         self.buffer = entry.buffer;
         self.cursors = entry.cursors;
