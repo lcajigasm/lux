@@ -15,7 +15,9 @@ use alacritty_terminal::index::Line;
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::{Config, Term};
 use alacritty_terminal::vte::ansi::{Processor, StdSyncHandler};
-use portable_pty::{Child, MasterPty, native_pty_system};
+use portable_pty::{MasterPty, native_pty_system};
+
+use crate::child::{ChildWatch, DropSignal, ExitNotice};
 
 pub use portable_pty::{CommandBuilder, ExitStatus, PtySize};
 
@@ -146,10 +148,19 @@ impl EventListener for ChannelListener {
 /// the child's foreground process group — the same mechanism a real
 /// terminal emulator relies on. Resize is the other half of that: writing
 /// the new size to the kernel makes it deliver `SIGWINCH`.
+/// Callbacks a caller hands to `Pty::spawn_with`. Both run off the UI
+/// thread: `output` after each chunk of output reaches the grid, `exit`
+/// once the child has exited and its output has been read.
+#[derive(Default)]
+pub struct PtyNotify {
+    pub output: Option<Arc<dyn Fn() + Send + Sync>>,
+    pub exit: Option<ExitNotice>,
+}
+
 pub struct Pty {
     master: Box<dyn MasterPty + Send>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
-    child: Box<dyn Child + Send + Sync>,
+    child: ChildWatch,
     pub(crate) term: Arc<FairMutex<Term<ChannelListener>>>,
     events: Receiver<Event>,
     reader: Option<JoinHandle<()>>,
@@ -158,6 +169,15 @@ pub struct Pty {
 impl Pty {
     /// Spawn `command` into a new real PTY of the given size.
     pub fn spawn(command: CommandBuilder, size: PtySize) -> Result<Self, PtyError> {
+        Self::spawn_with(command, size, PtyNotify::default())
+    }
+
+    /// `spawn`, reporting output and the child's exit through `notify`.
+    pub fn spawn_with(
+        command: CommandBuilder,
+        size: PtySize,
+        notify: PtyNotify,
+    ) -> Result<Self, PtyError> {
         let pair = native_pty_system().openpty(size).map_err(PtyError::Open)?;
         let child = pair.slave.spawn_command(command).map_err(PtyError::Spawn)?;
         // Drop our copy of the slave now that the child holds its own via
@@ -185,7 +205,10 @@ impl Pty {
 
         let reader_term = Arc::clone(&term);
         let reply_writer = Arc::clone(&writer);
+        let (drained_tx, drained) = mpsc::channel();
+        let on_output = notify.output;
         let reader = std::thread::spawn(move || {
+            let _drained = DropSignal(drained_tx);
             let mut processor = Processor::<StdSyncHandler>::new();
             let mut buf = [0u8; 8192];
             let mut total = 0usize;
@@ -233,6 +256,9 @@ impl Pty {
                                 }
                             }
                         }
+                        if let Some(on_output) = &on_output {
+                            on_output();
+                        }
                     }
                 }
             }
@@ -241,7 +267,7 @@ impl Pty {
         Ok(Self {
             master: pair.master,
             writer,
-            child,
+            child: ChildWatch::spawn(child, drained, notify.exit),
             term,
             events,
             reader: Some(reader),
@@ -331,12 +357,35 @@ impl Pty {
 
     /// The child's process id, if the platform exposes one.
     pub fn pid(&self) -> Option<u32> {
-        self.child.process_id()
+        self.child.pid()
     }
 
-    /// Non-blocking poll for the child's exit status.
+    /// The child's exit status if it has exited. Never blocks: the status
+    /// is recorded by the thread waiting on the child.
     pub fn try_wait(&mut self) -> Result<Option<ExitStatus>, PtyError> {
-        Ok(self.child.try_wait()?)
+        Ok(self.child.try_wait())
+    }
+
+    /// Asks the child to stop without waiting for it; the output stays.
+    /// The exit notice (if any) reports when it is gone.
+    pub fn request_kill(&mut self) {
+        self.child.request_kill();
+    }
+
+    /// Writes `text` into the grid on a line of its own, as if the child had
+    /// printed it, with default colors. For status lines such as a build's
+    /// `[Finished in 1.2s]`; call it after the child has exited.
+    pub fn append_line(&self, text: &str) {
+        let mut term = self.term.lock();
+        let fresh_line = term.grid().cursor.point.column.0 == 0;
+        let mut bytes = String::from("\x1b[0m");
+        if !fresh_line {
+            bytes.push_str("\r\n");
+        }
+        bytes.push_str(text);
+        bytes.push_str("\r\n");
+        let mut processor = Processor::<StdSyncHandler>::new();
+        processor.advance(&mut *term, bytes.as_bytes());
     }
 
     /// Next pending terminal event (title change, bell, exit...), if any.
@@ -355,10 +404,9 @@ impl Pty {
             ..
         } = self;
 
-        // Best-effort: if it's already dead, `kill` erroring is fine, the
-        // `wait` below still reaps it.
-        let _ = child.kill();
-        let status = child.wait()?;
+        // Hangup, then a forced kill if the child ignores it; the waiter
+        // thread reaps it and hands over the status.
+        let status = child.kill_and_wait()?;
 
         // Drop our copy of the writer and the master pty handle *before*
         // joining the reader thread. `master` is the load-bearing one: on

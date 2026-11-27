@@ -13,21 +13,7 @@ use crate::app::SelectionDrag;
 impl App {
     pub(crate) fn position_at_mouse(&mut self) -> Position {
         let (local_x, local_y, viewport) = if self.ui.split.is_active() {
-            let sb_w = self.sidebar_width();
-            let top = self.tab_bar_height();
-            let primary_rect = [sb_w, top, self.viewport.width, self.viewport.height];
-            let geom = crate::split::compute_layout_geometry(
-                &self.ui.split,
-                primary_rect,
-                self.scale_factor,
-            );
-            let active_idx = self.ui.split.active_pane;
-            let [px, py, pw, ph] = geom.pane_rects.get(active_idx).copied().unwrap_or([
-                sb_w,
-                top,
-                self.viewport.width,
-                self.viewport.height,
-            ]);
+            let [px, py, pw, ph] = self.active_group_text_rect();
             let pane_vp = lux_ui::editor_view::Viewport {
                 width: pw,
                 height: ph,
@@ -50,7 +36,8 @@ impl App {
         let digits = self.buffer.len_lines().max(1).to_string().len();
         let gutter_w = self.editor_view.reference_width(&"0".repeat(digits));
         let left_padding = if self.ui.split.is_active() {
-            crate::render::text::gutter_number_pad(self.scale_factor) + 22.0 * self.scale_factor
+            crate::render::text::gutter_total_width(gutter_w, self.scale_factor) - gutter_w
+                + 6.0 * self.scale_factor
         } else {
             self.text_left() - self.sidebar_width() - gutter_w
         };
@@ -68,20 +55,7 @@ impl App {
     pub(crate) fn begin_mouse_selection(&mut self, clicks: u8) {
         let position = self.position_at_mouse();
         let local_x = if self.ui.split.is_active() {
-            let sb_w = self.sidebar_width();
-            let top = self.tab_bar_height();
-            let primary_rect = [sb_w, top, self.viewport.width, self.viewport.height];
-            let geom = crate::split::compute_layout_geometry(
-                &self.ui.split,
-                primary_rect,
-                self.scale_factor,
-            );
-            let active_idx = self.ui.split.active_pane;
-            let px = geom
-                .pane_rects
-                .get(active_idx)
-                .map(|r| r[0])
-                .unwrap_or(sb_w);
+            let px = self.active_group_text_rect()[0];
             (self.mouse.position.x as f32 - px).max(0.0)
         } else {
             (self.mouse.position.x as f32 - self.sidebar_width()).max(0.0)

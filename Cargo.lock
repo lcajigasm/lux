@@ -3234,6 +3234,7 @@ dependencies = [
  "serde_json",
  "swash",
  "tempfile",
+ "unicode-segmentation",
  "wgpu",
 ]
 

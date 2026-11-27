@@ -89,6 +89,7 @@ pub(crate) fn saved_view(
     let layout = restoring.layout.clone().and_then(|mut layout| {
         for pane in &mut layout.panes {
             pane.tab = map(pane.tab)?;
+            pane.tabs = pane.tabs.iter().filter_map(|index| map(*index)).collect();
         }
         Some(layout)
     });
@@ -224,7 +225,11 @@ pub(crate) fn apply_tab(
                 restoring.declined = true;
                 open
             }
-            None => add_tab(app, *tab),
+            None => {
+                let added = add_tab(app, *tab);
+                place_in_session_order(app, &restoring.tab_ids, index, added);
+                added
+            }
         };
         restoring.tab_ids[index] = Some(tab_id);
         if restoring.active == Some(index) {
@@ -257,6 +262,41 @@ pub(crate) fn apply_tab(
     }
     app.scheduler.invalidate_all();
     Some(any)
+}
+
+/// Moves the tab that just landed for session index `index` next to the
+/// landed tabs around it, so the strip keeps the session's order however
+/// the reads finish: right after the nearest earlier landed tab, else
+/// right before the nearest later one.
+fn place_in_session_order(app: &mut App, tab_ids: &[Option<TabId>], index: usize, tab: TabId) {
+    let tabs = &mut app.documents.tabs;
+    let Some(from) = tabs.position(tab) else {
+        return;
+    };
+    let before = tab_ids[..index]
+        .iter()
+        .rev()
+        .flatten()
+        .find_map(|id| tabs.position(*id));
+    let after = || {
+        tab_ids[index + 1..]
+            .iter()
+            .flatten()
+            .find_map(|id| tabs.position(*id))
+    };
+    // `move_tab` removes the tab first; a slot past it shifts down by one.
+    let to = match before {
+        Some(at) if at < from => at + 1,
+        Some(at) => at,
+        None => match after() {
+            Some(at) if at < from => at,
+            Some(at) => at.saturating_sub(1),
+            None => return,
+        },
+    };
+    if to != from {
+        tabs.move_tab(tab, to);
+    }
 }
 
 /// The tab already showing `path`, if any.
@@ -378,15 +418,25 @@ fn restore_layout(
         };
         let cursors = super::restore::multi_cursor(&entry.buffer, &saved.cursors);
         let tokens = super::pane_tokens(entry);
+        let listed: Vec<TabId> = saved
+            .tabs
+            .iter()
+            .filter_map(|index| tab_ids.get(*index).copied().flatten())
+            .collect();
         let pane = &mut app.ui.split.panes[idx];
         pane.tab_id = tab_id;
         pane.active_tab = tab_id;
+        pane.tabs = listed;
         if let Some(cursors) = cursors {
             pane.cursors = cursors;
         }
         pane.viewport.scroll_y = saved.scroll_line as f32 * line_height;
-        pane.tokens = tokens;
+        pane.tokens.replace(tokens);
     }
+    // Every tab has landed by now, so each group's list holds open tabs
+    // only. Older sessions list no group tabs: every tab joins the first
+    // group, and each other group keeps the tab it shows.
+    crate::split::tabs::restored(app);
     let active = layout.active_pane.min(count.saturating_sub(1));
     if let Some(pane) = app.ui.split.panes.get(active).cloned() {
         // Load the pane straight into the editor. `focus_group` would first

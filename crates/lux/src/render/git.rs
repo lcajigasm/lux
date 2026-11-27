@@ -93,7 +93,7 @@ pub(crate) fn render_gutter_markers(
     if markers.is_empty() {
         return;
     }
-    let marker_w = 3.0 * scale_factor;
+    let marker_w = super::text::gutter_marker_width(scale_factor);
     let marker_x = super::text::gutter_marker_x(sidebar_width, gutter_width, scale_factor);
     let surface = active_theme().chrome.gutter;
     let paint = |kind| color(gutter_color(kind, surface));

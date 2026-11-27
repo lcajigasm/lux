@@ -60,6 +60,12 @@ pub(crate) struct WorkspaceSession {
 }
 
 impl WorkspaceSession {
+    /// Tests: whether a change was noted since the last call.
+    #[cfg(test)]
+    pub(crate) fn take_unsaved(&mut self) -> bool {
+        std::mem::take(&mut self.unsaved)
+    }
+
     /// A fresh watcher on `root`. The watch and its seeding scan run on a
     /// worker, and the waker fires once the watch is in place.
     pub(crate) fn init_watcher(&mut self, root: &Path) {
@@ -147,6 +153,12 @@ impl WorkspaceSession {
 
 /// Syntax tokens for a pane showing `entry` while it is not the active
 /// document.
+/// The session file `app` writes to.
+#[cfg(test)]
+pub(crate) fn current_file_for_tests(app: &App) -> std::path::PathBuf {
+    snapshot::current_file(app)
+}
+
 pub(crate) fn pane_tokens(entry: &DocumentEntry) -> Vec<lux_syntax::Token> {
     let lang = entry
         .language
