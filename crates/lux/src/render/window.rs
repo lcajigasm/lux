@@ -5,12 +5,17 @@ use lux_render::{GpuContext, QuadPipeline, Surface, TextPipeline};
 use crate::app::{ATLAS_SIDE, App, GpuWindow};
 use crate::render::paint::color;
 
+/// Smallest inner size of the main window, in points. Below it the tab
+/// bar, the find bar and the status bar have no room to lay out.
+pub(crate) const MIN_WINDOW: (f64, f64) = (480.0, 320.0);
+
 impl App {
     pub(crate) fn create_gpu_window(&mut self, ctx: &dyn PlatformContext) {
         let placed = crate::place::restored(ctx);
         let mut attrs = WindowAttributes {
             title: "Lux".to_string(),
             inner_size: Some(LogicalSize::new(1000.0, 700.0)),
+            min_inner_size: Some(LogicalSize::new(MIN_WINDOW.0, MIN_WINDOW.1)),
             ..Default::default()
         };
         if let Some(frame) = &placed {

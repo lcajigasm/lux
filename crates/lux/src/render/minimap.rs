@@ -48,23 +48,25 @@ pub(crate) fn render_minimap(
     ui: &mut UiOverlays,
     doc: &MinimapDoc<'_>,
     viewport: &Viewport,
-    window: (f32, f32),
+    window_width: f32,
     tab_bar_height: f32,
-    status_bar_height: f32,
+    editor_bottom: f32,
     scale_factor: f32,
     line_height: f32,
     theme: &Theme,
     quad_instances: &mut Vec<QuadInstance>,
 ) {
     let minimap_w = ui.minimap.effective_width(scale_factor);
-    let minimap_h = (window.1 - tab_bar_height - status_bar_height).max(0.0);
+    // The minimap is part of the editor column: it ends where the editor
+    // does, above the find bar and the dock.
+    let minimap_h = (editor_bottom - tab_bar_height).max(0.0);
     let row_h = MINIMAP_ROW_HEIGHT * scale_factor;
     let available_rows = (minimap_h / row_h).floor() as usize;
     if minimap_w <= 0.0 || available_rows == 0 {
         return;
     }
     let strip = Strip {
-        x: window.0 - minimap_w,
+        x: window_width - minimap_w,
         y: tab_bar_height,
         w: minimap_w,
         h: minimap_h,

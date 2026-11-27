@@ -195,16 +195,14 @@ fn over_menu(app: &App, x: f32, y: f32) -> bool {
 }
 
 fn below_editor(app: &App, x: f32, y: f32) -> CursorShape {
-    let mut top = app.tab_bar_height() + app.viewport.height;
-    if app.ui.term.visible {
-        let height = app.term_dock_height();
-        if y >= top && y < top + height {
-            return CursorShape::Text;
-        }
-        top += height;
+    let frame = app.frame_layout();
+    let inside = |rect: Option<[f32; 4]>| {
+        rect.is_some_and(|[rx, ry, rw, rh]| x >= rx && x < rx + rw && y >= ry && y < ry + rh)
+    };
+    if inside(frame.dock) {
+        return CursorShape::Text;
     }
-    let search = app.search_bar_height();
-    if search > 0.0 && y >= top && y < top + search {
+    if inside(frame.search_bar) {
         return CursorShape::Arrow;
     }
     let layout = &app.ui.status_bar.layout;
@@ -341,8 +339,9 @@ fn sash_hit(app: &App, x: f32, y: f32) -> bool {
         return false;
     }
     let slop = 4.0 * app.scale_factor;
+    // The sidebar is a full-height column, beside the find bar and dock.
     let top = app.tab_bar_height();
-    let bottom = top + app.viewport.height;
+    let bottom = app.window_extent().1 - app.status_bar_height();
     (x - edge).abs() <= slop && y >= top && y < bottom
 }
 

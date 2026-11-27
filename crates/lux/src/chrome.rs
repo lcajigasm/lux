@@ -165,13 +165,17 @@ pub(crate) fn handle_mouse_click_on_chrome(
         return true;
     }
 
-    let search_bar_h = app.search_bar_height();
-    let search_bar_top = app.tab_bar_height() + app.viewport.height;
-    let status_bar_top = search_bar_top + search_bar_h;
-
-    if search_bar_h > 0.0 && mouse_y >= search_bar_top && mouse_y < status_bar_top {
+    let frame = app.frame_layout();
+    if let Some([x, y, w, h]) = frame.search_bar
+        && mouse_x >= x
+        && mouse_x < x + w
+        && mouse_y >= y
+        && mouse_y < y + h
+    {
         return crate::search::handle_search_click(app, mouse_x, mouse_y);
     }
+    let (_, window_h) = app.window_extent();
+    let status_bar_top = window_h - app.status_bar_height();
 
     if button == MouseButton::Left && crate::term::input::handle_term_click(app, mouse_x, mouse_y) {
         return true;

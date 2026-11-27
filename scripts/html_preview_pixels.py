@@ -46,10 +46,25 @@ def dist(a, b):
     return max(abs(a[0] - b[0]), abs(a[1] - b[1]), abs(a[2] - b[2]))
 
 
-def pane(rows):
-    width = len(rows[0])
+def pane_left(rows):
+    """The preview pane's left edge: the first long run of the panel color
+    on a row below the content. The pane's width follows the editor
+    layout, so a fixed fraction of the capture misses edits near its left
+    edge."""
+    row = rows[int(len(rows) * 0.6)]
+    run = 0
+    for x, pixel in enumerate(row):
+        if dist(pixel, PANEL) <= 2:
+            run += 1
+            if run >= 64:
+                return x - run + 1
+        else:
+            run = 0
+    raise SystemExit("no preview pane in the capture")
+
+
+def pane(rows, x0):
     height = len(rows)
-    x0 = int(width * 0.62)
     y0 = 80
     y1 = height - 60
     return [row[x0:] for row in rows[y0:y1]]
@@ -57,8 +72,10 @@ def pane(rows):
 
 def main():
     folder = Path(sys.argv[1])
-    before = pane(load_png(folder / "rendered.png"))
-    after = pane(load_png(folder / "updated.png"))
+    rendered = load_png(folder / "rendered.png")
+    x0 = pane_left(rendered)
+    before = pane(rendered, x0)
+    after = pane(load_png(folder / "updated.png"), x0)
     panel = ink = 0
     total = 0
     for row in before:
@@ -79,7 +96,7 @@ def main():
                 changed += 1
     if changed < 8:
         raise SystemExit(f"editing the source left the preview unchanged ({changed})")
-    print(f"preview pane panel={panel} ink={ink} changed={changed}")
+    print(f"preview pane x={x0} panel={panel} ink={ink} changed={changed}")
 
 
 if __name__ == "__main__":

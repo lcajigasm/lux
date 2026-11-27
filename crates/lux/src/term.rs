@@ -1,6 +1,7 @@
 //! Integrated PTY terminal panel and project tasks state.
 //! Desktop only (real PTY processes, portable-pty + alacritty_terminal).
 
+pub(crate) mod dock;
 pub(crate) mod input;
 #[cfg(test)]
 mod tests;

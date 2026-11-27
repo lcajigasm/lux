@@ -27,6 +27,7 @@ cat > "$page" << 'EOF'
 EOF
 
 drive_init "$root/target/Lux.app"
+trap drive_stop EXIT
 drive_launch "$page" \
   --snapshot-scale 2 \
   --snapshot-on-usr1 "$out/rendered.png" \

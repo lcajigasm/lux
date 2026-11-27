@@ -11,6 +11,8 @@ pub(crate) enum Icon {
     Symbol,
     Command,
     Snippet,
+    /// The find bar's in-selection toggle: a block beside two lines.
+    Selection,
     /// The active choice in a picker, e.g. the current color scheme.
     Check,
 }
@@ -87,6 +89,27 @@ pub(crate) fn push_icon(
                 2.0 * u,
                 ink,
                 0.6 * u,
+            );
+        }
+        Icon::Selection => {
+            mark(quads, x + 2.0 * u, y + 3.0 * u, 4.0 * u, 4.0 * u, ink, u);
+            mark(
+                quads,
+                x + 8.0 * u,
+                y + 4.0 * u,
+                4.0 * u,
+                1.6 * u,
+                ink,
+                0.8 * u,
+            );
+            mark(
+                quads,
+                x + 8.0 * u,
+                y + 8.0 * u,
+                4.0 * u,
+                1.6 * u,
+                ink,
+                0.8 * u,
             );
         }
         Icon::Check => {
@@ -223,6 +246,7 @@ mod tests {
             Icon::Symbol,
             Icon::Command,
             Icon::Snippet,
+            Icon::Selection,
             Icon::Check,
         ] {
             let mut quads = Vec::new();

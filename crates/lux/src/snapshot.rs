@@ -2,6 +2,8 @@
 //! The window capture on a 1× display cannot show Retina pixels. This path
 //! builds the same quads and glyphs into an RGBA texture and writes a PNG.
 
+mod png;
+
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
@@ -255,27 +257,28 @@ pub(crate) fn capture_settled(app: &mut App, ctx: &dyn PlatformContext) {
     render_capture(app, ctx, &path, scale);
 }
 
+/// The window's logical size at `scale`: the same frame, more pixels.
+pub(crate) fn capture_size(width: u32, height: u32, current: f32, scale: f32) -> (u32, u32) {
+    let current = current.max(0.01);
+    let at = |physical: u32| ((physical as f32 / current) * scale).round().max(1.0) as u32;
+    (at(width), at(height))
+}
+
 fn render_capture(app: &mut App, ctx: &dyn PlatformContext, path: &std::path::Path, scale: f32) {
     let Some(gpu) = app.gpu_window.as_ref() else {
         return;
     };
     let physical = gpu.window.inner_size();
-    let current = app.scale_factor.max(0.01);
-    let logical_w = physical.width as f32 / current;
-    let logical_h = physical.height as f32 / current;
-    let width = (logical_w * scale).round().max(1.0) as u32;
-    let height = (logical_h * scale).round().max(1.0) as u32;
+    let (width, height) = capture_size(physical.width, physical.height, app.scale_factor, scale);
 
     let saved_scale = app.scale_factor;
     let saved_width = app.viewport.width;
     let saved_height = app.viewport.height;
     let saved_scroll_x = app.viewport.scroll_x;
     let saved_scroll_y = app.viewport.scroll_y;
+    // `redraw` sizes the viewport from the capture extent with the same
+    // layout the window uses, so the PNG shows the presented frame.
     app.set_display_scale(f64::from(scale));
-    let tab = app.tab_bar_height();
-    let status = app.status_bar_height();
-    app.viewport.width = width as f32;
-    app.viewport.height = (height as f32 - tab - status).max(1.0);
     PENDING.with(|slot| {
         *slot.borrow_mut() = Some(Capture {
             width,
@@ -481,88 +484,9 @@ fn write_texture(
     }
     drop(mapped);
     readback.unmap();
-    let png = encode_png(capture.width, capture.height, &rgba);
+    let png = png::encode(capture.width, capture.height, &rgba);
     if let Some(parent) = capture.path.parent() {
         std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
     std::fs::write(&capture.path, png).map_err(|error| error.to_string())
-}
-
-fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
-    let mut raw = Vec::with_capacity((width as usize * 4 + 1) * height as usize);
-    let stride = width as usize * 4;
-    for row in 0..height as usize {
-        raw.push(0);
-        raw.extend_from_slice(&rgba[row * stride..(row + 1) * stride]);
-    }
-    let mut out = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
-    let mut ihdr = Vec::with_capacity(13);
-    ihdr.extend(width.to_be_bytes());
-    ihdr.extend(height.to_be_bytes());
-    ihdr.extend([8, 6, 0, 0, 0]);
-    push_chunk(&mut out, b"IHDR", &ihdr);
-    push_chunk(&mut out, b"IDAT", &zlib_store(&raw));
-    push_chunk(&mut out, b"IEND", &[]);
-    out
-}
-
-fn push_chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
-    out.extend((data.len() as u32).to_be_bytes());
-    out.extend(kind);
-    out.extend(data);
-    let crc = crc32(&out[out.len() - 4 - data.len()..]);
-    out.extend(crc.to_be_bytes());
-}
-
-fn zlib_store(data: &[u8]) -> Vec<u8> {
-    let mut zlib = vec![0x78, 0x01];
-    let mut rest = data;
-    while !rest.is_empty() {
-        let take = rest.len().min(65535);
-        let last = take == rest.len();
-        zlib.push(if last { 1 } else { 0 });
-        zlib.extend((take as u16).to_le_bytes());
-        zlib.extend((!take as u16).to_le_bytes());
-        zlib.extend(&rest[..take]);
-        rest = &rest[take..];
-    }
-    zlib.extend(adler32(data).to_be_bytes());
-    zlib
-}
-
-fn adler32(data: &[u8]) -> u32 {
-    let mut a: u32 = 1;
-    let mut b: u32 = 0;
-    for byte in data {
-        a = (a + u32::from(*byte)) % 65521;
-        b = (b + a) % 65521;
-    }
-    (b << 16) | a
-}
-
-fn crc32(data: &[u8]) -> u32 {
-    let mut crc = 0xFFFF_FFFFu32;
-    for byte in data {
-        crc ^= u32::from(*byte);
-        for _ in 0..8 {
-            let mask = (crc & 1).wrapping_neg();
-            crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
-        }
-    }
-    !crc
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_one_pixel_png_names_its_size() {
-        let png = encode_png(1, 1, &[255, 0, 0, 255]);
-        assert_eq!(&png[..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
-        assert_eq!(&png[12..16], b"IHDR");
-        assert_eq!(&png[16..20], &1u32.to_be_bytes());
-        assert_eq!(&png[20..24], &1u32.to_be_bytes());
-        assert!(png.windows(4).any(|chunk| chunk == b"IEND"));
-    }
 }

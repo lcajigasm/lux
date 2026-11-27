@@ -95,6 +95,9 @@ cat > /tmp/lux-find-window.swift << 'SWIFT'
 import CoreGraphics
 import Foundation
 let want = CommandLine.arguments.dropFirst().first ?? ""
+// With a pid, only that process's windows count: another Lux left open
+// would otherwise take the keystrokes meant for this one.
+let wantPid = CommandLine.arguments.count > 2 ? Int(CommandLine.arguments[2]) : nil
 let opts: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
 guard let info = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] else { exit(1) }
 var best = ""
@@ -103,6 +106,7 @@ for w in info {
     let owner = w[kCGWindowOwnerName as String] as? String ?? ""
     let layer = w[kCGWindowLayer as String] as? Int ?? 0
     if layer != 0 || owner.caseInsensitiveCompare(want) != .orderedSame { continue }
+    if let wantPid, (w[kCGWindowOwnerPID as String] as? Int) != wantPid { continue }
     guard let bounds = w[kCGWindowBounds as String] as? [String: Any] else { continue }
     let width = (bounds["Width"] as? NSNumber)?.doubleValue ?? 0
     let height = (bounds["Height"] as? NSNumber)?.doubleValue ?? 0
@@ -121,7 +125,7 @@ SWIFT
 
 found=""
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-    if found="$(swift /tmp/lux-find-window.swift lux 2>/dev/null)"; then
+    if found="$(swift /tmp/lux-find-window.swift lux "$lux_pid" 2>/dev/null)"; then
         break
     fi
     sleep 1
@@ -134,7 +138,7 @@ if [[ -z "$found" ]]; then
 fi
 echo "--> lux window $found"
 window_id="${found%% *}"
-osascript -e 'tell application "System Events" to set frontmost of process "lux" to true' || true
+osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $lux_pid) to true" || true
 sleep 0.4
 
 # Physical ANSI positions. Command+F opens find. Backslash is ç on Spanish ISO.

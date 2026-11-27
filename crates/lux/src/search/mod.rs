@@ -13,6 +13,7 @@ use lux_platform::{Key, NamedKey, PlatformContext};
 use lux_ui::search_bar::SearchBar;
 
 mod click;
+pub(crate) mod geometry;
 mod toggles;
 
 pub(crate) use click::handle_search_click;
@@ -33,7 +34,6 @@ pub(crate) struct SearchBarLayout {
     pub(crate) replace_input_rect: [f32; 4],
     pub(crate) prev_btn_rect: [f32; 4],
     pub(crate) next_btn_rect: [f32; 4],
-    pub(crate) find_btn_rect: [f32; 4],
     pub(crate) find_all_btn_rect: [f32; 4],
     pub(crate) replace_btn_rect: [f32; 4],
     pub(crate) replace_all_btn_rect: [f32; 4],

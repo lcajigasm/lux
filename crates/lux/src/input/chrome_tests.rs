@@ -253,14 +253,14 @@ fn find_counter_reports_n_of_m_and_advances() {
     for ch in ["o", "n", "e"] {
         press(&mut app, Key::Character(ch.into()), Some(ch), None);
     }
-    assert_eq!(counter(&app), "1 of 2 matches");
+    assert_eq!(counter(&app), "1 of 2");
     if cfg!(target_os = "macos") {
         chord(&mut app, "g", false, false);
     } else {
         app.modifiers = Modifiers::default();
         press(&mut app, Key::Named(NamedKey::F(3)), None, None);
     }
-    assert_eq!(counter(&app), "2 of 2 matches");
+    assert_eq!(counter(&app), "2 of 2");
     assert_eq!(app.buffer.text(), "one two one");
 }
 

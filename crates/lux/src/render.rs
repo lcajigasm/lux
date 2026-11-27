@@ -17,6 +17,7 @@ mod modals;
 pub(crate) mod overlay_list;
 pub(crate) mod paint;
 mod palette;
+mod pane;
 pub(crate) mod panel;
 mod plugin;
 mod project_picker;
@@ -42,7 +43,7 @@ use lux_platform::PlatformContext;
 use lux_render::QuadInstance;
 use paint::{DrawList, color, set_active_theme, set_hidpi_grayscale};
 
-use crate::app::{App, BLINK_INTERVAL, TEXT_LEFT_PADDING};
+use crate::app::{App, BLINK_INTERVAL};
 
 impl App {
     /// Paints one frame: the editor or the Markdown preview, then chrome.
@@ -53,6 +54,13 @@ impl App {
         if !self.presentation.ready(Instant::now()) {
             return;
         }
+        let Some(win_size) = self.gpu_window.as_ref().map(|g| g.window.inner_size()) else {
+            return;
+        };
+        // The snapshot and the window share this layout: panels that opened
+        // since the last frame shrink the editor before anything is drawn.
+        let extent = crate::snapshot::frame_extent(win_size.width, win_size.height);
+        let layout = self.fit_viewport(extent.width, extent.height);
         let tab_bar_height = self.tab_bar_height();
         let status_bar_height = self.status_bar_height();
         let tab_width = self.tab_width();
@@ -95,17 +103,7 @@ impl App {
         let elapsed = Instant::now().duration_since(*start);
         let frame = editor_view.build_frame(buffer, cursors, viewport, elapsed, Some(fold_state));
         let is_df = ui.distraction_free.is_some();
-        let sidebar_width = if !is_df
-            && let Some(sidebar) = &ui.sidebar
-            && sidebar.visible
-            && sidebar.tree.is_some()
-        {
-            sidebar.width * *scale_factor
-        } else {
-            0.0
-        };
-        let win_size = gpu_window.window.inner_size();
-        let extent = crate::snapshot::frame_extent(win_size.width, win_size.height);
+        let sidebar_width = layout.editor[0];
         let window_width = extent.width;
         let window_height = extent.height;
         let gutter_total_width = if is_df {
@@ -177,128 +175,38 @@ impl App {
                 &mut gutter_glyphs,
             );
         } else {
-            quad_instances.push(QuadInstance::solid(
-                [sidebar_width, editor_top, viewport.width, viewport.height],
-                color(chrome.theme.background),
-            ));
-
-            let html_preview = documents.active_entry().is_some_and(|entry| {
-                entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Html)
-            });
-            let show_preview = documents.active_entry().is_some_and(|entry| {
-                entry.markdown_preview && entry.language == Some(lux_syntax::LanguageId::Markdown)
-            });
-            let content_width = (viewport.width - sidebar_width).max(1.0);
-            let pane_cap = (content_width * 0.62).max(1.0);
-            let preview_width = if html_preview || show_preview {
-                (content_width * 0.46).clamp(180.0_f32.min(pane_cap), pane_cap)
-            } else {
-                0.0
-            };
-            let mut editor_viewport = *viewport;
-            if html_preview || show_preview {
-                editor_viewport.width = (content_width - preview_width).max(1.0);
-            }
-            {
-                for cursor in &frame.cursors {
-                    if cursor.primary {
-                        let cur_y = editor_top + cursor.y - viewport.scroll_y;
-                        if cur_y >= editor_top && cur_y < editor_top + viewport.height {
-                            let h_x = if is_df { 0.0 } else { text_left };
-                            let h_w = if is_df {
-                                window_width
-                            } else {
-                                (sidebar_width + editor_viewport.width - text_left).max(0.0)
-                            };
-                            quad_instances.push(QuadInstance::solid(
-                                [h_x, cur_y, h_w, line_height],
-                                color(chrome.theme.chrome.line_highlight),
-                            ));
-                        }
-                    }
-                }
-                text::render_text_lines(
-                    &frame,
-                    buffer,
-                    syntax.as_ref(),
-                    &editor_viewport,
-                    editor_top,
-                    line_height,
-                    sidebar_width,
-                    text_left,
-                    stroke,
-                    &chrome.theme,
-                    atlas_state,
-                    font,
-                    font_size,
-                    &mut quad_instances,
-                    &mut glyph_instances,
-                );
-                if let Some(search_state) = &ui.search_bar {
-                    search::render_search_matches(
-                        search_state,
-                        buffer,
-                        editor_view,
-                        &editor_viewport,
-                        editor_top,
-                        line_height,
-                        TEXT_LEFT_PADDING * *scale_factor,
-                        &mut quad_instances,
-                    );
-                }
-                let line_pad_y = (line_height - font_size) * 0.5;
-                let caret_h = font_size + 2.0 * stroke;
-                cursor_screen = text::render_carets(
-                    &frame,
-                    &editor_viewport,
-                    editor_top,
-                    text_left,
-                    sidebar_width,
-                    line_pad_y,
-                    stroke,
-                    caret_h,
-                    color(chrome.theme.accent),
-                    &mut quad_instances,
-                );
-                if gutter_total_width > 0.0 {
-                    text::render_gutter(
-                        &frame,
-                        Some(bookmarks),
-                        &editor_viewport,
-                        editor_top,
-                        line_height,
-                        sidebar_width,
-                        gutter_total_width,
-                        stroke,
-                        &chrome.theme,
-                        atlas_state,
-                        font,
-                        font_size,
-                        &mut gutter_quads,
-                        &mut gutter_glyphs,
-                    );
-                }
-            }
-            html_view::paint_open(
-                show_preview,
-                html_preview,
+            let pane = pane::SinglePane {
+                frame: &frame,
                 buffer,
-                editor_view,
-                atlas_state,
+                syntax: syntax.as_ref(),
+                viewport,
+                bookmarks,
+                documents,
+                search: ui.search_bar.as_ref(),
+                syntax_theme: crate::color_scheme::syntax_theme(
+                    &ui.settings.schemes,
+                    chrome.theme.name,
+                ),
+                theme: &chrome.theme,
                 font,
                 font_size,
                 line_height,
-                sidebar_width + editor_viewport.width,
-                preview_width,
-                editor_top,
-                viewport.height,
-                16.0 * *scale_factor,
                 stroke,
-                &chrome.theme,
-                crate::color_scheme::syntax_theme(&ui.settings.schemes, chrome.theme.name),
-                &mut quad_instances,
-                &mut glyph_instances,
-            );
+                scale_factor: *scale_factor,
+                editor_top,
+                sidebar_width,
+                text_left,
+                gutter_total_width,
+                window_width,
+                distraction_free: is_df,
+            };
+            let mut out = pane::PaneOutput {
+                quads: &mut quad_instances,
+                glyphs: &mut glyph_instances,
+                gutter_quads: &mut gutter_quads,
+                gutter_glyphs: &mut gutter_glyphs,
+            };
+            cursor_screen = pane.paint(editor_view, atlas_state, &mut out);
         }
 
         if tab_bar_height > 0.0 {
@@ -339,12 +247,10 @@ impl App {
             &mut glyph_instances,
         );
         let language_id = documents.language();
-        if let Some(search_state) = &mut ui.search_bar {
-            let search_bar_top = editor_top + viewport.height;
+        if let (Some(search_state), Some(bar)) = (&mut ui.search_bar, layout.search_bar) {
             search::render_search_bar(
                 search_state,
-                viewport.width,
-                search_bar_top,
+                bar,
                 *scale_factor,
                 stroke,
                 font_size,
@@ -360,15 +266,11 @@ impl App {
         }
 
         if let Some(sidebar_state) = &mut ui.sidebar {
-            let search_bar_h = ui
-                .search_bar
-                .as_ref()
-                .map_or(0.0, |s| s.height(*scale_factor));
             sidebar::render_sidebar(
                 sidebar_state,
                 sidebar_width,
                 tab_bar_height,
-                viewport.height + search_bar_h,
+                window_height - tab_bar_height - status_bar_height,
                 *scale_factor,
                 stroke,
                 font_size,
@@ -420,9 +322,9 @@ impl App {
                 ui,
                 &doc,
                 viewport,
-                (window_width, window_height),
+                window_width,
                 tab_bar_height,
-                status_bar_height,
+                editor_top + viewport.height,
                 *scale_factor,
                 line_height,
                 &chrome.theme,
@@ -507,9 +409,7 @@ impl App {
             &mut atlas_state.dirty,
             &mut atlas_state.scale_cx,
             font,
-            window_width,
-            gpu_window.window.inner_size().height as f32,
-            status_bar_height,
+            layout.dock,
             *scale_factor,
             stroke,
         );
