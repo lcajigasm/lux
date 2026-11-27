@@ -57,6 +57,8 @@ pub(crate) struct SplitLayout {
     pub(crate) active_pane: usize,
     pub(crate) panes: Vec<PaneView>,
     pub(crate) dragging_divider: Option<DraggingDivider>,
+    /// What `split::tabs::reconcile` last brought the groups in line with.
+    pub(crate) reconciled: Option<u64>,
 }
 
 impl Default for SplitLayout {
@@ -70,6 +72,7 @@ impl Default for SplitLayout {
             active_pane: 0,
             panes: Vec::new(),
             dragging_divider: None,
+            reconciled: None,
         }
     }
 }

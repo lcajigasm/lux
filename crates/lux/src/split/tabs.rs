@@ -13,6 +13,13 @@ use crate::app::App;
 use crate::pane_view::PaneView;
 use crate::split::{LayoutPreset, SplitDirection};
 
+mod close;
+#[cfg(test)]
+mod tests;
+
+use close::neighbor;
+pub(crate) use close::{after_active_closed, close_active_view, close_in_group, forget, select};
+
 /// Open tabs, in the global order.
 fn open_tabs(app: &App) -> Vec<TabId> {
     app.documents.tabs.tabs().iter().map(|t| t.id).collect()
@@ -31,6 +38,19 @@ pub(crate) fn focused_order(app: &App) -> Vec<TabId> {
         return pane.tabs.clone();
     }
     open_tabs(app)
+}
+
+/// The tab next to `tab` in the focused group's strip (right, else left),
+/// for a tab about to close. `None` without a split.
+pub(crate) fn focused_neighbor(app: &App, tab: TabId) -> Option<TabId> {
+    if !split_on(app) {
+        return None;
+    }
+    let tabs = &app.ui.split.panes.get(app.ui.split.active_pane)?.tabs;
+    let at = tabs.iter().position(|id| *id == tab)?;
+    tabs.get(at + 1)
+        .or_else(|| at.checked_sub(1).and_then(|i| tabs.get(i)))
+        .copied()
 }
 
 /// A view of `tab` as its entry last left it, for a group that is not
@@ -94,6 +114,7 @@ pub(crate) fn store_active_pane(app: &mut App) {
 /// first storing the editor's state anywhere.
 pub(crate) fn enter_pane(app: &mut App, idx: usize) {
     app.ui.split.active_pane = idx;
+    shows_an_open_document(app, idx);
     let Some(pane) = app.ui.split.panes.get(idx).cloned() else {
         return;
     };
@@ -124,6 +145,31 @@ pub(crate) fn enter_pane(app: &mut App, idx: usize) {
         .collect();
     app.ui.split.secondary = app.ui.split.panes.get(1).cloned();
     app.scheduler.invalidate_all();
+}
+
+/// Makes group `idx` show a tab whose document is open, so entering it
+/// always loads a document: a group that inherited tabs may still name
+/// one that just closed.
+fn shows_an_open_document(app: &mut App, idx: usize) {
+    let has_document = |app: &App, tab: TabId| {
+        app.documents.active_tab == Some(tab)
+            || app.documents.entries.iter().any(|e| e.tab_id == tab)
+    };
+    let Some(pane) = app.ui.split.panes.get(idx) else {
+        return;
+    };
+    if has_document(app, pane.tab_id) {
+        return;
+    }
+    let next = pane
+        .tabs
+        .iter()
+        .copied()
+        .find(|tab| has_document(app, *tab))
+        .or_else(|| app.documents.entries.first().map(|e| e.tab_id));
+    if let Some(next) = next {
+        show_in(app, idx, next);
+    }
 }
 
 /// `switch_to_tab` calls this first. A tab that is not in the focused
@@ -169,13 +215,40 @@ pub(crate) fn show_in_active_pane(app: &mut App, target: TabId) {
 
 /// Brings every group's list in line with what is open: closed tabs leave,
 /// a shown tab is listed, and an open tab no group lists joins the focused
-/// group. A group left with nothing closes. Runs before each frame and
-/// after anything that opens or closes tabs.
-pub(crate) fn reconcile(app: &mut App) {
+/// group. A group left with nothing closes. Called before each frame, it
+/// does nothing (and allocates nothing) unless the open tabs, the focused
+/// document, or the groups changed since it last ran. Returns whether it
+/// ran.
+pub(crate) fn reconcile(app: &mut App) -> bool {
     if !split_on(app) {
-        return;
+        return false;
     }
-    let open = open_tabs(app);
+    let key = reconcile_key(app);
+    if app.ui.split.reconciled == Some(key) {
+        return false;
+    }
+    reconcile_now(app);
+    app.ui.split.reconciled = Some(reconcile_key(app));
+    true
+}
+
+/// What reconcile depends on, hashed without allocating: the open tabs
+/// and their order (by generation), the focused document and group, and
+/// what each group shows and how many tabs it lists.
+fn reconcile_key(app: &App) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    app.documents.tabs.generation().hash(&mut hasher);
+    app.documents.active_tab.hash(&mut hasher);
+    app.ui.split.active_pane.hash(&mut hasher);
+    for pane in &app.ui.split.panes {
+        pane.tab_id.hash(&mut hasher);
+        pane.tabs.len().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn reconcile_now(app: &mut App) {
     let active = app.ui.split.active_pane.min(app.ui.split.panes.len() - 1);
     app.ui.split.active_pane = active;
     if let Some(tab) = app.documents.active_tab {
@@ -183,15 +256,20 @@ pub(crate) fn reconcile(app: &mut App) {
         pane.tab_id = tab;
         pane.active_tab = tab;
     }
-    for pane in &mut app.ui.split.panes {
-        pane.tabs.retain(|id| open.contains(id));
-        if open.contains(&pane.tab_id) && !pane.tabs.contains(&pane.tab_id) {
+    let tabs = &app.documents.tabs;
+    let is_open = |id: TabId| tabs.position(id).is_some();
+    let panes = &mut app.ui.split.panes;
+    let mut listed = std::collections::HashSet::new();
+    for pane in panes.iter_mut() {
+        pane.tabs.retain(|id| is_open(*id));
+        if is_open(pane.tab_id) && !pane.tabs.contains(&pane.tab_id) {
             pane.tabs.push(pane.tab_id);
         }
+        listed.extend(pane.tabs.iter().copied());
     }
-    for id in &open {
-        if !app.ui.split.panes.iter().any(|p| p.tabs.contains(id)) {
-            app.ui.split.panes[active].tabs.push(*id);
+    for tab in tabs.tabs() {
+        if !listed.contains(&tab.id) {
+            panes[active].tabs.push(tab.id);
         }
     }
     let mut idx = app.ui.split.panes.len();
@@ -200,7 +278,7 @@ pub(crate) fn reconcile(app: &mut App) {
         let Some(pane) = app.ui.split.panes.get(idx) else {
             continue;
         };
-        if open.contains(&pane.tab_id) {
+        if app.documents.tabs.position(pane.tab_id).is_some() {
             continue;
         }
         match pane.tabs.first().copied() {
@@ -213,6 +291,13 @@ pub(crate) fn reconcile(app: &mut App) {
 /// The session restored each group's tabs. A tab no group lists (an older
 /// session, or one whose file is gone) joins the first group, so the
 /// focused group at restore does not collect them all.
+///
+/// This runs once, when every restored tab is already open: lists can
+/// only hold ids of open tabs. A restore where tabs land later (async
+/// restore, #158) must keep each group's saved tab indexes until those
+/// tabs open and then insert each landing tab into the group that listed
+/// it, at its saved position. Otherwise `reconcile` sees an open tab no
+/// group lists and puts it in the focused group.
 pub(crate) fn restored(app: &mut App) {
     if !split_on(app) {
         return;
@@ -229,149 +314,6 @@ pub(crate) fn restored(app: &mut App) {
             app.ui.split.panes[0].tabs.push(id);
         }
     }
-}
-
-/// Tab `closed` was closed while not the editor's document. Each group
-/// that showed it shows its neighbor in that group's strip, or closes.
-pub(crate) fn forget(app: &mut App, closed: TabId) {
-    if !split_on(app) {
-        return;
-    }
-    let mut idx = app.ui.split.panes.len();
-    while idx > 0 {
-        idx -= 1;
-        // A closed group may have taken the split down to one group.
-        let Some(pane) = app.ui.split.panes.get_mut(idx) else {
-            continue;
-        };
-        let Some(at) = pane.tabs.iter().position(|id| *id == closed) else {
-            continue;
-        };
-        pane.tabs.remove(at);
-        if pane.tab_id != closed {
-            continue;
-        }
-        match neighbor(&pane.tabs, at) {
-            Some(next) => show_in(app, idx, next),
-            None => remove_group(app, idx),
-        }
-    }
-    app.ui.split.secondary = app.ui.split.panes.get(1).cloned();
-}
-
-fn neighbor(tabs: &[TabId], removed_at: usize) -> Option<TabId> {
-    tabs.get(removed_at.min(tabs.len().saturating_sub(1)))
-        .copied()
-}
-
-/// The editor's document `closed` was just closed. The focused group shows
-/// its neighbor in that group; a group left empty closes and the group
-/// that takes its place gets focus. Returns false without a split, for the
-/// caller's global fallback.
-pub(crate) fn after_active_closed(app: &mut App, closed: TabId) -> bool {
-    if !split_on(app) {
-        return false;
-    }
-    let active = app.ui.split.active_pane.min(app.ui.split.panes.len() - 1);
-    let at = app.ui.split.panes[active]
-        .tabs
-        .iter()
-        .position(|id| *id == closed)
-        .unwrap_or(0);
-    app.ui.split.panes[active].tabs.retain(|id| *id != closed);
-    app.documents.active_tab = None;
-    match neighbor(&app.ui.split.panes[active].tabs, at) {
-        Some(next) => {
-            app.ui.split.panes[active].tab_id = next;
-            app.switch_to_tab(next);
-        }
-        None => {
-            remove_group(app, active);
-            if split_on(app) {
-                let next = app.ui.split.active_pane.min(app.ui.split.panes.len() - 1);
-                enter_pane(app, next);
-            } else if let Some(tab) = app.documents.tabs.tabs().first().map(|t| t.id) {
-                app.switch_to_tab(tab);
-            }
-        }
-    }
-    forget(app, closed);
-    true
-}
-
-/// A click on tab `tab` in the strip of `group`: shows it there and
-/// focuses that group.
-pub(crate) fn select(app: &mut App, group: Option<usize>, tab: TabId) {
-    match group {
-        Some(g)
-            if split_on(app) && g != app.ui.split.active_pane && g < app.ui.split.panes.len() =>
-        {
-            if app.ui.split.panes[g].tab_id != tab {
-                app.sync_active_document_to_entry();
-                show_in(app, g, tab);
-            }
-            app.focus_group(g);
-        }
-        _ => {
-            app.switch_to_tab(tab);
-        }
-    }
-}
-
-/// The close mark of `tab` in the strip of `group`. A tab that another
-/// group also shows (a cloned view) only leaves this group; otherwise the
-/// tab closes, asking first when it has unsaved changes.
-pub(crate) fn close_in_group(
-    app: &mut App,
-    ctx: &dyn lux_platform::PlatformContext,
-    group: Option<usize>,
-    tab: TabId,
-) {
-    let elsewhere = group.is_some_and(|g| {
-        app.ui
-            .split
-            .panes
-            .iter()
-            .enumerate()
-            .any(|(i, p)| i != g && p.tabs.contains(&tab))
-    });
-    match group {
-        Some(g) if elsewhere && split_on(app) => drop_view(app, g, tab),
-        _ => app.close_tab(ctx, tab),
-    }
-}
-
-/// Takes `tab` out of group `g` only; the document stays open in the
-/// other group that lists it.
-fn drop_view(app: &mut App, g: usize, tab: TabId) {
-    let pane = &mut app.ui.split.panes[g];
-    let at = pane.tabs.iter().position(|id| *id == tab).unwrap_or(0);
-    pane.tabs.retain(|id| *id != tab);
-    if pane.tab_id != tab {
-        app.scheduler.invalidate_all();
-        return;
-    }
-    let focused = g == app.ui.split.active_pane;
-    match neighbor(&app.ui.split.panes[g].tabs, at) {
-        Some(next) if focused => {
-            app.ui.split.panes[g].tab_id = next;
-            app.switch_to_tab(next);
-        }
-        Some(next) => {
-            app.sync_active_document_to_entry();
-            show_in(app, g, next);
-        }
-        None => {
-            app.sync_active_document_to_entry();
-            remove_group(app, g);
-            if focused && split_on(app) {
-                app.documents.active_tab = None;
-                let next = app.ui.split.active_pane.min(app.ui.split.panes.len() - 1);
-                enter_pane(app, next);
-            }
-        }
-    }
-    app.scheduler.invalidate_all();
 }
 
 /// The preset with `count` groups in the same arrangement as `preset`.
@@ -527,6 +469,10 @@ impl App {
         let Some(tab) = self.documents.active_tab else {
             return false;
         };
+        if from == group_idx {
+            // Already there: not a reorder to the end.
+            return false;
+        }
         move_tab(self, tab, from, group_idx, None);
         true
     }

@@ -54,6 +54,12 @@ pub(crate) struct WorkspaceSession {
 }
 
 impl WorkspaceSession {
+    /// Tests: whether a change was noted since the last call.
+    #[cfg(test)]
+    pub(crate) fn take_unsaved(&mut self) -> bool {
+        std::mem::take(&mut self.unsaved)
+    }
+
     /// A fresh watcher on `root`. The watch and its seeding scan run on a
     /// worker, and the waker fires once the watch is in place.
     pub(crate) fn init_watcher(&mut self, root: &Path) {

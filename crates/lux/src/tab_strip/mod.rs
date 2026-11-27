@@ -19,7 +19,7 @@ mod hover_tests;
 #[cfg(test)]
 mod inset_tests;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use lux_platform::event::KeyEvent;
 use lux_platform::{Key, NamedKey};
@@ -216,7 +216,7 @@ pub(crate) fn tab_in(app: &App, strip: &Strip, mouse_x: f32) -> Option<(usize, b
 
 /// The tab id at `index` in `strip`.
 pub(crate) fn tab_id(app: &App, strip: &Strip, index: usize) -> Option<TabId> {
-    strips::order(app, strip.group).get(index).copied()
+    strips::tab_at_index(app, strip.group, index)
 }
 
 /// The wheel over a strip scrolls that strip.
@@ -233,10 +233,7 @@ pub(crate) fn scroll_tabs(app: &mut App, delta_x: f32) {
 
 /// Scrolls `strip` the least distance that shows all of tab `id`.
 fn reveal_in(app: &mut App, strip: &Strip, id: TabId) {
-    let Some(index) = strips::order(app, strip.group)
-        .iter()
-        .position(|t| *t == id)
-    else {
+    let Some(index) = strips::position(app, strip.group, id) else {
         return;
     };
     let layout = strip.layout;
