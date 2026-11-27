@@ -172,3 +172,80 @@ fn undo_after_a_reload_survives_a_restart() {
     }
     assert_eq!(fresh.buffer.text(), "start\n");
 }
+
+/// `lux demo.sublime-project`: the project is read on a worker, so the
+/// window appears before it lands. The folderless session must not be
+/// restored into that window, and a project the user has since replaced
+/// must not land.
+#[test]
+fn a_project_from_the_command_line_skips_the_folderless_restore() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let loose = project(&dir.path().join("loose"), "loose.txt", "loose\n");
+    let mut first = new_app();
+    first.ui.session.data_dir = Some(data.clone());
+    open_file(&mut first, &loose);
+    save_session(&mut first, true).unwrap();
+
+    let root = dir.path().join("p");
+    project(&root, "p.txt", "p\n");
+    let project_file = project(
+        &root,
+        "demo.sublime-project",
+        r#"{"folders":[{"path":"."}]}"#,
+    );
+    let mut app = new_app();
+    app.ui.session.data_dir = Some(data.clone());
+    app.open_project_file(&project_file, None);
+    crate::session::restore_at_launch(&mut app);
+    crate::ui_io::finish_all(&mut app, &Ctx);
+
+    assert_eq!(app.ui.project.active_project_path, Some(project_file));
+    let open: Vec<_> = app
+        .documents
+        .entries
+        .iter()
+        .filter_map(|e| e.path.clone())
+        .collect();
+    assert!(!open.contains(&loose), "{open:?}");
+
+    // Without a pending project the folderless session still restores.
+    let mut plain = new_app();
+    plain.ui.session.data_dir = Some(data);
+    crate::session::restore_at_launch(&mut plain);
+    assert!(
+        plain
+            .documents
+            .entries
+            .iter()
+            .any(|e| e.path.as_ref() == Some(&loose))
+    );
+}
+
+/// Open Project, then Open Folder before the project file was read: the
+/// folder stays, the project result is dropped.
+#[test]
+fn a_project_that_lands_after_open_folder_is_dropped() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("p");
+    let folder = dir.path().join("f");
+    project(&folder, "f.txt", "f\n");
+    let project_file = project(
+        &root,
+        "demo.sublime-project",
+        r#"{"folders":[{"path":"."}]}"#,
+    );
+    let mut app = new_app();
+    app.ui.session.data_dir = Some(dir.path().join("data"));
+    let hold = app.ui.dialogs.jobs.hold();
+    app.open_project_file(&project_file, None);
+    app.quick_switch_project();
+    app.open_workspace(folder.clone());
+    hold.release();
+    crate::ui_io::finish_all(&mut app, &Ctx);
+
+    assert_eq!(app.ui.project.active_project_path, None);
+    assert!(app.ui.project.picker.is_none());
+    assert_eq!(app.workspace_root(), Some(folder));
+    assert!(!app.ui.project.opening);
+}

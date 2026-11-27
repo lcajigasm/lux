@@ -14,6 +14,7 @@ pub(crate) mod inline;
 pub(crate) mod menu;
 pub(crate) mod ops;
 pub(crate) mod pending;
+pub(crate) mod reads;
 pub(crate) mod watch;
 pub(crate) mod worker;
 
@@ -63,22 +64,15 @@ impl Default for SidebarState {
 }
 
 impl SidebarState {
+    /// Opens `path` with its first level read on the calling thread.
+    /// Tests only: the app opens folders through [`reads::open_root`].
+    #[cfg(test)]
     pub(crate) fn open_folder(path: PathBuf) -> Option<Self> {
         let tree = FileTree::open(&path).ok()?;
         Some(Self {
             tree: Some(tree),
             workspace_root: Some(path),
-            selected_node: None,
-            scroll_y: 0.0,
-            visible: true,
-            width: DEFAULT_SIDEBAR_WIDTH,
-            focused: false,
-            context_menu: None,
-            inline_input: None,
-            git_marks: Default::default(),
-            drag: None,
-            extra: Vec::new(),
-            resizing: false,
+            ..Self::default()
         })
     }
 
@@ -92,18 +86,49 @@ impl SidebarState {
         }
     }
 
-    pub(crate) fn toggle_node(&mut self, id: NodeId) {
-        let Some(tree) = &mut self.tree else {
-            return;
-        };
-        if tree.node_kind(id) == Some(NodeKind::Directory) {
-            if tree.is_expanded(id) == Some(true) {
-                tree.collapse(id);
-            } else {
-                let _ = tree.expand(id);
-            }
-        }
+    /// Collapses or expands a folder row and selects it. Memory only:
+    /// returns the folder to read when its entries were never loaded, for
+    /// [`reads::expand_later`].
+    #[must_use]
+    pub(crate) fn toggle_node(&mut self, id: NodeId) -> Option<PathBuf> {
+        let tree = self.tree.as_mut()?;
         self.selected_node = Some(id);
+        if tree.node_kind(id) != Some(NodeKind::Directory) {
+            return None;
+        }
+        if tree.is_expanded(id) == Some(true) {
+            tree.collapse(id);
+            None
+        } else if tree.expand_loaded(id) {
+            None
+        } else {
+            tree.unread_dir(id)
+        }
+    }
+
+    /// [`SidebarState::toggle_node`] that reads an unread folder on the
+    /// calling thread. Tests only.
+    #[cfg(test)]
+    pub(crate) fn toggle_node_now(&mut self, id: NodeId) {
+        if let Some(dir) = self.toggle_node(id)
+            && let Some(tree) = self.tree.as_mut()
+        {
+            let listing = lux_ui::file_tree::Listing::read(&dir).unwrap();
+            tree.install_listing(&dir, listing);
+            tree.expand_loaded(id);
+        }
+    }
+
+    /// [`SidebarState::add_folder`] that reads the folder on the calling
+    /// thread. Tests only.
+    #[cfg(test)]
+    pub(crate) fn add_folder_now(&mut self, path: PathBuf) -> bool {
+        if !self.add_folder(path.clone()) {
+            return false;
+        }
+        let read = lux_ui::file_tree::RootRead::read(path);
+        let folder = self.extra.last_mut().expect("just added");
+        folder.tree.install_root(read).is_ok()
     }
 
     pub(crate) fn scroll_by(&mut self, dy: f32, scale: f32, view_height: f32) {
@@ -168,10 +193,13 @@ pub(crate) fn reveal_open_document(app: &mut crate::app::App) {
         let Some(tree) = sidebar.tree.as_mut() else {
             return;
         };
-        match tree.reveal(&path) {
-            Ok(Some(id)) => id,
-            _ => return,
-        }
+        tree.reveal_loaded(&path)
+    };
+    let Some(id) = reads::reveal(app, id) else {
+        return;
+    };
+    let Some(sidebar) = app.ui.sidebar.as_mut() else {
+        return;
     };
     sidebar.selected_node = Some(id);
     let rows = {
@@ -403,7 +431,9 @@ pub(crate) fn handle_sidebar_key(
             let row = &rows[current_idx];
             match row.kind {
                 NodeKind::Directory => {
-                    sidebar.toggle_node(row.id);
+                    if let Some(dir) = sidebar.toggle_node(row.id) {
+                        reads::expand_later(app, dir);
+                    }
                     app.scheduler.invalidate_all();
                 }
                 NodeKind::File => {
@@ -418,7 +448,11 @@ pub(crate) fn handle_sidebar_key(
             let row = &rows[current_idx];
             if row.kind == NodeKind::Directory {
                 if !row.expanded {
-                    let _ = tree.expand(row.id);
+                    if !tree.expand_loaded(row.id)
+                        && let Some(dir) = tree.unread_dir(row.id)
+                    {
+                        reads::expand_later(app, dir);
+                    }
                     app.scheduler.invalidate_all();
                 }
                 return true;
@@ -473,7 +507,7 @@ mod tests {
             .find(|row| row.name == "notes")
             .unwrap()
             .id;
-        sidebar.toggle_node(notes);
+        sidebar.toggle_node_now(notes);
         let names: Vec<_> = listed_rows(sidebar.tree.as_mut().unwrap())
             .iter()
             .map(|row| row.name.clone())

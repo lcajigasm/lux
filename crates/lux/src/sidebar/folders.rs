@@ -70,14 +70,14 @@ pub(crate) fn row_count(sidebar: &mut SidebarState) -> usize {
 }
 
 impl SidebarState {
-    /// Adds `path` under the open folder. The directory stays where it is.
+    /// Adds `path` under the open folder, unread. The directory stays where
+    /// it is. Callers go through `reads::add_root`, which reads it.
     pub(crate) fn add_folder(&mut self, path: PathBuf) -> bool {
         if self.tree.is_none() || self.owns(&path) {
             return false;
         }
-        let Some(tree) = FileTree::open(&path).ok() else {
-            return false;
-        };
+        // Read on the file-ops worker; see `reads::add_root`.
+        let tree = FileTree::unread(&path);
         self.extra.push(ExtraFolder { path, tree });
         true
     }
@@ -182,12 +182,16 @@ pub(crate) fn activate(
             return;
         };
         if kind == NodeKind::Directory {
+            let mut unread = None;
             if tree.is_expanded(id) == Some(true) {
                 tree.collapse(id);
-            } else {
-                let _ = tree.expand(id);
+            } else if !tree.expand_loaded(id) {
+                unread = tree.unread_dir(id);
             }
             sidebar.selected_node = Some(id);
+            if let Some(dir) = unread {
+                super::reads::expand_later(app, dir);
+            }
             None
         } else {
             tree.node_path(id).map(|path| path.to_path_buf())
@@ -332,7 +336,7 @@ mod tests {
         std::fs::write(alpha.path().join("keep.txt"), "keep").unwrap();
         std::fs::write(beta.path().join("gone.txt"), "gone").unwrap();
         let mut sidebar = SidebarState::open_folder(alpha.path().to_path_buf()).unwrap();
-        assert!(sidebar.add_folder(beta.path().to_path_buf()));
+        assert!(sidebar.add_folder_now(beta.path().to_path_buf()));
         assert_eq!(
             sidebar.root_names(),
             vec![folder_name(alpha.path()), folder_name(beta.path()),]
@@ -353,7 +357,7 @@ mod tests {
         std::fs::write(alpha.path().join("keep.txt"), "keep").unwrap();
         std::fs::write(beta.path().join("stay.txt"), "stay").unwrap();
         let mut sidebar = SidebarState::open_folder(alpha.path().to_path_buf()).unwrap();
-        assert!(sidebar.add_folder(beta.path().to_path_buf()));
+        assert!(sidebar.add_folder_now(beta.path().to_path_buf()));
         let removed = sidebar.close_folder(0).unwrap();
         assert_eq!(removed, alpha.path());
         assert!(alpha.path().join("keep.txt").is_file());
@@ -379,7 +383,7 @@ mod tests {
                 .sidebar
                 .as_mut()
                 .unwrap()
-                .add_folder(beta.path().to_path_buf())
+                .add_folder_now(beta.path().to_path_buf())
         );
         let gone_id = app.documents.tabs.open("gone.txt");
         app.documents
@@ -508,8 +512,8 @@ mod tests {
         let gamma = tempfile::tempdir().unwrap();
         std::fs::write(gamma.path().join("g.txt"), "g").unwrap();
         let mut sidebar = SidebarState::open_folder(alpha.path().to_path_buf()).unwrap();
-        assert!(sidebar.add_folder(beta.path().to_path_buf()));
-        assert!(sidebar.add_folder(gamma.path().to_path_buf()));
+        assert!(sidebar.add_folder_now(beta.path().to_path_buf()));
+        assert!(sidebar.add_folder_now(gamma.path().to_path_buf()));
         let root = sidebar.tree_at(2).unwrap().root();
         inline::begin(
             &mut sidebar,

@@ -101,10 +101,11 @@ impl App {
 
     pub(crate) fn open_workspace(&mut self, path: PathBuf) {
         crate::session::leave_root(self);
+        self.ui.project.supersede();
         let restored = crate::session::readable_file(self, Some(&path))
             .is_some_and(|file| crate::session::restore_session(self, &file).unwrap_or(false));
         if !restored {
-            self.ui.sidebar = crate::sidebar::SidebarState::open_folder(path.clone());
+            crate::sidebar::reads::open_root(self, path.clone());
             self.ui.session.init_watcher(&path);
         }
         self.update_viewport_dimensions();
@@ -113,11 +114,7 @@ impl App {
 
     /// Adds a folder beside the one already in the sidebar. Nothing is deleted.
     pub(crate) fn add_sidebar_folder(&mut self, path: PathBuf) -> bool {
-        let added = self
-            .ui
-            .sidebar
-            .as_mut()
-            .is_some_and(|sidebar| sidebar.add_folder(path.clone()));
+        let added = crate::sidebar::reads::add_root(self, path.clone());
         if added {
             self.ui.session.watch_folder(&path, true);
             self.scheduler.invalidate_all();
@@ -157,7 +154,7 @@ impl App {
         } else {
             crate::session::leave_root(self);
             let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            self.ui.sidebar = crate::sidebar::SidebarState::open_folder(cwd);
+            crate::sidebar::reads::open_root(self, cwd);
         }
         self.update_viewport_dimensions();
         self.scheduler.invalidate_all();

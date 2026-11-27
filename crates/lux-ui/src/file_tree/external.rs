@@ -123,6 +123,47 @@ impl FileTree {
         Some(id)
     }
 
+    /// `from` was moved into another directory, ending at `to`. The node
+    /// keeps its id, expansion and loaded children when the destination
+    /// directory is loaded; otherwise it is dropped and shows up when that
+    /// directory is read. If `from` is already gone, `to` is inserted.
+    pub fn note_moved(&mut self, from: &Path, to: &Path, kind: NodeKind) -> Option<NodeId> {
+        let Some(id) = self.find_id(from) else {
+            return self.note_created_id(to, kind);
+        };
+        if id == self.root {
+            return None;
+        }
+        if let Some(existing) = self.find_id(to) {
+            self.note_removed(from);
+            return Some(existing);
+        }
+        let new_parent = to.parent().and_then(|dir| self.find_id(dir));
+        let Some(new_parent) = new_parent.filter(|&p| self.unread_dir(p).is_none()) else {
+            self.note_removed(from);
+            return None;
+        };
+        let old_path = self.nodes.get(&id)?.path.clone();
+        let new_path = self
+            .nodes
+            .get(&new_parent)?
+            .path
+            .join(super::display_name(to));
+        if let Some(old_parent) = self.nodes.get(&id).and_then(|node| node.parent) {
+            self.remove_child(old_parent, id);
+        }
+        self.reparent_path(id, &old_path, &new_path);
+        self.nodes.get_mut(&id)?.parent = Some(new_parent);
+        self.nodes
+            .get_mut(&new_parent)?
+            .children
+            .get_or_insert_with(Vec::new)
+            .push(id);
+        self.resort_children(new_parent);
+        self.rows_dirty = true;
+        Some(id)
+    }
+
     /// The loaded node at `path`, given either the tree's spelling of the
     /// root or the resolved one. Memory only.
     pub fn find_id(&self, path: &Path) -> Option<NodeId> {

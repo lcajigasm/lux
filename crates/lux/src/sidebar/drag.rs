@@ -9,6 +9,7 @@ use lux_ui::file_tree::{NodeId, NodeKind};
 use lux_ui::tabs::TabId;
 
 use crate::app::App;
+use crate::sidebar::worker::Job;
 use crate::sidebar::{SIDEBAR_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT};
 
 /// Pointer travel, in logical pixels, before a press becomes a move.
@@ -198,8 +199,13 @@ fn activate(app: &mut App, ctx: &dyn PlatformContext, id: NodeId) {
         .and_then(|tree| tree.node_path(id).map(Path::to_path_buf));
     match kind {
         Some(NodeKind::Directory) => {
-            if let Some(sidebar) = app.ui.sidebar.as_mut() {
-                sidebar.toggle_node(id);
+            let unread = app
+                .ui
+                .sidebar
+                .as_mut()
+                .and_then(|sidebar| sidebar.toggle_node(id));
+            if let Some(dir) = unread {
+                super::reads::expand_later(app, dir);
             }
             app.scheduler.invalidate_all();
         }
@@ -212,8 +218,10 @@ fn activate(app: &mut App, ctx: &dyn PlatformContext, id: NodeId) {
     }
 }
 
+/// Moves the row into `new_parent` on the file-ops worker. The tree, the
+/// open tabs and the selection follow when the rename lands.
 fn move_into(app: &mut App, id: NodeId, new_parent: NodeId) {
-    let (old_path, current_parent, name) = {
+    let job = {
         let Some(tree) = app
             .ui
             .sidebar
@@ -222,48 +230,31 @@ fn move_into(app: &mut App, id: NodeId, new_parent: NodeId) {
         else {
             return;
         };
-        let old_path = tree.node_path(id).map(Path::to_path_buf);
-        let name = old_path
-            .as_ref()
-            .and_then(|path| path.file_name())
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "item".to_string());
-        (old_path, tree.parent(id), name)
-    };
-    if current_parent == Some(new_parent) {
-        return;
-    }
-    let moved = {
-        let Some(tree) = app
-            .ui
-            .sidebar
-            .as_mut()
-            .and_then(|sidebar| sidebar.tree.as_mut())
-        else {
+        if tree.parent(id) == Some(new_parent) {
+            return;
+        }
+        let (Some(from), Some(kind)) = (tree.node_path(id), tree.node_kind(id)) else {
             return;
         };
-        tree.move_node(id, new_parent)
+        if id == tree.root() {
+            app.documents.message = Some("Move error: cannot move the tree root".into());
+            return;
+        }
+        if tree.node_kind(new_parent) != Some(NodeKind::Directory) {
+            app.documents.message = Some("Move error: drop target must be a directory".into());
+            return;
+        }
+        let Some(to_dir) = tree.node_path(new_parent) else {
+            return;
+        };
+        Job::Move {
+            from: from.to_path_buf(),
+            to_dir: to_dir.to_path_buf(),
+            kind,
+        }
     };
-    match moved {
-        Ok(()) => {
-            let new_path = app
-                .ui
-                .sidebar
-                .as_ref()
-                .and_then(|sidebar| sidebar.tree.as_ref())
-                .and_then(|tree| tree.node_path(id).map(Path::to_path_buf));
-            if let (Some(old_path), Some(new_path)) = (old_path, new_path) {
-                retarget_paths(app, &old_path, &new_path);
-            }
-            if let Some(sidebar) = app.ui.sidebar.as_mut() {
-                sidebar.selected_node = Some(id);
-            }
-            app.documents.message = Some(format!("Moved {name}"));
-        }
-        Err(err) => {
-            app.documents.message = Some(format!("Move error: {err}"));
-        }
-    }
+    let waker = app.ui.session.waker();
+    app.ui.session.file_ops.submit(job, waker);
     app.scheduler.invalidate_all();
 }
 

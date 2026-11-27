@@ -26,7 +26,7 @@ pub(crate) fn restore_session(app: &mut App, read_from: &Path) -> std::io::Resul
     }
     let root = session.folders.first().filter(|f| f.exists());
     if let Some(folder) = root {
-        app.ui.sidebar = crate::sidebar::SidebarState::open_folder(folder.clone());
+        crate::sidebar::reads::open_root(app, folder.clone());
         app.ui.session.init_watcher(folder);
     }
     let history_dir = session_store::history_dir(read_from);

@@ -135,9 +135,23 @@ pub(crate) struct ProjectState {
     pub(crate) workspace: Option<Workspace>,
     pub(crate) active_project_path: Option<PathBuf>,
     pub(crate) picker: Option<ProjectSwitchState>,
+    /// Bumped whenever the user asks for another project or folder. A
+    /// project job that finishes under an older value is dropped.
+    pub(crate) generation: u64,
+    /// A project file is being read for the current generation.
+    pub(crate) opening: bool,
 }
 
 impl ProjectState {
+    /// Makes every project job in flight stale and returns the new
+    /// generation. Called when the user opens or closes a project or
+    /// folder.
+    pub(crate) fn supersede(&mut self) -> u64 {
+        self.generation = self.generation.wrapping_add(1);
+        self.opening = false;
+        self.generation
+    }
+
     pub(crate) fn custom_build_systems(&self) -> &[ProjectBuildSystem] {
         self.workspace
             .as_ref()
@@ -222,18 +236,42 @@ pub(crate) fn handle_project_switch_key(
 
 impl App {
     /// Loads a `.sublime-project` or `.lux-project` file into the editor.
-    pub(crate) fn open_project_file(
+    /// The file is read, parsed and recorded as recent on a worker;
+    /// `apply_project` shows it when the worker reports back.
+    pub(crate) fn open_project_file(&mut self, path: &Path, ctx: Option<&dyn PlatformContext>) {
+        let path = path.to_path_buf();
+        let generation = self.ui.project.supersede();
+        self.ui.project.opening = true;
+        crate::ui_io::spawn(self, ctx, move || {
+            Some(match load_project(&path) {
+                Ok(workspace) => Done::ProjectOpened {
+                    path,
+                    workspace,
+                    generation,
+                },
+                Err(_) => Done::ProjectFailed { path, generation },
+            })
+        });
+    }
+
+    /// Applies a finished project read unless the user has opened or
+    /// closed another project or folder since it started.
+    pub(crate) fn project_landed(
         &mut self,
         path: &Path,
-        _ctx: Option<&dyn PlatformContext>,
-    ) -> bool {
-        let Ok(workspace) = load_project(path) else {
-            self.ui.announcement = Some(format!("Failed to open project: {}", path.display()));
-            self.scheduler.invalidate_all();
-            return false;
-        };
-        self.apply_project(path, workspace);
-        true
+        generation: u64,
+        workspace: Option<Workspace>,
+    ) {
+        if generation != self.ui.project.generation {
+            return;
+        }
+        self.ui.project.opening = false;
+        match workspace {
+            Some(workspace) => self.apply_project(path, workspace),
+            None => {
+                self.ui.announcement = Some(format!("Failed to open project: {}", path.display()));
+            }
+        }
     }
 
     /// Shows a project that `load_project` already read and parsed.
@@ -241,13 +279,12 @@ impl App {
         crate::session::leave_root(self);
         let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
 
-        if let Some(first_root) = workspace.roots().first() {
-            self.ui.sidebar = crate::sidebar::SidebarState::open_folder(first_root.path.clone());
-            self.ui.session.init_watcher(&first_root.path);
-        } else {
-            self.ui.sidebar = crate::sidebar::SidebarState::open_folder(base_dir.to_path_buf());
-            self.ui.session.init_watcher(base_dir);
-        }
+        let root = workspace
+            .roots()
+            .first()
+            .map_or_else(|| base_dir.to_path_buf(), |root| root.path.clone());
+        crate::sidebar::reads::open_root(self, root.clone());
+        self.ui.session.init_watcher(&root);
 
         // Apply settings overrides
         for (k, v) in workspace.settings() {
@@ -292,11 +329,16 @@ impl App {
             )],
         };
         let dialogs = ctx.background_dialogs();
+        let generation = self.ui.project.supersede();
         crate::ui_io::spawn(self, Some(ctx), move || {
             let path = dialogs.pick_file(&opts)?;
             Some(match load_project(&path) {
-                Ok(workspace) => Done::ProjectOpened { path, workspace },
-                Err(_) => Done::ProjectFailed(path),
+                Ok(workspace) => Done::ProjectOpened {
+                    path,
+                    workspace,
+                    generation,
+                },
+                Err(_) => Done::ProjectFailed { path, generation },
             })
         });
     }
@@ -353,37 +395,55 @@ impl App {
         self.scheduler.invalidate_all();
     }
 
-    /// Opens the Quick Switch Project modal picker (`Cmd+Ctrl+P`).
-    pub(crate) fn quick_switch_project(&mut self) -> bool {
-        let recents = RecentProjects::load();
-        let mut projects = recents.paths;
-        if projects.is_empty() {
-            if let Some(active) = &self.ui.project.active_project_path {
-                projects.push(active.clone());
-            } else if let Some(root) = self.workspace_root()
-                && let Some(sub) = find_sublime_project(&root)
-            {
-                projects.push(sub);
+    /// Opens the Quick Switch Project modal picker (`Cmd+Ctrl+P`). The
+    /// recent-projects file (and, with none, the open folder's
+    /// `.sublime-project`) is read on a worker; the picker opens when the
+    /// list lands.
+    pub(crate) fn quick_switch_project(&mut self) {
+        let active = self.ui.project.active_project_path.clone();
+        let root = self.workspace_root();
+        let generation = self.ui.project.generation;
+        crate::ui_io::spawn(self, None, move || {
+            let mut projects = RecentProjects::load().paths;
+            if projects.is_empty() {
+                if let Some(active) = active {
+                    projects.push(active);
+                } else if let Some(root) = root
+                    && let Some(sub) = find_sublime_project(&root)
+                {
+                    projects.push(sub);
+                }
             }
+            Some(Done::ProjectList {
+                projects,
+                generation,
+            })
+        });
+    }
+
+    /// Shows the project list a worker read, unless the user opened or
+    /// closed a project or folder since asking. No disk access.
+    pub(crate) fn show_project_list(&mut self, projects: Vec<PathBuf>, generation: u64) {
+        if generation != self.ui.project.generation {
+            return;
         }
         if projects.is_empty() {
             self.ui.announcement = Some("No recent projects found".into());
             self.scheduler.invalidate_all();
-            return false;
+            return;
         }
-
         self.ui.project.picker = Some(ProjectSwitchState {
             projects,
             query: crate::field::QueryField::new(),
             selected: 0,
         });
         self.scheduler.invalidate_all();
-        true
     }
 
     /// Closes the current project workspace.
     pub(crate) fn close_project(&mut self) {
         crate::session::leave_root(self);
+        self.ui.project.supersede();
         self.ui.project.active_project_path = None;
         self.ui.project.workspace = None;
         self.ui.sidebar = None;

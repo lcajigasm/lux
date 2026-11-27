@@ -332,7 +332,8 @@ mod tests {
             std::fs::write(dir.join(format!("file-{index:02}.txt")), "x").unwrap();
         }
         let mut app = app();
-        app.open_workspace(dir.clone());
+        app.ui.sidebar = crate::sidebar::SidebarState::open_folder(dir.clone());
+        app.update_viewport_dimensions();
         app.mouse.position = dpi::PhysicalPosition::new(12.0, 80.0);
         app.scroll(ScrollDelta::Pixels(PhysicalPosition::new(0.0, -40.0)));
         let scrolled = app.ui.sidebar.unwrap().scroll_y;

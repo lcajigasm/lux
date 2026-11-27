@@ -8,6 +8,9 @@
 
 pub mod disk;
 mod external;
+mod listing;
+
+pub use listing::{Listing, Reveal, RootRead};
 
 use disk::reject_if_exists;
 
@@ -72,37 +75,7 @@ impl FileTree {
     /// is visible immediately, like any real explorer) — nothing below
     /// that first level is read until the caller expands further.
     pub fn open(root_path: impl Into<PathBuf>) -> io::Result<Self> {
-        let root_path = root_path.into();
-        let kind = if root_path.is_dir() {
-            NodeKind::Directory
-        } else {
-            NodeKind::File
-        };
-        let name = display_name(&root_path);
-        let canonical_root = fs::canonicalize(&root_path).unwrap_or_else(|_| root_path.clone());
-        let root = NodeId(0);
-        let mut tree = FileTree {
-            nodes: HashMap::new(),
-            root,
-            next_id: 1,
-            rows: Vec::new(),
-            rows_dirty: true,
-            canonical_root,
-        };
-        tree.nodes.insert(
-            root,
-            Node {
-                id: root,
-                parent: None,
-                path: root_path,
-                name,
-                kind,
-                expanded: false,
-                children: None,
-            },
-        );
-        tree.expand(root)?;
-        Ok(tree)
+        Self::from_root(RootRead::read(root_path))
     }
 
     pub fn root(&self) -> NodeId {
@@ -157,35 +130,8 @@ impl FileTree {
     }
 
     fn load_children(&mut self, parent: NodeId, dir: &Path) -> io::Result<Vec<NodeId>> {
-        let mut ids = Vec::new();
-        for entry in fs::read_dir(dir)?.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            let kind = if path.is_dir() {
-                NodeKind::Directory
-            } else {
-                NodeKind::File
-            };
-            let name = display_name(&path);
-            if kind == NodeKind::Directory && hidden_directory(&name) {
-                continue;
-            }
-            let id = self.mint_id();
-            self.nodes.insert(
-                id,
-                Node {
-                    id,
-                    parent: Some(parent),
-                    path,
-                    name,
-                    kind,
-                    expanded: false,
-                    children: None,
-                },
-            );
-            ids.push(id);
-        }
-        ids.sort_by_key(|&id| self.node_sort_key(id));
-        Ok(ids)
+        let listing = Listing::read(dir)?;
+        Ok(self.children_from(parent, listing))
     }
 
     fn mint_id(&mut self) -> NodeId {
