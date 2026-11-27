@@ -9,8 +9,8 @@
 #     stuck in a nested modal loop and never reaches `about_to_wait`);
 #   - the redraw counter does not advance while the sheet is up (the caret
 #     blink is the only thing asking for frames);
-#   - an external edit to the open file does not reach the buffer and the
-#     window pixels while the sheet is up;
+#   - an external edit to the open file (in the open folder) does not reach
+#     the buffer and the window pixels while the sheet is up;
 #   - after Escape closes the sheet, typed text does not land in the editor.
 set -euo pipefail
 
@@ -55,9 +55,14 @@ app="$(bash "$root/scripts/stage-lux-app.sh")"
 drive_init "$app"
 trap drive_stop EXIT
 
-sample="$DRIVE_WORK/sheet-sample.txt"
+# Lux watches the folders it has open, not lone files, so the file's folder
+# is opened with it. The path is resolved (`/var` -> `/private/var`) because
+# FSEvents reports resolved paths and the tab's path has to match them.
+proj="$(cd -P "$DRIVE_WORK" && pwd)/sheet-project"
+mkdir -p "$proj"
+sample="$proj/sheet-sample.txt"
 printf 'before the sheet\n' > "$sample"
-drive_launch "$sample"
+drive_launch "$sample" "$proj"
 
 field_wait() {
   local name="$1" pattern="$2" _

@@ -77,3 +77,50 @@ fn the_tab_whose_dialog_is_up_cannot_be_closed_from_another_tab() {
     assert_eq!(title(&app, a), "saved-a.txt");
     assert_eq!(app.documents.active_tab, Some(b));
 }
+
+#[test]
+fn an_external_edit_reloads_the_open_file_while_the_open_dialog_is_up() {
+    let dir = tempfile::tempdir().unwrap();
+    // FSEvents reports resolved paths (`/private/var/...` for a temp dir).
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let file = root.join("a.txt");
+    let picked = root.join("b.txt");
+    std::fs::write(&file, "before the sheet\n").unwrap();
+    std::fs::write(&picked, "file B").unwrap();
+    let ctx = Context::new(Some(picked.clone()), None, SaveDecision::Discard);
+    let mut app = app();
+    app.request_document(&ctx, Request::Open(Some(file.clone())));
+    ctx.complete(&mut app);
+    let a = app.documents.active_tab.unwrap();
+    crate::sidebar::watch::watch_and_wait(&mut app, &root);
+
+    // Cmd+O: the panel's worker is in flight until its result is applied.
+    app.request_document(&ctx, Request::Open(None));
+    assert!(app.documents.pending.is_some());
+    std::fs::write(&file, "changed behind the sheet\n").unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(4);
+    while app.buffer.text() != "changed behind the sheet\n" {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the reload never landed while the dialog was pending"
+        );
+        crate::session::poll_file_watcher(&mut app);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(app.documents.pending.is_some(), "the dialog is still up");
+    assert!(!app.document_dirty());
+
+    // The panel's answer still opens its file, beside the reloaded tab.
+    ctx.complete(&mut app);
+    assert!(app.documents.pending.is_none());
+    assert_eq!(app.buffer.text(), "file B");
+    assert_eq!(app.documents.path.as_deref(), Some(picked.as_path()));
+    let entry = app
+        .documents
+        .entries
+        .iter()
+        .find(|e| e.tab_id == a)
+        .unwrap();
+    assert_eq!(entry.buffer.text(), "changed behind the sheet\n");
+    assert!(!entry.is_dirty());
+}
