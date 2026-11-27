@@ -119,7 +119,7 @@ fn cmd_alt_c_stops_the_child_keeps_the_output_and_prints_cancelled() {
 
     // A click in the output must not cancel anything.
     let y = app.tab_bar_height() + app.viewport.height - 10.0;
-    crate::term::input::handle_term_click(&mut app, 100.0, y);
+    crate::term::input::handle_term_click(&mut app, &ctx, 100.0, y);
     assert!(app.ui.build.is_running && !app.ui.build.cancelling);
 
     if cfg!(target_os = "macos") {

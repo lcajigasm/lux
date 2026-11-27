@@ -105,7 +105,7 @@ pub(crate) fn handle_term_key(app: &mut App, _ctx: &dyn PlatformContext, event: 
 }
 
 /// Handles mouse clicks in the bottom terminal panel.
-pub(crate) fn handle_term_click(app: &mut App, x: f32, y: f32) -> bool {
+pub(crate) fn handle_term_click(app: &mut App, ctx: &dyn PlatformContext, x: f32, y: f32) -> bool {
     // The painter draws the dock in this same rectangle.
     let Some(dock_rect) = app.frame_layout().dock.filter(|_| app.ui.term.visible) else {
         return false;
@@ -191,7 +191,7 @@ pub(crate) fn handle_term_click(app: &mut App, x: f32, y: f32) -> bool {
             for link in &links {
                 let filename = link.path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 if clicked_line.contains(filename) {
-                    jump_to_link(app, link);
+                    jump_to_link(app, ctx, link);
                     break;
                 }
             }
@@ -202,7 +202,7 @@ pub(crate) fn handle_term_click(app: &mut App, x: f32, y: f32) -> bool {
     true
 }
 
-fn jump_to_link(app: &mut App, link: &SourceLocation) {
+fn jump_to_link(app: &mut App, ctx: &dyn PlatformContext, link: &SourceLocation) {
     let resolved_path = if link.path.is_absolute() {
         link.path.clone()
     } else if let Some(root) = app.workspace_root() {
@@ -211,8 +211,13 @@ fn jump_to_link(app: &mut App, link: &SourceLocation) {
         link.path.clone()
     };
 
-    if resolved_path.exists() {
-        crate::lsp::jump_to_location(app, &resolved_path, link.line.saturating_sub(1) as usize);
-        app.ui.term.focused = false;
-    }
+    // No `exists()` on the UI thread: the document worker that opens the
+    // file reports a missing one.
+    crate::lsp::jump_to_location(
+        app,
+        Some(ctx),
+        &resolved_path,
+        link.line.saturating_sub(1) as usize,
+    );
+    app.ui.term.focused = false;
 }

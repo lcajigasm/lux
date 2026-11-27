@@ -362,7 +362,7 @@ pub(crate) fn sync_document_save(app: &mut App, path: &Path) {
     let _ = sync.save(&url);
 }
 
-pub(crate) fn poll_lsp_events(app: &mut App, _ctx: &dyn PlatformContext) {
+pub(crate) fn poll_lsp_events(app: &mut App, ctx: &dyn PlatformContext) {
     let mut needs_redraw = false;
 
     while let Ok(event) = app.ui.lsp.receiver.try_recv() {
@@ -425,7 +425,12 @@ pub(crate) fn poll_lsp_events(app: &mut App, _ctx: &dyn PlatformContext) {
                 if let Some(loc) = locations.first()
                     && let Ok(target_path) = loc.uri.to_file_path()
                 {
-                    actions::jump_to_location(app, &target_path, loc.range.start.line as usize);
+                    actions::jump_to_location(
+                        app,
+                        Some(ctx),
+                        &target_path,
+                        loc.range.start.line as usize,
+                    );
                     needs_redraw = true;
                 }
             }
@@ -433,7 +438,12 @@ pub(crate) fn poll_lsp_events(app: &mut App, _ctx: &dyn PlatformContext) {
                 if let Some(loc) = locations.first()
                     && let Ok(target_path) = loc.uri.to_file_path()
                 {
-                    actions::jump_to_location(app, &target_path, loc.range.start.line as usize);
+                    actions::jump_to_location(
+                        app,
+                        Some(ctx),
+                        &target_path,
+                        loc.range.start.line as usize,
+                    );
                     needs_redraw = true;
                 }
             }

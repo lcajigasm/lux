@@ -183,7 +183,7 @@ pub(crate) fn handle_focus_key(app: &mut App, ctx: &dyn PlatformContext, event: 
 }
 
 /// Handles keyboard navigation when the LSP Problems panel is focused.
-fn handle_problems_key(app: &mut App, _ctx: &dyn PlatformContext, event: &KeyEvent) -> bool {
+fn handle_problems_key(app: &mut App, ctx: &dyn PlatformContext, event: &KeyEvent) -> bool {
     let total_problems = app
         .ui
         .lsp
@@ -220,6 +220,7 @@ fn handle_problems_key(app: &mut App, _ctx: &dyn PlatformContext, event: &KeyEve
                     if let Ok(file_path) = url.to_file_path() {
                         crate::lsp::jump_to_location(
                             app,
+                            Some(ctx),
                             &file_path,
                             diag.range.start.line as usize,
                         );
