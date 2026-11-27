@@ -4,9 +4,10 @@
 //! Only rows the tree has already listed are considered: expanding a
 //! collapsed folder would read the disk, and this runs on the UI thread.
 //! A file under a collapsed folder clears the selection instead of
-//! leaving it on some other file. Keyboard focus is never moved.
+//! leaving it on some other file. Every open folder is searched, the
+//! extra ones too. Keyboard focus is never moved.
 
-use super::{SIDEBAR_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT, SidebarState, listed_rows};
+use super::{SIDEBAR_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT, SidebarState, folders};
 use crate::app::App;
 
 /// Before a frame: the tab strip scrolls to the active tab and the
@@ -32,26 +33,36 @@ pub(crate) fn follow_active_tab(app: &mut App) {
     select_listed(sidebar, path.as_deref(), scale, view_height);
 }
 
-/// Selects `path`'s row when it is listed and scrolls it into view.
+/// Selects `path`'s row in whichever open folder lists it and scrolls it
+/// into view.
 pub(crate) fn select_listed(
     sidebar: &mut SidebarState,
     path: Option<&std::path::Path>,
     scale: f32,
     view_height: f32,
 ) {
-    let Some(tree) = sidebar.tree.as_mut() else {
-        return;
-    };
-    let rows = listed_rows(tree);
+    sidebar.selected_node = None;
+    sidebar.followed_extra = None;
+    let slots = folders::slots(sidebar);
     let index = path.and_then(|path| {
-        rows.iter()
-            .position(|row| tree.node_path(row.id) == Some(path))
+        slots.iter().position(|slot| {
+            let tree = if slot.root == 0 {
+                sidebar.tree.as_ref()
+            } else {
+                sidebar.extra.get(slot.root - 1).map(|folder| &folder.tree)
+            };
+            !slot.title && tree.and_then(|tree| tree.node_path(slot.id)) == Some(path)
+        })
     });
     let Some(index) = index else {
-        sidebar.selected_node = None;
         return;
     };
-    sidebar.selected_node = Some(rows[index].id);
+    let slot = &slots[index];
+    if slot.root == 0 {
+        sidebar.selected_node = Some(slot.id);
+    } else {
+        sidebar.followed_extra = Some((slot.root, slot.id));
+    }
     let row_h = SIDEBAR_ROW_HEIGHT * scale;
     let list_view = (view_height - SIDEBAR_HEADER_HEIGHT * scale).max(row_h);
     let y = index as f32 * row_h;
@@ -105,8 +116,30 @@ mod tests {
         select_listed(&mut sidebar, Some(&main), 2.0, 600.0);
         assert_eq!(sidebar.selected_node, None);
         // `src` stays collapsed: nothing was expanded to find the file.
-        let rows = listed_rows(sidebar.tree.as_mut().unwrap());
+        let rows = super::super::listed_rows(sidebar.tree.as_mut().unwrap());
         assert!(rows.iter().all(|row| row.name != "main.rs"));
+    }
+
+    #[test]
+    fn a_file_in_an_extra_folder_is_selected_in_that_folder() {
+        let (dir, mut sidebar) = fixture();
+        let extra = tempfile::tempdir().unwrap();
+        std::fs::write(extra.path().join("notes.md"), "").unwrap();
+        assert!(sidebar.add_folder(extra.path().to_path_buf()));
+        let tree = &mut sidebar.extra[0].tree;
+        let root = tree.root();
+        tree.expand(root).unwrap();
+        let notes = extra.path().join("notes.md");
+        select_listed(&mut sidebar, Some(&notes), 2.0, 600.0);
+        assert_eq!(sidebar.selected_node, None, "not a header-folder row");
+        let (root, id) = sidebar.followed_extra.expect("extra row selected");
+        assert_eq!(root, 1);
+        assert_eq!(sidebar.extra[0].tree.node_path(id), Some(notes.as_path()));
+        // Back to a header-folder file: the extra selection goes away.
+        let readme = dir.path().join("README.md");
+        select_listed(&mut sidebar, Some(&readme), 2.0, 600.0);
+        assert_eq!(selected_path(&sidebar), Some(readme));
+        assert_eq!(sidebar.followed_extra, None);
     }
 
     #[test]

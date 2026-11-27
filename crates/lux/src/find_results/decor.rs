@@ -94,32 +94,20 @@ fn number_gutter(line: &str) -> Option<usize> {
     (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())).then_some(colon)
 }
 
-/// The query a results buffer was made for, read from its first line.
-pub(crate) fn header_query(first_line: &str) -> Option<&str> {
-    let rest = first_line.strip_prefix("Searching files for \"")?;
-    let end = rest.rfind('"')?;
-    Some(&rest[..end])
-}
-
-/// Matcher for the hits of the results in `first_line`'s search. A run
-/// started in this session carries its own (with its case setting); a
-/// restored tab is matched case-sensitively from its header, compiled
-/// once and kept.
+/// Matcher for the hits of the results whose first line is `first_line`,
+/// with the case setting the header records. Compiled once per header and
+/// kept.
 pub(crate) fn matcher(nav: &mut FindResultsNav, first_line: &str) -> Option<Regex> {
-    let query = header_query(first_line)?;
-    if nav.highlight.as_ref().map(|(key, _)| key.as_str()) != Some(query) {
-        nav.highlight = Some((query.to_string(), Regex::new(query).ok()));
+    if nav.highlight.as_ref().map(|(key, _)| key.as_str()) != Some(first_line) {
+        let regex = super::header::query(first_line).and_then(|(query, case_insensitive)| {
+            regex::RegexBuilder::new(query)
+                .case_insensitive(case_insensitive)
+                .build()
+                .ok()
+        });
+        nav.highlight = Some((first_line.to_string(), regex));
     }
     nav.highlight.as_ref().and_then(|(_, regex)| regex.clone())
-}
-
-/// Matcher of a run that is starting now.
-pub(crate) fn run_matcher(query: &str, case_insensitive: bool) -> (String, Option<Regex>) {
-    let regex = regex::RegexBuilder::new(query)
-        .case_insensitive(case_insensitive)
-        .build()
-        .ok();
-    (query.to_string(), regex)
 }
 
 #[cfg(test)]

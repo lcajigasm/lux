@@ -130,7 +130,10 @@ pub(crate) fn render_sidebar(
         }
         let mid = row_y + row_h * 0.5;
 
-        let is_selected = selected_id == Some(row.id) && row.root == 0;
+        let is_selected = match selected_id {
+            Some(id) => id == row.id && row.root == 0,
+            None => sidebar.followed_extra == Some((row.root, row.id)) && !row.title,
+        };
         let row_fill = if is_selected {
             quad_instances.push(QuadInstance::solid(
                 [0.0, row_y, sidebar_width - stroke, row_h],

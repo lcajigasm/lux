@@ -12,7 +12,7 @@ use super::layout::{self, SettingsBounds, layout_settings};
 use super::panel::SettingKind;
 use crate::app::App;
 use crate::render::paint::color;
-use crate::render::panel::selected_fill;
+use crate::render::panel::settings_selection;
 
 fn app() -> App {
     App::new(include_bytes!("../../../lux-render/tests/fixtures/ahem.ttf").to_vec())
@@ -146,7 +146,7 @@ fn settings_selection_stays_inside_the_card() {
         frame.window_height,
         frame.scale,
     );
-    let fill = selected_fill(&lux_ui::Theme::MONOKAI);
+    let fill = settings_selection(&lux_ui::Theme::MONOKAI);
     let page = layout.page;
     for quad in quads.iter().filter(|quad| same_rgb(quad.color, fill)) {
         let [x, y, w, h] = quad.rect;

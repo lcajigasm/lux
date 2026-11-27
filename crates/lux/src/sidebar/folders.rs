@@ -86,6 +86,8 @@ impl SidebarState {
     /// folder. The returned path is not removed from disk.
     pub(crate) fn close_folder(&mut self, index: usize) -> Option<PathBuf> {
         let open = 1 + self.extra.len();
+        // Folder indices shift; the next tab switch selects again.
+        self.followed_extra = None;
         if index < open && self.workspace_root.is_some() {
             self.shift_inline_input(index);
         }

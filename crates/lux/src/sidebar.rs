@@ -43,6 +43,10 @@ pub(crate) struct SidebarState {
     pub(crate) resizing: bool,
     /// Tab whose file the selection was last moved to.
     pub(crate) followed_tab: Option<lux_ui::tabs::TabId>,
+    /// Row an extra folder's tree selected by following the active tab,
+    /// as (folder index from 1, node). `selected_node` only names header
+    /// folder rows; this one shows only while `selected_node` is `None`.
+    pub(crate) followed_extra: Option<(usize, NodeId)>,
 }
 
 impl Default for SidebarState {
@@ -62,6 +66,7 @@ impl Default for SidebarState {
             extra: Vec::new(),
             resizing: false,
             followed_tab: None,
+            followed_extra: None,
         }
     }
 }
@@ -84,6 +89,7 @@ impl SidebarState {
             extra: Vec::new(),
             resizing: false,
             followed_tab: None,
+            followed_extra: None,
         })
     }
 

@@ -22,10 +22,6 @@ pub(crate) struct FindRun {
     files_with_matches: usize,
 }
 
-pub(crate) fn header(query: &str) -> String {
-    format!("Searching files for \"{query}\"\n\n")
-}
-
 /// Appends `m` in Sublime's layout, opening a new path block when the file
 /// changes. The block's path is shown relative to `root` when it is under
 /// it. Returns true when `m` starts a new file.
@@ -70,15 +66,12 @@ pub(crate) fn start(app: &mut App, root: &Path, query: &str, options: &SearchOpt
     app.ui.find_results_nav.run = None;
     app.ui.find_results_nav.matches.clear();
     app.ui.find_results_nav.active_index = None;
-    app.ui.find_results_nav.root = Some(root.to_path_buf());
-    app.ui.find_results_nav.highlight = Some(crate::find_results::decor::run_matcher(
-        query,
-        options.case_insensitive,
-    ));
+    app.ui.find_results_nav.highlight = None;
+    let header = crate::find_results::header::header(query, Some(root), options.case_insensitive);
     let waker = app.ui.session.waker();
     match find_in_files_notify(root, query, options, waker) {
         Ok(stream) => {
-            crate::find_results::open_find_results_tab(app, &header(query));
+            crate::find_results::open_find_results_tab(app, &header);
             app.ui.find_results_nav.run = Some(FindRun {
                 stream,
                 root: root.to_path_buf(),
@@ -88,7 +81,7 @@ pub(crate) fn start(app: &mut App, root: &Path, query: &str, options: &SearchOpt
             pump(app);
         }
         Err(error) => {
-            let text = format!("{}{error}\n", header(query));
+            let text = format!("{header}{error}\n");
             crate::find_results::open_find_results_tab(app, &text);
         }
     }

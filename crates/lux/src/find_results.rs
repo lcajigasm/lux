@@ -5,6 +5,7 @@ use lux_search::find_in_files::SearchMatch;
 use std::path::{Path, PathBuf};
 
 pub(crate) mod decor;
+pub(crate) mod header;
 
 /// Title of the results tab.
 pub(crate) const TAB_TITLE: &str = "Find Results";
@@ -15,9 +16,8 @@ pub(crate) struct FindResultsNav {
     pub(crate) active_index: Option<usize>,
     /// The search still streaming into the tab, if any.
     pub(crate) run: Option<crate::find_stream::FindRun>,
-    /// Folder the tab's file paths are relative to.
-    pub(crate) root: Option<PathBuf>,
-    /// Query of the tab and its compiled matcher, for the match boxes.
+    /// The tab's first line and the matcher compiled from it, for the
+    /// match boxes.
     pub(crate) highlight: Option<(String, Option<regex::Regex>)>,
 }
 
@@ -26,13 +26,15 @@ pub(crate) fn is_summary(trimmed: &str) -> bool {
     trimmed.contains(" across ") && trimmed.ends_with(" searched)")
 }
 
-/// Folder relative result paths are read against: the search's own root,
-/// or the workspace for a tab restored from a previous session.
+/// Folder relative result paths are read against: the absolute root the
+/// tab's own header records, so a restored tab resolves against the folder
+/// it was searched in whatever folders are open now. Tabs from before the
+/// root was recorded hold absolute paths, which `header_path` keeps, so
+/// the workspace fallback only matters for them.
 fn results_root(app: &crate::app::App) -> PathBuf {
-    app.ui
-        .find_results_nav
-        .root
-        .clone()
+    find_results_buffer(app)
+        .and_then(|buffer| buffer.line_content(1))
+        .and_then(|line| header::root(&line))
         .unwrap_or_else(|| crate::project_search::workspace_root(app))
 }
 
@@ -51,8 +53,8 @@ pub(crate) fn format_find_results(
     matches: &[SearchMatch],
     searched: usize,
 ) -> String {
-    use crate::find_stream::{header, push_match, summary};
-    let mut out = header(query);
+    use crate::find_stream::{push_match, summary};
+    let mut out = header::header(query, root, true);
     let mut last_path: Option<PathBuf> = None;
     let mut files = 0;
     for m in matches {

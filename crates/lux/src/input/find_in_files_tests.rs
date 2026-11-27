@@ -158,11 +158,12 @@ fn find_in_files_streams_into_find_results_tab_on_wakes() {
     // The tab exists with its header before any result has been drained.
     assert!(app.ui.project_search.is_none());
     assert!(app.is_find_results_active());
-    assert!(
-        app.buffer
-            .text()
-            .starts_with("Searching files for \"target\"\n\n")
-    );
+    let header = app.buffer.text();
+    let mut lines = header.lines();
+    assert_eq!(lines.next(), Some("Searching files for \"target\""));
+    let root_line = lines.next().unwrap();
+    assert!(root_line.starts_with("Searching in "), "{root_line}");
+    assert_eq!(lines.next(), Some(""));
 
     drive(&mut app, &ctx, |app| !crate::find_stream::is_running(app));
     let content = app.buffer.text();
@@ -220,16 +221,18 @@ fn thousands_of_files_all_land_in_find_results() {
     assert_eq!(app.ui.find_results_nav.matches.len(), expected);
     let content = find_results_text(&app);
     let buffer = lux_core::buffer::Buffer::from_bytes(content.as_bytes()).unwrap();
-    let results_root = app.ui.find_results_nav.root.clone().expect("run root");
+    let results_root =
+        crate::find_results::header::root(&buffer.line_content(1).unwrap()).expect("run root");
     let parsed = crate::find_results::parse_matches_from_buffer(&buffer, &results_root);
     assert_eq!(parsed.len(), expected);
     assert!(
         parsed.iter().all(|m| m.path.is_file()),
         "relative headers resolve to the searched files"
     );
-    assert!(
-        !content.contains(&results_root.display().to_string()),
-        "headers are relative to the searched folder"
+    assert_eq!(
+        content.matches(&results_root.display().to_string()).count(),
+        1,
+        "only the root line names the folder; headers are relative to it"
     );
     let distinct: std::collections::HashSet<_> = parsed.iter().map(|m| &m.path).collect();
     assert_eq!(distinct.len(), matching_files, "each file has one block");
@@ -410,4 +413,44 @@ fn f4_populates_nav_from_find_results_buffer_if_empty() {
     crate::find_results::next_result(&mut app, Some(&ctx));
     assert_eq!(app.ui.find_results_nav.matches.len(), 1);
     assert_eq!(app.ui.find_results_nav.matches[0].line_number, 5);
+}
+
+/// A restored tab knows nothing but its text: F4 must resolve its relative
+/// headers against the folder that was searched, not against whichever
+/// folder happens to be first (or not yet loaded) after a restart.
+#[test]
+fn a_restored_tab_resolves_against_its_recorded_root_after_a_restart() {
+    let searched = tempfile::tempdir().unwrap();
+    let other = tempfile::tempdir().unwrap();
+    std::fs::write(searched.path().join("found.rs"), "x\nrestart_token\n").unwrap();
+    std::fs::write(other.path().join("found.rs"), "decoy\n").unwrap();
+
+    let ctx = DummyContext::new();
+    let mut app = test_app_with_root(searched.path().to_path_buf(), &ctx);
+    let other_root = std::fs::canonicalize(other.path()).unwrap();
+    app.ui
+        .sidebar
+        .as_mut()
+        .unwrap()
+        .add_folder(other_root.clone());
+    search(&mut app, &ctx, "restart_token", "");
+    let text = find_results_text(&app);
+    let expected = app.ui.find_results_nav.matches[0].path.clone();
+    assert!(text.contains("\nfound.rs:\n"), "relative header: {text}");
+
+    // After a restart the searched folder is gone from the project, and
+    // in a second case the sidebar has not loaded yet at all.
+    for sidebar_root in [Some(other_root), None] {
+        let mut restored = test_app_with_root(PathBuf::from("."), &ctx);
+        restored.ui.sidebar = sidebar_root.and_then(crate::sidebar::SidebarState::open_folder);
+        crate::find_results::open_find_results_tab(&mut restored, &text);
+        assert!(restored.ui.find_results_nav.matches.is_empty());
+        crate::find_results::next_result(&mut restored, Some(&ctx));
+        drive(&mut restored, &ctx, |app| {
+            !crate::document::open_queue::busy(app)
+        });
+        assert_eq!(restored.ui.find_results_nav.matches[0].path, expected);
+        assert_eq!(restored.documents.path.as_ref(), Some(&expected));
+        assert_eq!(restored.cursors.primary().head.line, 1);
+    }
 }

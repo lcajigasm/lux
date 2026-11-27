@@ -40,6 +40,7 @@ pub(crate) fn field_fill(theme: &lux_ui::Theme) -> [f32; 4] {
     color(theme.background)
 }
 
+#[cfg(test)]
 pub(crate) fn selected_fill(theme: &lux_ui::Theme) -> [f32; 4] {
     color(theme.chrome.panel_row)
 }

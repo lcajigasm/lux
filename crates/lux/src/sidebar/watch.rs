@@ -37,6 +37,15 @@ pub(crate) fn apply(app: &mut App, change: &FileChange) -> bool {
     {
         sidebar.selected_node = None;
     }
+    if let Some((root, id)) = sidebar.followed_extra
+        && sidebar
+            .extra
+            .get(root - 1)
+            .and_then(|folder| folder.tree.node_path(id))
+            .is_none()
+    {
+        sidebar.followed_extra = None;
+    }
     true
 }
 
