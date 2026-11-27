@@ -21,9 +21,7 @@ impl App {
         if enabled {
             self.viewport.scroll_x = 0.0;
         }
-        self.ui
-            .settings
-            .write_user_value("editor.wordWrap", serde_json::Value::Bool(enabled));
+        crate::settings::set_setting(self, "editor.wordWrap", serde_json::Value::Bool(enabled));
         self.scheduler.invalidate_all();
     }
 

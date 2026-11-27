@@ -17,7 +17,7 @@ use crate::app::App;
 use crate::document::tests::app;
 
 #[derive(Default)]
-struct Dialogs {
+pub(super) struct Dialogs {
     file: Option<PathBuf>,
     folder: Option<PathBuf>,
     save: Option<PathBuf>,
@@ -55,14 +55,14 @@ impl FileDialogs for Dialogs {
     }
 }
 
-struct Context {
+pub(super) struct Context {
     dialogs: Arc<Dialogs>,
     events: Receiver<()>,
     sender: Sender<()>,
 }
 
 impl Context {
-    fn new(dialogs: Dialogs) -> Self {
+    pub(super) fn new(dialogs: Dialogs) -> Self {
         let (sender, events) = mpsc::channel();
         Self {
             dialogs: Arc::new(dialogs),
@@ -72,7 +72,7 @@ impl Context {
     }
 
     /// Waits for `count` worker wakes, then applies what they finished.
-    fn settle(&self, app: &mut App, count: usize) {
+    pub(super) fn settle(&self, app: &mut App, count: usize) {
         for _ in 0..count {
             self.events
                 .recv_timeout(Duration::from_secs(10))

@@ -2,11 +2,13 @@
 //! preferences UI panel, and external settings importers (Goal G22).
 
 mod catalog;
-mod importers;
+pub(crate) mod importers;
 pub(crate) mod layout;
+mod page_input;
 mod panel;
 mod wheel;
 
+pub(crate) use page_input::{handle_click, handle_key};
 pub(crate) use panel::{SettingKind, SettingsPanelState};
 pub(crate) use wheel::scroll_settings;
 
@@ -82,6 +84,13 @@ pub(crate) struct SettingsState {
     pub(crate) palette_clock: u64,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread built a `SettingsState`, which touches
+    /// the disk. Tests assert that UI handlers never do.
+    pub(crate) static BUILT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 impl Default for SettingsState {
     fn default() -> Self {
         Self::new(default_settings_path())
@@ -90,6 +99,8 @@ impl Default for SettingsState {
 
 impl SettingsState {
     pub(crate) fn new(settings_path: PathBuf) -> Self {
+        #[cfg(test)]
+        BUILT.with(|built| built.set(built.get() + 1));
         if let Some(parent) = settings_path.parent() {
             let _ = fs::create_dir_all(parent);
         }
@@ -135,6 +146,7 @@ impl SettingsState {
         reloaded
     }
 
+    #[cfg(test)]
     pub(crate) fn apply_to_app(&self, app: &mut App) {
         Self::apply_config(&self.config, app);
     }
@@ -201,8 +213,8 @@ impl SettingsState {
                 .is_some_and(|n| n == "settings.json" || n == "settings.jsonc")
     }
 
-    pub(crate) fn validate_buffer(&self, app: &mut App, path: &Path, text: &str) {
-        if !self.is_settings_path(path) {
+    pub(crate) fn validate_buffer(app: &mut App, path: &Path, text: &str) {
+        if !app.ui.settings.is_settings_path(path) {
             return;
         }
         let diagnostics = lux_config::validate(text);
@@ -246,7 +258,7 @@ impl SettingsState {
         app.scheduler.invalidate_all();
     }
 
-    pub(crate) fn complete_buffer(&self, app: &mut App, text: &str, byte_offset: usize) -> bool {
+    pub(crate) fn complete_buffer(app: &mut App, text: &str, byte_offset: usize) -> bool {
         let items = lux_config::completion::complete(text, byte_offset);
         if items.is_empty() {
             return false;
@@ -265,18 +277,6 @@ impl SettingsState {
         app.ui.lsp.completion_popup = Some(CompletionPopupState::showing(lsp_items));
         app.scheduler.invalidate_all();
         true
-    }
-
-    pub(crate) fn import_vscode(&mut self, app: &mut App) -> String {
-        importers::import_vscode(self, app)
-    }
-
-    pub(crate) fn import_sublime(&mut self, app: &mut App) -> String {
-        importers::import_sublime(self, app)
-    }
-
-    pub(crate) fn import_jetbrains(&mut self, app: &mut App) -> String {
-        importers::import_jetbrains(self, app)
     }
 }
 
@@ -318,28 +318,58 @@ pub(crate) fn open_settings_json(app: &mut App, ctx: &dyn PlatformContext) {
     });
 }
 
-/// Writes `key` into the user settings file and reloads the user layer on a
-/// worker. Writes run in call order. The app applies the new value when the
-/// worker reports back.
+/// Writes `key` into the user settings file on a worker. See
+/// [`set_settings`].
 pub(crate) fn set_string_setting(app: &mut App, key: &str, value: &str) {
+    set_setting(app, key, Value::String(value.to_string()));
+}
+
+pub(crate) fn set_setting(app: &mut App, key: &str, value: Value) {
+    set_settings(app, vec![(key.to_string(), value)]);
+}
+
+/// Writes `pairs` into the user settings file and reloads the user layer on
+/// a worker. Writes run in call order. The app applies the new values when
+/// the worker reports back; nothing here touches the disk on the UI thread.
+pub(crate) fn set_settings(app: &mut App, pairs: Vec<(String, Value)>) {
     let path = app.ui.settings.settings_path.clone();
     let config = app.ui.settings.config.clone();
-    let (key, value) = (key.to_string(), value.to_string());
     crate::ui_io::spawn_serial(app, None, move || {
-        let content = fs::read_to_string(&path).unwrap_or_default();
-        let mut map = match serde_json::from_str::<Value>(&content) {
-            Ok(Value::Object(m)) => m,
-            _ => serde_json::Map::new(),
-        };
-        map.insert(key, Value::String(value));
-        if let Ok(json_str) = serde_json::to_string_pretty(&Value::Object(map)) {
-            let _ = fs::write(&path, json_str);
+        if let Err(error) = write_user_values(&path, &pairs) {
+            return Some(crate::ui_io::Done::SettingsFailed(error));
         }
         // Reads outside the lock: `apply_config` on the UI thread takes
         // the same mutex and must never wait on the disk.
         let _ = LayeredConfig::reload_layer_shared(&config, Layer::User);
         Some(crate::ui_io::Done::SettingsSaved)
     });
+}
+
+/// Reloads the user layer from disk on a worker, then applies it. Used
+/// after the settings file was saved from an editor tab.
+pub(crate) fn reload_user_settings(app: &mut App) {
+    let config = app.ui.settings.config.clone();
+    crate::ui_io::spawn_serial(app, None, move || {
+        let _ = LayeredConfig::reload_layer_shared(&config, Layer::User);
+        Some(crate::ui_io::Done::SettingsSaved)
+    });
+}
+
+/// Read-modify-write of the user settings file. Worker threads only.
+///
+/// Edits the JSONC text in place, so comments and formatting survive. A
+/// file that cannot be read or does not parse is left untouched and the
+/// error is returned for the user: replacing it would lose every other
+/// setting. A missing file starts from an empty object.
+pub(crate) fn write_user_values(path: &Path, pairs: &[(String, Value)]) -> Result<(), String> {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(format!("cannot read {}: {error}", path.display())),
+    };
+    let edited = lux_config::layering::jsonc::set_top_level(&text, pairs)
+        .map_err(|error| format!("{} was not changed: {error}", path.display()))?;
+    fs::write(path, edited).map_err(|error| format!("cannot write {}: {error}", path.display()))
 }
 
 impl App {

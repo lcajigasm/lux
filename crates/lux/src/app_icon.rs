@@ -142,9 +142,13 @@ mod tests {
             "{created}"
         );
 
-        let mut settings = std::mem::take(&mut app.ui.settings);
-        settings.update_setting_value(&mut app, "workbench.icon", json!(CLASSIC));
-        app.ui.settings = settings;
+        crate::settings::set_setting(&mut app, "workbench.icon", json!(CLASSIC));
+        let ctx = crate::document::tests::Context::new(
+            None,
+            None,
+            lux_platform::dialog::SaveDecision::Discard,
+        );
+        crate::ui_io::finish_all(&mut app, &ctx);
         assert_eq!(requested(), CLASSIC);
         if !cfg!(target_os = "macos") {
             assert_eq!(probe_token(), CLASSIC);

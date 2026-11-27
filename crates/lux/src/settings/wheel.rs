@@ -26,24 +26,20 @@ pub(crate) fn scroll_settings(app: &mut App, delta: ScrollDelta) -> bool {
         };
         if steps != 0 {
             let bounds = bounds_for(app);
-            let mut settings = std::mem::take(&mut app.ui.settings);
-            settings.move_selection(bounds, steps);
+            app.ui.settings.move_selection(bounds, steps);
             app.scheduler.invalidate_all();
-            app.ui.settings = settings;
         }
         return true;
     }
     let scale = app.scale_factor;
-    let mut settings = std::mem::take(&mut app.ui.settings);
-    let scrolled = settings.scroll_by(delta, scale);
+    let scrolled = app.ui.settings.scroll_by(delta, scale);
     if scrolled {
         let bounds = bounds_for(app);
-        if let Some(panel) = settings.panel.as_mut() {
+        if let Some(panel) = app.ui.settings.panel.as_mut() {
             let layout = layout_settings(panel, bounds);
             panel.scroll = layout.scroll;
         }
         app.scheduler.invalidate_all();
     }
-    app.ui.settings = settings;
     scrolled
 }

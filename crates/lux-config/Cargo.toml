@@ -11,7 +11,7 @@ publish.workspace = true
 bstr = "1.13.1"
 ec4rs = "1.2.0"
 gix-attributes = "0.34.0"
-jsonc-parser = { version = "0.33.1", features = ["serde"] }
+jsonc-parser = { version = "0.33.1", features = ["serde", "cst"] }
 notify = "8.2.0"
 quick-xml = "0.41.0"
 serde = { version = "1.0.229", features = ["derive"] }

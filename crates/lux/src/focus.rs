@@ -110,13 +110,8 @@ pub(crate) fn handle_focus_key(app: &mut App, ctx: &dyn PlatformContext, event: 
     }
 
     // 0. Settings UI panel routing
-    if app.ui.settings.panel.is_some() {
-        let mut settings = std::mem::take(&mut app.ui.settings);
-        let handled = settings.handle_key(app, event);
-        app.ui.settings = settings;
-        if handled {
-            return true;
-        }
+    if app.ui.settings.panel.is_some() && crate::settings::handle_key(app, event) {
+        return true;
     }
 
     // 1. F6 / Shift+F6 cycling

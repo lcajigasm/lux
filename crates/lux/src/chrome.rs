@@ -20,13 +20,11 @@ pub(crate) fn handle_mouse_click_on_chrome(
         return true;
     }
 
-    if button == MouseButton::Left && app.ui.settings.panel.is_some() {
-        let mut settings = std::mem::take(&mut app.ui.settings);
-        let handled = settings.handle_click(app, mouse_x, mouse_y);
-        app.ui.settings = settings;
-        if handled {
-            return true;
-        }
+    if button == MouseButton::Left
+        && app.ui.settings.panel.is_some()
+        && crate::settings::handle_click(app, mouse_x, mouse_y)
+    {
+        return true;
     }
 
     if let Some(menu) = app.documents.tab_context_menu.take() {
