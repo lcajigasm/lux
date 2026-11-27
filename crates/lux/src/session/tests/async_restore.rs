@@ -248,7 +248,7 @@ fn a_project_switch_during_the_restore_drops_its_remaining_tabs() {
     assert!(!tab_paths(&app).contains(&Some(a.clone())));
 
     save_session(&mut app, false).unwrap();
-    let written = Session::load(&crate::session::snapshot::current_file(&app)).unwrap();
+    let written = Session::load(crate::session::snapshot::current_file(&app)).unwrap();
     assert_eq!(written.folders, vec![project_root]);
     assert!(!written.tabs.iter().any(|t| t.path.as_ref() == Some(&a)));
 }
