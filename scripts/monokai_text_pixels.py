@@ -120,8 +120,27 @@ def off_axis(color, background, foreground):
     )
 
 
+def text_column_end(rows, y, width, background):
+    """One past the rightmost page-colored pixel on row `y`, a row below
+    the text. Everything right of it (Lux's minimap) is not glyph text."""
+    for x in range(width - 1, -1, -1):
+        if pixel(rows, x, y) == background:
+            return x + 1
+    return width
+
+
 def check(path, background, foreground, zoom_path):
     width, height, rows = load_png(path)
+    # Sample the text column only. Lux's minimap sits on its own darker
+    # well (`background * 0.95`) at the right edge and paints each token
+    # as a flat bar of its syntax color under the visible-region band
+    # (the foreground at 8%). On Ayu (run 45924966760) the band lifts the
+    # `name` bar to (179, 177, 170), within 12 of #bfbdb6, and the orange
+    # `greet` bar beside it, (234, 169, 92), read as a fringe. Those are
+    # colored rectangles, not a glyph mask. The column ends where an
+    # empty row stops being the page color; a capture whose minimap is
+    # drawn on the page (Sublime, VS Code) keeps its full width.
+    text_end = text_column_end(rows, int(height * 0.60), width, background)
     # The stem is the authored foreground. Monokai #F8F8F2 has channel
     # spread 6, so a cap of 36 still names it. Catppuccin #cdd6f4 has
     # spread 39: run 43069249597 contains 15 pixels of that exact color,
@@ -133,7 +152,7 @@ def check(path, background, foreground, zoom_path):
     stems = []
     exact = 0
     for y in range(height):
-        for x in range(width):
+        for x in range(text_end):
             color = pixel(rows, x, y)
             if color == foreground:
                 exact += 1
@@ -153,7 +172,7 @@ def check(path, background, foreground, zoom_path):
     for x, y in stems:
         for dx in (-3, -2, -1, 1, 2, 3):
             nx = x + dx
-            if nx < 0 or nx >= width:
+            if nx < 0 or nx >= text_end:
                 continue
             color = pixel(rows, nx, y)
             if near(color, background, 8) or near(color, foreground, 12):
