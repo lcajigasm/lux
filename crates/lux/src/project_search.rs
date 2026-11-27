@@ -190,7 +190,10 @@ pub(crate) fn workspace_root(app: &crate::app::App) -> PathBuf {
         .sidebar
         .as_ref()
         .and_then(|s| s.workspace_root.clone())
-        .unwrap_or_else(|| PathBuf::from("."))
+        // With no folder open, search the process's working directory,
+        // made absolute so the Find Results tab records a root that still
+        // means the same folder after a project opens or a restart.
+        .unwrap_or_else(|| std::path::absolute(".").unwrap_or_else(|_| PathBuf::from(".")))
 }
 
 /// Closes the panel and streams a fresh search into the `Find Results` tab.

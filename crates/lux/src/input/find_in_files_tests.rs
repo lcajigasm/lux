@@ -454,3 +454,14 @@ fn a_restored_tab_resolves_against_its_recorded_root_after_a_restart() {
         assert_eq!(restored.cursors.primary().head.line, 1);
     }
 }
+
+/// With no folder open the search root is the working directory, written
+/// as an absolute path so a later project cannot change what it means.
+#[test]
+fn the_root_without_a_folder_is_absolute() {
+    let ctx = DummyContext::new();
+    let mut app = test_app_with_root(PathBuf::from("."), &ctx);
+    app.ui.sidebar = None;
+    let root = crate::project_search::workspace_root(&app);
+    assert!(root.is_absolute(), "{}", root.display());
+}
