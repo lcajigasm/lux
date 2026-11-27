@@ -204,3 +204,22 @@ fn each_group_paints_its_minimap_inside_its_own_rect() {
         assert!(right(q.rect) <= right_text[0] + 0.01, "{:?}", q.rect);
     }
 }
+
+#[test]
+fn group_minimaps_end_above_the_find_bar_and_the_dock() {
+    for scale in [1.0, 2.0] {
+        let (mut app, _dir) = app(scale, true);
+        crate::search::open_find(&mut app, true);
+        app.ui.term.visible = true;
+        let s = scale as f32;
+        let frame = app.fit_viewport(1000.0 * s, 700.0 * s);
+        let editor_bottom = frame.editor[1] + frame.editor[3];
+        let find_top = frame.search_bar.expect("find bar")[1];
+        assert_eq!(editor_bottom, find_top);
+        for group in rects(&app) {
+            let map = group.minimap.expect("room for a minimap");
+            assert_eq!(map[1] + map[3], editor_bottom, "scale {scale}");
+            assert_eq!(group.editor[1] + group.editor[3], editor_bottom);
+        }
+    }
+}
