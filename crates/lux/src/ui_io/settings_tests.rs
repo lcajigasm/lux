@@ -2,6 +2,7 @@
 //! never touch the disk on the UI thread: each call returns first and the
 //! write or read lands when its worker reports back.
 
+use lux_config::layering::{Layer, LayeredConfig};
 use lux_platform::event::{ElementState, KeyEvent};
 use lux_platform::{Key, NamedKey, PlatformContext, ScrollDelta};
 
@@ -99,7 +100,12 @@ fn saving_the_settings_tab_reloads_the_layer_on_a_worker() {
     let (mut app, path) = with_settings(&dir, &ctx);
     // The settings-file watcher reloads the layer on its own thread when
     // the file changes; this test is about the save path, not the watcher.
+    // Dropping the watcher does not stop its thread at once (inotify), so
+    // the state also gets a config that thread never shared.
     app.ui.settings.watcher = None;
+    let mut config = LayeredConfig::new(crate::settings::DEFAULT_SETTINGS_JSON).unwrap();
+    config.set_layer_path(Layer::User, path.clone()).unwrap();
+    app.ui.settings.config = std::sync::Arc::new(std::sync::Mutex::new(config));
     std::fs::write(&path, r#"{"editor.wordWrap": true}"#).unwrap();
 
     let hold = app.ui.dialogs.jobs.hold();
