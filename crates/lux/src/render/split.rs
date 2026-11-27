@@ -238,6 +238,7 @@ fn render_single_pane(
             .map(SyntaxColors);
         let cached = TokenColors {
             tokens,
+            generation: pane.tokens.generation(),
             theme: params.syntax_theme,
             buffer_id: entry_match.map_or(0, |e| e.buffer_id),
         };

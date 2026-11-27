@@ -302,7 +302,7 @@ impl App {
         primary_pane.viewport.scroll_x = self.viewport.scroll_x;
         primary_pane.viewport.scroll_y = self.viewport.scroll_y;
         if let Some(syntax) = &self.syntax {
-            primary_pane.tokens = syntax.tokens.clone();
+            primary_pane.tokens.replace(syntax.tokens.clone());
         }
         new_panes.push(primary_pane);
 
@@ -317,7 +317,7 @@ impl App {
                 pane.viewport.scroll_x = self.viewport.scroll_x;
                 pane.viewport.scroll_y = self.viewport.scroll_y;
                 if let Some(syntax) = &self.syntax {
-                    pane.tokens = syntax.tokens.clone();
+                    pane.tokens.replace(syntax.tokens.clone());
                 }
             } else if let Some(entry) = self.documents.entries.iter().find(|e| e.tab_id == tab_id) {
                 pane.cursors = entry.cursors.clone();
@@ -331,7 +331,7 @@ impl App {
                 if let Some(lang) = lang {
                     let mut doc = lux_syntax::Document::new(lang);
                     doc.set_rope(entry.buffer.rope());
-                    pane.tokens = doc.highlight_rope(entry.buffer.rope());
+                    pane.tokens.replace(doc.highlight_rope(entry.buffer.rope()));
                 }
             }
             new_panes.push(pane);
@@ -397,7 +397,9 @@ impl App {
             self.ui.split.panes[cur_active].viewport.scroll_x = self.viewport.scroll_x;
             self.ui.split.panes[cur_active].viewport.scroll_y = self.viewport.scroll_y;
             if let Some(syntax) = &self.syntax {
-                self.ui.split.panes[cur_active].tokens = syntax.tokens.clone();
+                self.ui.split.panes[cur_active]
+                    .tokens
+                    .replace(syntax.tokens.clone());
             }
         }
         self.ui.split.active_pane = group_idx;

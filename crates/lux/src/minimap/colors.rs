@@ -12,18 +12,20 @@ pub(crate) struct SyntaxColors<'a>(pub(crate) &'a SyntaxState);
 /// one and so has no live highlighter of its own.
 pub(crate) struct TokenColors<'a> {
     pub(crate) tokens: &'a [Token],
+    /// The pane's token generation (`PaneTokens::generation`), which
+    /// changes on every replacement. The vector's address and length do
+    /// not: a freed allocation can be reused with the same length.
+    pub(crate) generation: u64,
     pub(crate) theme: &'static SyntaxTheme,
     pub(crate) buffer_id: u64,
 }
 
 impl LineColors for TokenColors<'_> {
-    /// A group's tokens are replaced wholesale (a new allocation) when it
-    /// is laid out or loses focus, so their address and length change.
+    /// New tokens for the pane, a theme switch, or another document
+    /// changes it. Never 0, which the model uses for "no colors".
     fn stamp(&self) -> u64 {
-        let tokens = self.tokens.as_ptr() as usize as u64;
         let theme = std::ptr::from_ref(self.theme) as usize as u64;
-        (tokens.wrapping_mul(0x9E37_79B9_7F4A_7C15)
-            ^ (self.tokens.len() as u64).rotate_left(17)
+        (self.generation.wrapping_mul(0x9E37_79B9_7F4A_7C15)
             ^ theme
             ^ self.buffer_id.rotate_left(32))
             | 1
@@ -68,5 +70,41 @@ impl LineColors for SyntaxColors<'_> {
 
     fn runs(&self, start: usize, end: usize, out: &mut Vec<ColorRun>) {
         push_runs(&self.0.tokens, self.0.theme, start, end, out);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TokenColors;
+    use crate::pane_view::PaneTokens;
+    use lux_ui::minimap::LineColors;
+
+    fn stamp(tokens: &PaneTokens) -> u64 {
+        TokenColors {
+            tokens: tokens.as_slice(),
+            generation: tokens.generation(),
+            theme: lux_syntax::theme::by_name("Monokai").expect("bundled theme"),
+            buffer_id: 7,
+        }
+        .stamp()
+    }
+
+    /// The same (empty, unallocated) vector before and after: equal
+    /// address and length, yet the stamp must change.
+    #[test]
+    fn replaced_tokens_change_the_stamp_even_at_the_same_address() {
+        let mut tokens = PaneTokens::default();
+        tokens.replace(Vec::new());
+        let (before, ptr) = (stamp(&tokens), tokens.as_slice().as_ptr());
+        tokens.replace(Vec::new());
+        assert_eq!(tokens.as_slice().as_ptr(), ptr);
+        assert_ne!(stamp(&tokens), before);
+    }
+
+    #[test]
+    fn unchanged_tokens_keep_their_stamp() {
+        let mut tokens = PaneTokens::default();
+        tokens.replace(Vec::new());
+        assert_eq!(stamp(&tokens), stamp(&tokens.clone()));
     }
 }
