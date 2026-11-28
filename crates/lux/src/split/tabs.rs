@@ -293,11 +293,9 @@ fn reconcile_now(app: &mut App) {
 /// focused group at restore does not collect them all.
 ///
 /// This runs once, when every restored tab is already open: lists can
-/// only hold ids of open tabs. A restore where tabs land later (async
-/// restore, #158) must keep each group's saved tab indexes until those
-/// tabs open and then insert each landing tab into the group that listed
-/// it, at its saved position. Otherwise `reconcile` sees an open tab no
-/// group lists and puts it in the focused group.
+/// only hold ids of open tabs. The session restore lands tabs one by one
+/// off the UI thread and restores the split layout, with these lists,
+/// only after the last tab has landed (`session::restore_apply`).
 pub(crate) fn restored(app: &mut App) {
     if !split_on(app) {
         return;

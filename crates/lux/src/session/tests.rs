@@ -10,6 +10,8 @@ use lux_workspace::session::{CursorState, SESSION_FILE_NAME, Session, TabState};
 use super::*;
 use crate::document::DocumentEntry;
 
+mod async_groups;
+mod async_restore;
 mod conflict_bar;
 mod hot_exit;
 mod switching;

@@ -274,6 +274,8 @@ The numbers below are copied from artifact `perf-macos` of run [43471189705](htt
 
 Budgets are not a job failure. The numbers above are that run.
 
+H1 note (session restore): the launch session restore no longer runs in `resumed` before the first frame. The session file, each tab's file and each undo history are read on workers, and tabs open as they land (`session::restore`). That reading is therefore out of H1's clock, which ends at the first presented frame. With a restored session, that frame is the empty window, and the restored tabs appear on the following frames. The H1 numbers above predate this change; the change has not been measured on repeatable hardware yet, and the time until the last restored tab is visible is not a tracked row.
+
 The numbers are copied from the performance artifact after the run. This revision does not invent them.
 
 Run 43471189705 measured a warm 10 MB open at 706.3 ms, a warm 100 MB open at 9049.3 ms, and 4.84× extra RSS on that 100 MB open. Those clocks included a full line index of the file for the minimap and a per-line conflict scan. This branch removes both from the open. The macOS job remeasures main and this branch in one run and writes the raw samples. Sublime Text and Zed stay pending for the open comparison: that run recorded Sublime as "window did not appear" and Zed as "open -a Zed failed". The job installs the official casks again. A window that does not appear stays pending, with the reason in the artifact, and does not fail the job. This pull request's job is the 10 MB open. This pull request's job is the 100 MB open. This pull request's job is the extra RSS of that 100 MB open.

@@ -17,6 +17,8 @@ mod latest;
 
 type Wake = Arc<dyn Fn() + Send + Sync>;
 type Task = Box<dyn FnOnce() + Send>;
+/// One unit of work for [`spawn_each`].
+pub(crate) type Job = Box<dyn FnOnce() -> Option<Done> + Send>;
 
 /// A finished job, applied on the UI thread.
 pub(crate) enum Done {
@@ -35,6 +37,8 @@ pub(crate) enum Done {
     },
     /// A conflict-bar action finished its disk read or write.
     Conflict(crate::conflict::Resolved),
+    /// A session restore read its file or one of its tabs.
+    Session(crate::session::restore::Landed),
     /// Recent projects for the Quick Switch Project picker.
     ProjectList {
         projects: Vec<PathBuf>,
@@ -178,10 +182,13 @@ impl Jobs {
         Box::new(move || {
             gate.wait();
             let done = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).unwrap_or(None);
-            let wake = wake.lock().ok().and_then(|slot| slot.clone());
-            if sender.send(done).is_ok()
-                && let Some(wake) = wake
-            {
+            if sender.send(done).is_err() {
+                return;
+            }
+            // The waker is read after the send: one registered between a
+            // read and the send would otherwise be missed, and its own
+            // wake-up could run `poll` before the result was there.
+            if let Some(wake) = wake.lock().ok().and_then(|slot| slot.clone()) {
                 wake();
             }
         })
@@ -231,6 +238,35 @@ pub(crate) fn spawn(
         Ok(_) => app.ui.dialogs.jobs.in_flight += 1,
         Err(error) => {
             app.documents.message = Some(format!("Cannot start file operation: {error}"));
+        }
+    }
+}
+
+/// Runs `jobs` one after another on one new thread, applying each result
+/// as soon as it is ready, in order. `false` when the thread could not be
+/// started: none of the jobs will run or report.
+pub(crate) fn spawn_each(app: &mut App, ctx: Option<&dyn PlatformContext>, jobs: Vec<Job>) -> bool {
+    note_wake(app, ctx);
+    let count = jobs.len();
+    let tasks: Vec<Task> = jobs
+        .into_iter()
+        .map(|job| app.ui.dialogs.jobs.task(job))
+        .collect();
+    let spawned = std::thread::Builder::new()
+        .name("lux-ui-io-each".into())
+        .spawn(move || {
+            for task in tasks {
+                task();
+            }
+        });
+    match spawned {
+        Ok(_) => {
+            app.ui.dialogs.jobs.in_flight += count;
+            true
+        }
+        Err(error) => {
+            app.documents.message = Some(format!("Cannot start file operation: {error}"));
+            false
         }
     }
 }
@@ -349,6 +385,7 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
             projects,
             generation,
         } => app.show_project_list(projects, generation),
+        Done::Session(landed) => crate::session::restore_apply::apply(app, ctx, landed),
         Done::Conflict(resolved) => crate::conflict::apply_resolved(app, resolved),
         Done::ProjectSaved(path) => app.note_project_saved(&path),
         Done::ProjectSaveFailed(path) => {
@@ -395,3 +432,5 @@ fn apply(app: &mut App, ctx: &dyn PlatformContext, done: Done) {
 mod settings_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wake_tests;

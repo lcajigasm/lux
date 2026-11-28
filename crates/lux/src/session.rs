@@ -6,10 +6,12 @@
 mod debounce;
 pub(crate) mod disk_events;
 pub(crate) mod location;
-mod restore;
+pub(crate) mod restore;
+pub(crate) mod restore_apply;
 mod snapshot;
 
 pub(crate) use disk_events::{mark_removed, poll_file_watcher};
+#[cfg(test)]
 pub(crate) use restore::restore_session;
 
 use std::collections::HashMap;
@@ -51,6 +53,10 @@ pub(crate) struct WorkspaceSession {
     /// Bumped whenever the watched folders change, so state derived from
     /// the open folders (build systems) knows to reload.
     folder_epoch: u64,
+    /// Bumped by each restore; results of an older one are dropped.
+    pub(crate) restore_generation: u64,
+    /// The restore whose tabs are still landing.
+    pub(crate) restoring: Option<restore_apply::Restoring>,
 }
 
 impl WorkspaceSession {
@@ -165,21 +171,41 @@ pub(crate) fn pane_tokens(entry: &DocumentEntry) -> Vec<lux_syntax::Token> {
     doc.highlight_rope(entry.buffer.rope())
 }
 
-/// Restores the folderless session when the window first appears. Skipped
-/// when a document is opening, a folder is in the sidebar, or a project
-/// from the command line is still being read: that project owns the
-/// window, and the folderless tabs must not land in it.
-pub(crate) fn restore_at_launch(app: &mut App) {
+/// The folder that keys the session is about to change: a folder or
+/// project opens, the project or the header folder closes, the sidebar
+/// opens on the working directory, or a restore opens its own folder.
+/// Every root change goes through here, before the new root is set, so
+/// everything tied to the old root ends in one place, in this order:
+///
+/// 1. The old root's pending session write is flushed (`leave_root`). It
+///    runs first, while a restore still in flight can still add its
+///    unlanded tabs and saved layout to that snapshot.
+/// 2. A session restore still landing is dropped: its tabs, layout and
+///    later writes belong to the old root, not the new one.
+/// 3. `folder_epoch` is bumped, so state derived from the open folders
+///    (build systems) reloads even when the change opens no new watcher
+///    (closing the project or the header folder).
+pub(crate) fn root_changing(app: &mut App) {
+    leave_root(app);
+    restore_apply::next_generation(app);
+    app.ui.session.folder_epoch += 1;
+}
+
+/// Restores the folderless session when the window first appears, on
+/// workers. Skipped when a document is opening, a folder is in the
+/// sidebar, or a project from the command line is still being read: that
+/// project owns the window, and the folderless tabs must not land in it.
+pub(crate) fn restore_at_launch(app: &mut App, ctx: &dyn lux_platform::PlatformContext) {
     if crate::document::open_queue::busy(app) || app.ui.sidebar.is_some() || app.ui.project.opening
     {
         return;
     }
-    if let Some(session_file) = readable_file(app, None) {
-        let _ = restore_session(app, &session_file);
-    }
+    restore::start(app, Some(ctx), None);
 }
 
-/// The file to restore `root`'s session from, if it has one.
+/// The file to restore `root`'s session from, if it has one. Stats the
+/// disk; the app finds it on the restore worker instead.
+#[cfg(test)]
 pub(crate) fn readable_file(app: &App, root: Option<&Path>) -> Option<PathBuf> {
     match &app.ui.session.data_dir {
         Some(dir) => location::readable_session_file_in(dir, root),
@@ -202,12 +228,13 @@ pub(crate) fn note_change(app: &mut App) {
     debounce::SESSION.note_change();
 }
 
-/// Called before the folder that keys the session changes: another folder
-/// or project opens, or the last folder closes. A change still inside the
-/// quiet period belongs to the project being left, so its snapshot is
-/// queued now, for that project's file. The session writer keeps one job
-/// per file, so the next project's writes cannot replace it.
-pub(crate) fn leave_root(app: &mut App) {
+/// Step 1 of [`root_changing`]: the folder that keys the session is about
+/// to change (another folder or project opens, or the last folder
+/// closes). A change still inside the quiet period belongs to the project
+/// being left, so its snapshot is queued now, for that project's file.
+/// The session writer keeps one job per file, so the next project's
+/// writes cannot replace it.
+fn leave_root(app: &mut App) {
     if std::mem::take(&mut app.ui.session.unsaved) {
         snapshot::submit(app);
     }

@@ -40,6 +40,9 @@ pub(crate) struct Snapshot {
     payloads: Vec<TabPayload>,
     frame: Option<WindowFrame>,
     clean: bool,
+    /// Where the history files of a restore's unlanded tabs live, when
+    /// that is not this session's own history directory.
+    pending_history: Option<PathBuf>,
 }
 
 /// Keyed by session file: a write still waiting for the project the user
@@ -185,6 +188,13 @@ fn take(app: &mut App, clean: bool) -> Snapshot {
             history: shared,
         });
     }
+    // Tabs of a restore still in flight keep their saved state, so a write
+    // (or a quit) before they land does not drop them. They have no
+    // payload: their draft and history name are already in the state.
+    let landed = session.tabs.len();
+    session
+        .tabs
+        .extend(super::restore_apply::pending_tabs(app).cloned());
     // Histories of closed tabs are no longer worth keeping in memory.
     app.ui.session.histories = seen_histories;
     if let Some(id) = transient {
@@ -206,6 +216,16 @@ fn take(app: &mut App, clean: bool) -> Snapshot {
         }
     }
     session.layout = layout_state(app, &index_of_tab, line_height);
+    // Mid-restore the window shows one pane and whatever tab the restore
+    // has reached; the session's own split and active tab still stand.
+    if let Some((layout, active)) = super::restore_apply::saved_view(app, &index_of_tab, landed) {
+        if layout.is_some() {
+            session.layout = layout;
+        }
+        if active.is_some() {
+            session.active_tab = active;
+        }
+    }
 
     Snapshot {
         file,
@@ -214,6 +234,7 @@ fn take(app: &mut App, clean: bool) -> Snapshot {
         payloads,
         frame: app.ui.session.frame.clone(),
         clean,
+        pending_history: super::restore_apply::pending_history_dir(app).map(Path::to_path_buf),
     }
 }
 
@@ -302,12 +323,28 @@ fn write(snapshot: Snapshot) -> std::io::Result<()> {
         payloads,
         frame,
         clean,
+        pending_history,
     } = snapshot;
     let dir = session_store::history_dir(&file);
     let mut keep = HashSet::new();
     let mut encoded = ENCODED.lock().unwrap_or_else(|e| e.into_inner());
     let previous = encoded.take().unwrap_or_default();
     let mut current = HashMap::new();
+    // Tabs past the payloads are a restore's unlanded tabs; keep the
+    // history files they name, copied over when the restore read them
+    // from another session's directory.
+    for tab in session.tabs.iter().skip(payloads.len()) {
+        let Some(name) = &tab.history else {
+            continue;
+        };
+        if let Some(from) = pending_history.as_deref().filter(|from| *from != dir)
+            && !session_store::history_exists(&dir, name)
+            && let Some(bytes) = session_store::read_history(from, name)
+        {
+            let _ = session_store::write_history(&dir, name, &bytes);
+        }
+        keep.insert(name.clone());
+    }
     for (tab, payload) in session.tabs.iter_mut().zip(payloads) {
         if payload.draft {
             tab.draft_text = Some(payload.buffer.text());

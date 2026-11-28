@@ -197,7 +197,7 @@ fn a_project_from_the_command_line_skips_the_folderless_restore() {
     let mut app = new_app();
     app.ui.session.data_dir = Some(data.clone());
     app.open_project_file(&project_file, None);
-    crate::session::restore_at_launch(&mut app);
+    crate::session::restore_at_launch(&mut app, &Ctx);
     crate::ui_io::finish_all(&mut app, &Ctx);
 
     assert_eq!(app.ui.project.active_project_path, Some(project_file));
@@ -212,7 +212,8 @@ fn a_project_from_the_command_line_skips_the_folderless_restore() {
     // Without a pending project the folderless session still restores.
     let mut plain = new_app();
     plain.ui.session.data_dir = Some(data);
-    crate::session::restore_at_launch(&mut plain);
+    crate::session::restore_at_launch(&mut plain, &Ctx);
+    crate::ui_io::finish_all(&mut plain, &Ctx);
     assert!(
         plain
             .documents
@@ -248,4 +249,14 @@ fn a_project_that_lands_after_open_folder_is_dropped() {
     assert!(app.ui.project.picker.is_none());
     assert_eq!(app.workspace_root(), Some(folder));
     assert!(!app.ui.project.opening);
+}
+
+/// Closing a project opens no new watcher, yet the folders that build
+/// systems derive from changed: `root_changing` bumps the epoch.
+#[test]
+fn closing_a_project_bumps_the_folder_epoch() {
+    let mut app = new_app();
+    let before = app.ui.session.folder_epoch();
+    app.close_project();
+    assert!(app.ui.session.folder_epoch() > before);
 }
